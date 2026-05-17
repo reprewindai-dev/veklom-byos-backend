@@ -1,2 +1,115 @@
-# veklom-byos-backend
-Veklom BYOS Backend — Private governed AI backend. Run AI workloads with policy, routing, cost controls, audit/evidence, API keys, tenant isolation, and compliance on your own server or cloud.
+# Veklom BYOS Backend
+
+> **Bring Your Own Server** — Private governed AI backend you run on your own infrastructure.
+
+Veklom BYOS Backend is a private governed AI backend for running AI workloads with:
+
+- **Policy enforcement** — content safety, PII/PHI redaction, compliance checks
+- **Intelligent routing** — model fallback, cost-quality-risk autonomous selection
+- **Cost controls** — token wallet, budget rules, real-time spend tracking
+- **Audit & evidence** — tamper-evident hashed audit logs, hash verification
+- **API key management** — scoped keys, per-key usage tracking, kill switch
+- **Tenant/workspace isolation** — full multi-tenant with role-based access
+- **Optional private runtime** — connect your own vLLM, Ollama, or OpenAI-compatible endpoint
+
+Designed for enterprise teams, healthcare organizations, and security-conscious companies that cannot send data through shared cloud AI infrastructure.
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/reprewindai-dev/veklom-byos-backend
+cd veklom-byos-backend
+cp .env.example .env
+# Fill in required env vars (see ENVIRONMENT.md)
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn backend.apps.api.main:app --reload
+```
+
+Health check: `GET http://localhost:8000/api/v1/health`
+
+---
+
+## Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| [SETUP.md](./SETUP.md) | Local development setup |
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | Docker / Coolify / Render / Hetzner deploy |
+| [ENVIRONMENT.md](./ENVIRONMENT.md) | All environment variables explained |
+| [API_SURFACE.md](./API_SURFACE.md) | Every route family and endpoint |
+| [SECURITY_MODEL.md](./SECURITY_MODEL.md) | Auth, isolation, secrets architecture |
+| [LICENSE_ACTIVATION.md](./LICENSE_ACTIVATION.md) | Buyer license key activation |
+| [BUYER_PACKAGE.md](./BUYER_PACKAGE.md) | What you receive, support terms |
+| [SELLABLE_BACKEND_AUDIT.md](./SELLABLE_BACKEND_AUDIT.md) | Module readiness audit |
+| [SOURCE_BACKEND_INVENTORY.md](./SOURCE_BACKEND_INVENTORY.md) | Full folder/route/dep inventory |
+
+---
+
+## Architecture
+
+```
+veklom-byos-backend/
+├── backend/
+│   ├── apps/api/
+│   │   ├── main.py          # FastAPI app, middleware, router registration
+│   │   └── routers/         # 43 router modules
+│   ├── core/                # Config, auth, DB engine, security
+│   ├── db/                  # SQLAlchemy models, Alembic migrations
+│   ├── license/             # License server, package guard
+│   ├── scripts/             # Deploy, health, license scripts
+│   └── tests/               # pytest test suite
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── .env.example
+└── .env.production.example
+```
+
+---
+
+## Core Capabilities
+
+### AI Execution
+- `POST /api/v1/exec` — SSE streaming inference with policy enforcement
+- OpenAI-compatible interface
+- Connect to OpenAI, Anthropic, vLLM, Ollama, or any compatible endpoint
+- Per-request cost prediction before execution
+- Autonomous routing: selects best model by cost/quality/risk
+
+### Governance & Compliance
+- Content safety scoring on every request
+- PII/PHI detection and optional redaction
+- Compliance regulation checks (HIPAA, GDPR, SOC2)
+- Explainability endpoint for model decisions
+- Tamper-evident audit logs with SHA hash chains
+
+### Security
+- JWT authentication + optional MFA
+- API key management with scoped permissions
+- Kill switch: instantly revoke all AI access
+- Locker isolation: per-tenant security boundaries
+- Security event log
+
+### Billing & Cost
+- Token wallet with prepaid credit model
+- Budget rules with hard/soft limits
+- Real-time spend tracking
+- Stripe subscriptions + metered usage
+- Topup checkout flow
+
+### Multi-Tenant
+- Full workspace isolation
+- Role-based access (owner, admin, member, viewer)
+- Per-workspace model configs, API keys, budgets
+- Admin panel for user/workspace management
+
+---
+
+## License
+
+Commercial license. See [LICENSE_ACTIVATION.md](./LICENSE_ACTIVATION.md) and [BUYER_PACKAGE.md](./BUYER_PACKAGE.md).
+
+© 2026 CO2 Router / Veklom. All rights reserved.

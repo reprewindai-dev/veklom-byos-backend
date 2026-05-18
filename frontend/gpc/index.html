@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPC — Governed Plan Compiler | Veklom Sovereign AI Hub</title>
+<meta name="description" content="Turn messy AI ideas into governed plans before they become pipelines. The missing middle between a promising AI test and a workflow that security, compliance, operations, and finance can approve.">
+<script src="/config.js"></script>
+<style>
+:root {
+  --vk-bg: #050505;
+  --vk-surface: #0a0a0a;
+  --vk-border: rgba(255,255,255,0.08);
+  --vk-text: #e0e0e0;
+  --vk-text-dim: rgba(255,255,255,0.4);
+  --vk-accent: #3b82f6;
+  --vk-accent-glow: rgba(59,130,246,0.15);
+  --vk-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #6366f1 100%);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--vk-bg);
+  color: var(--vk-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Scanner overlay */
+.scanner {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255,255,255,0.008) 2px,
+    rgba(255,255,255,0.008) 4px
+  );
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+/* === BLACK BOX LAYOUT === */
+.blackbox-wrapper {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* Hidden side panels (Playground left, Marketplace right) */
+.side-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 320px;
+  background: #020202;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+.side-panel.left { left: -320px; }
+.side-panel.right { right: -320px; }
+
+/* GPC center panel — the visible "black box" */
+.gpc-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+  z-index: 10;
+}
+
+/* Header */
+.gpc-header {
+  height: 64px;
+  border-bottom: 1px solid var(--vk-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  background: var(--vk-surface);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(12px);
+}
+
+.gpc-logo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.gpc-logo-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--vk-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px var(--vk-accent-glow);
+}
+
+.gpc-logo-icon svg { width: 18px; height: 18px; fill: white; }
+
+.gpc-logo-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.gpc-logo-title {
+  font-family: 'Georgia', serif;
+  font-style: italic;
+  font-size: 18px;
+  color: rgba(255,255,255,0.9);
+  line-height: 1;
+}
+
+.gpc-logo-subtitle {
+  font-size: 8px;
+  font-family: monospace;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: rgba(59,130,246,0.6);
+  margin-top: 4px;
+}
+
+.gpc-nav {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+}
+
+.gpc-nav a {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-weight: 700;
+  color: var(--vk-text-dim);
+  text-decoration: none;
+  transition: color 0.2s;
+  cursor: pointer;
+}
+.gpc-nav a:hover, .gpc-nav a.active { color: white; }
+
+.gpc-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  font-family: monospace;
+  color: rgba(52,211,153,0.8);
+}
+
+.gpc-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Main content */
+.gpc-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 48px 32px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Hero section */
+.gpc-hero {
+  text-align: center;
+  margin-bottom: 64px;
+}
+
+.gpc-hero h1 {
+  font-size: 36px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+  background: var(--vk-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gpc-hero p {
+  font-size: 16px;
+  color: var(--vk-text-dim);
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.7;
+}
+
+/* Intent console */
+.intent-console {
+  background: var(--vk-surface);
+  border: 1px solid var(--vk-border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.intent-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--vk-text-dim);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.intent-label::before {
+  content: '▶';
+  color: var(--vk-accent);
+  font-size: 8px;
+}
+
+.intent-textarea {
+  width: 100%;
+  min-height: 120px;
+  background: #111;
+  border: 1px solid var(--vk-border);
+  border-radius: 8px;
+  color: var(--vk-text);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  padding: 16px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.intent-textarea:focus {
+  border-color: var(--vk-accent);
+  box-shadow: 0 0 0 2px var(--vk-accent-glow);
+}
+
+.intent-textarea::placeholder {
+  color: rgba(255,255,255,0.2);
+}
+
+.intent-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.intent-options {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.option-chip {
+  font-size: 9px;
+  padding: 4px 10px;
+  border: 1px solid var(--vk-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vk-text-dim);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.option-chip:hover, .option-chip.active {
+  border-color: var(--vk-accent);
+  color: var(--vk-accent);
+  background: var(--vk-accent-glow);
+}
+
+.compile-btn {
+  padding: 10px 32px;
+  background: var(--vk-gradient);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 20px var(--vk-accent-glow);
+}
+
+.compile-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 30px var(--vk-accent-glow);
+}
+
+.compile-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Plan output */
+.plan-output {
+  background: var(--vk-surface);
+  border: 1px solid var(--vk-border);
+  border-radius: 12px;
+  margin-bottom: 32px;
+  overflow: hidden;
+}
+
+.plan-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--vk-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.plan-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.plan-status {
+  font-size: 9px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.plan-status.compiled {
+  background: rgba(52,211,153,0.15);
+  color: #34d399;
+  border: 1px solid rgba(52,211,153,0.3);
+}
+
+.plan-body {
+  padding: 24px;
+}
+
+.plan-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plan-node {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #111;
+  border: 1px solid var(--vk-border);
+  border-radius: 8px;
+  position: relative;
+}
+
+.plan-node::before {
+  content: '';
+  position: absolute;
+  left: 28px;
+  top: 100%;
+  width: 2px;
+  height: 16px;
+  background: var(--vk-border);
+}
+
+.plan-node:last-child::before { display: none; }
+
+.node-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.node-icon.classical { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); }
+.node-icon.quantum { background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3); }
+
+.node-info { flex: 1; }
+.node-desc { font-size: 13px; }
+.node-tag { font-size: 9px; color: var(--vk-text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px; }
+
+.node-entropy {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--vk-accent);
+}
+
+/* Pipeline steps */
+.steps-section {
+  margin-top: 32px;
+}
+
+.steps-section h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--vk-text-dim);
+  margin-bottom: 16px;
+}
+
+.steps-flow {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.step-badge {
+  font-size: 10px;
+  padding: 6px 14px;
+  background: #111;
+  border: 1px solid var(--vk-border);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vk-text-dim);
+}
+
+.step-badge .num {
+  color: var(--vk-accent);
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.step-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--vk-text-dim);
+  font-size: 10px;
+  padding: 0 4px;
+}
+
+/* Footer */
+.gpc-footer {
+  border-top: 1px solid var(--vk-border);
+  padding: 24px 32px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--vk-text-dim);
+}
+
+.gpc-footer a {
+  color: var(--vk-accent);
+  text-decoration: none;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .gpc-main { padding: 24px 16px; }
+  .gpc-hero h1 { font-size: 24px; }
+  .intent-controls { flex-direction: column; gap: 12px; }
+  .compile-btn { width: 100%; }
+}
+
+/* Loading animation */
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--vk-surface);
+  border: 1px solid var(--vk-border);
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-size: 12px;
+  z-index: 100;
+  display: none;
+}
+
+.toast.show { display: block; }
+</style>
+</head>
+<body>
+<div class="scanner"></div>
+
+<div class="blackbox-wrapper">
+  <!-- Hidden Playground (left side - not visible to public) -->
+  <div class="side-panel left" aria-hidden="true">
+    <div style="padding: 20px; opacity: 0.3">
+      <h3>Playground</h3>
+      <p>Test models, prompts, and workflows</p>
+    </div>
+  </div>
+
+  <!-- GPC Center — The "Black Box" (visible to public) -->
+  <div class="gpc-center">
+    <header class="gpc-header">
+      <div class="gpc-logo">
+        <div class="gpc-logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div class="gpc-logo-text">
+          <span class="gpc-logo-title">Governed Plan Compiler</span>
+          <span class="gpc-logo-subtitle">Veklom Sovereign AI Hub</span>
+        </div>
+      </div>
+
+      <nav class="gpc-nav">
+        <a class="active" id="tab-intent">Signal Feed</a>
+        <a id="tab-execution">Probability Matrix</a>
+        <a id="tab-ops">Deterministic Ops</a>
+      </nav>
+
+      <div class="gpc-status">
+        <div class="gpc-status-dot"></div>
+        <span>LIVE · GOVERNED</span>
+      </div>
+    </header>
+
+    <main class="gpc-main">
+      <!-- Hero -->
+      <section class="gpc-hero">
+        <h1>Turn messy AI ideas into governed plans</h1>
+        <p>
+          Most teams can get a model to answer. The hard part is turning that answer into a workflow
+          security, compliance, operations, and finance can approve. GPC compiles the governed plan
+          before engineering time is wasted.
+        </p>
+      </section>
+
+      <!-- Intent Console -->
+      <div class="intent-console">
+        <div class="intent-label">Intent Console — Describe Your Workflow</div>
+        <textarea
+          class="intent-textarea"
+          id="intentInput"
+          placeholder="Example: Build an AI-powered support triage system that classifies incoming tickets, routes them to the right team, and generates initial response drafts — with HIPAA compliance and full audit trail..."
+        ></textarea>
+        <div class="intent-controls">
+          <div class="intent-options">
+            <button class="option-chip active" data-compliance="hipaa">HIPAA</button>
+            <button class="option-chip active" data-compliance="soc2">SOC 2</button>
+            <button class="option-chip" data-compliance="gdpr">GDPR</button>
+            <button class="option-chip" data-compliance="pci">PCI-DSS</button>
+          </div>
+          <button class="compile-btn" id="compileBtn" onclick="compilePlan()">
+            Compile Governed Plan
+          </button>
+        </div>
+      </div>
+
+      <!-- Plans output container -->
+      <div id="plansContainer"></div>
+
+      <!-- Pipeline steps -->
+      <div class="steps-section">
+        <h3>From prompt to governed workflow</h3>
+        <div class="steps-flow">
+          <div class="step-badge"><span class="num">01</span> Test in Playground</div>
+          <div class="step-arrow">→</div>
+          <div class="step-badge"><span class="num">02</span> Compile with GPC</div>
+          <div class="step-arrow">→</div>
+          <div class="step-badge"><span class="num">03</span> Build Pipeline</div>
+          <div class="step-arrow">→</div>
+          <div class="step-badge"><span class="num">04</span> Govern & Approve</div>
+          <div class="step-arrow">→</div>
+          <div class="step-badge"><span class="num">05</span> Deploy Private</div>
+          <div class="step-arrow">→</div>
+          <div class="step-badge"><span class="num">06</span> Monitor & Replay</div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="gpc-footer">
+      <p>
+        © Veklom · Sovereign Control Node &nbsp;|&nbsp;
+        SOC2-ready · HIPAA-aware · EU-sovereign &nbsp;|&nbsp;
+        Zero key exposure &nbsp;|&nbsp;
+        <a href="/">Back to Hub</a>
+      </p>
+    </footer>
+  </div>
+
+  <!-- Hidden Marketplace (right side - not visible to public) -->
+  <div class="side-panel right" aria-hidden="true">
+    <div style="padding: 20px; opacity: 0.3">
+      <h3>Marketplace</h3>
+      <p>Tools, models, and governance packs</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = window.__VEKLOM_API_BASE__ || '/api/v1';
+let authToken = localStorage.getItem('veklom_token') || '';
+
+function getHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (authToken) h['Authorization'] = `Bearer ${authToken}`;
+  return h;
+}
+
+// Compliance toggles
+document.querySelectorAll('.option-chip').forEach(chip => {
+  chip.addEventListener('click', () => chip.classList.toggle('active'));
+});
+
+// Tab navigation
+document.querySelectorAll('.gpc-nav a').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.gpc-nav a').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+  });
+});
+
+async function compilePlan() {
+  const intent = document.getElementById('intentInput').value.trim();
+  if (!intent) return;
+
+  const btn = document.getElementById('compileBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> Compiling...';
+
+  const compliance = Array.from(document.querySelectorAll('.option-chip.active'))
+    .map(c => c.dataset.compliance);
+
+  try {
+    const res = await fetch(`${API_BASE}/gpc/intent-to-plan`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ intent, compliance, provider: 'gemini', model: 'gemini-3-flash-preview' }),
+    });
+
+    if (!res.ok) throw new Error('Compilation failed');
+
+    const plan = await res.json();
+    renderPlan(plan);
+    document.getElementById('intentInput').value = '';
+    showToast('Plan compiled successfully');
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Compile Governed Plan';
+  }
+}
+
+function renderPlan(plan) {
+  const container = document.getElementById('plansContainer');
+  const nodes = plan.graph?.nodes || [];
+  const html = `
+    <div class="plan-output">
+      <div class="plan-header">
+        <span class="plan-title">${plan.name || 'Governed Plan'}</span>
+        <span class="plan-status compiled">Compiled</span>
+      </div>
+      <div class="plan-body">
+        <div class="plan-graph">
+          ${nodes.map(n => `
+            <div class="plan-node">
+              <div class="node-icon ${n.type || 'classical'}">${n.type === 'quantum' ? '⚛' : '◆'}</div>
+              <div class="node-info">
+                <div class="node-desc">${n.description}</div>
+                <div class="node-tag">${n.policy_tag || ''}</div>
+              </div>
+              <div class="node-entropy">Δ ${(n.entropy || 0).toFixed(2)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  container.insertAdjacentHTML('afterbegin', html);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// Load any existing plans on boot
+(async function boot() {
+  try {
+    const res = await fetch(`${API_BASE}/gpc/plans`, { headers: getHeaders() });
+    if (res.ok) {
+      const plans = await res.json();
+      plans.forEach(p => renderPlan(p));
+    }
+  } catch (e) { /* ignore */ }
+})();
+</script>
+</body>
+</html>

@@ -28,11 +28,11 @@ RUN mkdir -p /app/logs && \
 USER veklom
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8088
 
 # Health check (Coolify compatible)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+    CMD curl -f http://localhost:8088/api/v1/health || exit 1
 
 # Run with uvicorn (PORT can be overridden by Coolify)
-CMD ["sh", "-c", "uvicorn backend.apps.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn backend.apps.api.main:app --host 0.0.0.0 --port ${PORT:-8088}"]

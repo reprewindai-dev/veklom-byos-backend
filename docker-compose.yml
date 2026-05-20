@@ -11,18 +11,18 @@ services:
       dockerfile: Dockerfile
     container_name: veklom-api
     ports:
-      - "8000:8000"
+      - "8088:8088"
     env_file:
       - .env.production
     environment:
       - APP_ENV=production
-      - PORT=8000
+      - PORT=8088
     depends_on:
       - postgres
       - redis
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/v1/health')"]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8088/api/v1/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -1,8 +1,8 @@
 /**
  * Runtime config for Veklom Workspace.
  *
- * Cloudflare Pages: rewrite this file at deploy time (Pages Functions or _redirects)
- * or replace it with one that reads from your environment. Falls through to the
- * VITE_VEKLOM_API_BASE build-time env var if left blank.
+ * This file is a fallback. The backend provides a dynamic /config.js endpoint
+ * that sets the API base URL from server settings. This file is only used if
+ * the backend's /config.js endpoint is not available.
  */
-window.__VEKLOM_API_BASE__ = "https://veklom-byos-backend-exc7x28a1-dksummers-projects.vercel.app";
+window.__VEKLOM_API_BASE__ = "/api/v1";

@@ -1,6 +1,6 @@
 """Veklom BYOS Backend — Main FastAPI Application.
 
-Source of truth: LockerPhycer backend routes + API_SURFACE.md.
+Source of truth: Veklom backend routes + API_SURFACE.md.
 All routes wired for the REALFRONTEND built frontend.
 """
 
@@ -114,12 +114,19 @@ app.include_router(gpc.router, prefix="/api/v1")
 
 # --- Frontend static files ---
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "static"
+LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "landing"
+WORKSPACE_DIR = FRONTEND_DIR / "workspace"
 
 
 def _mount_static():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+    if WORKSPACE_DIR.exists():
+        app.mount("/workspace", StaticFiles(directory=str(WORKSPACE_DIR), html=True), name="workspace")
+    # Mount static directory for CSS, JS, branding, etc.
+    if FRONTEND_DIR.exists():
+        app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
 _mount_static()
@@ -138,9 +145,14 @@ async def root():
 
 
 async def _serve_frontend(request):
-    index_path = FRONTEND_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(str(index_path))
+    # Try landing page first, then static directory
+    landing_index = LANDING_DIR / "index.html"
+    static_index = FRONTEND_DIR / "index.html"
+    
+    if landing_index.exists():
+        return FileResponse(str(landing_index))
+    elif static_index.exists():
+        return FileResponse(str(static_index))
     return HTMLResponse(content=_fallback_html(), status_code=200)
 
 

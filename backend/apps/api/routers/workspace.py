@@ -188,7 +188,8 @@ def _default_models():
     return [
         {"id": "m1", "provider": "openai", "model_name": "gpt-4o", "display_name": "GPT-4o", "is_enabled": True, "cost_per_1k_input": 0.005, "cost_per_1k_output": 0.015},
         {"id": "m2", "provider": "openai", "model_name": "gpt-4o-mini", "display_name": "GPT-4o Mini", "is_enabled": True, "cost_per_1k_input": 0.00015, "cost_per_1k_output": 0.0006},
-        {"id": "m3", "provider": "anthropic", "model_name": "claude-3-5-sonnet", "display_name": "Claude 3.5 Sonnet", "is_enabled": True, "cost_per_1k_input": 0.003, "cost_per_1k_output": 0.015},
-        {"id": "m4", "provider": "anthropic", "model_name": "claude-3-5-haiku", "display_name": "Claude 3.5 Haiku", "is_enabled": True, "cost_per_1k_input": 0.0008, "cost_per_1k_output": 0.004},
-        {"id": "m5", "provider": "google", "model_name": "gemini-2.5-pro", "display_name": "Gemini 2.5 Pro", "is_enabled": True, "cost_per_1k_input": 0.00125, "cost_per_1k_output": 0.01},
+        {"id": "m3", "provider": "groq", "model_name": "llama-3.1-8b-instant", "display_name": "Groq Llama 3.1 8B Instant", "is_enabled": True, "cost_per_1k_input": 0.00005, "cost_per_1k_output": 0.00008},
+        {"id": "m4", "provider": "huggingface", "model_name": "meta-llama/Llama-3.1-8B-Instruct:fastest", "display_name": "Hugging Face Llama 3.1 8B", "is_enabled": True, "cost_per_1k_input": 0.0001, "cost_per_1k_output": 0.0001},
+        {"id": "m5", "provider": "gemini", "model_name": "gemini-2.5-flash", "display_name": "Gemini 2.5 Flash", "is_enabled": True, "cost_per_1k_input": 0.0003, "cost_per_1k_output": 0.0003},
+        {"id": "m6", "provider": "ollama", "model_name": "qwen2.5:3b", "display_name": "Ollama Qwen 2.5 3B", "is_enabled": True, "cost_per_1k_input": 0.0, "cost_per_1k_output": 0.0},
     ]

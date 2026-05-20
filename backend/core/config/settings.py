@@ -66,7 +66,26 @@ class Settings(BaseSettings):
     HUGGINGFACE_API_KEY: str = ""
     SERPAPI_KEY: str = ""
     DEFAULT_AI_PROVIDER: str = "openai"
+    AI_PROVIDER: str = ""
+    LLM_PROVIDER: str = ""
+    AI_FALLBACK_PROVIDER: str = ""
+    GROQ_API_KEY: str = ""
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    HF_API_URL: str = "https://router.huggingface.co/v1"
+    HF_MODEL: str = "meta-llama/Llama-3.1-8B-Instruct:fastest"
+    HF_TOKEN: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GOOGLE_CLOUD_PROJECT: str = ""
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-1"
+    BEDROCK_MODEL_ID: str = ""
     OLLAMA_BASE_URL: str = ""
+    OLLAMA_MODEL: str = "qwen2.5:3b"
+    OLLAMA_AUTOSTART: bool = False
+    OLLAMA_PULL_ON_BOOT: bool = False
+    OLLAMA_STARTUP_TIMEOUT_MS: int = 120000
     VLLM_BASE_URL: str = ""
 
     # Email (Resend)

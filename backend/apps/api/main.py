@@ -191,6 +191,22 @@ async def root():
     return await _serve_frontend(None)
 
 
+@app.get("/legal/privacy")
+async def legal_privacy():
+    path = LANDING_DIR / "privacy.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.get("/legal/terms")
+async def legal_terms():
+    path = LANDING_DIR / "terms.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
 async def _serve_frontend(request):
     # Try landing page first, then static directory
     landing_index = LANDING_DIR / "index.html"

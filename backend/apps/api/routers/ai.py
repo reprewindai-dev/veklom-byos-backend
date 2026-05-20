@@ -1,13 +1,11 @@
 """AI execution routes."""
 
-import httpx
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.core.config.settings import settings
+from backend.core.ai.provider_router import normalize_messages, provider_order, run_completion
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
-from backend.apps.api.routers.exec_router import OPENAI_CHAT_COMPLETIONS_URL, _openai_payload, _provider_error, _provider_headers
 from backend.db.models.ai import ExecLog
 
 router = APIRouter(tags=["AI"])
@@ -15,23 +13,20 @@ router = APIRouter(tags=["AI"])
 
 @router.post("/ai/complete")
 async def ai_complete(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    payload = _openai_payload(body, stream=False)
-    model = payload["model"]
+    result = await run_completion(body, stream=False)
+    data = result.payload
+    model = data.get("model", body.get("model", "unknown"))
+    messages = normalize_messages(body)
     prompt = body.get("prompt", body.get("messages", [{}])[-1].get("content", "") if body.get("messages") else "")
-
-    async with httpx.AsyncClient(timeout=settings.AI_REQUEST_TIMEOUT_SECONDS) as client:
-        response = await client.post(OPENAI_CHAT_COMPLETIONS_URL, headers=_provider_headers(), json=payload)
-    if response.status_code >= 400:
-        raise _provider_error(response.status_code, response.text)
-
-    data = response.json()
+    if not prompt and messages:
+        prompt = messages[-1].get("content", "")
     usage = data.get("usage", {})
 
     log = ExecLog(
         user_id=user.id,
         workspace_id=user.workspace_id or "",
         model=model,
-        provider="openai",
+        provider=result.provider,
         prompt_tokens=usage.get("prompt_tokens", len(prompt.split()) * 2),
         completion_tokens=usage.get("completion_tokens", 0),
         total_tokens=usage.get("total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)),
@@ -54,16 +49,29 @@ async def list_models(user=Depends(get_current_user)):
     return [
         {"id": "gpt-4o", "provider": "openai", "name": "GPT-4o", "context_window": 128000, "cost_per_1k_input": 0.005},
         {"id": "gpt-4o-mini", "provider": "openai", "name": "GPT-4o Mini", "context_window": 128000, "cost_per_1k_input": 0.00015},
-        {"id": "claude-3-5-sonnet", "provider": "anthropic", "name": "Claude 3.5 Sonnet", "context_window": 200000, "cost_per_1k_input": 0.003},
-        {"id": "gemini-2.5-pro", "provider": "google", "name": "Gemini 2.5 Pro", "context_window": 1000000, "cost_per_1k_input": 0.00125},
+        {"id": "llama-3.1-8b-instant", "provider": "groq", "name": "Groq Llama 3.1 8B Instant", "context_window": 131072, "cost_per_1k_input": 0.00005},
+        {"id": "meta-llama/Llama-3.1-8B-Instruct:fastest", "provider": "huggingface", "name": "Hugging Face Llama 3.1 8B", "context_window": 131072, "cost_per_1k_input": 0.0001},
+        {"id": "gemini-2.5-flash", "provider": "gemini", "name": "Gemini 2.5 Flash", "context_window": 1000000, "cost_per_1k_input": 0.0003},
+        {"id": "qwen2.5:3b", "provider": "ollama", "name": "Ollama Qwen 2.5 3B", "context_window": 32768, "cost_per_1k_input": 0.0},
     ]
+
+
+@router.get("/ai/providers")
+async def list_providers(user=Depends(get_current_user)):
+    return {"default_order": provider_order({}), "providers": ["ollama", "groq", "huggingface", "gemini", "openai"]}
 
 
 @router.post("/ai/predict-cost")
 async def predict_cost(body: dict, user=Depends(get_current_user)):
     model = body.get("model", "gpt-4o")
     tokens = body.get("estimated_tokens", 1000)
-    cost_map = {"gpt-4o": 0.005, "gpt-4o-mini": 0.00015, "claude-3-5-sonnet": 0.003, "gemini-2.5-pro": 0.00125}
+    cost_map = {
+        "gpt-4o": 0.005,
+        "gpt-4o-mini": 0.00015,
+        "llama-3.1-8b-instant": 0.00005,
+        "gemini-2.5-flash": 0.0003,
+        "qwen2.5:3b": 0.0,
+    }
     rate = cost_map.get(model, 0.002)
     return {
         "model": model,
@@ -75,4 +83,4 @@ async def predict_cost(body: dict, user=Depends(get_current_user)):
 
 @router.post("/ai/transcribe")
 async def transcribe(user=Depends(get_current_user)):
-    return {"text": "Transcription placeholder — upload audio for processing.", "language": "en", "duration_seconds": 0}
+    return {"text": "Transcription placeholder - upload audio for processing.", "language": "en", "duration_seconds": 0}

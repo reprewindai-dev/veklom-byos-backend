@@ -105,6 +105,7 @@ app.include_router(marketplace.router, prefix="/api/v1")
 
 # Pipelines, deployments, routing, autonomous, edge/canary
 app.include_router(pipelines.router, prefix="/api/v1")
+app.include_router(pipelines.router)
 
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")

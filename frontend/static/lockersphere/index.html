@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LockerSphere — AI-Powered Security for Every Industry</title>
+  <meta name="description" content="White-label AI security platform built for hospitals, banks, insurers, content creators, and general business. HIPAA, PCI-DSS, SOX, GDPR compliant out of the box.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            sphere: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    .gradient-hero { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #1e1b4b 100%); }
+    .gradient-card { background: linear-gradient(180deg, rgba(99,102,241,0.08) 0%, rgba(15,23,42,0) 100%); }
+    .glow { box-shadow: 0 0 60px rgba(99,102,241,0.15); }
+    .card-hover { transition: transform 0.25s, box-shadow 0.25s; }
+    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
+    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .float { animation: float 6s ease-in-out infinite; }
+    @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.4); } 70% { box-shadow: 0 0 0 12px rgba(99,102,241,0); } 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); } }
+    .pulse-ring { animation: pulse-ring 2s infinite; }
+    .tab-active { background: rgba(99,102,241,0.15); border-color: #6366f1; color: #a5b4fc; }
+    #demo-content { min-height: 420px; }
+  </style>
+</head>
+<body class="bg-slate-950 text-white font-sans antialiased">
+
+  <!-- ─── NAV ─────────────────────────────────────────────────────────────── -->
+  <nav class="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-slate-950/80 border-b border-white/5">
+    <div class="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
+      <div class="flex items-center gap-2">
+        <div class="h-8 w-8 rounded-lg bg-sphere-600 flex items-center justify-center">
+          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        </div>
+        <span class="text-xl font-bold tracking-tight">LockerSphere</span>
+      </div>
+      <div class="hidden md:flex items-center gap-8 text-sm text-slate-400">
+        <a href="#verticals" class="hover:text-white transition">Verticals</a>
+        <a href="#demo" class="hover:text-white transition">Live Demo</a>
+        <a href="#compliance" class="hover:text-white transition">Compliance</a>
+        <a href="#pricing" class="hover:text-white transition">Pricing</a>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="#demo" class="hidden sm:inline-block text-sm text-slate-300 hover:text-white transition">Try Demo</a>
+        <a href="#pricing" class="px-4 py-2 rounded-lg bg-sphere-600 hover:bg-sphere-500 text-sm font-medium transition">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─── HERO ────────────────────────────────────────────────────────────── -->
+  <section class="gradient-hero pt-32 pb-20 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-30">
+      <div class="absolute top-20 left-1/4 w-96 h-96 rounded-full bg-sphere-600/20 blur-[120px]"></div>
+      <div class="absolute bottom-10 right-1/4 w-80 h-80 rounded-full bg-purple-600/15 blur-[100px]"></div>
+    </div>
+    <div class="max-w-7xl mx-auto px-6 text-center relative z-10">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sphere-600/10 border border-sphere-500/20 text-sphere-300 text-sm mb-8">
+        <span class="h-2 w-2 rounded-full bg-emerald-400 pulse-ring"></span>
+        Now available on the Veklom Marketplace
+      </div>
+      <h1 class="text-5xl md:text-7xl font-black tracking-tight leading-[1.05] max-w-4xl mx-auto">
+        AI Security.<br>
+        <span class="bg-gradient-to-r from-sphere-400 to-purple-400 bg-clip-text text-transparent">Built for Your Industry.</span>
+      </h1>
+      <p class="mt-6 text-lg md:text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
+        White-label AI security platform with HIPAA, PCI-DSS, SOX, and GDPR compliance baked in.
+        Five industry verticals. One platform. Zero configuration required.
+      </p>
+      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="#demo" class="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-sphere-600 hover:bg-sphere-500 text-white font-semibold text-base transition shadow-lg shadow-sphere-600/25">
+          See Live Demo
+        </a>
+        <a href="#verticals" class="w-full sm:w-auto px-8 py-3.5 rounded-xl border border-white/10 hover:border-white/25 text-slate-300 hover:text-white font-medium text-base transition">
+          Explore Verticals
+        </a>
+      </div>
+      <div class="mt-16 flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm text-slate-500">
+        <span class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> SOC 2 Type II</span>
+        <span class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> HIPAA</span>
+        <span class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> PCI-DSS v4.0</span>
+        <span class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> GDPR</span>
+        <span class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> ISO 27001</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── VERTICALS ───────────────────────────────────────────────────────── -->
+  <section id="verticals" class="py-24 bg-slate-950">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl font-bold tracking-tight">Five Verticals. One Platform.</h2>
+        <p class="mt-4 text-slate-400 text-lg max-w-xl mx-auto">Each vertical ships with industry-specific compliance, AI capabilities, and security policies — ready to deploy.</p>
+      </div>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6" id="vertical-cards">
+
+        <!-- Hospital -->
+        <div class="card-hover rounded-2xl border border-white/5 bg-slate-900/50 p-8 gradient-card cursor-pointer" onclick="showVertical('hospital')">
+          <div class="h-12 w-12 rounded-xl bg-red-500/10 flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+          </div>
+          <h3 class="text-xl font-bold">Hospital</h3>
+          <p class="mt-2 text-sm text-slate-400 leading-relaxed">HIPAA-grade AI security for global healthcare. PHI detection, HL7/FHIR gateway, clinical AI guardrails, and 7-year audit trails.</p>
+          <div class="mt-5 flex flex-wrap gap-2">
+            <span class="px-2.5 py-1 rounded-md bg-red-500/10 text-red-300 text-xs font-medium">HIPAA</span>
+            <span class="px-2.5 py-1 rounded-md bg-red-500/10 text-red-300 text-xs font-medium">HITECH</span>
+            <span class="px-2.5 py-1 rounded-md bg-red-500/10 text-red-300 text-xs font-medium">HL7-FHIR</span>
+            <span class="px-2.5 py-1 rounded-md bg-red-500/10 text-red-300 text-xs font-medium">GDPR</span>
+          </div>
+        </div>
+
+        <!-- Bank -->
+        <div class="card-hover rounded-2xl border border-white/5 bg-slate-900/50 p-8 gradient-card cursor-pointer" onclick="showVertical('bank')">
+          <div class="h-12 w-12 rounded-xl bg-emerald-500/10 flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          </div>
+          <h3 class="text-xl font-bold">Bank</h3>
+          <p class="mt-2 text-sm text-slate-400 leading-relaxed">PCI-DSS v4.0 compliant AI security for financial institutions. Transaction fraud detection, AML screening, SWIFT message security.</p>
+          <div class="mt-5 flex flex-wrap gap-2">
+            <span class="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-300 text-xs font-medium">PCI-DSS</span>
+            <span class="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-300 text-xs font-medium">SOX</span>
+            <span class="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-300 text-xs font-medium">AML-KYC</span>
+            <span class="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-300 text-xs font-medium">Basel III</span>
+          </div>
+        </div>
+
+        <!-- Insurance -->
+        <div class="card-hover rounded-2xl border border-white/5 bg-slate-900/50 p-8 gradient-card cursor-pointer" onclick="showVertical('insurance')">
+          <div class="h-12 w-12 rounded-xl bg-amber-500/10 flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          </div>
+          <h3 class="text-xl font-bold">Insurance</h3>
+          <p class="mt-2 text-sm text-slate-400 leading-relaxed">AI security and compliance for insurance carriers. Claims fraud detection, actuarial governance, underwriting fairness monitoring.</p>
+          <div class="mt-5 flex flex-wrap gap-2">
+            <span class="px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-300 text-xs font-medium">Solvency II</span>
+            <span class="px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-300 text-xs font-medium">IFRS-17</span>
+            <span class="px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-300 text-xs font-medium">EU AI Act</span>
+            <span class="px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-300 text-xs font-medium">NAIC</span>
+          </div>
+        </div>
+
+        <!-- Content Creator -->
+        <div class="card-hover rounded-2xl border border-white/5 bg-slate-900/50 p-8 gradient-card cursor-pointer" onclick="showVertical('content_creator')">
+          <div class="h-12 w-12 rounded-xl bg-pink-500/10 flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          </div>
+          <h3 class="text-xl font-bold">Content Creator</h3>
+          <p class="mt-2 text-sm text-slate-400 leading-relaxed">AI security for creators, studios, and media. Content fingerprinting, deepfake detection, DMCA management, harassment shield.</p>
+          <div class="mt-5 flex flex-wrap gap-2">
+            <span class="px-2.5 py-1 rounded-md bg-pink-500/10 text-pink-300 text-xs font-medium">DMCA</span>
+            <span class="px-2.5 py-1 rounded-md bg-pink-500/10 text-pink-300 text-xs font-medium">FTC</span>
+            <span class="px-2.5 py-1 rounded-md bg-pink-500/10 text-pink-300 text-xs font-medium">COPPA</span>
+            <span class="px-2.5 py-1 rounded-md bg-pink-500/10 text-pink-300 text-xs font-medium">DSA</span>
+          </div>
+        </div>
+
+        <!-- General -->
+        <div class="card-hover rounded-2xl border border-white/5 bg-slate-900/50 p-8 gradient-card cursor-pointer md:col-span-2 lg:col-span-1" onclick="showVertical('general')">
+          <div class="h-12 w-12 rounded-xl bg-sphere-500/10 flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-sphere-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          </div>
+          <h3 class="text-xl font-bold">General</h3>
+          <p class="mt-2 text-sm text-slate-400 leading-relaxed">Works out of the box. Threat detection, anomaly detection, vulnerability scanning, and content safety — no configuration needed.</p>
+          <div class="mt-5 flex flex-wrap gap-2">
+            <span class="px-2.5 py-1 rounded-md bg-sphere-500/10 text-sphere-300 text-xs font-medium">SOC 2</span>
+            <span class="px-2.5 py-1 rounded-md bg-sphere-500/10 text-sphere-300 text-xs font-medium">ISO 27001</span>
+            <span class="px-2.5 py-1 rounded-md bg-sphere-500/10 text-sphere-300 text-xs font-medium">GDPR</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── LIVE DEMO ───────────────────────────────────────────────────────── -->
+  <section id="demo" class="py-24 bg-gradient-to-b from-slate-950 to-slate-900">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-12">
+        <h2 class="text-4xl font-bold tracking-tight">Interactive Demo</h2>
+        <p class="mt-4 text-slate-400 text-lg">Explore each vertical's compliance, AI capabilities, and security policies in real time.</p>
+      </div>
+      <div class="rounded-2xl border border-white/5 bg-slate-900/80 glow overflow-hidden">
+        <!-- Tabs -->
+        <div class="flex border-b border-white/5 overflow-x-auto" id="demo-tabs">
+          <button onclick="showVertical('hospital')" class="demo-tab tab-active flex-shrink-0 px-6 py-4 text-sm font-medium border-b-2 border-transparent transition" data-vertical="hospital">Hospital</button>
+          <button onclick="showVertical('bank')" class="demo-tab flex-shrink-0 px-6 py-4 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-300 transition" data-vertical="bank">Bank</button>
+          <button onclick="showVertical('insurance')" class="demo-tab flex-shrink-0 px-6 py-4 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-300 transition" data-vertical="insurance">Insurance</button>
+          <button onclick="showVertical('content_creator')" class="demo-tab flex-shrink-0 px-6 py-4 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-300 transition" data-vertical="content_creator">Content Creator</button>
+          <button onclick="showVertical('general')" class="demo-tab flex-shrink-0 px-6 py-4 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-300 transition" data-vertical="general">General</button>
+        </div>
+        <!-- Demo Content -->
+        <div id="demo-content" class="p-8"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── COMPLIANCE GRID ─────────────────────────────────────────────────── -->
+  <section id="compliance" class="py-24 bg-slate-950">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl font-bold tracking-tight">Compliance Comparison</h2>
+        <p class="mt-4 text-slate-400 text-lg">See exactly what each vertical enforces — at a glance.</p>
+      </div>
+      <div class="overflow-x-auto rounded-xl border border-white/5">
+        <table class="w-full text-sm text-left">
+          <thead>
+            <tr class="bg-slate-900/80 border-b border-white/5">
+              <th class="px-6 py-4 text-slate-400 font-medium">Framework</th>
+              <th class="px-4 py-4 text-center text-red-400 font-medium">Hospital</th>
+              <th class="px-4 py-4 text-center text-emerald-400 font-medium">Bank</th>
+              <th class="px-4 py-4 text-center text-amber-400 font-medium">Insurance</th>
+              <th class="px-4 py-4 text-center text-pink-400 font-medium">Creator</th>
+              <th class="px-4 py-4 text-center text-sphere-400 font-medium">General</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5">
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">HIPAA</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td></tr>
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">PCI-DSS v4.0</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td></tr>
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">SOX</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td></tr>
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">Solvency II</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td></tr>
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">GDPR</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td></tr>
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">DMCA</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td></tr>
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">SOC 2 Type II</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td></tr>
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">ISO 27001</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td></tr>
+            <tr class="hover:bg-white/[0.02]"><td class="px-6 py-3 text-slate-300">EU AI Act</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-emerald-400">&#10003;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td><td class="px-4 py-3 text-center text-slate-600">&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── SECURITY STATS ──────────────────────────────────────────────────── -->
+  <section class="py-20 bg-gradient-to-b from-slate-950 to-slate-900">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+        <div>
+          <div class="text-4xl font-black text-sphere-400">5</div>
+          <div class="mt-2 text-sm text-slate-400">Industry Verticals</div>
+        </div>
+        <div>
+          <div class="text-4xl font-black text-emerald-400">20+</div>
+          <div class="mt-2 text-sm text-slate-400">Compliance Frameworks</div>
+        </div>
+        <div>
+          <div class="text-4xl font-black text-amber-400">30+</div>
+          <div class="mt-2 text-sm text-slate-400">AI Capabilities</div>
+        </div>
+        <div>
+          <div class="text-4xl font-black text-pink-400">50+</div>
+          <div class="mt-2 text-sm text-slate-400">Security Modules</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── PRICING ─────────────────────────────────────────────────────────── -->
+  <section id="pricing" class="py-24 bg-slate-950">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl font-bold tracking-tight">Simple Pricing</h2>
+        <p class="mt-4 text-slate-400 text-lg">Available on the Veklom Marketplace. Install in one click.</p>
+      </div>
+      <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <!-- Standard -->
+        <div class="rounded-2xl border border-white/5 bg-slate-900/50 p-8">
+          <div class="text-sm text-slate-400 font-medium">Standard</div>
+          <div class="mt-4 flex items-end gap-1">
+            <span class="text-4xl font-bold">Free</span>
+          </div>
+          <p class="mt-4 text-sm text-slate-400">General & Content Creator verticals. Perfect for getting started.</p>
+          <ul class="mt-6 space-y-3 text-sm text-slate-300">
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> 100 RPM rate limit</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Threat detection & anomaly monitoring</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> 1-year audit logs</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> SOC 2 + GDPR</li>
+          </ul>
+          <a href="/lockersphere" class="mt-8 block text-center px-6 py-3 rounded-xl border border-white/10 hover:border-white/25 text-sm font-medium transition">Install Free</a>
+        </div>
+        <!-- Enterprise -->
+        <div class="rounded-2xl border-2 border-sphere-500/50 bg-slate-900/50 p-8 relative">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-sphere-600 text-xs font-medium">Most Popular</div>
+          <div class="text-sm text-sphere-300 font-medium">Enterprise</div>
+          <div class="mt-4 flex items-end gap-1">
+            <span class="text-4xl font-bold">Custom</span>
+          </div>
+          <p class="mt-4 text-sm text-slate-400">Hospital, Bank, Insurance verticals. Full compliance automation.</p>
+          <ul class="mt-6 space-y-3 text-sm text-slate-300">
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-sphere-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> 500 RPM rate limit</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-sphere-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Full compliance automation</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-sphere-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> 7-year audit logs</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-sphere-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Zero-trust + IP allowlist</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-sphere-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Priority support + SLA</li>
+          </ul>
+          <a href="/lockersphere" class="mt-8 block text-center px-6 py-3 rounded-xl bg-sphere-600 hover:bg-sphere-500 text-sm font-medium transition shadow-lg shadow-sphere-600/25">Contact Sales</a>
+        </div>
+        <!-- White-Label -->
+        <div class="rounded-2xl border border-white/5 bg-slate-900/50 p-8">
+          <div class="text-sm text-slate-400 font-medium">White-Label</div>
+          <div class="mt-4 flex items-end gap-1">
+            <span class="text-4xl font-bold">OEM</span>
+          </div>
+          <p class="mt-4 text-sm text-slate-400">Your brand, your domain. Full white-label deployment with custom branding.</p>
+          <ul class="mt-6 space-y-3 text-sm text-slate-300">
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Custom branding & domain</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> All 5 verticals included</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Unlimited RPM</li>
+            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Dedicated infrastructure</li>
+          </ul>
+          <a href="/lockersphere" class="mt-8 block text-center px-6 py-3 rounded-xl border border-white/10 hover:border-white/25 text-sm font-medium transition">Talk to Us</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── CTA ─────────────────────────────────────────────────────────────── -->
+  <section class="py-24 gradient-hero relative overflow-hidden">
+    <div class="absolute inset-0 opacity-20">
+      <div class="absolute top-10 right-1/3 w-96 h-96 rounded-full bg-sphere-600/30 blur-[120px]"></div>
+    </div>
+    <div class="max-w-3xl mx-auto px-6 text-center relative z-10">
+      <h2 class="text-4xl font-bold tracking-tight">Ready to secure your industry?</h2>
+      <p class="mt-4 text-lg text-slate-400">Install LockerSphere from the Veklom Marketplace in one click. No configuration required.</p>
+      <a href="/lockersphere" class="inline-block mt-8 px-8 py-4 rounded-xl bg-sphere-600 hover:bg-sphere-500 text-white font-semibold text-base transition shadow-lg shadow-sphere-600/25">
+        Browse on Veklom Marketplace
+      </a>
+    </div>
+  </section>
+
+  <!-- ─── FOOTER ──────────────────────────────────────────────────────────── -->
+  <footer class="py-12 border-t border-white/5 bg-slate-950">
+    <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-slate-500">
+      <div class="flex items-center gap-2">
+        <div class="h-6 w-6 rounded bg-sphere-600 flex items-center justify-center">
+          <svg class="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        </div>
+        LockerSphere &mdash; A Veklom Product
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="#" class="hover:text-white transition">Documentation</a>
+        <a href="#" class="hover:text-white transition">API Reference</a>
+        <a href="#" class="hover:text-white transition">Status</a>
+        <a href="#" class="hover:text-white transition">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ─── DEMO SCRIPT ─────────────────────────────────────────────────────── -->
+  <script>
+    const verticals = {
+      hospital: {
+        name: 'LockerSphere Hospital',
+        tagline: 'HIPAA-Grade AI Security for Global Healthcare',
+        color: 'red',
+        security: { mfa: true, password: '14 characters', timeout: '30 min', failedLogins: 3, ipAllowlist: true, auditRetention: '7 years', zeroTrust: true },
+        compliance: ['HIPAA', 'HITECH', 'GDPR', 'HL7-FHIR', 'PIPEDA', 'LGPD', 'POPI'],
+        ai: ['PHI Detection & Redaction', 'Clinical Decision Support', 'Medical Image Analysis', 'Drug Interaction Checker', 'Patient Risk Scoring'],
+        features: ['PHI Leak Prevention', 'HL7/FHIR Gateway', 'Clinical AI Guardrails', 'EHR Sentinel Monitoring', 'Consent Management'],
+        modules: 9, rateLimit: 300
+      },
+      bank: {
+        name: 'LockerSphere Bank',
+        tagline: 'PCI-DSS Compliant AI Security for Financial Institutions',
+        color: 'emerald',
+        security: { mfa: true, password: '16 characters', timeout: '15 min', failedLogins: 3, ipAllowlist: true, auditRetention: '7 years', zeroTrust: true },
+        compliance: ['PCI-DSS v4.0', 'SOX', 'Basel III', 'AML-KYC', 'SWIFT-CSP', 'GDPR', 'GLBA', 'MiFID-II'],
+        ai: ['Transaction Fraud Detection', 'AML Pattern Analysis', 'Credit Risk Scoring', 'Insider Threat Detection', 'Document Verification', 'Market Surveillance'],
+        features: ['Transaction Monitoring', 'Fraud Detection Dashboard', 'AML Screening', 'KYC Automation', 'SWIFT Message Security'],
+        modules: 10, rateLimit: 500
+      },
+      insurance: {
+        name: 'LockerSphere Insurance',
+        tagline: 'AI Security & Compliance for Insurance Carriers',
+        color: 'amber',
+        security: { mfa: true, password: '14 characters', timeout: '60 min', failedLogins: 5, ipAllowlist: true, auditRetention: '7 years', zeroTrust: true },
+        compliance: ['Solvency II', 'NAIC Model Laws', 'IFRS-17', 'GDPR', 'CCPA', 'EU AI Act'],
+        ai: ['Claims Fraud Detection', 'Actuarial Model Governance', 'Underwriting Fairness', 'Document Extraction', 'Catastrophe Modeling'],
+        features: ['Claims Processing Guard', 'Fraud Detection', 'Actuarial Governance', 'Underwriting Monitor', 'Policy Document Vault'],
+        modules: 10, rateLimit: 200
+      },
+      content_creator: {
+        name: 'LockerSphere Content Creator',
+        tagline: 'AI Security for Creators, Studios & Media',
+        color: 'pink',
+        security: { mfa: true, password: '10 characters', timeout: '120 min', failedLogins: 5, ipAllowlist: false, auditRetention: '2 years', zeroTrust: true },
+        compliance: ['DMCA', 'FTC Guidelines', 'GDPR', 'DSA', 'COPPA'],
+        ai: ['Content Fingerprinting', 'Plagiarism Detection', 'Content Moderation', 'Harassment Detection', 'Deepfake Detection', 'Revenue Anomaly Detection'],
+        features: ['DMCA Management', 'Plagiarism Scanner', 'Harassment Shield', 'Brand Safety Monitor', 'Revenue Protection'],
+        modules: 10, rateLimit: 300
+      },
+      general: {
+        name: 'LockerSphere',
+        tagline: 'AI-Powered Security \u2014 Works Out of the Box',
+        color: 'indigo',
+        security: { mfa: true, password: '12 characters', timeout: '120 min', failedLogins: 5, ipAllowlist: false, auditRetention: '1 year', zeroTrust: true },
+        compliance: ['SOC 2 Type II', 'GDPR', 'ISO 27001'],
+        ai: ['Threat Detection', 'Anomaly Detection', 'Vulnerability Scanning', 'Content Safety', 'Incident Response'],
+        features: ['Threat Dashboard', 'Anomaly Alerts', 'Access Control', 'Audit Logging', 'API Security'],
+        modules: 8, rateLimit: 100
+      }
+    };
+
+    function showVertical(key) {
+      const v = verticals[key];
+      const c = v.color;
+
+      // Update tabs
+      document.querySelectorAll('.demo-tab').forEach(tab => {
+        tab.classList.remove('tab-active');
+        tab.classList.add('text-slate-500');
+        if (tab.dataset.vertical === key) {
+          tab.classList.add('tab-active');
+          tab.classList.remove('text-slate-500');
+        }
+      });
+
+      const html = `
+        <div class="space-y-8">
+          <div>
+            <h3 class="text-2xl font-bold">${v.name}</h3>
+            <p class="mt-1 text-${c}-400 text-sm font-medium">${v.tagline}</p>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6">
+            <!-- Security Policy -->
+            <div class="rounded-xl border border-white/5 bg-slate-800/50 p-5">
+              <h4 class="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-4">Security Policy</h4>
+              <div class="space-y-2.5 text-sm">
+                <div class="flex justify-between"><span class="text-slate-400">MFA Required</span><span class="text-emerald-400 font-medium">${v.security.mfa ? 'Yes' : 'No'}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Min Password</span><span class="text-white font-medium">${v.security.password}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Session Timeout</span><span class="text-white font-medium">${v.security.timeout}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Max Failed Logins</span><span class="text-white font-medium">${v.security.failedLogins}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">IP Allowlist</span><span class="${v.security.ipAllowlist ? 'text-emerald-400' : 'text-slate-500'} font-medium">${v.security.ipAllowlist ? 'Enabled' : 'Disabled'}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Audit Retention</span><span class="text-white font-medium">${v.security.auditRetention}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Zero Trust</span><span class="text-emerald-400 font-medium">Enabled</span></div>
+              </div>
+            </div>
+
+            <!-- Compliance -->
+            <div class="rounded-xl border border-white/5 bg-slate-800/50 p-5">
+              <h4 class="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-4">Compliance Frameworks</h4>
+              <div class="flex flex-wrap gap-2">
+                ${v.compliance.map(f => `<span class="px-3 py-1.5 rounded-lg bg-${c}-500/10 text-${c}-300 text-xs font-medium border border-${c}-500/20">${f}</span>`).join('')}
+              </div>
+            </div>
+
+            <!-- AI Capabilities -->
+            <div class="rounded-xl border border-white/5 bg-slate-800/50 p-5">
+              <h4 class="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-4">AI Capabilities</h4>
+              <ul class="space-y-2">
+                ${v.ai.map(a => `<li class="flex items-center gap-2 text-sm text-slate-300"><svg class="w-3.5 h-3.5 text-${c}-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>${a}</li>`).join('')}
+              </ul>
+            </div>
+
+            <!-- Features & Stats -->
+            <div class="rounded-xl border border-white/5 bg-slate-800/50 p-5">
+              <h4 class="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-4">Key Features</h4>
+              <ul class="space-y-2 mb-6">
+                ${v.features.map(f => `<li class="flex items-center gap-2 text-sm text-slate-300"><svg class="w-3.5 h-3.5 text-${c}-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>${f}</li>`).join('')}
+              </ul>
+              <div class="flex gap-6 pt-4 border-t border-white/5">
+                <div><span class="text-lg font-bold text-white">${v.modules}</span><span class="text-xs text-slate-500 ml-1">modules</span></div>
+                <div><span class="text-lg font-bold text-white">${v.rateLimit}</span><span class="text-xs text-slate-500 ml-1">RPM</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('demo-content').innerHTML = html;
+    }
+
+    // Initialize with hospital
+    showVertical('hospital');
+  </script>
+</body>
+</html>

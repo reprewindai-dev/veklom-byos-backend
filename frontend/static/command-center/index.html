@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Veklom Command Center — Operator Intelligence Console</title>
+<meta name="description" content="Veklom Command Center — internal operator console for the Sovereign AI Hub."/>
+<meta name="robots" content="noindex, nofollow"/>
+<link rel="icon" type="image/svg+xml" href="/static/branding/favicon.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --surface-2: #1a1a1a;
+  --surface-3: #222222;
+  --border: #2a2a2a;
+  --border-bright: #3a3a3a;
+  --text: #e0e0e0;
+  --text-muted: #888888;
+  --text-faint: #555555;
+  --orange: #ffb800;
+  --orange-dim: rgba(255,184,0,0.15);
+  --orange-glow: rgba(255,184,0,0.08);
+  --green: #00ff94;
+  --green-dim: rgba(0,255,148,0.12);
+  --red: #ff4466;
+  --red-dim: rgba(255,68,102,0.12);
+  --blue: #00c8ff;
+  --blue-dim: rgba(0,200,255,0.12);
+  --purple: #bd7dff;
+  --amber: #ffb340;
+  --font-ui: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --radius: 8px;
+  --radius-sm: 4px;
+  --transition: 150ms ease;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  display: flex;
+}
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 4px; }
+
+/* ─── SIDEBAR ──────────────────────────────────────── */
+#sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+#sidebar-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#sidebar-header h1 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--orange);
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+#sidebar-header p {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.sb-section { padding: 12px 12px 4px; }
+.sb-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+  padding: 0 8px;
+}
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: all var(--transition);
+  text-decoration: none;
+  user-select: none;
+}
+.sb-item:hover { background: var(--surface-2); color: var(--text); }
+.sb-item.active { background: var(--orange-dim); color: var(--orange); }
+.sb-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: var(--text-faint);
+}
+.sb-item.active .sb-dot { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+#sidebar-footer {
+  margin-top: auto;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* ─── MAIN AREA ────────────────────────────────────── */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+#topbar {
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+#topbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+#topbar-badge {
+  font-size: 9px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--orange-dim);
+  color: var(--orange);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+#topbar-clock {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.topbar-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+#content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* ─── CARDS ────────────────────────────────────────── */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: border-color var(--transition);
+}
+.card:hover { border-color: var(--border-bright); }
+.card-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.card-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+.card-sub {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+
+/* ─── TABLE ────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.data-table th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.data-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.data-table tr:hover td { background: var(--surface-2); color: var(--text); }
+.badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.badge-green { background: var(--green-dim); color: var(--green); }
+.badge-red { background: var(--red-dim); color: var(--red); }
+.badge-blue { background: var(--blue-dim); color: var(--blue); }
+.badge-orange { background: var(--orange-dim); color: var(--orange); }
+
+/* ─── SECTION HEADERS ──────────────────────────────── */
+.section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+.section-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+/* ─── FEED ─────────────────────────────────────────── */
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.feed-dot {
+  width: 6px; height: 6px; border-radius: 50%; margin-top: 5px; flex-shrink: 0;
+}
+.feed-ts {
+  font-size: 10px; color: var(--text-faint); font-family: var(--font-mono);
+  flex-shrink: 0; min-width: 70px;
+}
+.feed-text { color: var(--text-muted); }
+
+/* ─── FUNNEL ───────────────────────────────────────── */
+.funnel-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.funnel-bar {
+  flex: 1;
+  height: 24px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.funnel-fill {
+  height: 100%;
+  background: var(--orange);
+  border-radius: var(--radius-sm);
+  transition: width 0.5s ease;
+}
+.funnel-label {
+  min-width: 140px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.funnel-count {
+  min-width: 50px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+/* ─── TERMINAL EMBED ───────────────────────────────── */
+.terminal-frame {
+  width: 100%;
+  height: calc(100vh - 120px);
+  border: none;
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* ─── POLICY LIST ──────────────────────────────────── */
+.policy-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+}
+.policy-name { font-size: 12px; color: var(--text); }
+.policy-status { font-size: 10px; font-weight: 600; }
+
+/* ─── AGENT GROUP ──────────────────────────────────── */
+.agent-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+}
+.agent-name { font-size: 12px; color: var(--text); }
+.agent-count { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<!-- ─── SIDEBAR ────────────────────────────────────── -->
+<nav id="sidebar">
+  <div id="sidebar-header">
+    <h1>Veklom Command Center</h1>
+    <p>Operator Intelligence Console</p>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Command</div>
+    <div class="sb-item active" data-page="overview"><span class="sb-dot"></span>Overview</div>
+    <div class="sb-item" data-page="live-users"><span class="sb-dot"></span>Live Users</div>
+    <div class="sb-item" data-page="sessions"><span class="sb-dot"></span>Sessions</div>
+    <div class="sb-item" data-page="activity-feed"><span class="sb-dot"></span>Activity Feed</div>
+    <div class="sb-item" data-page="funnels"><span class="sb-dot"></span>Funnels</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">AI Hub</div>
+    <div class="sb-item" data-page="playground"><span class="sb-dot"></span>Playground</div>
+    <div class="sb-item" data-page="gpc"><span class="sb-dot"></span>GPC</div>
+    <div class="sb-item" data-page="pipelines"><span class="sb-dot"></span>Pipelines</div>
+    <div class="sb-item" data-page="marketplace"><span class="sb-dot"></span>Marketplace</div>
+    <div class="sb-item" data-page="models"><span class="sb-dot"></span>Models</div>
+    <div class="sb-item" data-page="deployments"><span class="sb-dot"></span>Deployments</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Business</div>
+    <div class="sb-item" data-page="billing"><span class="sb-dot"></span>Billing</div>
+    <div class="sb-item" data-page="vendors"><span class="sb-dot"></span>Vendors</div>
+    <div class="sb-item" data-page="purchases"><span class="sb-dot"></span>Purchases</div>
+    <div class="sb-item" data-page="plans"><span class="sb-dot"></span>Plans</div>
+    <div class="sb-item" data-page="churn"><span class="sb-dot"></span>Churn Signals</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Operations</div>
+    <div class="sb-item" data-page="api-routes"><span class="sb-dot"></span>API Routes</div>
+    <div class="sb-item" data-page="telemetry"><span class="sb-dot"></span>Telemetry</div>
+    <div class="sb-item" data-page="alerts"><span class="sb-dot"></span>Alerts</div>
+    <div class="sb-item" data-page="errors"><span class="sb-dot"></span>Errors</div>
+    <div class="sb-item" data-page="health"><span class="sb-dot"></span>Health</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Agents</div>
+    <div class="sb-item" data-page="agent-fleet"><span class="sb-dot"></span>Agent Fleet</div>
+    <div class="sb-item" data-page="freeze-intel"><span class="sb-dot"></span>Freeze Intel</div>
+    <div class="sb-item" data-page="vendor-scout"><span class="sb-dot"></span>Vendor Scout</div>
+    <div class="sb-item" data-page="qa-agents"><span class="sb-dot"></span>QA Agents</div>
+    <div class="sb-item" data-page="product-agents"><span class="sb-dot"></span>Product Agents</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Governance</div>
+    <div class="sb-item" data-page="audit-logs"><span class="sb-dot"></span>Audit Logs</div>
+    <div class="sb-item" data-page="compliance"><span class="sb-dot"></span>Compliance</div>
+    <div class="sb-item" data-page="security"><span class="sb-dot"></span>Security</div>
+    <div class="sb-item" data-page="vault"><span class="sb-dot"></span>Vault Posture</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Terminals</div>
+    <div class="sb-item" data-page="terminal-3in1"><span class="sb-dot"></span>Veklom Terminal 3in1</div>
+    <div class="sb-item" data-page="terminal-route"><span class="sb-dot"></span>Veklom Route Terminal</div>
+  </div>
+
+  <div id="sidebar-footer">
+    Veklom Sovereign AI Hub v1.0<br/>
+    Admin: reprewindai@gmail.com
+  </div>
+</nav>
+
+<!-- ─── MAIN ───────────────────────────────────────── -->
+<div id="main">
+  <header id="topbar">
+    <span id="topbar-title">Overview</span>
+    <span id="topbar-badge">Admin</span>
+    <div class="topbar-dot"></div>
+    <span id="topbar-clock"></span>
+  </header>
+  <div id="content"></div>
+</div>
+
+<script>
+// ─── STATE ──────────────────────────────────────────
+// Support split deploy: Vercel frontend + Hetzner/Coolify backend
+const API_BASE = window.__VEKLOM_API_BASE__ || '';
+const API = API_BASE + '/api/v1/command-center';
+const ADMIN = 'reprewindai@gmail.com';
+let currentPage = 'overview';
+
+// ─── CLOCK ──────────────────────────────────────────
+function updateClock() {
+  document.getElementById('topbar-clock').textContent =
+    new Date().toISOString().replace('T',' ').slice(0,19) + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── NAVIGATION ─────────────────────────────────────
+document.querySelectorAll('.sb-item').forEach(function(item) {
+  item.addEventListener('click', function() {
+    var page = this.getAttribute('data-page');
+    navigateTo(page);
+  });
+});
+
+function navigateTo(page) {
+  currentPage = page;
+  document.querySelectorAll('.sb-item').forEach(function(i) { i.classList.remove('active'); });
+  var active = document.querySelector('[data-page="' + page + '"]');
+  if (active) active.classList.add('active');
+  document.getElementById('topbar-title').textContent = pageTitle(page);
+  renderPage(page);
+}
+
+function pageTitle(page) {
+  var map = {
+    'overview': 'Overview', 'live-users': 'Live Users', 'sessions': 'Sessions',
+    'activity-feed': 'Activity Feed', 'funnels': 'Funnels', 'playground': 'Playground',
+    'gpc': 'GPC', 'pipelines': 'Pipelines', 'marketplace': 'Marketplace',
+    'models': 'Models', 'deployments': 'Deployments', 'billing': 'Billing',
+    'vendors': 'Vendors', 'purchases': 'Purchases', 'plans': 'Plans',
+    'churn': 'Churn Signals', 'api-routes': 'API Routes', 'telemetry': 'Telemetry',
+    'alerts': 'Alerts', 'errors': 'Errors', 'health': 'Health',
+    'agent-fleet': 'Agent Fleet', 'freeze-intel': 'Freeze Intel',
+    'vendor-scout': 'Vendor Scout', 'qa-agents': 'QA Agents',
+    'product-agents': 'Product Agents', 'audit-logs': 'Audit Logs',
+    'compliance': 'Compliance', 'security': 'Security', 'vault': 'Vault Posture',
+    'terminal-3in1': 'Veklom Terminal 3in1', 'terminal-route': 'Veklom Route Terminal',
+  };
+  return map[page] || page;
+}
+
+// ─── FETCH HELPER ───────────────────────────────────
+async function api(path) {
+  try {
+    var sep = path.includes('?') ? '&' : '?';
+    var res = await fetch(API + path + sep + 'caller_email=' + encodeURIComponent(ADMIN));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) { return null; }
+}
+
+// ─── RENDER ─────────────────────────────────────────
+async function renderPage(page) {
+  var c = document.getElementById('content');
+  c.innerHTML = '<div style="padding:40px;color:var(--text-faint);">Loading...</div>';
+
+  switch(page) {
+    case 'overview': return renderOverview(c);
+    case 'live-users': return renderLiveUsers(c);
+    case 'sessions': return renderSessions(c);
+    case 'activity-feed': return renderActivityFeed(c);
+    case 'funnels': return renderFunnels(c);
+    case 'playground': return renderPlayground(c);
+    case 'gpc': return renderGPC(c);
+    case 'marketplace': return renderMarketplace(c);
+    case 'billing': return renderBilling(c);
+    case 'agent-fleet': return renderAgentFleet(c);
+    case 'alerts': return renderAlerts(c);
+    case 'errors': return renderErrors(c);
+    case 'health': return renderHealth(c);
+    case 'compliance': return renderCompliance(c);
+    case 'vault': return renderVault(c);
+    case 'audit-logs': return renderAuditLogs(c);
+    case 'terminal-3in1': return renderTerminal3in1(c);
+    case 'terminal-route': return renderTerminalRoute(c);
+    default: return renderPlaceholder(c, page);
+  }
+}
+
+// ─── OVERVIEW ───────────────────────────────────────
+async function renderOverview(c) {
+  var data = await api('/overview');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load overview</p>'; return; }
+
+  c.innerHTML = '<div class="section-title">What is happening right now?</div>' +
+    '<div class="section-subtitle">Real-time operator dashboard — ' + (data.timestamp || '') + '</div>' +
+    '<div class="cards-grid">' +
+      card('Total Users', data.users.total, '') +
+      card('Active Listings', data.listings.active, data.listings.installs + ' installs') +
+      card('GPC Plans', data.gpc.total_plans, '') +
+      card('Open Feedback', data.feedback.open, '') +
+      card('Security', data.security.open_threats, data.security.status) +
+      card('MRR', '$' + (data.finance.mrr_cents/100).toFixed(2), '') +
+      card('Churn 30d', data.finance.churn_30d_pct + '%', '') +
+      card('Trial Conversions', data.finance.trial_conversions_30d, '30 day') +
+      card('Marketplace Gross', '$' + (data.finance.marketplace_gross_30d_cents/100).toFixed(2), '30 day') +
+      card('Past Due', data.finance.past_due_subs, 'subscriptions') +
+      card('Agent Fleet', '120', 'standby') +
+      card('System', 'Operational', 'all services up') +
+    '</div>';
+}
+
+// ─── LIVE USERS ─────────────────────────────────────
+async function renderLiveUsers(c) {
+  var data = await api('/live-users');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">Live Users</div>' +
+    '<div class="section-subtitle">' + data.online_count + ' user(s) online</div>';
+  if (data.users.length === 0) {
+    html += '<p style="color:var(--text-muted)">No active sessions in the last 15 minutes.</p>';
+  } else {
+    html += '<table class="data-table"><thead><tr><th>User</th><th>Role</th><th>IP</th><th>Device</th><th>Last Active</th></tr></thead><tbody>';
+    data.users.forEach(function(u) {
+      html += '<tr><td>' + (u.email || u.user_id) + '</td><td>' + (u.role || '—') +
+        '</td><td>' + (u.ip_address || '—') + '</td><td>' + (u.device || '—') +
+        '</td><td>' + (u.last_accessed || '—') + '</td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+  c.innerHTML = html;
+}
+
+// ─── SESSIONS ───────────────────────────────────────
+async function renderSessions(c) {
+  var data = await api('/sessions');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">User Sessions</div><div class="section-subtitle">Session journey replay</div>';
+  html += '<table class="data-table"><thead><tr><th>Session ID</th><th>User</th><th>Active</th><th>Created</th><th>Last Accessed</th><th>Device</th></tr></thead><tbody>';
+  (Array.isArray(data) ? data : []).forEach(function(s) {
+    html += '<tr><td style="font-family:var(--font-mono);font-size:10px">' + (s.id||'').slice(0,8) + '...</td><td>' + (s.user_id||'').slice(0,8) +
+      '</td><td>' + (s.is_active ? '<span class="badge badge-green">active</span>' : '<span class="badge badge-red">ended</span>') +
+      '</td><td>' + (s.created_at||'—') + '</td><td>' + (s.last_accessed||'—') + '</td><td>' + (s.device||'—') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  if (!data || (Array.isArray(data) && data.length === 0)) html += '<p style="color:var(--text-muted);margin-top:12px">No sessions recorded yet.</p>';
+  c.innerHTML = html;
+}
+
+// ─── ACTIVITY FEED ──────────────────────────────────
+async function renderActivityFeed(c) {
+  var data = await api('/activity-feed');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">Activity Feed</div><div class="section-subtitle">Live platform events</div>';
+  var events = data.events || [];
+  if (events.length === 0) {
+    html += '<p style="color:var(--text-muted)">No activity recorded yet.</p>';
+  } else {
+    events.forEach(function(e) {
+      var color = e.type === 'security' ? 'var(--red)' : 'var(--blue)';
+      html += '<div class="feed-item"><span class="feed-dot" style="background:' + color + '"></span>' +
+        '<span class="feed-ts">' + (e.timestamp||'').slice(11,19) + '</span>' +
+        '<span class="feed-text">' + (e.action || e.event_type || e.type) + ' — ' + (e.resource_type || e.severity || '') + '</span></div>';
+    });
+  }
+  c.innerHTML = html;
+}
+
+// ─── FUNNELS ────────────────────────────────────────
+async function renderFunnels(c) {
+  var data = await api('/funnels');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">Product Funnels</div><div class="section-subtitle">Where are users dropping off?</div>';
+  (data.funnels || []).forEach(function(f) {
+    html += '<div style="margin-bottom:24px"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--orange)">' + f.name + '</div>';
+    var max = Math.max.apply(null, f.steps.map(function(s){return s.count})) || 1;
+    f.steps.forEach(function(s) {
+      var pct = Math.max(2, (s.count / max) * 100);
+      html += '<div class="funnel-step"><span class="funnel-label">' + s.label + '</span>' +
+        '<div class="funnel-bar"><div class="funnel-fill" style="width:' + pct + '%"></div></div>' +
+        '<span class="funnel-count">' + s.count + '</span></div>';
+    });
+    html += '</div>';
+  });
+  c.innerHTML = html;
+}
+
+// ─── PLAYGROUND ─────────────────────────────────────
+async function renderPlayground(c) {
+  var data = await api('/ai-hub/playground');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  c.innerHTML = '<div class="section-title">Playground</div><div class="section-subtitle">Are people actually testing AI?</div>' +
+    '<div class="cards-grid">' +
+      card('Total Runs', data.total_runs, '') +
+      card('Failed Runs', data.failed_runs, '') +
+      card('Success Rate', data.success_rate + '%', '') +
+    '</div>';
+}
+
+// ─── GPC ────────────────────────────────────────────
+async function renderGPC(c) {
+  var data = await api('/ai-hub/gpc');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  c.innerHTML = '<div class="section-title">GPC — Governed Plan Compiler</div><div class="section-subtitle">Do users understand GPC? Are plans becoming pipelines?</div>' +
+    '<div class="cards-grid">' +
+      card('Total Compiles', data.total_compiles, '') +
+      card('Drafts', data.drafts, '') +
+      card('Completed', data.completed, '') +
+    '</div>';
+}
+
+// ─── MARKETPLACE ────────────────────────────────────
+async function renderMarketplace(c) {
+  var data = await api('/ai-hub/marketplace');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  c.innerHTML = '<div class="section-title">Marketplace</div><div class="section-subtitle">What are buyers looking at? What tools do they care about?</div>' +
+    '<div class="cards-grid">' +
+      card('Total Listings', data.total_listings, '') +
+      card('Published', data.published, '') +
+      card('Total Downloads', data.total_downloads, '') +
+    '</div>';
+}
+
+// ─── BILLING ────────────────────────────────────────
+async function renderBilling(c) {
+  var data = await api('/business/billing');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  c.innerHTML = '<div class="section-title">Billing</div><div class="section-subtitle">Are people showing buying intent?</div>' +
+    '<div class="cards-grid">' +
+      card('Total Users', data.total_users, '') +
+      card('Free Workspaces', data.free_tier_workspaces, '') +
+      card('Paid Workspaces', data.paid_workspaces, '') +
+      card('MRR', '$' + (data.mrr_cents/100).toFixed(2), '') +
+      card('Trial Conversions', data.trial_conversions, '') +
+    '</div>';
+}
+
+// ─── AGENT FLEET ────────────────────────────────────
+async function renderAgentFleet(c) {
+  var data = await api('/agents/fleet');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">Agent Fleet</div><div class="section-subtitle">' + data.total_agents + ' agents total — ' + data.active + ' active / ' + data.standby + ' standby</div>';
+  (data.groups || []).forEach(function(g) {
+    html += '<div class="agent-group"><span class="agent-name">' + g.name + '</span>' +
+      '<span class="agent-count">' + g.count + ' agents</span>' +
+      '<span class="badge badge-orange">' + g.status + '</span></div>';
+  });
+  c.innerHTML = html;
+}
+
+// ─── ALERTS ─────────────────────────────────────────
+async function renderAlerts(c) {
+  var data = await api('/operations/alerts');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">Alerts</div>';
+  if (!data.length) { html += '<p style="color:var(--text-muted)">No alerts.</p>'; }
+  else {
+    html += '<table class="data-table"><thead><tr><th>Title</th><th>Severity</th><th>Status</th><th>Source</th><th>Created</th></tr></thead><tbody>';
+    data.forEach(function(a) {
+      html += '<tr><td>' + a.title + '</td><td><span class="badge badge-red">' + a.severity + '</span></td>' +
+        '<td>' + a.status + '</td><td>' + (a.source||'—') + '</td><td>' + (a.created_at||'—') + '</td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+  c.innerHTML = html;
+}
+
+// ─── ERRORS ─────────────────────────────────────────
+async function renderErrors(c) {
+  var data = await api('/operations/errors');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  c.innerHTML = '<div class="section-title">Errors</div><div class="section-subtitle">Last ' + data.period_hours + ' hours</div>' +
+    '<div class="cards-grid">' +
+      card('Failed AI Requests', data.failed_ai_requests, '') +
+      card('Security Events', data.security_events, '') +
+    '</div>';
+}
+
+// ─── HEALTH ─────────────────────────────────────────
+async function renderHealth(c) {
+  var data = await api('/operations/health');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">System Health</div><div class="section-subtitle">Overall: ' + data.overall + '</div>';
+  html += '<table class="data-table"><thead><tr><th>Service</th><th>Status</th><th>Response Time</th><th>Last Checked</th></tr></thead><tbody>';
+  (data.services||[]).forEach(function(s) {
+    var badge = s.status === 'up' ? 'badge-green' : 'badge-red';
+    html += '<tr><td>' + s.service + '</td><td><span class="badge ' + badge + '">' + s.status + '</span></td>' +
+      '<td>' + (s.response_time_ms||0) + 'ms</td><td>' + (s.last_checked||'—') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  c.innerHTML = html;
+}
+
+// ─── COMPLIANCE ─────────────────────────────────────
+async function renderCompliance(c) {
+  var data = await api('/governance/compliance');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">Compliance</div><div class="section-subtitle">Overall: ' + data.overall + '</div>';
+  (data.policies||[]).forEach(function(p) {
+    var color = (p.status === 'enforced' || p.status === 'active' || p.status === 'enabled') ? 'var(--green)' : 'var(--amber)';
+    html += '<div class="policy-item"><span class="policy-name">' + p.name + '</span>' +
+      '<span class="policy-status" style="color:' + color + '">' + p.status + '</span></div>';
+  });
+  c.innerHTML = html;
+}
+
+// ─── VAULT ──────────────────────────────────────────
+async function renderVault(c) {
+  var data = await api('/governance/vault');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  c.innerHTML = '<div class="section-title">Vault Posture</div>' +
+    '<div class="cards-grid">' +
+      card('Encryption', data.encryption, '') +
+      card('Key Rotation', data.key_rotation_days + ' days', '') +
+      card('Secrets Stored', data.secrets_stored, '') +
+      card('Status', data.status, '') +
+    '</div>';
+}
+
+// ─── AUDIT LOGS ─────────────────────────────────────
+async function renderAuditLogs(c) {
+  var data = await api('/audit-log');
+  if (!data) { c.innerHTML = '<p style="color:var(--red)">Failed to load</p>'; return; }
+  var html = '<div class="section-title">Audit Logs</div>';
+  if (!data.length) { html += '<p style="color:var(--text-muted)">No audit logs yet.</p>'; }
+  else {
+    html += '<table class="data-table"><thead><tr><th>Action</th><th>Resource</th><th>User</th><th>Created</th></tr></thead><tbody>';
+    data.forEach(function(l) {
+      html += '<tr><td>' + l.action + '</td><td>' + (l.resource_type||'') + ' ' + (l.resource_id||'') +
+        '</td><td>' + (l.user_id||'—') + '</td><td>' + (l.created_at||'—') + '</td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+  c.innerHTML = html;
+}
+
+// ─── TERMINALS ──────────────────────────────────────
+function renderTerminal3in1(c) {
+  c.innerHTML = '<iframe class="terminal-frame" src="/command-center/veklom-terminal/" allow="clipboard-read;clipboard-write"></iframe>';
+}
+function renderTerminalRoute(c) {
+  c.innerHTML = '<iframe class="terminal-frame" src="/command-center/quantum-terminal/" allow="clipboard-read;clipboard-write"></iframe>';
+}
+
+// ─── PLACEHOLDER ────────────────────────────────────
+function renderPlaceholder(c, page) {
+  c.innerHTML = '<div class="section-title">' + pageTitle(page) + '</div>' +
+    '<p style="color:var(--text-muted)">This page will display detailed ' + pageTitle(page).toLowerCase() + ' data once telemetry and event tracking are active.</p>' +
+    '<div class="cards-grid" style="margin-top:16px">' +
+      card('Status', 'Ready', 'Awaiting data') +
+      card('Data Points', '0', 'No events yet') +
+    '</div>';
+}
+
+// ─── CARD HELPER ────────────────────────────────────
+function card(label, value, sub) {
+  return '<div class="card"><div class="card-label">' + label + '</div>' +
+    '<div class="card-value">' + value + '</div>' +
+    (sub ? '<div class="card-sub">' + sub + '</div>' : '') + '</div>';
+}
+
+// ─── INIT ───────────────────────────────────────────
+renderPage('overview');
+</script>
+</body>
+</html>

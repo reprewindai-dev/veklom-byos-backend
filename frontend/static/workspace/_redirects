@@ -1,0 +1,3 @@
+# Cloudflare Pages — SPA fallback for hash router
+# All non-asset requests serve index.html so wouter's hash routing handles them.
+/*    /index.html   200

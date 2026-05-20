@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Locker Phycer - Security Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .switch-toggle {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .switch-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #10b981;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .status-online {
+            color: #10b981;
+        }
+        .status-offline {
+            color: #ef4444;
+        }
+        .status-warning {
+            color: #f59e0b;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .threat-card {
+            transition: all 0.3s ease;
+        }
+        .threat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-900 text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center">
+                        <h1 class="text-xl font-bold">🔒 Locker Phycer</h1>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span id="system-status" class="status-online">● Online</span>
+                        <button onclick="refreshDashboard()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">
+                            Refresh
+                        </button>
+                        <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Header -->
+            <div class="mb-8">
+                <h2 class="text-3xl font-bold text-gray-900">Security Dashboard</h2>
+                <p class="text-gray-600">Real-time monitoring and threat detection</p>
+            </div>
+
+            <!-- Metrics Overview -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="metric-card text-white p-6 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2">Active Users</h3>
+                    <p id="active-users" class="text-3xl font-bold">0</p>
+                    <p class="text-sm opacity-75">Currently online</p>
+                </div>
+                <div class="bg-green-500 text-white p-6 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2">Security Score</h3>
+                    <p id="security-score" class="text-3xl font-bold">95</p>
+                    <p class="text-sm opacity-75">System health</p>
+                </div>
+                <div class="bg-red-500 text-white p-6 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2">Active Threats</h3>
+                    <p id="active-threats" class="text-3xl font-bold">0</p>
+                    <p class="text-sm opacity-75">Detected threats</p>
+                </div>
+                <div class="bg-purple-500 text-white p-6 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2">AI Requests</h3>
+                    <p id="ai-requests" class="text-3xl font-bold">0</p>
+                    <p class="text-sm opacity-75">Today</p>
+                </div>
+            </div>
+
+            <!-- Security Controls -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <h3 class="text-xl font-semibold mb-4">Security Controls</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div class="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                            <h4 class="font-medium">Multi-Factor Auth</h4>
+                            <p class="text-sm text-gray-600">Require MFA for all users</p>
+                        </div>
+                        <label class="switch-toggle">
+                            <input type="checkbox" checked onchange="toggleSecurityControl('mfa_enabled', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                            <h4 class="font-medium">AI Monitoring</h4>
+                            <p class="text-sm text-gray-600">AI-powered threat detection</p>
+                        </div>
+                        <label class="switch-toggle">
+                            <input type="checkbox" checked onchange="toggleSecurityControl('ai_monitoring', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                            <h4 class="font-medium">Rate Limiting</h4>
+                            <p class="text-sm text-gray-600">Prevent brute force attacks</p>
+                        </div>
+                        <label class="switch-toggle">
+                            <input type="checkbox" checked onchange="toggleSecurityControl('rate_limiting', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                            <h4 class="font-medium">Session Timeout</h4>
+                            <p class="text-sm text-gray-600">Auto logout inactive users</p>
+                        </div>
+                        <label class="switch-toggle">
+                            <input type="checkbox" checked onchange="toggleSecurityControl('session_timeout', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                            <h4 class="font-medium">Audit Logging</h4>
+                            <p class="text-sm text-gray-600">Log all security events</p>
+                        </div>
+                        <label class="switch-toggle">
+                            <input type="checkbox" checked onchange="toggleSecurityControl('audit_logging', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                            <h4 class="font-medium">Encryption</h4>
+                            <p class="text-sm text-gray-600">End-to-end encryption</p>
+                        </div>
+                        <label class="switch-toggle">
+                            <input type="checkbox" checked onchange="toggleSecurityControl('encryption', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Threats -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <h3 class="text-xl font-semibold mb-4">Recent Security Events</h3>
+                <div id="threats-container" class="space-y-4">
+                    <!-- Threats will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-xl font-semibold mb-4">Security Events Timeline</h3>
+                    <canvas id="events-chart"></canvas>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-xl font-semibold mb-4">Threat Distribution</h3>
+                    <canvas id="threats-chart"></canvas>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white p-6 rounded-lg">
+            <p class="text-lg font-semibold">Loading...</p>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let dashboardData = {
+            metrics: {},
+            threats: [],
+            securityControls: {}
+        };
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboard();
+            initCharts();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(loadDashboard, 30000);
+        });
+
+        // Load dashboard data
+        async function loadDashboard() {
+            showLoading(true);
+            try {
+                // Load metrics
+                const metricsResponse = await axios.get('/api/v1/monitoring/metrics');
+                dashboardData.metrics = metricsResponse.data;
+
+                // Load threats
+                const threatsResponse = await axios.get('/api/v1/security/threats');
+                dashboardData.threats = threatsResponse.data;
+
+                // Load security controls
+                const controlsResponse = await axios.get('/api/v1/security/controls');
+                dashboardData.securityControls = controlsResponse.data;
+
+                updateUI();
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                // Use mock data for demonstration
+                loadMockData();
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load mock data for demonstration
+        function loadMockData() {
+            dashboardData = {
+                metrics: {
+                    active_users: 127,
+                    security_score: 95,
+                    active_threats: 3,
+                    ai_requests_today: 1247
+                },
+                threats: [
+                    {
+                        id: '1',
+                        type: 'Suspicious Login',
+                        severity: 'medium',
+                        description: 'Multiple failed login attempts from IP 192.168.1.100',
+                        timestamp: new Date().toISOString(),
+                        status: 'investigating'
+                    },
+                    {
+                        id: '2',
+                        type: 'SQL Injection Attempt',
+                        severity: 'high',
+                        description: 'SQL injection pattern detected in API request',
+                        timestamp: new Date(Date.now() - 3600000).toISOString(),
+                        status: 'blocked'
+                    },
+                    {
+                        id: '3',
+                        type: 'Unusual Activity',
+                        severity: 'low',
+                        description: 'User accessing unusual endpoints',
+                        timestamp: new Date(Date.now() - 7200000).toISOString(),
+                        status: 'monitoring'
+                    }
+                ],
+                securityControls: {
+                    mfa_enabled: true,
+                    ai_monitoring: true,
+                    rate_limiting: true,
+                    session_timeout: true,
+                    audit_logging: true,
+                    encryption: true
+                }
+            };
+
+            updateUI();
+        }
+
+        // Update UI with data
+        function updateUI() {
+            // Update metrics
+            document.getElementById('active-users').textContent = dashboardData.metrics.active_users || 0;
+            document.getElementById('security-score').textContent = dashboardData.metrics.security_score || 0;
+            document.getElementById('active-threats').textContent = dashboardData.metrics.active_threats || 0;
+            document.getElementById('ai-requests').textContent = dashboardData.metrics.ai_requests_today || 0;
+
+            // Update system status
+            const statusElement = document.getElementById('system-status');
+            if (dashboardData.metrics.security_score >= 90) {
+                statusElement.textContent = '● Online';
+                statusElement.className = 'status-online';
+            } else if (dashboardData.metrics.security_score >= 70) {
+                statusElement.textContent = '● Warning';
+                statusElement.className = 'status-warning';
+            } else {
+                statusElement.textContent = '● Offline';
+                statusElement.className = 'status-offline';
+            }
+
+            // Update threats
+            renderThreats();
+
+            // Update charts
+            updateCharts();
+        }
+
+        // Render threats
+        function renderThreats() {
+            const container = document.getElementById('threats-container');
+            container.innerHTML = '';
+
+            if (dashboardData.threats.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">No security threats detected</p>';
+                return;
+            }
+
+            dashboardData.threats.forEach(threat => {
+                const threatCard = createThreatCard(threat);
+                container.appendChild(threatCard);
+            });
+        }
+
+        // Create threat card
+        function createThreatCard(threat) {
+            const card = document.createElement('div');
+            card.className = 'threat-card p-4 border rounded-lg';
+            
+            const severityColors = {
+                'low': 'bg-blue-100 text-blue-800',
+                'medium': 'bg-yellow-100 text-yellow-800',
+                'high': 'bg-red-100 text-red-800',
+                'critical': 'bg-purple-100 text-purple-800'
+            };
+
+            const statusColors = {
+                'open': 'bg-gray-100 text-gray-800',
+                'investigating': 'bg-yellow-100 text-yellow-800',
+                'blocked': 'bg-green-100 text-green-800',
+                'resolved': 'bg-blue-100 text-blue-800'
+            };
+
+            card.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center space-x-2 mb-2">
+                            <span class="px-2 py-1 rounded text-xs font-medium ${severityColors[threat.severity]}">
+                                ${threat.severity.toUpperCase()}
+                            </span>
+                            <span class="px-2 py-1 rounded text-xs font-medium ${statusColors[threat.status]}">
+                                ${threat.status.replace('_', ' ').toUpperCase()}
+                            </span>
+                        </div>
+                        <h4 class="font-medium text-gray-900">${threat.type}</h4>
+                        <p class="text-sm text-gray-600 mt-1">${threat.description}</p>
+                        <p class="text-xs text-gray-400 mt-2">
+                            ${new Date(threat.timestamp).toLocaleString()}
+                        </p>
+                    </div>
+                    <div class="flex space-x-2 ml-4">
+                        <button onclick="investigateThreat('${threat.id}')" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                            Investigate
+                        </button>
+                        <button onclick="resolveThreat('${threat.id}')" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm">
+                            Resolve
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        // Toggle security control
+        async function toggleSecurityControl(control, enabled) {
+            try {
+                await axios.post(`/api/v1/security/controls/${control}`, {
+                    enabled: enabled
+                });
+                
+                dashboardData.securityControls[control] = enabled;
+                console.log(`Security control ${control} ${enabled ? 'enabled' : 'disabled'}`);
+            } catch (error) {
+                console.error('Error toggling security control:', error);
+                alert('Error updating security control. Please try again.');
+            }
+        }
+
+        // Investigate threat
+        function investigateThreat(threatId) {
+            alert(`Investigating threat ${threatId}...`);
+            // In a real application, this would open a detailed investigation view
+        }
+
+        // Resolve threat
+        async function resolveThreat(threatId) {
+            try {
+                await axios.post(`/api/v1/security/threats/${threatId}/resolve`);
+                
+                // Update local data
+                const threat = dashboardData.threats.find(t => t.id === threatId);
+                if (threat) {
+                    threat.status = 'resolved';
+                }
+                
+                updateUI();
+            } catch (error) {
+                console.error('Error resolving threat:', error);
+                alert('Error resolving threat. Please try again.');
+            }
+        }
+
+        // Refresh dashboard
+        function refreshDashboard() {
+            loadDashboard();
+        }
+
+        // Logout
+        function logout() {
+            // In a real application, this would clear the session and redirect
+            alert('Logging out...');
+        }
+
+        // Show/hide loading
+        function showLoading(show) {
+            const loadingElement = document.getElementById('loading');
+            if (show) {
+                loadingElement.classList.remove('hidden');
+            } else {
+                loadingElement.classList.add('hidden');
+            }
+        }
+
+        // Initialize charts
+        let eventsChart, threatsChart;
+
+        function initCharts() {
+            // Events timeline chart
+            const eventsCtx = document.getElementById('events-chart').getContext('2d');
+            eventsChart = new Chart(eventsCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Security Events',
+                        data: [],
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Threats distribution chart
+            const threatsCtx = document.getElementById('threats-chart').getContext('2d');
+            threatsChart = new Chart(threatsCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Low', 'Medium', 'High', 'Critical'],
+                    datasets: [{
+                        data: [0, 0, 0, 0],
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.8)',
+                            'rgba(245, 158, 11, 0.8)',
+                            'rgba(239, 68, 68, 0.8)',
+                            'rgba(139, 92, 246, 0.8)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true
+                }
+            });
+        }
+
+        // Update charts
+        function updateCharts() {
+            // Update events chart with mock data
+            const hours = Array.from({length: 24}, (_, i) => `${i}:00`);
+            const events = hours.map(() => Math.floor(Math.random() * 10));
+            
+            eventsChart.data.labels = hours;
+            eventsChart.data.datasets[0].data = events;
+            eventsChart.update();
+
+            // Update threats chart
+            const threatCounts = {
+                low: dashboardData.threats.filter(t => t.severity === 'low').length,
+                medium: dashboardData.threats.filter(t => t.severity === 'medium').length,
+                high: dashboardData.threats.filter(t => t.severity === 'high').length,
+                critical: dashboardData.threats.filter(t => t.severity === 'critical').length
+            };
+            
+            threatsChart.data.datasets[0].data = [
+                threatCounts.low,
+                threatCounts.medium,
+                threatCounts.high,
+                threatCounts.critical
+            ];
+            threatsChart.update();
+        }
+    </script>
+</body>
+</html>

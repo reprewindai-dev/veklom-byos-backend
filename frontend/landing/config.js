@@ -5,4 +5,4 @@
  * or replace it with one that reads from your environment. Falls through to the
  * VITE_VEKLOM_API_BASE build-time env var if left blank.
  */
-window.__VEKLOM_API_BASE__ = "";
+window.__VEKLOM_API_BASE__ = "https://veklom-byos-backend-exc7x28a1-dksummers-projects.vercel.app";

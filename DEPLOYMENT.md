@@ -48,7 +48,7 @@ Coolify will use the Dockerfile at the root of this repository. The runtime is c
 
 - **Base Image**: `python:3.11-slim`
 - **Port**: `8000` (exposed for Coolify's reverse proxy)
-- **Health Check**: `/api/v1/health` endpoint
+- **Health Check**: `/health` endpoint
 - **Command**: `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8000`
 - **Worker User**: Non-root user `veklom` (UID 1000) for security
 
@@ -72,7 +72,7 @@ Coolify will use the Dockerfile at the root of this repository. The runtime is c
 ### Coolify-Specific Notes
 
 - Coolify automatically handles Let's Encrypt SSL, reverse proxy, and restart policies
-- The health check endpoint is `/api/v1/health` - Coolify will use this for container health monitoring
+- The health check endpoint is `/health` - Coolify will use this for container health monitoring
 - For database and Redis, either:
   - Use Coolify's managed services (PostgreSQL + Redis)
   - Or use external services and update `DATABASE_URL` and `REDIS_URL` accordingly
@@ -85,7 +85,7 @@ Coolify will use the Dockerfile at the root of this repository. The runtime is c
 1. New Web Service → Connect this repo
 2. Runtime: **Docker**
 3. Add environment variables from `.env.production.example`
-4. Health check path: `/api/v1/health`
+4. Health check path: `/health`
 5. Deploy
 
 ---
@@ -97,7 +97,7 @@ Coolify will use the Dockerfile at the root of this repository. The runtime is c
 alembic upgrade head
 
 # Verify health
-curl https://your-domain.com/api/v1/health
+curl https://your-domain.com/health
 
 # Verify status
 curl https://your-domain.com/api/v1/status
@@ -140,7 +140,7 @@ This gives your backend a public HTTPS URL without opening firewall ports.
 ## Health Check URL
 
 ```
-GET /api/v1/health
+GET /health
 ```
 
 Expected response:

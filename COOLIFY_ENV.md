@@ -15,7 +15,7 @@ LOG_LEVEL=INFO
 LOG_FORMAT=json
 LOG_FILE_PATH=/app/logs/veklom.log
 CORS_ORIGINS=https://veklom.com,https://www.veklom.com,https://app.veklom.com
-ALLOWED_HOSTS=veklom.com,www.veklom.com,app.veklom.com
+ALLOWED_HOSTS=veklom.com,www.veklom.com,app.veklom.com,localhost,127.0.0.1
 MAX_WORKERS=4
 FRONTEND_URL=https://veklom.com
 API_URL=https://veklom.com
@@ -187,12 +187,12 @@ SLACK_WEBHOOK_URL=YOUR_SLACK_WEBHOOK_URL
 
 ## Health Check
 
-The application exposes a health check endpoint at `/api/v1/health` that Coolify will use for container health monitoring.
+The application exposes a health check endpoint at `/health` that Coolify will use for container health monitoring.
 
 ## Important Notes
 
 - Never commit real secrets to the repository
 - Use Coolify's environment variable management for secrets
 - The application runs as non-root user `veklom` for security
-- Health check endpoint: `/api/v1/health`
+- Health check endpoint: `/health`
 - Main entry point: `backend.apps.api.main:app`

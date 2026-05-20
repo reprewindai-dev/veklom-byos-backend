@@ -19,6 +19,7 @@ Never commit real secrets to any repository.
 | `LOG_FORMAT` | Log format | `json` |
 | `LOG_FILE_PATH` | Log file path | `/app/logs/veklom.log` |
 | `CORS_ORIGINS` | Comma-separated allowed origins | `https://veklom.com,https://www.veklom.com,https://app.veklom.com` |
+| `ALLOWED_HOSTS` | Comma-separated allowed host headers | `veklom.com,www.veklom.com,app.veklom.com,localhost,127.0.0.1` |
 | `MAX_WORKERS` | Uvicorn worker count | `4` |
 | `FRONTEND_URL` | Frontend URL | `https://veklom.com` |
 | `API_URL` | API URL | `https://veklom.com` |

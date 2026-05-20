@@ -1,0 +1,159 @@
+# Veklom BYOS Backend — Observability stack
+# Extends docker-compose.yml
+# Run: docker compose -f docker-compose.yml -f infra/docker/docker-compose.observability.yml up -d
+#
+# Required Coolify env vars:
+#   GRAFANA_API_TOKEN     — Grafana.com API token (Prometheus + Loki + Alertmanager auth)
+#   PROMETHEUS_API_TOKEN  — Same token (explicit alias)
+#   SLACK_WEBHOOK_URL     — Slack incoming webhook URL
+#   RESEND_SMTP_KEY       — Resend SMTP key
+
+version: "3.9"
+
+services:
+
+  # ── Prometheus ────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: veklom-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./infra/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/alerts/rules.yml:/etc/prometheus/rules/rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-remote-write-receiver"
+    # Write Grafana API token to password file at container start
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "$$GRAFANA_API_TOKEN" > /etc/prometheus/grafana_api_token
+        exec /bin/prometheus \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --storage.tsdb.retention.time=7d \
+          --web.enable-lifecycle \
+          --web.enable-remote-write-receiver
+    environment:
+      - GRAFANA_API_TOKEN=${GRAFANA_API_TOKEN}
+    ports:
+      - "9090:9090"
+    networks:
+      - veklom-net
+
+  # ── Alertmanager (local — also synced to Grafana Cloud) ───────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: veklom-alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./infra/docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.external-url=http://alertmanager:9093"
+    environment:
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - RESEND_SMTP_KEY=${RESEND_SMTP_KEY}
+    ports:
+      - "9093:9093"
+    networks:
+      - veklom-net
+
+  # ── Promtail — ships logs to Grafana Cloud Loki ────────────────────────────────
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: veklom-promtail
+    restart: unless-stopped
+    volumes:
+      - ./infra/docker/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yml -config.expand-env=true
+    environment:
+      - GRAFANA_API_TOKEN=${GRAFANA_API_TOKEN}
+    networks:
+      - veklom-net
+
+  # ── Local Loki (dev/fallback — prod logs go direct via Promtail) ───────────────
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: veklom-loki
+    restart: unless-stopped
+    volumes:
+      - ./infra/docker/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/tmp/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - veklom-net
+
+  # ── Node Exporter — host metrics ───────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.8.0
+    container_name: veklom-node-exporter
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.rootfs=/rootfs"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - veklom-net
+
+  # ── cAdvisor — container metrics ──────────────────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: veklom-cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - veklom-net
+
+  # ── Postgres Exporter ─────────────────────────────────────────────────────────
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: veklom-postgres-exporter
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-veklom}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-veklom}?sslmode=disable
+    networks:
+      - veklom-net
+
+  # ── Redis Exporter ────────────────────────────────────────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.61.0
+    container_name: veklom-redis-exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    networks:
+      - veklom-net
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  loki_data:
+
+networks:
+  veklom-net:
+    external: true

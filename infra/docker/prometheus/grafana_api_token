@@ -1,0 +1,6 @@
+# DO NOT COMMIT YOUR REAL TOKEN HERE.
+# This file is mounted into the Prometheus container at /etc/prometheus/grafana_api_token
+# Set its content to the value of $GRAFANA_API_TOKEN in your Coolify environment.
+# In docker-compose.observability.yml this file is created from the env var at startup.
+# Placeholder — overwritten at container start by entrypoint.
+PLACEHOLDER

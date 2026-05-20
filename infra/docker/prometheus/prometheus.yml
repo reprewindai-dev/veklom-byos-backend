@@ -1,0 +1,82 @@
+# Veklom BYOS Backend — Prometheus scrape config + Grafana Cloud Mimir remote_write
+# Grafana Cloud Canada East (prod-ca-east-0 / aws ca-central-1)
+# User ID: 3229768
+# URL: https://prometheus-prod-32-prod-ca-east-0.grafana.net/api/prom
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    env: production
+    region: ca-central-1
+    app: veklom-byos-backend
+
+# Send all scraped metrics to Grafana Cloud Mimir
+remote_write:
+  - url: https://prometheus-prod-32-prod-ca-east-0.grafana.net/api/prom/push
+    basic_auth:
+      username: "3229768"
+      password_file: /etc/prometheus/grafana_api_token
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: "go_.*|process_.*"
+        action: drop
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Veklom FastAPI backend — exposes /metrics via prometheus_fastapi_instrumentator
+  - job_name: veklom_backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:8000"]
+    relabel_configs:
+      - target_label: service
+        replacement: veklom-backend
+
+  # Postgres exporter
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+    relabel_configs:
+      - target_label: service
+        replacement: postgres
+
+  # Redis exporter
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+    relabel_configs:
+      - target_label: service
+        replacement: redis
+
+  # Node exporter — host metrics
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+    relabel_configs:
+      - target_label: service
+        replacement: node
+
+  # cAdvisor — container metrics
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    relabel_configs:
+      - target_label: service
+        replacement: cadvisor
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]

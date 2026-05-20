@@ -1,0 +1,217 @@
+# Veklom BYOS Backend — Prometheus Alert Rules
+# Uploaded to Grafana Cloud via infra/scripts/upload-alerts.sh
+# Grafana Cloud Alertmanager ID: 1612824
+
+groups:
+  - name: veklom_backend
+    interval: 30s
+    rules:
+
+      # ── API Health ───────────────────────────────────────────────────────────
+      - alert: BackendDown
+        expr: up{job="veklom_backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: backend
+        annotations:
+          summary: "Veklom backend is DOWN"
+          description: "The veklom_backend scrape target has been unreachable for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="veklom_backend", status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="veklom_backend"}[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "High 5xx error rate on Veklom backend"
+          description: "More than 5% of requests are returning 5xx errors over the last 5 minutes."
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{job="veklom_backend"}[5m])) by (le, handler)
+          ) > 2
+        for: 3m
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "P99 latency above 2s on Veklom backend"
+          description: "The 99th percentile request latency for {{ $labels.handler }} is {{ $value | humanizeDuration }}."
+
+      - alert: KillSwitchActivated
+        expr: veklom_kill_switch_active == 1
+        for: 0m
+        labels:
+          severity: critical
+          service: backend
+        annotations:
+          summary: "Veklom kill switch is ACTIVE — all AI access disabled"
+          description: "The platform kill switch has been activated. All AI execution is halted."
+
+      # ── Token Wallet / Billing ────────────────────────────────────────────────
+      - alert: WalletBalanceCriticallyLow
+        expr: veklom_wallet_balance_usd < 10
+        for: 0m
+        labels:
+          severity: warning
+          service: billing
+        annotations:
+          summary: "Wallet balance below $10"
+          description: "Wallet balance is {{ $value | humanize }} USD. Top up to avoid service interruption."
+
+      - alert: HighTokenSpend
+        expr: |
+          increase(veklom_tokens_consumed_total[1h]) > 100000
+        for: 0m
+        labels:
+          severity: warning
+          service: billing
+        annotations:
+          summary: "High token consumption in the last hour"
+          description: "{{ $value | humanize }} tokens consumed in the past hour — check for runaway agents."
+
+      # ── AI Execution ─────────────────────────────────────────────────────────
+      - alert: AIInferenceFailureSpike
+        expr: |
+          sum(rate(veklom_ai_inference_errors_total[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          service: ai
+        annotations:
+          summary: "AI inference errors spiking"
+          description: "More than 0.5 inference errors/sec over the last 5 minutes."
+
+      - alert: StreamingInferenceTimeout
+        expr: |
+          sum(rate(veklom_ai_stream_timeout_total[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          service: ai
+        annotations:
+          summary: "SSE streaming inference timeouts elevated"
+          description: "Streaming inference timeout rate is {{ $value | humanize }}/sec."
+
+      # ── Compliance / Governance ───────────────────────────────────────────────
+      - alert: ComplianceCheckFailureSpike
+        expr: |
+          sum(rate(veklom_compliance_check_failures_total[5m])) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+          service: compliance
+        annotations:
+          summary: "Compliance check failures elevated"
+          description: "More than 0.2 compliance failures/sec — review policy configuration."
+
+      - alert: PIIScanHit
+        expr: |
+          increase(veklom_pii_detections_total[5m]) > 10
+        for: 0m
+        labels:
+          severity: warning
+          service: privacy
+        annotations:
+          summary: "PII/PHI detections above threshold"
+          description: "{{ $value }} PII/PHI hits in the last 5 minutes — review data flows."
+
+      # ── Audit Integrity ───────────────────────────────────────────────────────
+      - alert: AuditHashChainBroken
+        expr: veklom_audit_hash_chain_broken == 1
+        for: 0m
+        labels:
+          severity: critical
+          service: audit
+        annotations:
+          summary: "Audit log hash chain integrity failure"
+          description: "Tamper-evident audit log hash chain has been broken. Immediate investigation required."
+
+  - name: infrastructure
+    interval: 30s
+    rules:
+
+      # ── Postgres ──────────────────────────────────────────────────────────────
+      - alert: PostgresDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: postgres
+        annotations:
+          summary: "Postgres exporter is down"
+          description: "Cannot scrape postgres-exporter — database may be unreachable."
+
+      - alert: PostgresHighConnections
+        expr: |
+          pg_stat_database_numbackends{datname="veklom"}
+          / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "Postgres connection count above 80% of max"
+          description: "{{ $value | humanizePercentage }} of max_connections are in use."
+
+      # ── Redis ─────────────────────────────────────────────────────────────────
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "Redis exporter is down"
+          description: "Cannot scrape redis-exporter."
+
+      - alert: RedisHighMemory
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Redis memory above 85% of maxmemory"
+          description: "Redis is using {{ $value | humanizePercentage }} of its configured maxmemory."
+
+      # ── Host / Node ───────────────────────────────────────────────────────────
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "Host CPU above 85%"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value | humanize }}%."
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "Host memory above 90%"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}."
+
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "Disk space below 15% on {{ $labels.mountpoint }}"
+          description: "Only {{ $value | humanizePercentage }} free on {{ $labels.device }} ({{ $labels.mountpoint }})."

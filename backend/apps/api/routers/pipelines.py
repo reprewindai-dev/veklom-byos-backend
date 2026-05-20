@@ -65,6 +65,16 @@ async def interactive_session(user=Depends(get_current_user)):
 
 
 # --- Demo Pipeline ---
+@router.get("/demo/pipeline/health")
+async def demo_pipeline_health(user=Depends(get_current_user)):
+    return {
+        "status": "healthy",
+        "pipeline": "demo",
+        "stages": ["Source", "Build", "Validate", "Test", "Stage", "Gate", "Deploy"],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.post("/demo/pipeline/run")
 async def demo_pipeline_run(body: dict, user=Depends(get_current_user)):
     return {"run_id": "demo_run", "status": "completed", "stages_completed": 7}

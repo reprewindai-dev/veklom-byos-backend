@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +46,20 @@ async def workspace_overview(user=Depends(get_current_user)):
         "budget_remaining_usd": 148.75,
         "active_pipelines": 2,
         "active_deployments": 1,
+    }
+
+
+@router.get("/observability")
+async def workspace_observability(user=Depends(get_current_user)):
+    return {
+        "status": "healthy",
+        "region": "hetzner-fsn1",
+        "latency_ms": 42,
+        "requests_today": 342,
+        "error_rate": 0.001,
+        "policy_pass_rate": 0.998,
+        "active_routes": ["playground", "gpc", "pipelines", "billing"],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -144,6 +159,18 @@ async def cost_budget(user=Depends(get_current_user)):
         "forecast_usd": 45.00,
         "alerts": [],
     }
+
+
+@router.get("/cost-budget.csv")
+async def cost_budget_csv(user=Depends(get_current_user)):
+    csv = (
+        "metric,value\n"
+        "budget_usd,150.00\n"
+        "spent_usd,12.50\n"
+        "forecast_usd,45.00\n"
+        "remaining_usd,137.50\n"
+    )
+    return Response(content=csv, media_type="text/csv")
 
 
 def _ws_dict(ws: Workspace) -> dict:

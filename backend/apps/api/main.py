@@ -115,6 +115,7 @@ app.include_router(gpc.router, prefix="/api/v1")
 # --- Frontend static files ---
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "static"
 LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "landing"
+GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "gpc"
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
 
 
@@ -124,6 +125,8 @@ def _mount_static():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     if WORKSPACE_DIR.exists():
         app.mount("/workspace", StaticFiles(directory=str(WORKSPACE_DIR), html=True), name="workspace")
+    if GPC_DIR.exists():
+        app.mount("/gpc-engine", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc-engine")
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
@@ -201,8 +204,7 @@ async def _serve_frontend(request):
 # GPC page
 @app.get("/gpc")
 async def gpc_page():
-    gpc_dir = FRONTEND_DIR.parent / "gpc"
-    index_path = gpc_dir / "index.html"
+    index_path = GPC_DIR / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
     return HTMLResponse(content=_gpc_html(), status_code=200)

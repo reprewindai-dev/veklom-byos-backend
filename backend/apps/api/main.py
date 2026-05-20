@@ -146,37 +146,37 @@ def _branding_response(filename: str, media_type: str):
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
-@app.get("/favicon.svg")
+@app.api_route("/favicon.svg", methods=["GET", "HEAD"])
 async def favicon_svg():
     return _branding_response("favicon.svg", "image/svg+xml")
 
 
-@app.get("/favicon.ico")
+@app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon_ico():
     return _branding_response("favicon.ico", "image/x-icon")
 
 
-@app.get("/apple-touch-icon.png")
+@app.api_route("/apple-touch-icon.png", methods=["GET", "HEAD"])
 async def apple_touch_icon():
     return _branding_response("apple-touch-icon.png", "image/png")
 
 
-@app.get("/og-image.png")
+@app.api_route("/og-image.png", methods=["GET", "HEAD"])
 async def og_image():
     return _branding_response("og-image.png", "image/png")
 
 
-@app.get("/twitter-card.png")
+@app.api_route("/twitter-card.png", methods=["GET", "HEAD"])
 async def twitter_card():
     return _branding_response("twitter-card.png", "image/png")
 
 
-@app.get("/logo.png")
+@app.api_route("/logo.png", methods=["GET", "HEAD"])
 async def logo_png():
     return _branding_response("logo.png", "image/png")
 
 
-@app.get("/icon.png")
+@app.api_route("/icon.png", methods=["GET", "HEAD"])
 async def icon_png():
     return _branding_response("icon.png", "image/png")
 

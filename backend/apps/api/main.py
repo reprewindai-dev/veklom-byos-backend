@@ -86,6 +86,7 @@ app.include_router(workspace.router, prefix="/api/v1")
 # AI execution
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(exec_router.router, prefix="/api")
+app.include_router(exec_router.router, prefix="/api/v1")
 
 # Billing, wallet, subscriptions, budget, cost, payments, payouts
 app.include_router(billing.router, prefix="/api/v1")

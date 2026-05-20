@@ -139,6 +139,48 @@ async def config_js():
     return HTMLResponse(content=content, media_type="application/javascript")
 
 
+def _branding_response(filename: str, media_type: str):
+    asset_path = FRONTEND_DIR / "branding" / filename
+    if asset_path.exists():
+        return FileResponse(str(asset_path), media_type=media_type)
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.get("/favicon.svg")
+async def favicon_svg():
+    return _branding_response("favicon.svg", "image/svg+xml")
+
+
+@app.get("/favicon.ico")
+async def favicon_ico():
+    return _branding_response("favicon.ico", "image/x-icon")
+
+
+@app.get("/apple-touch-icon.png")
+async def apple_touch_icon():
+    return _branding_response("apple-touch-icon.png", "image/png")
+
+
+@app.get("/og-image.png")
+async def og_image():
+    return _branding_response("og-image.png", "image/png")
+
+
+@app.get("/twitter-card.png")
+async def twitter_card():
+    return _branding_response("twitter-card.png", "image/png")
+
+
+@app.get("/logo.png")
+async def logo_png():
+    return _branding_response("logo.png", "image/png")
+
+
+@app.get("/icon.png")
+async def icon_png():
+    return _branding_response("icon.png", "image/png")
+
+
 @app.get("/")
 async def root():
     return await _serve_frontend(None)

@@ -84,6 +84,8 @@ temp/
 *.jpeg
 *.gif
 *.webp
+!frontend/static/branding/
+!frontend/static/branding/**
 
 # Windows paths
 desktop.ini

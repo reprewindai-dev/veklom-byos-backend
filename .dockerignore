@@ -55,6 +55,9 @@ logs/
 *.gif
 *.svg
 !favicon.svg
+!frontend/static/branding/
+!frontend/static/branding/**
+!frontend/static/workspace/favicon.svg
 
 # Development
 .replit

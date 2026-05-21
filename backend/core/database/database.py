@@ -6,24 +6,13 @@ from sqlalchemy.orm import DeclarativeBase
 
 from backend.core.config.settings import settings
 
-try:
-    engine = create_async_engine(
-        settings.DATABASE_URL,
-        echo=settings.DEBUG,
-        future=True,
-    )
-    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-except Exception as e:
-    import traceback
-    print(f"Database engine creation failed: {str(e)}\nTraceback: {traceback.format_exc()}")
-    # Fallback to in-memory SQLite
-    print("Falling back to in-memory SQLite")
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        echo=settings.DEBUG,
-        future=True,
-    )
-    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+# Use SQLite by default for simplicity
+engine = create_async_engine(
+    "sqlite+aiosqlite:////tmp/veklom.db",
+    echo=settings.DEBUG,
+    future=True,
+)
+async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):

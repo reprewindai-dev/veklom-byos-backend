@@ -109,18 +109,6 @@ from backend.apps.api.routers import (
 # Health & status (no prefix)
 app.include_router(health.router)
 
-
-@app.post("/admin/init-db")
-async def init_database():
-    """Manually initialize database schema - call this to ensure tables exist."""
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        return JSONResponse(content={"status": "success", "message": "Database initialized"})
-    except Exception as e:
-        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
-
-
 # Auth
 app.include_router(auth.router, prefix="/api/v1")
 
@@ -171,6 +159,18 @@ app.include_router(internal_operators.router, prefix="/api/v1")
 
 # Plugins Management
 app.include_router(plugins.router, prefix="/api")
+
+
+# --- Admin endpoints (must be before static mounting) ---
+@app.post("/admin/init-db")
+async def init_database():
+    """Manually initialize database schema - call this to ensure tables exist."""
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        return JSONResponse(content={"status": "success", "message": "Database initialized"})
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
 # --- Frontend static files ---

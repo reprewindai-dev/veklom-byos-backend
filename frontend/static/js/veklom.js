@@ -45,6 +45,70 @@
     }
   }
 
+  // --- Premium Toast Notification ---
+  function showToast(message, type = "success") {
+    let container = document.getElementById("toast-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "toast-container";
+      container.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        pointer-events: none;
+      `;
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+      background: #0A0A0A;
+      color: #FFFFFF;
+      border: 1px solid ${type === "success" ? "#FFB800" : "#EF4444"};
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 184, 0, 0.1);
+      min-width: 300px;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+      transform: translateY(20px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    `;
+
+    const icon = document.createElement("span");
+    icon.innerHTML = type === "success" ? "⚡" : "⚠";
+    icon.style.color = type === "success" ? "#FFB800" : "#EF4444";
+    icon.style.fontSize = "1rem";
+
+    const text = document.createElement("span");
+    text.textContent = message;
+
+    toast.appendChild(icon);
+    toast.appendChild(text);
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.transform = "translateY(0)";
+      toast.style.opacity = "1";
+    }, 10);
+
+    setTimeout(() => {
+      toast.style.transform = "translateY(-20px)";
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 300);
+    }, 4000);
+  }
+
   // --- Feedback Form ---
   function initFeedbackForm() {
     const form = document.getElementById("feedback-form");
@@ -54,20 +118,21 @@
       const cat = document.getElementById("fb-category").value;
       const subj = document.getElementById("fb-subject").value;
       const body = document.getElementById("fb-body").value;
-      if (!subj || !body) return;
+      if (!subj || !body) {
+        showToast("Please fill in both subject and description", "error");
+        return;
+      }
       try {
         const res = await fetch(
           `${API}/feedback/?category=${encodeURIComponent(cat)}&subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`,
           { method: "POST" }
         );
         const d = await res.json();
-        const result = document.getElementById("fb-result");
-        result.textContent = d.message || "Submitted!";
-        result.style.display = "block";
+        showToast(d.message || "Feedback submitted successfully!");
         form.reset();
-        setTimeout(() => (result.style.display = "none"), 4000);
       } catch (err) {
         console.error("Feedback submit failed:", err);
+        showToast("Failed to submit feedback. Please try again.", "error");
       }
     });
   }

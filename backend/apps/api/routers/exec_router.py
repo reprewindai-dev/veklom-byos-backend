@@ -5,8 +5,17 @@ from fastapi.responses import StreamingResponse
 
 from backend.core.ai.provider_router import run_completion, stream_completion
 from backend.core.security.auth import get_current_user
+from backend.core.security.wallet_guard import token_deduction_guard
+from backend.core.security.entitlements import require_entitlement
 
-router = APIRouter(tags=["AI Exec SSE"])
+router = APIRouter(
+    tags=["AI Exec SSE"],
+    dependencies=[
+        Depends(get_current_user),
+        Depends(token_deduction_guard),
+        Depends(require_entitlement("pro"))
+    ]
+)
 
 
 @router.post("/v1/exec")

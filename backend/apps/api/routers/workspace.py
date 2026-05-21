@@ -14,7 +14,7 @@ from backend.db.models.ai import ExecLog
 from backend.db.models.marketplace import Deployment, Pipeline
 from backend.db.models.security import AuditLog, SecurityEvent
 from backend.db.models.workspace import ModelConfig, Workspace, WorkspaceMember
-from backend.db.models.user import APIKey
+from backend.db.models.user import APIKey, User
 from backend.db.models.billing import BudgetRule
 
 router = APIRouter(prefix="/workspace", tags=["Workspace"])
@@ -298,13 +298,89 @@ async def delete_ws_key(key_id: str, user=Depends(get_current_user), db: AsyncSe
 
 
 @router.get("/members")
-async def list_members(user=Depends(get_current_user)):
-    return [{"id": user.id, "email": user.email, "role": "owner", "joined_at": datetime.now(timezone.utc).isoformat()}]
+async def list_members(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not user.workspace_id:
+        return [{"id": user.id, "email": user.email, "role": "owner", "joined_at": datetime.now(timezone.utc).isoformat()}]
+        
+    result = await db.execute(
+        select(WorkspaceMember, User)
+        .join(User, WorkspaceMember.user_id == User.id)
+        .where(WorkspaceMember.workspace_id == user.workspace_id)
+    )
+    members = []
+    for wm, u in result.all():
+        members.append({
+            "id": u.id,
+            "email": u.email,
+            "role": wm.role,
+            "joined_at": wm.joined_at.isoformat() if wm.joined_at else None
+        })
+        
+    # If the owner isn't in the members list yet (e.g., legacy data), append them
+    if not any(m["id"] == user.id for m in members):
+        members.append({
+            "id": user.id,
+            "email": user.email,
+            "role": "owner",
+            "joined_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+    return members
 
 
 @router.post("/members/invite")
-async def invite_member(body: dict, user=Depends(get_current_user)):
-    return {"message": f"Invitation sent to {body.get('email', '')}"}
+async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not user.workspace_id:
+        raise HTTPException(status_code=400, detail="User is not part of a valid workspace")
+        
+    email = body.get("email")
+    role = body.get("role", "developer")
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+        
+    # Check if user exists
+    user_result = await db.execute(select(User).where(User.email == email))
+    target_user = user_result.scalar_one_or_none()
+    
+    if not target_user:
+        # Create a shell user for the invitation
+        import secrets
+        from backend.core.security.auth import get_password_hash
+        
+        target_user = User(
+            email=email,
+            username=email.split("@")[0] + "_" + secrets.token_hex(4),
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            full_name="Invited User",
+            workspace_id=user.workspace_id
+        )
+        db.add(target_user)
+        await db.commit()
+        await db.refresh(target_user)
+        
+    # Check if already a member
+    member_result = await db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == user.workspace_id,
+            WorkspaceMember.user_id == target_user.id
+        )
+    )
+    if member_result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="User is already a member of this workspace")
+        
+    # Add to workspace
+    wm = WorkspaceMember(
+        workspace_id=user.workspace_id,
+        user_id=target_user.id,
+        role=role,
+        invited_by=user.id
+    )
+    db.add(wm)
+    target_user.workspace_id = user.workspace_id
+    await db.commit()
+    
+    return {"message": f"Invitation successfully sent and {email} has been provisioned."}
 
 
 @router.get("/budget")

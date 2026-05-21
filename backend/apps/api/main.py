@@ -16,13 +16,20 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
+from backend.core.plugins.manager import plugin_manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Discover available plugins on startup
+    await plugin_manager.discover_plugins()
+    
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
+    
+    # Graceful shutdown of plugins
+    await plugin_manager.shutdown_all()
 
 
 app = FastAPI(
@@ -49,6 +56,10 @@ if settings.APP_ENV == "production":
 async def not_found(request: Request, exc):
     if request.url.path.startswith("/api/"):
         return JSONResponse(status_code=404, content={"detail": "Not found"})
+    if request.url.path.startswith("/workspace"):
+        workspace_index = WORKSPACE_DIR / "index.html"
+        if workspace_index.exists():
+            return FileResponse(str(workspace_index))
     return await _serve_frontend(request)
 
 
@@ -65,13 +76,19 @@ from backend.apps.api.routers import (
     billing,
     compliance,
     exec_router,
+    gfr,
     gpc,
     health,
     marketplace,
     monitoring,
     pipelines,
+    runtime_jobs,
     security,
+    upload,
     workspace,
+    internal_uacp,
+    internal_operators,
+    plugins,
 )
 
 # Health & status (no prefix)
@@ -87,6 +104,9 @@ app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(exec_router.router, prefix="/api")
 app.include_router(exec_router.router, prefix="/api/v1")
+
+# Runtime Jobs Status
+app.include_router(runtime_jobs.router, prefix="/api/v1")
 
 # Billing, wallet, subscriptions, budget, cost, payments, payouts
 app.include_router(billing.router, prefix="/api/v1")
@@ -109,9 +129,21 @@ app.include_router(pipelines.router)
 
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(upload.router, prefix="/api/v1")
 
 # GPC (Governed Plan Compiler)
 app.include_router(gpc.router, prefix="/api/v1")
+
+# GFR (Gradient Field Router) — Scientist & Special Agent load balancing skill
+app.include_router(gfr.router, prefix="/api/v1")
+
+# UACP Internal
+app.include_router(internal_uacp.router, prefix="/api/v1")
+app.include_router(internal_uacp.operator_router, prefix="/api/v1")
+app.include_router(internal_operators.router, prefix="/api/v1")
+
+# Plugins Management
+app.include_router(plugins.router, prefix="/api")
 
 
 # --- Frontend static files ---
@@ -216,10 +248,8 @@ async def legal_terms():
 
 
 async def _serve_frontend(request):
-    # Try landing page first, then static directory
     landing_index = LANDING_DIR / "index.html"
     static_index = FRONTEND_DIR / "index.html"
-    
     if landing_index.exists():
         return FileResponse(str(landing_index))
     elif static_index.exists():
@@ -227,7 +257,6 @@ async def _serve_frontend(request):
     return HTMLResponse(content=_fallback_html(), status_code=200)
 
 
-# GPC page
 @app.get("/gpc")
 async def gpc_page():
     index_path = GPC_DIR / "index.html"

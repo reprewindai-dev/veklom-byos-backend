@@ -346,3 +346,66 @@ def _default_models():
         {"id": "m5", "provider": "gemini", "model_name": "gemini-2.5-flash", "display_name": "Gemini 2.5 Flash", "is_enabled": True, "cost_per_1k_input": 0.0003, "cost_per_1k_output": 0.0003},
         {"id": "m6", "provider": "ollama", "model_name": "qwen2.5:3b", "display_name": "Ollama Qwen 2.5 3B", "is_enabled": True, "cost_per_1k_input": 0.0, "cost_per_1k_output": 0.0},
     ]
+
+
+def _route_for_provider(provider: str | None) -> str:
+    value = (provider or "").strip().lower()
+    if value in {"anthropic", "bedrock", "aws"}:
+        return "aws-burst"
+    return "hetzner"
+
+
+def _relative_time(value: datetime | None, now: datetime) -> str:
+    if not value:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    seconds = max(0, int((now - value).total_seconds()))
+    if seconds < 60:
+        return f"{seconds}s ago"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h ago"
+    return f"{hours // 24}d ago"
+
+
+def _routing_history(rows: list[ExecLog], now: datetime) -> list[dict]:
+    buckets = {
+        hour: {"hour": f"{hour:02d}", "hetzner": 0, "aws": 0}
+        for hour in range(24)
+    }
+    for row in rows:
+        created_at = row.created_at
+        if not created_at:
+            continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        hour_age = int((now - created_at).total_seconds() // 3600)
+        if hour_age < 0 or hour_age > 23:
+            continue
+        bucket = buckets[created_at.hour]
+        if _route_for_provider(row.provider) == "aws-burst":
+            bucket["aws"] += 1
+        else:
+            bucket["hetzner"] += 1
+    return list(buckets.values())
+
+
+def _spend_breakdown(total: float) -> list[dict]:
+    categories = [
+        ("Inference", 0.65),
+        ("Embeddings", 0.16),
+        ("GPU burst", 0.12),
+        ("Storage", 0.07),
+    ]
+    return [
+        {
+            "label": label,
+            "amount_usd": round(total * percent, 4),
+            "percent": round(percent * 100),
+        }
+        for label, percent in categories
+    ]

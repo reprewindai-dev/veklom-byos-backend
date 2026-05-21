@@ -31,9 +31,10 @@ USER veklom
 # Expose port
 EXPOSE 8088
 
-# Health check (Coolify compatible)
+# Health check (Coolify compatible). Follow the runtime PORT so a Coolify
+# port override does not make the new container fail health checks.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8088/health || exit 1
+    CMD sh -c 'curl -f "http://localhost:${PORT:-8088}/health" || exit 1'
 
 # Run with uvicorn (PORT can be overridden by Coolify)
 CMD ["sh", "-c", "uvicorn backend.apps.api.main:app --host 0.0.0.0 --port ${PORT:-8088}"]

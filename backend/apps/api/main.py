@@ -116,6 +116,17 @@ from backend.apps.api.routers import (
 # Health & status (no prefix)
 app.include_router(health.router)
 
+
+@app.get("/debug/env")
+async def debug_env():
+    """Debug endpoint to show current environment configuration."""
+    return JSONResponse(content={
+        "database_url": settings.DATABASE_URL,
+        "redis_url": settings.REDIS_URL,
+        "app_env": settings.APP_ENV,
+        "debug": settings.DEBUG,
+    })
+
 # Auth
 app.include_router(auth.router, prefix="/api/v1")
 

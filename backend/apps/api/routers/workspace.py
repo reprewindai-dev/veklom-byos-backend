@@ -160,8 +160,17 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         for row in recent_runs[:5]
     ]
 
-    active_pipelines = await db.scalar(select(func.count()).select_from(Pipeline).where(Pipeline.workspace_id == workspace_id, Pipeline.status == "active")) or 0
-    active_deployments = await db.scalar(select(func.count()).select_from(Deployment).where(Deployment.workspace_id == workspace_id, Deployment.status == "running")) or 0
+    try:
+        active_pipelines = await db.scalar(
+            select(func.count()).select_from(Pipeline).where(Pipeline.workspace_id == workspace_id)
+        ) or 0
+        active_deployments = await db.scalar(
+            select(func.count()).select_from(Deployment).where(Deployment.workspace_id == workspace_id)
+        ) or 0
+    except SQLAlchemyError:
+        await db.rollback()
+        active_pipelines = 0
+        active_deployments = 0
     burn_rate = float(spend_today) / elapsed_minutes
     forecast_eod = burn_rate * 1440
     spend_pct = round((float(spend_today) / float(budget_limit)) * 100) if budget_limit else 0

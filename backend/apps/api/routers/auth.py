@@ -1,15 +1,16 @@
-"""Authentication routes."""
+"""Authentication routes — aligned to the live PostgreSQL schema."""
 
 import base64
 import hashlib
 import hmac
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,15 +25,21 @@ from backend.core.security.auth import (
     verify_token,
 )
 from backend.db.models.user import APIKey, Session, User
+from backend.db.models.workspace import Workspace
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+# ---------------------------------------------------------------------------
+# Request / Response schemas
+# ---------------------------------------------------------------------------
+
 class RegisterRequest(BaseModel):
     email: str
-    username: str
     password: str
     full_name: str = ""
+    # username kept for backwards-compat with the frontend form but ignored
+    username: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -40,28 +47,33 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int = 3600
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _slug_from_email(email: str) -> str:
+    base = re.sub(r"[^a-z0-9]", "-", email.split("@")[0].lower())
+    return f"{base}-{secrets.token_hex(4)}"
 
 
-class UserResponse(BaseModel):
-    id: str
-    email: str
-    username: str
-    full_name: str
-    role: str
-    status: str
-    avatar_url: str
-    mfa_enabled: bool
-    workspace_id: str
-    created_at: Optional[str] = None
+def _user_dict(user: User) -> dict:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name or "",
+        "role": user.role,
+        "status": user.status,
+        "is_active": user.is_active,
+        "mfa_enabled": user.mfa_enabled,
+        "workspace_id": user.workspace_id or "",
+        "github_username": user.github_username or "",
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
 
-    class Config:
-        from_attributes = True
 
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 
 @router.post("/register")
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
@@ -69,11 +81,24 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    # Create a workspace for this new user
+    workspace = Workspace(
+        name=f"{body.full_name or body.email.split('@')[0]}'s Workspace",
+        slug=_slug_from_email(body.email),
+        industry="generic",
+        playground_profile="standard",
+        risk_tier="generic",
+    )
+    db.add(workspace)
+    await db.flush()  # Get workspace.id before creating user
+
     user = User(
         email=body.email,
-        username=body.username,
         hashed_password=get_password_hash(body.password),
         full_name=body.full_name,
+        role="USER",
+        status="ACTIVE",
+        workspace_id=workspace.id,
     )
     db.add(user)
     await db.commit()
@@ -97,14 +122,22 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
+
     if not user or not verify_password(body.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if user.status == "locked":
-        raise HTTPException(status_code=401, detail="Account locked")
+    # Status check uses uppercase enum values from live DB
+    if user.status in ("LOCKED", "SUSPENDED"):
+        raise HTTPException(status_code=401, detail="Account is locked or suspended")
 
+    if not user.is_active:
+        raise HTTPException(status_code=401, detail="Account is inactive")
+
+    # Reset failed attempts and log login time
     user.failed_login_attempts = 0
     user.last_login = datetime.now(timezone.utc)
+    user.last_activity = datetime.now(timezone.utc)
+
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_access_token(
         data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
@@ -166,7 +199,7 @@ async def me(user=Depends(get_current_user)):
 
 @router.patch("/me")
 async def update_me(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    for field in ("full_name", "avatar_url", "username"):
+    for field in ("full_name",):
         if field in body:
             setattr(user, field, body[field])
     user.updated_at = datetime.now(timezone.utc)
@@ -214,15 +247,13 @@ async def list_api_keys(user=Depends(get_current_user), db: AsyncSession = Depen
 
 @router.post("/api-keys")
 async def create_api_key(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    import secrets
-
     raw_key = f"vk_{secrets.token_urlsafe(32)}"
     key = APIKey(
         user_id=user.id,
         name=body.get("name", "Untitled Key"),
         key_hash=get_password_hash(raw_key),
         key_prefix=raw_key[:8],
-        scopes=body.get("scopes", ["read", "write"]),
+        scopes=str(body.get("scopes", ["read", "write"])),
     )
     db.add(key)
     await db.commit()
@@ -240,6 +271,10 @@ async def revoke_api_key(key_id: str, user=Depends(get_current_user), db: AsyncS
     return {"message": "Key revoked"}
 
 
+# ---------------------------------------------------------------------------
+# GitHub OAuth
+# ---------------------------------------------------------------------------
+
 GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
@@ -247,7 +282,6 @@ GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
 
 
 def _build_github_state() -> str:
-    """Build signed short-lived OAuth state token to mitigate CSRF."""
     ts = str(int(time.time()))
     nonce = secrets.token_urlsafe(16)
     payload = f"{ts}.{nonce}"
@@ -257,7 +291,6 @@ def _build_github_state() -> str:
 
 
 def _validate_github_state(state: str, max_age_seconds: int = 600) -> bool:
-    """Validate signed OAuth state and expiry window."""
     try:
         ts, nonce, sig_b64 = state.split(".", 2)
         if not ts.isdigit() or not nonce:
@@ -268,34 +301,33 @@ def _validate_github_state(state: str, max_age_seconds: int = 600) -> bool:
         if not hmac.compare_digest(expected_b64, sig_b64):
             return False
         age = int(time.time()) - int(ts)
-        if age < 0 or age > max_age_seconds:
-            return False
-        return True
+        return 0 <= age <= max_age_seconds
     except Exception:
         return False
 
 
 @router.get("/github/login")
 async def github_login():
-    """Redirect user to GitHub OAuth consent screen."""
     if not settings.GITHUB_CLIENT_ID:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
     state = _build_github_state()
     from urllib.parse import urlencode
-    
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
-        "scope": "user:email read:user repo",
+        "scope": "user:email read:user",
         "state": state,
     }
-    url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
-    return {"url": url, "state": state}
+    return {"url": f"{GITHUB_AUTH_URL}?{urlencode(params)}", "state": state}
 
 
 @router.post("/github/callback")
 @router.get("/github/callback")
-async def github_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, db: AsyncSession = Depends(get_db)):
-    """Exchange GitHub auth code for tokens. Creates account if needed."""
+async def github_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
     if request.method == "POST":
         try:
             body = await request.json()
@@ -304,10 +336,8 @@ async def github_callback(request: Request, code: Optional[str] = None, state: O
         except Exception:
             pass
 
-    if not code:
-        code = request.query_params.get("code")
-    if not state:
-        state = request.query_params.get("state")
+    code = code or request.query_params.get("code")
+    state = state or request.query_params.get("state")
 
     if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_CLIENT_SECRET:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
@@ -354,28 +384,39 @@ async def github_callback(request: Request, code: Optional[str] = None, state: O
     github_id = str(gh_user.get("id", ""))
     full_name = gh_user.get("name") or github_username
 
-    # Enforce one GitHub identity per user account
-    existing = await db.execute(select(User).where(User.github_id == github_id))
-    already_linked = existing.scalar_one_or_none()
-    
+    # Check if GitHub ID already linked to a different account
+    existing_by_gh = await db.execute(select(User).where(User.github_id == github_id))
+    already_linked = existing_by_gh.scalar_one_or_none()
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    
+
     if already_linked and user and already_linked.id != user.id:
-        raise HTTPException(status_code=409, detail="This GitHub account is already linked to a different user.")
+        raise HTTPException(status_code=409, detail="GitHub account already linked to a different user")
 
     is_new = False
     if not user:
         is_new = True
+        # Create workspace for new GitHub user
+        workspace = Workspace(
+            name=f"{full_name}'s Workspace",
+            slug=_slug_from_email(email),
+            industry="generic",
+            playground_profile="standard",
+            risk_tier="generic",
+        )
+        db.add(workspace)
+        await db.flush()
+
         user = User(
             email=email,
-            username=github_username,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             full_name=full_name,
+            role="USER",
+            status="ACTIVE",
+            workspace_id=workspace.id,
             github_id=github_id,
             github_username=github_username,
             github_access_token=gh_access_token,
-            avatar_url=gh_user.get("avatar_url", "")
         )
         db.add(user)
         await db.commit()
@@ -388,12 +429,11 @@ async def github_callback(request: Request, code: Optional[str] = None, state: O
         user.last_activity = datetime.now(timezone.utc)
         await db.commit()
 
-    # Generate app tokens
     app_access_token = create_access_token(data={"sub": user.id})
     app_refresh_token = create_access_token(
         data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
-    
+
     session = Session(
         user_id=user.id,
         session_token=app_access_token,
@@ -402,7 +442,7 @@ async def github_callback(request: Request, code: Optional[str] = None, state: O
     )
     db.add(session)
     await db.commit()
-    
+
     return {
         "access_token": app_access_token,
         "refresh_token": app_refresh_token,
@@ -421,10 +461,7 @@ async def github_repos(user=Depends(get_current_user)):
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             "https://api.github.com/user/repos",
-            headers={
-                "Authorization": f"Bearer {user.github_access_token}",
-                "Accept": "application/json",
-            },
+            headers={"Authorization": f"Bearer {user.github_access_token}", "Accept": "application/json"},
             params={"sort": "updated", "per_page": 50, "type": "owner"},
         )
         if resp.status_code != 200:
@@ -434,10 +471,9 @@ async def github_repos(user=Depends(get_current_user)):
 
 @router.get("/connected-accounts")
 async def connected_accounts(user=Depends(get_current_user)):
-    github_connected = bool(user.github_id and user.github_access_token)
     return {
         "github_configured": bool(settings.GITHUB_CLIENT_ID and settings.GITHUB_CLIENT_SECRET),
-        "github_connected": github_connected,
+        "github_connected": bool(user.github_id and user.github_access_token),
         "github_username": user.github_username,
         "github_account_id": user.github_id,
     }
@@ -458,18 +494,3 @@ async def unlink_github_account(user=Depends(get_current_user), db: AsyncSession
 @router.delete("/sessions/revoke")
 async def revoke_sessions(user=Depends(get_current_user)):
     return {"message": "All sessions revoked"}
-
-
-def _user_dict(user: User) -> dict:
-    return {
-        "id": user.id,
-        "email": user.email,
-        "username": user.username,
-        "full_name": user.full_name,
-        "role": user.role,
-        "status": user.status,
-        "avatar_url": user.avatar_url or "",
-        "mfa_enabled": user.mfa_enabled,
-        "workspace_id": user.workspace_id or "",
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-    }

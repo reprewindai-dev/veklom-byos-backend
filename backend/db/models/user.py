@@ -1,9 +1,9 @@
-"""User and auth models."""
+"""User and auth models — aligned to the live PostgreSQL schema."""
 
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from backend.core.database.database import Base
@@ -18,30 +18,48 @@ def _uuid():
 
 
 class User(Base):
+    """Maps to the live `users` table.
+
+    Enum columns (role, status) are represented as String so SQLAlchemy
+    does not attempt to recreate the PostgreSQL enum types on create_all.
+    Valid role values : OWNER ADMIN ANALYST USER READONLY
+    Valid status values: ACTIVE INACTIVE SUSPENDED LOCKED
+    """
     __tablename__ = "users"
 
     id = Column(String(36), primary_key=True, default=_uuid)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    username = Column(String(128), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), default="")
-    role = Column(String(32), default="user")
-    status = Column(String(32), default="active")
-    avatar_url = Column(String(512), default="")
-    mfa_enabled = Column(Boolean, default=False)
-    mfa_secret = Column(String(255), default="")
-    failed_login_attempts = Column(Integer, default=0)
-    account_locked_until = Column(DateTime(timezone=True), nullable=True)
-    last_login = Column(DateTime(timezone=True), nullable=True)
-    last_activity = Column(DateTime(timezone=True), nullable=True)
-    workspace_id = Column(String(36), default="")
-    metadata_json = Column(JSON, default=dict)
-    created_at = Column(DateTime(timezone=True), default=_utcnow)
-    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
+    # Enum-backed columns stored as plain strings in ORM layer
+    role = Column(String(32), default="USER")
+    status = Column(String(32), default="ACTIVE")
+
+    is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)
+
+    # Mandatory FK — every user belongs to exactly one workspace
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False)
+
+    # GitHub OAuth
     github_id = Column(String(128), unique=True, nullable=True, index=True)
     github_username = Column(String(255), nullable=True)
     github_access_token = Column(String(512), nullable=True)
+
+    # MFA
+    mfa_enabled = Column(Boolean, default=False)
+    mfa_secret = Column(String(255), nullable=True)
+    mfa_recovery_codes_json = Column(Text, nullable=True)
+
+    # Security tracking
+    failed_login_attempts = Column(Integer, default=0)
+    account_locked_until = Column(DateTime, nullable=True)
+    last_login = Column(DateTime, nullable=True)
+    last_activity = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
@@ -57,9 +75,9 @@ class Session(Base):
     ip_address = Column(String(64), default="")
     user_agent = Column(String(512), default="")
     is_active = Column(Boolean, default=True)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    last_accessed = Column(DateTime(timezone=True), default=_utcnow)
-    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    last_accessed = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     user = relationship("User", back_populates="sessions")
 
@@ -73,10 +91,10 @@ class APIKey(Base):
     name = Column(String(128), nullable=False)
     key_hash = Column(String(255), nullable=False)
     key_prefix = Column(String(16), nullable=False)
-    scopes = Column(JSON, default=list)
+    scopes = Column(Text, default="[]")
     is_active = Column(Boolean, default=True)
-    last_used = Column(DateTime(timezone=True), nullable=True)
-    expires_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    last_used = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
 
     user = relationship("User", back_populates="api_keys")

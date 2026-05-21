@@ -30,7 +30,7 @@ class PluginConfigUpdate(BaseModel):
 @router.get("/v1/plugins", response_model=List[PluginResponse])
 async def list_plugins(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """List all available plugins and their enablement state for the current workspace."""
-    workspace_id = user.default_workspace_id
+    workspace_id = user.workspace_id
     if not workspace_id:
         return []
 
@@ -62,7 +62,7 @@ async def list_plugins(user=Depends(get_current_user), db: AsyncSession = Depend
 @router.post("/v1/plugins/{plugin_id}/enable")
 async def enable_plugin(plugin_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Enable a specific plugin for the workspace."""
-    workspace_id = user.default_workspace_id
+    workspace_id = user.workspace_id
     if not workspace_id:
         raise HTTPException(status_code=400, detail="No active workspace.")
         
@@ -91,7 +91,7 @@ async def enable_plugin(plugin_id: str, user=Depends(get_current_user), db: Asyn
 @router.post("/v1/plugins/{plugin_id}/disable")
 async def disable_plugin(plugin_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Disable a specific plugin for the workspace."""
-    workspace_id = user.default_workspace_id
+    workspace_id = user.workspace_id
     if not workspace_id:
         raise HTTPException(status_code=400, detail="No active workspace.")
 
@@ -113,7 +113,7 @@ async def disable_plugin(plugin_id: str, user=Depends(get_current_user), db: Asy
 @router.post("/v1/plugins/{plugin_id}/config")
 async def configure_plugin(plugin_id: str, payload: PluginConfigUpdate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Set the workspace-scoped configuration for a plugin."""
-    workspace_id = user.default_workspace_id
+    workspace_id = user.workspace_id
     if not workspace_id:
         raise HTTPException(status_code=400, detail="No active workspace.")
         

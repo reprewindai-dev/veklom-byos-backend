@@ -45,3 +45,8 @@ async def platform_status():
         "total_requests_24h": 4521,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.post("/test-post")
+async def test_post():
+    return {"status": "success", "message": "POST endpoint works"}

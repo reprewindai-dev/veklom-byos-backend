@@ -78,6 +78,10 @@ def _user_dict(user: User) -> dict:
 @router.post("/register")
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     try:
+        # Ensure database tables exist
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        
         existing = await db.execute(select(User).where(User.email == body.email))
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email already registered")

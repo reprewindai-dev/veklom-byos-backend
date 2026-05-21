@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "veklom"
     POSTGRES_USER: str = "veklom"
     POSTGRES_PASSWORD: str = ""
-    DATABASE_URL: str = "sqlite+aiosqlite:///./veklom.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:////tmp/veklom.db"
 
     # Redis
     REDIS_PASSWORD: str = ""

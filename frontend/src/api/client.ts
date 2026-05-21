@@ -1,8 +1,9 @@
 const getApiBase = (): string => {
   const filePreviewBase =
     window.location.protocol === 'file:' ? 'http://5.78.135.11:8000/api/v1' : '/api/v1';
+  const envBase = import.meta.env.VITE_API_URL;
   // @ts-ignore
-  const configured = window.__VEKLOM_API_BASE__ || filePreviewBase;
+  const configured = window.__VEKLOM_API_BASE__ || envBase || filePreviewBase;
   const base = String(configured).replace(/\/+$/, '');
   // Ensure we include '/api/v1' in base path if not present (unless it is root API base)
   if (!base.includes('/api/v1') && !base.startsWith('http') && base !== '') {

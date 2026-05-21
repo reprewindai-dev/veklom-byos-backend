@@ -136,6 +136,7 @@ def _mount_static():
         )
     if GPC_DIR.exists():
         app.mount("/gpc-engine", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc-engine")
+        app.mount("/gpc", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc")
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

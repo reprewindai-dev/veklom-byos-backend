@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veklom - Sign Up / Login</title>
+    <link rel="stylesheet" href="/static/css/veklom.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .auth-container {
+            background: #111;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+        }
+        .auth-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .auth-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffb800;
+            margin-bottom: 8px;
+        }
+        .auth-header p {
+            color: #888;
+            font-size: 14px;
+        }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            background: #1a1a1a;
+            padding: 4px;
+            border-radius: 8px;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+        }
+        .tab.active {
+            background: #ffb800;
+            color: #0a0a0a;
+        }
+        .form {
+            display: none;
+        }
+        .form.active {
+            display: block;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #888;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 14px;
+            transition: border-color 0.15s ease;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #ffb800;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: #ffb800;
+            color: #0a0a0a;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .btn:hover {
+            background: #e6a500;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .error {
+            color: #ff4466;
+            font-size: 13px;
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(255, 68, 102, 0.1);
+            border-radius: 8px;
+            display: none;
+        }
+        .success {
+            color: #00ff94;
+            font-size: 13px;
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(0, 255, 148, 0.1);
+            border-radius: 8px;
+            display: none;
+        }
+        .link {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #888;
+        }
+        .link a {
+            color: #ffb800;
+            text-decoration: none;
+        }
+        .link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-header">
+            <h1>Veklom Hub</h1>
+            <p>Sovereign AI Control Plane</p>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('login')">Login</button>
+            <button class="tab" onclick="showTab('register')">Sign Up</button>
+        </div>
+        
+        <!-- Login Form -->
+        <form id="login-form" class="form active" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label for="login-email">Email</label>
+                <input type="email" id="login-email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="btn" id="login-btn">Login</button>
+            <div class="error" id="login-error"></div>
+            <div class="success" id="login-success"></div>
+        </form>
+        
+        <!-- Register Form -->
+        <form id="register-form" class="form" onsubmit="handleRegister(event)">
+            <div class="form-group">
+                <label for="register-email">Email</label>
+                <input type="email" id="register-email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+                <label for="register-username">Username</label>
+                <input type="text" id="register-username" required placeholder="username">
+            </div>
+            <div class="form-group">
+                <label for="register-fullname">Full Name</label>
+                <input type="text" id="register-fullname" placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label for="register-password">Password</label>
+                <input type="password" id="register-password" required placeholder="••••••••" minlength="8">
+            </div>
+            <button type="submit" class="btn" id="register-btn">Create Account</button>
+            <div class="error" id="register-error"></div>
+            <div class="success" id="register-success"></div>
+        </form>
+        
+        <div class="link">
+            <a href="/workspace">Go to Workspace →</a>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.__VEKLOM_API_BASE__ || '/api/v1';
+        
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.form').forEach(f => f.classList.remove('active'));
+            
+            if (tab === 'login') {
+                document.querySelector('.tab:first-child').classList.add('active');
+                document.getElementById('login-form').classList.add('active');
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+                document.getElementById('register-form').classList.add('active');
+            }
+            
+            // Clear messages
+            document.querySelectorAll('.error, .success').forEach(el => el.style.display = 'none');
+        }
+        
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const btn = document.getElementById('login-btn');
+            const errorEl = document.getElementById('login-error');
+            const successEl = document.getElementById('login-success');
+            
+            btn.disabled = true;
+            btn.textContent = 'Logging in...';
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+            
+            try {
+                const res = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    successEl.textContent = 'Login successful! Redirecting...';
+                    successEl.style.display = 'block';
+                    setTimeout(() => window.location.href = '/workspace', 1000);
+                } else {
+                    errorEl.textContent = data.detail || 'Login failed';
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                errorEl.textContent = 'Network error. Please try again.';
+                errorEl.style.display = 'block';
+            }
+            
+            btn.disabled = false;
+            btn.textContent = 'Login';
+        }
+        
+        async function handleRegister(e) {
+            e.preventDefault();
+            const email = document.getElementById('register-email').value;
+            const username = document.getElementById('register-username').value;
+            const full_name = document.getElementById('register-fullname').value;
+            const password = document.getElementById('register-password').value;
+            const btn = document.getElementById('register-btn');
+            const errorEl = document.getElementById('register-error');
+            const successEl = document.getElementById('register-success');
+            
+            btn.disabled = true;
+            btn.textContent = 'Creating account...';
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+            
+            try {
+                const res = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, username, password, full_name })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    successEl.textContent = 'Account created! Redirecting...';
+                    successEl.style.display = 'block';
+                    setTimeout(() => window.location.href = '/workspace', 1000);
+                } else {
+                    errorEl.textContent = data.detail || 'Registration failed';
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                errorEl.textContent = 'Network error. Please try again.';
+                errorEl.style.display = 'block';
+            }
+            
+            btn.disabled = false;
+            btn.textContent = 'Create Account';
+        }
+    </script>
+</body>
+</html>

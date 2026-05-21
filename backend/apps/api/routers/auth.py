@@ -77,7 +77,13 @@ def _user_dict(user: User) -> dict:
 
 @router.post("/register")
 async def register(body: RegisterRequest):
-    return {"status": "test", "message": "Register endpoint reached", "email": body.email}
+    try:
+        return {"status": "test", "message": "Register endpoint reached", "email": body.email}
+    except Exception as e:
+        import traceback
+        error_detail = f"Registration error: {str(e)}\nTraceback: {traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 
 @router.post("/login")

@@ -122,8 +122,8 @@ async def test_no_db():
     """Test endpoint without database dependency."""
     return {"status": "success", "message": "Endpoint works without database"}
 
-# Auth - include without prefix to test
-app.include_router(auth.router)
+# Auth - restore /api/v1 prefix
+app.include_router(auth.router, prefix="/api/v1")
 
 # Workspace
 app.include_router(workspace.router, prefix="/api/v1")

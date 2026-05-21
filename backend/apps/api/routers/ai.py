@@ -38,7 +38,7 @@ async def ai_complete(body: dict, user=Depends(get_current_user), db: AsyncSessi
     db.add(log)
     await db.commit()
 
-    data["audit_id"] = log.id
+    data["audit_log_id"] = log.id
     data["cost_usd"] = log.cost_usd
     data["content_safety_score"] = log.content_safety_score
     return data

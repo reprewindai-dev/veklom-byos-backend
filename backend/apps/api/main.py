@@ -18,6 +18,10 @@ from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager
 
+# Import all models to ensure they're registered with Base.metadata
+from backend.db.models.user import User, Session, APIKey
+from backend.db.models.workspace import Workspace, WorkspaceMember, ModelConfig
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

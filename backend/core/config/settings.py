@@ -40,40 +40,13 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "veklom"
     POSTGRES_USER: str = "veklom"
     POSTGRES_PASSWORD: str = ""
-    DATABASE_URL: str = "sqlite+aiosqlite:///./veklom.db"
-    
-    @field_validator("DATABASE_URL")
-    @classmethod
-    def validate_database_url(cls, v: str) -> str:
-        """Auto-convert Docker service names to external host for Coolify."""
-        # If using Docker service names, auto-convert to external IP
-        if "postgres:" in v and "5432" in v:
-            v = v.replace("postgres:", "5.78.135.11:")
-        # If DATABASE_URL is using SQLite and we're in a containerized environment, override with PostgreSQL
-        if "sqlite" in v:
-            # Check if we're likely in Coolify/production by checking for common indicators
-            if os.path.exists("/.dockerenv") or os.environ.get("APP_ENV") == "production":
-                v = f"postgresql+asyncpg://veklom_user:Veklom2026SecureDB!@5.78.135.11:5432/veklom_production"
-        return v
+    DATABASE_URL: str = "postgresql+asyncpg://veklom_user:Veklom2026SecureDB!@5.78.135.11:5432/veklom_production"
 
     # Redis
-    REDIS_PASSWORD: str = ""
-    REDIS_URL: str = "redis://localhost:6379/0"
-    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
-    
-    @field_validator("REDIS_URL", "CELERY_BROKER_URL", "CELERY_RESULT_BACKEND")
-    @classmethod
-    def validate_redis_url(cls, v: str) -> str:
-        """Auto-convert Docker service names to external host for Coolify."""
-        if "redis:" in v and "6379" in v:
-            # Replace Docker service name with external IP for Coolify
-            v = v.replace("redis:", "5.78.135.11:")
-        # If Redis URL is using localhost and we're in a containerized environment, override with external IP
-        if "localhost" in v:
-            if os.path.exists("/.dockerenv") or os.environ.get("APP_ENV") == "production":
-                v = v.replace("localhost", "5.78.135.11")
-        return v
+    REDIS_PASSWORD: str = "Veklom2026Redis!"
+    REDIS_URL: str = "redis://:Veklom2026Redis!@5.78.135.11:6379/0"
+    CELERY_BROKER_URL: str = "redis://:Veklom2026Redis!@5.78.135.11:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://:Veklom2026Redis!@5.78.135.11:6379/1"
 
     # JWT
     JWT_SECRET_KEY: str = "veklom-sovereign-secret-key-change-in-production"

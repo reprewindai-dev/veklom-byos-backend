@@ -17,12 +17,12 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "json"
     LOG_FILE_PATH: str = "/app/logs/veklom.log"
     APP_ENV: str = "development"
-    PORT: int = 8000
+    PORT: int = 8088
     MAX_WORKERS: int = 4
 
     # URLs
     FRONTEND_URL: str = "http://localhost:5173"
-    API_URL: str = "http://localhost:8000"
+    API_URL: str = "http://localhost:8088"
     ADMIN_EMAIL: str = "admin@localhost"
     VEKLOM_API_BASE: str = "/api/v1"
 
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "veklom"
     POSTGRES_USER: str = "veklom"
     POSTGRES_PASSWORD: str = ""
-    DATABASE_URL: str = "sqlite+aiosqlite:////tmp/veklom.db"
+    DATABASE_URL: str = ""
 
     # Redis
     REDIS_PASSWORD: str = ""

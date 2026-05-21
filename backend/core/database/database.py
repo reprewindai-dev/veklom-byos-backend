@@ -6,9 +6,8 @@ from sqlalchemy.orm import DeclarativeBase
 
 from backend.core.config.settings import settings
 
-# Use SQLite by default for simplicity
 engine = create_async_engine(
-    "sqlite+aiosqlite:////tmp/veklom.db",
+    settings.DATABASE_URL,
     echo=settings.DEBUG,
     future=True,
 )

@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Union[str, List[str]] = "*"
     ALLOWED_HOSTS: Union[str, List[str]] = "*"
 
+    # GitHub OAuth
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+
     # Stripe
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""

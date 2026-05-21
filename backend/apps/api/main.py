@@ -49,6 +49,10 @@ if settings.APP_ENV == "production":
 async def not_found(request: Request, exc):
     if request.url.path.startswith("/api/"):
         return JSONResponse(status_code=404, content={"detail": "Not found"})
+    if request.url.path.startswith("/workspace"):
+        workspace_index = WORKSPACE_DIR / "index.html"
+        if workspace_index.exists():
+            return FileResponse(str(workspace_index))
     return await _serve_frontend(request)
 
 
@@ -70,6 +74,7 @@ from backend.apps.api.routers import (
     marketplace,
     monitoring,
     pipelines,
+    runtime_jobs,
     security,
     workspace,
 )
@@ -87,6 +92,9 @@ app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(exec_router.router, prefix="/api")
 app.include_router(exec_router.router, prefix="/api/v1")
+
+# Runtime Jobs Status
+app.include_router(runtime_jobs.router, prefix="/api/v1")
 
 # Billing, wallet, subscriptions, budget, cost, payments, payouts
 app.include_router(billing.router, prefix="/api/v1")

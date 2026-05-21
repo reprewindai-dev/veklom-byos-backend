@@ -3,8 +3,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -236,12 +237,89 @@ async def revoke_api_key(key_id: str, user=Depends(get_current_user), db: AsyncS
 
 @router.get("/github/login")
 async def github_login():
-    return {"url": "https://github.com/login/oauth/authorize?client_id=placeholder"}
+    if not settings.GITHUB_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="GitHub Client ID not configured")
+    url = f"https://github.com/login/oauth/authorize?client_id={settings.GITHUB_CLIENT_ID}&scope=user:email"
+    return {"url": url}
 
 
 @router.get("/github/callback")
-async def github_callback(code: str = ""):
-    return {"message": "OAuth callback received", "code": code}
+async def github_callback(code: str = "", db: AsyncSession = Depends(get_db)):
+    if not code:
+        raise HTTPException(status_code=400, detail="Authorization code not provided")
+    
+    # 1. Exchange code for access token
+    token_url = "https://github.com/login/oauth/access_token"
+    headers = {"Accept": "application/json"}
+    data = {
+        "client_id": settings.GITHUB_CLIENT_ID,
+        "client_secret": settings.GITHUB_CLIENT_SECRET,
+        "code": code
+    }
+    
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post(token_url, data=data, headers=headers)
+        token_data = token_res.json()
+        
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Failed to retrieve GitHub access token")
+        
+    # 2. Get user info
+    user_url = "https://api.github.com/user"
+    auth_headers = {"Authorization": f"token {access_token}"}
+    
+    async with httpx.AsyncClient() as client:
+        user_res = await client.get(user_url, headers=auth_headers)
+        user_info = user_res.json()
+        
+        # GitHub might not return public email, so we fetch it explicitly
+        emails_res = await client.get(f"{user_url}/emails", headers=auth_headers)
+        emails = emails_res.json()
+        
+    primary_email = next((email["email"] for email in emails if email["primary"]), None)
+    if not primary_email:
+        raise HTTPException(status_code=400, detail="No primary email found for GitHub account")
+        
+    # 3. Find or create user
+    result = await db.execute(select(User).where(User.email == primary_email))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        # Register new user from GitHub
+        user = User(
+            email=primary_email,
+            username=user_info.get("login", primary_email.split("@")[0]),
+            hashed_password=get_password_hash("github_oauth_managed"),
+            full_name=user_info.get("name", ""),
+            avatar_url=user_info.get("avatar_url", "")
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+    # 4. Generate app tokens
+    app_access_token = create_access_token(data={"sub": user.id})
+    app_refresh_token = create_access_token(
+        data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+    
+    session = Session(
+        user_id=user.id,
+        session_token=app_access_token,
+        refresh_token=app_refresh_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    db.add(session)
+    await db.commit()
+    
+    return {
+        "access_token": app_access_token,
+        "refresh_token": app_refresh_token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "user": _user_dict(user),
+    }
 
 
 @router.get("/github/repos")

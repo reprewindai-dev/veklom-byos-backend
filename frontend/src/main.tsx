@@ -1,9 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { Workspace } from './pages/Workspace';
+import { Overview } from './components/Overview';
+import { Playground } from './components/Playground';
+import { GpcPage } from './pages/GpcPage';
+import { CommandCenter } from './components/CommandCenter';
+import { ModelsPage } from './pages/ModelsPage';
+import { Pipelines } from './components/Pipelines';
+import { DeploymentsPage } from './pages/DeploymentsPage';
+import { Routing } from './components/Routing';
+import { VaultPage } from './pages/VaultPage';
+import { CompliancePage } from './pages/CompliancePage';
+import { MonitoringPage } from './pages/MonitoringPage';
+import { TeamPage } from './pages/TeamPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { getToken, api } from './api/client';
 import './index.css';
+
+// Dynamic basename determination supporting local Vite root and FastAPI /workspace mounts
+const basename = window.location.pathname.startsWith('/workspace') ? '/workspace' : '/';
+
+const ProtectedLayout: React.FC<{ user: any; onLogout: () => void }> = ({ user, onLogout }) => {
+  const location = useLocation();
+  if (!user) {
+    // Preserve target path and state to redirect back after login
+    const targetPath = location.pathname + location.search + location.hash;
+    return <Navigate to="/login" state={{ from: targetPath }} replace />;
+  }
+  return <Workspace user={user} onLogout={onLogout} />;
+};
+
+const LoginWrapper: React.FC<{ user: any; onLoginSuccess: (u: any) => void }> = ({ user, onLoginSuccess }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      const from = (location.state as any)?.from || '/overview';
+      navigate(from, { replace: true });
+    }
+  }, [user, location, navigate]);
+
+  return <Login onLoginSuccess={onLoginSuccess} />;
+};
 
 const App: React.FC = () => {
   const [token, setTokenState] = useState<string>(getToken());
@@ -20,7 +61,6 @@ const App: React.FC = () => {
       }
 
       try {
-        // Fetch current workspace/member profiles to verify session
         const memberInfo = await api('/workspace/members');
         if (Array.isArray(memberInfo) && memberInfo.length > 0) {
           setUser(memberInfo[0]);
@@ -63,11 +103,30 @@ const App: React.FC = () => {
 
   return (
     <React.StrictMode>
-      {user ? (
-        <Workspace user={user} onLogout={handleLogout} />
-      ) : (
-        <Login onLoginSuccess={handleLoginSuccess} />
-      )}
+      <BrowserRouter basename={basename}>
+        <Routes>
+          <Route path="/login" element={<LoginWrapper user={user} onLoginSuccess={handleLoginSuccess} />} />
+          
+          {/* Protected Roster of subpages */}
+          <Route path="/" element={<ProtectedLayout user={user} onLogout={handleLogout} />}>
+            <Route index element={<Navigate to="/overview" replace />} />
+            <Route path="overview" element={<Overview />} />
+            <Route path="playground" element={<Playground />} />
+            <Route path="gpc" element={<GpcPage />} />
+            <Route path="command-center" element={<CommandCenter />} />
+            <Route path="models" element={<ModelsPage />} />
+            <Route path="pipelines" element={<Pipelines />} />
+            <Route path="deployments" element={<DeploymentsPage />} />
+            <Route path="routing" element={<Routing />} />
+            <Route path="vault" element={<VaultPage />} />
+            <Route path="compliance" element={<CompliancePage />} />
+            <Route path="monitoring" element={<MonitoringPage />} />
+            <Route path="team" element={<TeamPage />} />
+            <Route path="settings" element={<SettingsPage user={user} onLogout={handleLogout} />} />
+            <Route path="*" element={<Navigate to="/overview" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
     </React.StrictMode>
   );
 };

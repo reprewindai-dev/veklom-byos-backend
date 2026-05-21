@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api, setToken } from '../api/client';
-import { Shield, Key, AlertCircle, Cpu } from 'lucide-react';
+import { Shield, Key, AlertCircle, Cpu, Github } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
@@ -38,6 +38,20 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       setError(err.message || 'Invalid email or password. Access Denied.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGithubLogin = async () => {
+    setError('');
+    try {
+      const data = await api('/auth/github/login');
+      if (data && data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('Failed to get GitHub redirect URL.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'GitHub OAuth failed.');
     }
   };
 
@@ -116,7 +130,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           <div className="pt-2">
             <button
               type="submit"
-              className="btn btn-primary w-full py-3 text-xs tracking-[0.08em] font-bold"
+              className="btn btn-primary w-full py-3 text-xs tracking-[0.08em] font-bold mb-3"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -127,6 +141,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               ) : (
                 'ESTABLISH SECURE ACCESS'
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleGithubLogin}
+              className="w-full py-3 text-xs tracking-[0.08em] font-bold bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.08)] transition-colors rounded-md flex items-center justify-center gap-2 text-white"
+              disabled={isLoading}
+            >
+              <Github size={16} />
+              AUTHENTICATE WITH GITHUB
             </button>
           </div>
         </form>

@@ -523,3 +523,9 @@ async def debug_env():
         "app_env": settings.APP_ENV,
         "debug": settings.DEBUG,
     }
+
+
+@router.get("/test/no-db")
+async def test_no_db():
+    """Test endpoint without database dependency."""
+    return {"status": "success", "message": "Endpoint works without database"}

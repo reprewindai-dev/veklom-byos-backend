@@ -17,12 +17,12 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "json"
     LOG_FILE_PATH: str = "/app/logs/veklom.log"
     APP_ENV: str = "development"
-    PORT: int = 8088
+    PORT: int = 8000
     MAX_WORKERS: int = 4
 
     # URLs
     FRONTEND_URL: str = "http://localhost:5173"
-    API_URL: str = "http://localhost:8088"
+    API_URL: str = "http://localhost:8000"
     ADMIN_EMAIL: str = "admin@localhost"
     VEKLOM_API_BASE: str = "/api/v1"
 

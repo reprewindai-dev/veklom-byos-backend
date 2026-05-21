@@ -260,14 +260,6 @@ async def root():
     return await _serve_frontend(None)
 
 
-@app.get("/{path:path}")
-async def catch_all(path: str):
-    """Catch-all route for frontend routes - only for non-API paths."""
-    if path.startswith("api/"):
-        raise HTTPException(status_code=404, detail="API route not found")
-    return await _serve_frontend(None)
-
-
 @app.get("/legal/privacy")
 async def legal_privacy():
     path = LANDING_DIR / "privacy.html"

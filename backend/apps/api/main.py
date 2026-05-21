@@ -21,6 +21,17 @@ from backend.core.plugins.manager import plugin_manager
 # Import all models to ensure they're registered with Base.metadata
 from backend.db.models.user import User, Session, APIKey
 from backend.db.models.workspace import Workspace, WorkspaceMember, ModelConfig
+from backend.db.models.agent import Agent, AgentExecution, AgentTool
+from backend.db.models.ai import AIModel, AIProvider, AIUsage
+from backend.db.models.asset import Asset, AssetVersion
+from backend.db.models.billing import BillingAccount, Invoice, Payment
+from backend.db.models.billing_ext import Subscription, UsageRecord
+from backend.db.models.genome import Genome, GenomeVariant
+from backend.db.models.ledger import LedgerEntry, Transaction
+from backend.db.models.lineage import LineageNode, LineageEdge
+from backend.db.models.marketplace import MarketplaceListing, MarketplacePurchase
+from backend.db.models.plugin import Plugin, WorkspacePlugin
+from backend.db.models.security import AuditLog, SecurityEvent
 
 
 @asynccontextmanager

@@ -69,6 +69,7 @@ from backend.apps.api.routers import (
     billing,
     compliance,
     exec_router,
+    gfr,
     gpc,
     health,
     marketplace,
@@ -121,6 +122,9 @@ app.include_router(admin.router, prefix="/api/v1")
 # GPC (Governed Plan Compiler)
 app.include_router(gpc.router, prefix="/api/v1")
 
+# GFR (Gradient Field Router) — Scientist & Special Agent load balancing skill
+app.include_router(gfr.router, prefix="/api/v1")
+
 
 # --- Frontend static files ---
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "static"
@@ -144,7 +148,6 @@ def _mount_static():
         )
     if GPC_DIR.exists():
         app.mount("/gpc-engine", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc-engine")
-    # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
@@ -223,10 +226,8 @@ async def legal_terms():
 
 
 async def _serve_frontend(request):
-    # Try landing page first, then static directory
     landing_index = LANDING_DIR / "index.html"
     static_index = FRONTEND_DIR / "index.html"
-    
     if landing_index.exists():
         return FileResponse(str(landing_index))
     elif static_index.exists():
@@ -234,7 +235,6 @@ async def _serve_frontend(request):
     return HTMLResponse(content=_fallback_html(), status_code=200)
 
 
-# GPC page
 @app.get("/gpc")
 async def gpc_page():
     index_path = GPC_DIR / "index.html"

@@ -76,8 +76,8 @@ def _user_dict(user: User) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.post("/register")
-async def register():
-    return {"status": "test", "message": "Register endpoint reached"}
+async def register(body: RegisterRequest):
+    return {"status": "test", "message": "Register endpoint reached", "email": body.email}
 
 
 @router.post("/login")

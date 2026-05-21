@@ -76,9 +76,51 @@ def _user_dict(user: User) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.post("/register")
-async def register(body: RegisterRequest):
+async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     try:
-        return {"status": "test", "message": "Register endpoint reached", "email": body.email}
+        # Ensure database tables exist
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        
+        existing = await db.execute(select(User).where(User.email == body.email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already registered")
+
+        # Create a workspace for this new user
+        workspace = Workspace(
+            name=f"{body.full_name or body.email.split('@')[0]}'s Workspace",
+            slug=_slug_from_email(body.email),
+            industry="generic",
+            playground_profile="standard",
+            risk_tier="generic",
+        )
+        db.add(workspace)
+        await db.flush()  # Get workspace.id before creating user
+
+        user = User(
+            email=body.email,
+            hashed_password=get_password_hash(body.password),
+            full_name=body.full_name,
+            role="USER",
+            status="ACTIVE",
+            workspace_id=workspace.id,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+        access_token = create_access_token(data={"sub": user.id})
+        refresh_token = create_access_token(
+            data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        )
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "user": _user_dict(user),
+        }
     except Exception as e:
         import traceback
         error_detail = f"Registration error: {str(e)}\nTraceback: {traceback.format_exc()}"

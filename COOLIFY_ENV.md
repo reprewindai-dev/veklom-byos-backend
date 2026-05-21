@@ -35,20 +35,22 @@ ACCOUNT_LOCKOUT_DURATION_MINUTES=30
 SESSION_TIMEOUT_MINUTES=120
 ```
 
-### Database
+### Database (CRITICAL - Must use external database, not Docker service names)
 ```
 POSTGRES_DB=veklom_production
 POSTGRES_USER=veklom_user
 POSTGRES_PASSWORD=YOUR_SECURE_DB_PASSWORD
-DATABASE_URL=postgresql+asyncpg://veklom_user:YOUR_SECURE_DB_PASSWORD@postgres:5432/veklom_production
+DATABASE_URL=postgresql+asyncpg://veklom_user:YOUR_SECURE_DB_PASSWORD@YOUR_EXTERNAL_DB_HOST:5432/veklom_production
 ```
 
-### Redis
+**IMPORTANT**: Replace `YOUR_EXTERNAL_DB_HOST` with your actual PostgreSQL server IP or hostname (e.g., `5.78.135.11`). Do NOT use `postgres:5432` as that's a Docker Compose service name and won't work in Coolify.
+
+### Redis (CRITICAL - Must use external Redis, not Docker service names)
 ```
 REDIS_PASSWORD=YOUR_REDIS_PASSWORD
-REDIS_URL=redis://:YOUR_REDIS_PASSWORD@redis:6379/0
-CELERY_BROKER_URL=redis://:YOUR_REDIS_PASSWORD@redis:6379/0
-CELERY_RESULT_BACKEND=redis://:YOUR_REDIS_PASSWORD@redis:6379/1
+REDIS_URL=redis://:YOUR_REDIS_PASSWORD@YOUR_EXTERNAL_REDIS_HOST:6379/0
+CELERY_BROKER_URL=redis://:YOUR_REDIS_PASSWORD@YOUR_EXTERNAL_REDIS_HOST:6379/0
+CELERY_RESULT_BACKEND=redis://:YOUR_REDIS_PASSWORD@YOUR_EXTERNAL_REDIS_HOST:6379/1
 ```
 
 ### JWT

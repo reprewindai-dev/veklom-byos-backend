@@ -1,13 +1,16 @@
 """Application settings via pydantic-settings."""
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Union
 from pydantic import field_validator
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8-sig", case_sensitive=True, extra="ignore")
+
     APP_NAME: str = "Veklom Sovereign AI Hub"
     VERSION: str = "1.0.0"
+    ENVIRONMENT: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
@@ -49,6 +52,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # CORS
     CORS_ORIGINS: Union[str, List[str]] = "*"
@@ -95,6 +100,7 @@ class Settings(BaseSettings):
     RESEND_VERCEL_KEY: str = ""
     FROM_EMAIL: str = "noreply@yourdomain.com"
     RESEND_WEBHOOK_URL: str = ""
+    EMAIL_FROM: str = ""
     SMTP_HOST: str = "smtp.resend.com"
     SMTP_PORT: int = 465
     SMTP_PORT_TLS: int = 2465
@@ -172,10 +178,6 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
         return v
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 
 settings = Settings()

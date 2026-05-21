@@ -3,15 +3,48 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+import stripe
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.db.models.billing import BudgetRule, Invoice, Subscription, WalletTransaction
 
 router = APIRouter(tags=["Billing"])
+
+
+PLAN_AMOUNTS = {
+    "founding": {"activation": 39500, "reserve": 15000, "name": "Veklom Founding Activation + Reserve"},
+    "standard": {"activation": 79500, "reserve": 30000, "name": "Veklom Standard Activation + Reserve"},
+    "regulated": {"activation": 250000, "reserve": 250000, "name": "Veklom Regulated Activation + Reserve"},
+}
+
+
+def _stripe_ready() -> bool:
+    key = settings.STRIPE_SECRET_KEY.strip()
+    return bool(key and not key.lower().startswith("need_from") and "your-" not in key.lower())
+
+
+def _stripe_client():
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="STRIPE_SECRET_KEY is not configured")
+    stripe.api_key = settings.STRIPE_SECRET_KEY.strip()
+    return stripe
+
+
+def _success_cancel_urls() -> tuple[str, str]:
+    frontend = settings.FRONTEND_URL.rstrip("/") or "https://veklom.com"
+    return f"{frontend}/workspace#/billing?checkout=success", f"{frontend}/workspace#/billing?checkout=cancelled"
+
+
+def _checkout_amount(amount_usd: float | int) -> int:
+    amount = int(round(float(amount_usd) * 100))
+    if amount < 100:
+        raise HTTPException(status_code=400, detail="Checkout amount must be at least $1.00")
+    return amount
 
 
 # --- Wallet ---
@@ -48,7 +81,27 @@ async def topup_options(user=Depends(get_current_user)):
 
 @router.post("/wallet/topup/checkout")
 async def topup_checkout(body: dict, user=Depends(get_current_user)):
-    return {"checkout_url": "https://checkout.stripe.com/placeholder", "session_id": "cs_placeholder"}
+    client = _stripe_client()
+    amount = _checkout_amount(body.get("amount", 50))
+    success_url, cancel_url = _success_cancel_urls()
+    session = client.checkout.Session.create(
+        mode="payment",
+        customer_email=user.email,
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"user_id": user.id, "workspace_id": user.workspace_id or "", "type": "wallet_topup"},
+        line_items=[
+            {
+                "quantity": 1,
+                "price_data": {
+                    "currency": "usd",
+                    "unit_amount": amount,
+                    "product_data": {"name": "Veklom Operating Reserve Top-Up"},
+                },
+            }
+        ],
+    )
+    return {"checkout_url": session.url, "session_id": session.id}
 
 
 @router.get("/wallet/stats/usage")
@@ -78,12 +131,40 @@ async def current_subscription(user=Depends(get_current_user)):
 
 @router.post("/subscriptions/checkout")
 async def subscription_checkout(body: dict, user=Depends(get_current_user)):
-    return {"checkout_url": "https://checkout.stripe.com/placeholder", "plan": body.get("plan", "founding")}
+    client = _stripe_client()
+    plan_id = body.get("plan", "founding")
+    plan = PLAN_AMOUNTS.get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Unknown plan")
+    success_url, cancel_url = _success_cancel_urls()
+    session = client.checkout.Session.create(
+        mode="payment",
+        customer_email=user.email,
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"user_id": user.id, "workspace_id": user.workspace_id or "", "plan": plan_id, "type": "activation"},
+        line_items=[
+            {
+                "quantity": 1,
+                "price_data": {
+                    "currency": "usd",
+                    "unit_amount": plan["activation"] + plan["reserve"],
+                    "product_data": {"name": plan["name"]},
+                },
+            }
+        ],
+    )
+    return {"checkout_url": session.url, "session_id": session.id, "plan": plan_id}
 
 
 @router.get("/subscriptions/portal")
 async def subscription_portal(user=Depends(get_current_user)):
-    return {"portal_url": "https://billing.stripe.com/placeholder"}
+    client = _stripe_client()
+    if not getattr(user, "stripe_customer_id", None):
+        raise HTTPException(status_code=400, detail="No Stripe customer is attached to this account")
+    return_url = f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing"
+    session = client.billing_portal.Session.create(customer=user.stripe_customer_id, return_url=return_url)
+    return {"portal_url": session.url}
 
 
 # --- Invoices ---
@@ -169,12 +250,53 @@ async def cost_kill_switch_toggle(body: dict, user=Depends(get_current_user)):
 # --- Payments ---
 @router.post("/payments/create-checkout")
 async def create_checkout(body: dict, user=Depends(get_current_user)):
-    return {"checkout_url": "https://checkout.stripe.com/placeholder", "session_id": "cs_placeholder"}
+    return await topup_checkout(body, user)
 
 
 @router.post("/payments/create-intent")
 async def create_payment_intent(body: dict, user=Depends(get_current_user)):
-    return {"client_secret": "pi_placeholder_secret", "amount": body.get("amount", 0)}
+    client = _stripe_client()
+    amount = _checkout_amount(body.get("amount", 50))
+    intent = client.PaymentIntent.create(
+        amount=amount,
+        currency="usd",
+        receipt_email=user.email,
+        metadata={"user_id": user.id, "workspace_id": user.workspace_id or "", "type": body.get("type", "payment_intent")},
+    )
+    return {"client_secret": intent.client_secret, "amount": amount / 100}
+
+
+@router.post("/webhooks/stripe")
+async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    if not _stripe_ready() or not settings.STRIPE_WEBHOOK_SECRET.strip().startswith("whsec_"):
+        raise HTTPException(status_code=503, detail="STRIPE_WEBHOOK_SECRET is not configured")
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, signature, settings.STRIPE_WEBHOOK_SECRET.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid Stripe payload") from exc
+    except stripe.SignatureVerificationError as exc:
+        raise HTTPException(status_code=400, detail="Invalid Stripe signature") from exc
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        metadata = session.get("metadata", {})
+        user_id = metadata.get("user_id")
+        amount_total = session.get("amount_total") or 0
+        if user_id and amount_total:
+            db.add(
+                WalletTransaction(
+                    user_id=user_id,
+                    workspace_id=metadata.get("workspace_id") or "",
+                    amount=amount_total / 100,
+                    tx_type="topup" if metadata.get("type") == "wallet_topup" else "activation",
+                    description=f"Stripe {metadata.get('type', 'checkout')} {session.get('id')}",
+                )
+            )
+            await db.commit()
+
+    return {"received": True}
 
 
 # --- Payouts ---

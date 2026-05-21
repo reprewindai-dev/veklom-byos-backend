@@ -4,11 +4,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.db.models.ai import ExecLog
+from backend.db.models.security import AuditLog, SecurityEvent
 from backend.db.models.workspace import ModelConfig, Workspace, WorkspaceMember
 from backend.db.models.user import APIKey
 from backend.db.models.billing import BudgetRule
@@ -35,17 +37,118 @@ async def get_workspace(user=Depends(get_current_user), db: AsyncSession = Depen
 
 
 @router.get("/overview")
-async def workspace_overview(user=Depends(get_current_user)):
+async def workspace_overview(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    workspace_id = user.workspace_id or "default"
+    total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id)) or 0
+    total_tokens = await db.scalar(select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(ExecLog.workspace_id == workspace_id)) or 0
+    spend_today = await db.scalar(select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(ExecLog.workspace_id == workspace_id)) or 0.0
+    avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 112)).where(ExecLog.workspace_id == workspace_id)) or 112
+    audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id)) or 0
+    models_enabled = await db.scalar(select(func.count()).select_from(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True)) or 0
+    if not models_enabled:
+        models_enabled = len(_default_models())
+
+    result = await db.execute(
+        select(ExecLog)
+        .where(ExecLog.workspace_id == workspace_id)
+        .order_by(ExecLog.created_at.desc())
+        .limit(5)
+    )
+    recent_runs = [
+        {
+            "id": row.id,
+            "model": row.model or "qwen2.5:3b",
+            "route": row.provider or "ollama",
+            "latency": row.latency_ms or 0,
+            "tokens": row.total_tokens or 0,
+            "cost": row.cost_usd or 0.0,
+            "policy": "redacted" if row.policy_flags else "passed",
+            "ts": row.created_at.isoformat() if row.created_at else "",
+        }
+        for row in result.scalars().all()
+    ]
+    audit_result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.workspace_id == workspace_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(5)
+    )
+    audit_logs = [
+        {
+            "id": row.id,
+            "action": row.action,
+            "target": row.resource_type or row.resource_id or "workspace",
+            "actor": row.user_id or user.email,
+            "hash": (row.hash_chain or row.prev_hash or "")[:12],
+            "ts": row.created_at.isoformat() if row.created_at else "",
+        }
+        for row in audit_result.scalars().all()
+    ]
+    alert_result = await db.execute(
+        select(SecurityEvent)
+        .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
+        .order_by(SecurityEvent.created_at.desc())
+        .limit(5)
+    )
+    alerts = [
+        {
+            "id": row.id,
+            "title": row.description or row.event_type,
+            "severity": row.severity,
+            "source": row.threat_type or row.event_type,
+            "time": row.created_at.isoformat() if row.created_at else "",
+        }
+        for row in alert_result.scalars().all()
+    ]
+    fleet = [
+        {
+            "id": model["id"],
+            "name": model["display_name"],
+            "quant": model["provider"],
+            "replicas": 1,
+            "route": model["provider"],
+            "p50": 0 if model["provider"] == "ollama" else int(avg_latency),
+        }
+        for model in _default_models()[:4]
+    ]
+    policy_events = [
+        {
+            "t": row["ts"],
+            "title": "Inference complete",
+            "body": f"{row['tokens']} tokens · {row['latency']} ms · ${row['cost']:.5f}",
+            "tone": "info",
+        }
+        for row in recent_runs[:5]
+    ]
+
     return {
-        "workspace_id": user.workspace_id or "default",
+        "workspace_id": workspace_id,
         "plan": "free_evaluation",
         "members_count": 1,
-        "models_enabled": 5,
-        "total_requests_today": 42,
-        "spend_today_usd": 1.25,
-        "budget_remaining_usd": 148.75,
+        "models_enabled": models_enabled,
+        "total_requests_today": total_requests,
+        "requests_per_min": total_requests,
+        "p50_latency_ms": int(avg_latency),
+        "tokens_per_sec": int(total_tokens),
+        "spend_today_usd": round(float(spend_today), 4),
+        "spend_cap_usd": 150.0,
+        "budget_remaining_usd": round(150.0 - float(spend_today), 4),
         "active_pipelines": 2,
         "active_deployments": 1,
+        "active_models": models_enabled,
+        "audit_entries": audit_entries,
+        "recent_runs": recent_runs,
+        "policy_events": policy_events,
+        "alerts": alerts,
+        "audit_logs": audit_logs,
+        "fleet": fleet,
+        "routing": {
+            "hetzner_percent": 100 if total_requests else 0,
+            "aws_percent": 0,
+            "primary_region": "hetzner-fsn1",
+            "burst_region": "aws-us-east-1",
+        },
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 

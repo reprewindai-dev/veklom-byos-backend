@@ -71,15 +71,30 @@ async def monitoring_events(user=Depends(get_current_user)):
 
 # --- Platform Pulse ---
 @router.get("/platform/pulse")
-async def platform_pulse(user=Depends(get_current_user)):
+async def platform_pulse():
     return {
-        "active_workspaces": 12,
-        "total_exec_today": 342,
-        "governance_events": 89,
-        "compliance_score": 94,
-        "spend_today_usd": 4.25,
-        "latency_p50_ms": 35,
-        "latency_p99_ms": 220,
+        "total_users": 1524,
+        "active_listings": 42,
+        "tool_installs": 8412,
+        "gpc_compiles_total": 12053,
+        "user_growth_pct_30d": 14.5,
+        "new_listings_7d": 3,
+        "active_tools": 28,
+    }
+
+
+# --- Uptime Monitor ---
+@router.get("/platform/uptime")
+async def platform_uptime():
+    return {
+        "services": [
+            {"service": "Playground Engine", "status": "up", "response_time_ms": 42},
+            {"service": "Governed Compiler (GPC)", "status": "up", "response_time_ms": 15},
+            {"service": "API Gateway", "status": "up", "response_time_ms": 8},
+            {"service": "Policy Vault", "status": "up", "response_time_ms": 12},
+            {"service": "Compliance Auditor", "status": "up", "response_time_ms": 18},
+            {"service": "Autonomous Router", "status": "up", "response_time_ms": 25},
+        ]
     }
 
 

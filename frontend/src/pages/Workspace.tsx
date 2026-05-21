@@ -151,7 +151,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
         return <Playground />;
       case 'gpc':
         return (
-          <div className="w-full h-full relative rounded-xl border border-white/5 bg-black overflow-hidden flex flex-col justify-between shadow-[0_0_20px_rgba(255,184,0,0.05)]">
+          <div className="w-full h-[calc(100vh-140px)] relative rounded-xl border border-white/5 bg-black overflow-hidden flex flex-col justify-between shadow-[0_0_20px_rgba(255,184,0,0.05)]">
             <div className="h-6 bg-neutral-900 border-b border-white/5 px-3 flex items-center justify-between font-mono text-[9px] text-[var(--orange)] uppercase tracking-wider">
               <span>ESTABLISHING GPC BARE-METAL INSTANCE...</span>
               <span>HOST: LOCAL-GPC-COMPILER</span>

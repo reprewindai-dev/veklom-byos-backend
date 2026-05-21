@@ -1,4 +1,3 @@
-from .client import VeklomClient
-from .types import CompletionResponse
+from .client import VeklomClient, VeklomResponse
 
-__all__ = ["VeklomClient", "CompletionResponse"]
+__all__ = ["VeklomClient", "VeklomResponse"]

@@ -80,6 +80,7 @@ from backend.apps.api.routers import (
     upload,
     workspace,
     internal_uacp,
+    internal_operators,
 )
 
 # Health & status (no prefix)
@@ -131,6 +132,7 @@ app.include_router(gfr.router, prefix="/api/v1")
 # UACP Internal
 app.include_router(internal_uacp.router, prefix="/api/v1")
 app.include_router(internal_uacp.operator_router, prefix="/api/v1")
+app.include_router(internal_operators.router, prefix="/api/v1")
 
 
 # --- Frontend static files ---

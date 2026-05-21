@@ -16,13 +16,20 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
+from backend.core.plugins.manager import plugin_manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Discover available plugins on startup
+    await plugin_manager.discover_plugins()
+    
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
+    
+    # Graceful shutdown of plugins
+    await plugin_manager.shutdown_all()
 
 
 app = FastAPI(
@@ -81,6 +88,7 @@ from backend.apps.api.routers import (
     workspace,
     internal_uacp,
     internal_operators,
+    plugins,
 )
 
 # Health & status (no prefix)
@@ -133,6 +141,9 @@ app.include_router(gfr.router, prefix="/api/v1")
 app.include_router(internal_uacp.router, prefix="/api/v1")
 app.include_router(internal_uacp.operator_router, prefix="/api/v1")
 app.include_router(internal_operators.router, prefix="/api/v1")
+
+# Plugins Management
+app.include_router(plugins.router, prefix="/api")
 
 
 # --- Frontend static files ---

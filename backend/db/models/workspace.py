@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, String, JSON, Text, Integer, Float
+from sqlalchemy.orm import relationship
 
 from backend.core.database.database import Base
 from backend.db.models.user import _utcnow, _uuid
@@ -20,6 +21,8 @@ class Workspace(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    
+    plugins = relationship("WorkspacePlugin", back_populates="workspace", cascade="all, delete-orphan")
 
 
 class WorkspaceMember(Base):

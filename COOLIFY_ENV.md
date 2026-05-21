@@ -2,6 +2,14 @@
 
 This file lists all environment variables that must be configured in Coolify for the Veklom BYOS Backend deployment.
 
+## CRITICAL: Port Configuration
+
+The application runs on port 8088 internally. Coolify MUST be configured to:
+1. Forward traffic from port 80 (HTTP) and 443 (HTTPS) to the container's port 8088
+2. Expose port 8088 in the container configuration
+
+**Current issue:** API routes are not accessible because Coolify is not forwarding traffic to port 8088.
+
 ## CRITICAL: Database and Redis Configuration
 
 The auth endpoints are currently returning 500 errors because the database connection is failing. You MUST configure these environment variables in Coolify:

@@ -505,3 +505,15 @@ async def init_database():
         return {"status": "success", "message": "Database initialized"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/debug/env")
+async def debug_env():
+    """Debug endpoint to show current environment configuration."""
+    from backend.core.config.settings import settings
+    return {
+        "database_url": settings.DATABASE_URL,
+        "redis_url": settings.REDIS_URL,
+        "app_env": settings.APP_ENV,
+        "debug": settings.DEBUG,
+    }

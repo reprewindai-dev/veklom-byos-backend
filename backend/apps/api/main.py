@@ -200,6 +200,7 @@ def _mount_static():
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+    # Do NOT mount landing directory - it will be served by catch-all route
 
 
 _mount_static()

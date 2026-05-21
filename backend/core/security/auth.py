@@ -78,3 +78,13 @@ async def get_current_admin(user=Depends(get_current_user)):
     if user.role not in ("admin", "super_admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
+
+
+async def require_internal_operator(user=Depends(get_current_user)):
+    """Guard for UACP internal API routes."""
+    if user.role not in ("admin", "super_admin", "operator"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="UACP Internal Operator access required"
+        )
+    return user

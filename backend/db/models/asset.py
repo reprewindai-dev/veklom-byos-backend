@@ -29,3 +29,9 @@ class Asset(Base):
     s3_bucket = Column(String(128), nullable=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    
+    # Marketplace Intelligence
+    marketplace_status = Column(String(50), default="private") # private, pending, active, rejected
+    price_usd = Column(Integer, default=0) # stored in cents or float depending on type, let's use float
+    category = Column(String(128), nullable=True)
+    intelligence_confidence = Column(Integer, default=0)

@@ -40,13 +40,13 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "veklom"
     POSTGRES_USER: str = "veklom"
     POSTGRES_PASSWORD: str = ""
-    DATABASE_URL: str = "postgresql+asyncpg://veklom_user:Veklom2026SecureDB!@5.78.135.11:5432/veklom_production"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./veklom.db"
 
     # Redis
-    REDIS_PASSWORD: str = "Veklom2026Redis!"
-    REDIS_URL: str = "redis://:Veklom2026Redis!@5.78.135.11:6379/0"
-    CELERY_BROKER_URL: str = "redis://:Veklom2026Redis!@5.78.135.11:6379/0"
-    CELERY_RESULT_BACKEND: str = "redis://:Veklom2026Redis!@5.78.135.11:6379/1"
+    REDIS_PASSWORD: str = ""
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
 
     # JWT
     JWT_SECRET_KEY: str = "veklom-sovereign-secret-key-change-in-production"

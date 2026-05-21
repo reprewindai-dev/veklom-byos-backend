@@ -17,6 +17,7 @@ import { CompliancePage } from './pages/CompliancePage';
 import { MonitoringPage } from './pages/MonitoringPage';
 import { TeamPage } from './pages/TeamPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { DeveloperToolsPage } from './pages/DeveloperToolsPage';
 import { getToken, api } from './api/client';
 import './index.css';
 
@@ -139,6 +140,7 @@ const App: React.FC = () => {
             <Route path="monitoring" element={<MonitoringPage />} />
             <Route path="team" element={<TeamPage />} />
             <Route path="settings" element={<SettingsPage user={user} onLogout={handleLogout} />} />
+            <Route path="developer-tools" element={<DeveloperToolsPage />} />
             <Route path="*" element={<Navigate to="/overview" replace />} />
           </Route>
         </Routes>

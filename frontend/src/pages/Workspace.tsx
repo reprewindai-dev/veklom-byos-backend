@@ -14,9 +14,10 @@ import {
   Sliders, 
   LogOut, 
   Server, 
-  Layers, 
+  Layers,
   User,
-  UserCheck
+  UserCheck,
+  Code
 } from 'lucide-react';
 
 interface WorkspaceProps {
@@ -95,6 +96,9 @@ export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
                 </NavLink>
                 <NavLink to="/command-center" className={getNavLinkClass}>
                   <Layers size={13} /> Twin Terminals
+                </NavLink>
+                <NavLink to="/developer-tools" className={getNavLinkClass}>
+                  <Code size={13} /> Developer Hub
                 </NavLink>
               </nav>
             </div>

@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
-from backend.core.database.database import get_db
+from backend.core.database.database import get_db, Base, engine
 from backend.core.security.auth import (
     create_access_token,
     get_current_user,
@@ -494,3 +494,14 @@ async def unlink_github_account(user=Depends(get_current_user), db: AsyncSession
 @router.delete("/sessions/revoke")
 async def revoke_sessions(user=Depends(get_current_user)):
     return {"message": "All sessions revoked"}
+
+
+@router.post("/admin/init-db")
+async def init_database():
+    """Manually initialize database schema - call this to ensure tables exist."""
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        return {"status": "success", "message": "Database initialized"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

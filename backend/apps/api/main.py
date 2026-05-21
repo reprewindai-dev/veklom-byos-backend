@@ -161,18 +161,6 @@ app.include_router(internal_operators.router, prefix="/api/v1")
 app.include_router(plugins.router, prefix="/api")
 
 
-# --- Admin endpoints (must be before static mounting) ---
-@app.post("/api/v1/admin/init-db")
-async def init_database():
-    """Manually initialize database schema - call this to ensure tables exist."""
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        return JSONResponse(content={"status": "success", "message": "Database initialized"})
-    except Exception as e:
-        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
-
-
 # --- Frontend static files ---
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "static"
 LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "landing"

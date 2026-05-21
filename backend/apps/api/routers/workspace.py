@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
@@ -116,12 +117,16 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         for row in audit_rows
     ]
 
-    alert_rows = (await db.execute(
-        select(SecurityEvent)
-        .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
-        .order_by(SecurityEvent.created_at.desc())
-        .limit(5)
-    )).scalars().all()
+    try:
+        alert_rows = (await db.execute(
+            select(SecurityEvent)
+            .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
+            .order_by(SecurityEvent.created_at.desc())
+            .limit(5)
+        )).scalars().all()
+    except SQLAlchemyError:
+        await db.rollback()
+        alert_rows = []
     alerts = [
         {
             "id": row.id,

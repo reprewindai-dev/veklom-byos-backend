@@ -162,7 +162,7 @@ app.include_router(plugins.router, prefix="/api")
 
 
 # --- Admin endpoints (must be before static mounting) ---
-@app.post("/admin/init-db")
+@app.post("/api/v1/admin/init-db")
 async def init_database():
     """Manually initialize database schema - call this to ensure tables exist."""
     try:

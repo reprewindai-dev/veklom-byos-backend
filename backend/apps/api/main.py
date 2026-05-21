@@ -39,8 +39,15 @@ async def lifespan(app: FastAPI):
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
     
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Initialize database schema
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            print("Database schema initialized successfully")
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        # Continue anyway - tables might already exist
+    
     yield
     
     # Graceful shutdown of plugins

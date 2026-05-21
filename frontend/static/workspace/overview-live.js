@@ -101,18 +101,22 @@
 
   function closestPanel(node) {
     let current = node && node.parentElement;
+    let fallback = null;
     for (let i = 0; current && i < 8; i += 1) {
       const className = String(current.className || "");
-      if (
-        className.includes("frame") ||
-        className.includes("rounded") ||
-        className.includes("border")
-      ) {
+      if (className.includes("frame")) {
         return current;
+      }
+      if (!fallback && (className.includes("rounded") || className.includes("border"))) {
+        fallback = current;
       }
       current = current.parentElement;
     }
-    return node && node.parentElement;
+    return fallback || (node && node.parentElement);
+  }
+
+  function panelByHeading(pattern) {
+    return closestPanel(findText(pattern));
   }
 
   function setMetric(labelPattern, valueText, secondaryText) {
@@ -156,20 +160,32 @@
   }
 
   function setRecentRuns(runs) {
-    if (!Array.isArray(runs) || runs.length === 0) return;
-    const panel = closestPanel(findText(/RECENT RUNS/i));
+    const panel = panelByHeading(/RECENT RUNS/i);
     if (!panel) return;
-    const rows = Array.from(panel.querySelectorAll("tbody tr"));
-    rows.slice(0, runs.length).forEach((row, index) => {
-      const run = runs[index];
-      const cells = Array.from(row.querySelectorAll("td"));
-      if (cells[0]) cells[0].textContent = run.model || "model";
-      if (cells[1]) cells[1].textContent = String(run.route || "hetzner").replace("-", " ");
-      if (cells[2]) cells[2].textContent = `${Number(run.latency || 0)} ms`;
-      if (cells[3]) cells[3].textContent = formatInt(run.tokens || 0);
-      if (cells[4]) cells[4].textContent = formatUsd(run.cost || 0, 5);
-      if (cells[5]) cells[5].textContent = String(run.policy || "passed").toUpperCase();
-      if (cells[6]) cells[6].textContent = run.ts || "";
+    const tbody = panel.querySelector("tbody");
+    if (!tbody) return;
+    const liveRuns = Array.isArray(runs) ? runs : [];
+    tbody.innerHTML = "";
+    if (liveRuns.length === 0) {
+      const row = document.createElement("tr");
+      row.className = "border-b border-border/40 last:border-0";
+      row.innerHTML =
+        '<td colspan="7" class="px-4 py-5 text-center text-muted-foreground">No live inference runs yet.</td>';
+      tbody.appendChild(row);
+      return;
+    }
+    liveRuns.slice(0, 5).forEach((run) => {
+      const row = document.createElement("tr");
+      row.className = "border-b border-border/40 last:border-0 hover-elevate";
+      row.innerHTML =
+        `<td class="px-4 py-2">${run.model || "model"}</td>` +
+        `<td class="px-4 py-2">${String(run.route || "hetzner").replace("-", " ")}</td>` +
+        `<td class="px-4 py-2 text-right font-mono">${Number(run.latency || 0)} ms</td>` +
+        `<td class="px-4 py-2 text-right font-mono">${formatInt(run.tokens || 0)}</td>` +
+        `<td class="px-4 py-2 text-right font-mono">${formatUsd(run.cost || 0, 5)}</td>` +
+        `<td class="px-4 py-2">${String(run.policy || "passed").toUpperCase()}</td>` +
+        `<td class="px-4 py-2 text-right text-muted-foreground font-mono">${run.ts || ""}</td>`;
+      tbody.appendChild(row);
     });
   }
 
@@ -177,6 +193,108 @@
     setExact(/^\$1,284\.80 of \$1,900 cap$/, `${formatUsd(data.spend_today_usd, 2)} of ${formatUsd(data.spend_cap_usd, 0)} cap`);
     setExact(/^\$0\.0184 \/ min$/, `${formatUsd(data.burn_rate_usd_per_min, 4)} / min`);
     setExact(/^\$1,802 \(94% cap\)$/, `${formatUsd(data.forecast_eod_usd, 0)} (${Number(data.spend_percent || 0)}% cap)`);
+    setSpendBreakdown(data.spend_breakdown);
+  }
+
+  function setSpendBreakdown(breakdown) {
+    const items = Array.isArray(breakdown) ? breakdown : [];
+    items.forEach((item) => {
+      const labelNode = findText(new RegExp(`^${item.label}$`, "i"));
+      const panel = closestPanel(labelNode);
+      if (!panel) return;
+      const nodes = textNodes(panel);
+      const valueNode = nodes.find((node) => /^\$[\d,.]+/.test(node.nodeValue.trim()));
+      const percentNode = nodes.find((node) => /^\d+%$/.test(node.nodeValue.trim()));
+      if (valueNode) valueNode.nodeValue = formatUsd(item.amount_usd, 2);
+      if (percentNode) percentNode.nodeValue = `${Number(item.percent || 0)}%`;
+    });
+  }
+
+  function setSimpleList(panelPattern, rows, emptyText, renderRow) {
+    const panel = panelByHeading(panelPattern);
+    if (!panel) return;
+    const body = Array.from(panel.children).find((child) =>
+      String(child.className || "").includes("divide-y"),
+    );
+    if (!body) return;
+    body.innerHTML = "";
+    const liveRows = Array.isArray(rows) ? rows : [];
+    if (liveRows.length === 0) {
+      body.innerHTML = `<div class="px-4 py-5 text-[12px] text-muted-foreground">${emptyText}</div>`;
+      return;
+    }
+    liveRows.slice(0, 5).forEach((row) => body.appendChild(renderRow(row)));
+  }
+
+  function setAlerts(alerts) {
+    setSimpleList(/^ALERTS$/i, alerts, "No live alerts.", (alert) => {
+      const row = document.createElement("div");
+      row.className = "flex items-start gap-3 px-4 py-3";
+      row.innerHTML =
+        '<span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-info"></span>' +
+        '<div class="flex-1">' +
+        `<div class="text-[12.5px]">${alert.title || "Alert"}</div>` +
+        `<div class="mt-0.5 flex items-center gap-2 text-eyebrow"><span>${alert.source || "monitoring"}</span><span>·</span><span>${alert.time || ""}</span></div>` +
+        "</div>";
+      return row;
+    });
+  }
+
+  function setAuditLogs(logs) {
+    setSimpleList(/AUDIT TRAIL/i, logs, "No live audit records yet.", (log) => {
+      const row = document.createElement("div");
+      row.className = "px-4 py-2.5 text-[12px]";
+      row.innerHTML =
+        `<div class="flex items-center justify-between"><span class="font-mono">${log.action || "audit.event"}</span><span class="font-mono text-[10.5px] text-muted-foreground">${log.ts || ""}</span></div>` +
+        `<div class="flex items-center justify-between text-[11px] text-muted-foreground"><span class="truncate">${log.target || "workspace"} · ${log.actor || "system"}</span><span class="font-mono">${log.hash || ""}</span></div>`;
+      return row;
+    });
+  }
+
+  function setPolicyEvents(events) {
+    const panel = panelByHeading(/POLICY INTERCEPTION/i);
+    const list = panel && panel.querySelector("ol");
+    if (!list) return;
+    const liveEvents = Array.isArray(events) ? events : [];
+    list.innerHTML = "";
+    if (liveEvents.length === 0) {
+      const item = document.createElement("li");
+      item.className = "px-1 py-3 text-[12px] text-muted-foreground";
+      item.textContent = "No live policy decisions yet.";
+      list.appendChild(item);
+      return;
+    }
+    liveEvents.slice(0, 5).forEach((event) => {
+      const item = document.createElement("li");
+      item.className = "relative flex gap-3 pl-2";
+      item.innerHTML =
+        '<div class="z-10 mt-0.5 grid h-5 w-5 place-items-center rounded-full border border-info/40 bg-background text-info">•</div>' +
+        '<div class="flex-1">' +
+        `<div class="flex items-center justify-between"><span class="text-[12.5px] text-foreground">${event.title || "Policy event"}</span><span class="font-mono text-[10.5px] text-muted-foreground">${event.t || ""}</span></div>` +
+        `<div class="text-[11.5px] text-muted-foreground">${event.body || ""}</div>` +
+        "</div>";
+      list.appendChild(item);
+    });
+  }
+
+  function setFleet(fleet) {
+    const panel = panelByHeading(/^FLEET$/i);
+    const body = panel && panel.querySelector(".space-y-2");
+    if (!body) return;
+    const liveFleet = Array.isArray(fleet) ? fleet : [];
+    body.innerHTML = "";
+    if (liveFleet.length === 0) {
+      body.innerHTML = '<div class="px-1 py-3 text-[12px] text-muted-foreground">No live models enabled.</div>';
+      return;
+    }
+    liveFleet.slice(0, 4).forEach((model) => {
+      const row = document.createElement("div");
+      row.className = "flex items-center justify-between rounded-md border bg-background/40 px-3 py-2";
+      row.innerHTML =
+        `<div><div class="text-[12.5px]">${model.name || "Model"}</div><div class="text-[10.5px] text-muted-foreground font-mono">${model.quant || ""} · ${model.replicas || 0} replicas</div></div>` +
+        `<div class="flex items-center gap-1.5"><span class="rounded border px-2 py-1 font-mono text-[10px]">${String(model.route || "hetzner").replace("-", " ")}</span><span class="rounded border px-2 py-1 font-mono text-[10px]">P50 ${Number(model.p50 || 0)} MS</span></div>`;
+      body.appendChild(row);
+    });
   }
 
   function applyOverview(data) {
@@ -196,6 +314,10 @@
 
     setSpend(data);
     setRecentRuns(data.recent_runs);
+    setPolicyEvents(data.policy_events);
+    setAlerts(data.alerts);
+    setAuditLogs(data.audit_logs);
+    setFleet(data.fleet);
 
     const alertsOpen = Array.isArray(data.alerts) ? data.alerts.length : 0;
     setExact(/^3 open$/i, `${alertsOpen} open`);

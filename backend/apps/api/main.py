@@ -119,6 +119,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend"
 LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "landing"
 GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "gpc"
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
+COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
 
 
 def _mount_static():
@@ -127,6 +128,12 @@ def _mount_static():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     if WORKSPACE_DIR.exists():
         app.mount("/workspace", StaticFiles(directory=str(WORKSPACE_DIR), html=True), name="workspace")
+    if COMMAND_CENTER_DIR.exists():
+        app.mount(
+            "/command-center",
+            StaticFiles(directory=str(COMMAND_CENTER_DIR), html=True),
+            name="command-center",
+        )
     if GPC_DIR.exists():
         app.mount("/gpc-engine", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc-engine")
     # Mount static directory for CSS, JS, branding, etc.

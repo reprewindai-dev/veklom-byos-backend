@@ -1,6 +1,6 @@
 """Workspace / tenant routes."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.db.models.ai import ExecLog
+from backend.db.models.marketplace import Deployment, Pipeline
 from backend.db.models.security import AuditLog, SecurityEvent
 from backend.db.models.workspace import ModelConfig, Workspace, WorkspaceMember
 from backend.db.models.user import APIKey
@@ -38,15 +39,35 @@ async def get_workspace(user=Depends(get_current_user), db: AsyncSession = Depen
 
 @router.get("/overview")
 async def workspace_overview(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    workspace_id = user.workspace_id or "default"
-    total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id)) or 0
-    total_tokens = await db.scalar(select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(ExecLog.workspace_id == workspace_id)) or 0
-    spend_today = await db.scalar(select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(ExecLog.workspace_id == workspace_id)) or 0.0
-    avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 112)).where(ExecLog.workspace_id == workspace_id)) or 112
-    audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id)) or 0
-    models_enabled = await db.scalar(select(func.count()).select_from(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True)) or 0
-    if not models_enabled:
-        models_enabled = len(_default_models())
+    return await _overview_payload(db, user.workspace_id or "default", user.email)
+
+
+@router.get("/overview/live")
+async def workspace_overview_live(db: AsyncSession = Depends(get_db)):
+    return await _overview_payload(db, "default", "system")
+
+
+async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: str):
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    last_minute = now - timedelta(minutes=1)
+    last_24h = now - timedelta(hours=24)
+    elapsed_minutes = max(1, int((now - today_start).total_seconds() / 60))
+
+    total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
+    requests_per_min = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_minute)) or 0
+    total_tokens = await db.scalar(select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
+    spend_today = await db.scalar(select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0.0
+    avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
+    audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
+    budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
+
+    model_rows = (await db.execute(select(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).scalars().all()
+    model_payload = [
+        {"id": row.id, "provider": row.provider, "display_name": row.display_name}
+        for row in model_rows
+    ] or _default_models()
+    models_enabled = len(model_payload)
 
     result = await db.execute(
         select(ExecLog)
@@ -54,72 +75,91 @@ async def workspace_overview(user=Depends(get_current_user), db: AsyncSession = 
         .order_by(ExecLog.created_at.desc())
         .limit(5)
     )
+    recent_rows = result.scalars().all()
     recent_runs = [
         {
             "id": row.id,
             "model": row.model or "qwen2.5:3b",
-            "route": row.provider or "ollama",
+            "route": _route_for_provider(row.provider),
             "latency": row.latency_ms or 0,
             "tokens": row.total_tokens or 0,
             "cost": row.cost_usd or 0.0,
             "policy": "redacted" if row.policy_flags else "passed",
-            "ts": row.created_at.isoformat() if row.created_at else "",
+            "ts": _relative_time(row.created_at, now),
         }
-        for row in result.scalars().all()
+        for row in recent_rows
     ]
-    audit_result = await db.execute(
+
+    recent_24h = (await db.execute(select(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h))).scalars().all()
+    routing_history = _routing_history(recent_24h, now)
+    hetzner_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "hetzner")
+    aws_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "aws-burst")
+    routed_total = hetzner_count + aws_count
+    hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
+    aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
+
+    audit_rows = (await db.execute(
         select(AuditLog)
         .where(AuditLog.workspace_id == workspace_id)
         .order_by(AuditLog.created_at.desc())
         .limit(5)
-    )
+    )).scalars().all()
     audit_logs = [
         {
             "id": row.id,
             "action": row.action,
             "target": row.resource_type or row.resource_id or "workspace",
-            "actor": row.user_id or user.email,
+            "actor": row.user_id or actor_email,
             "hash": (row.hash_chain or row.prev_hash or "")[:12],
-            "ts": row.created_at.isoformat() if row.created_at else "",
+            "ts": row.created_at.isoformat().replace("+00:00", "Z") if row.created_at else "",
         }
-        for row in audit_result.scalars().all()
+        for row in audit_rows
     ]
-    alert_result = await db.execute(
+
+    alert_rows = (await db.execute(
         select(SecurityEvent)
         .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
         .order_by(SecurityEvent.created_at.desc())
         .limit(5)
-    )
+    )).scalars().all()
     alerts = [
         {
             "id": row.id,
             "title": row.description or row.event_type,
             "severity": row.severity,
             "source": row.threat_type or row.event_type,
-            "time": row.created_at.isoformat() if row.created_at else "",
+            "time": _relative_time(row.created_at, now),
         }
-        for row in alert_result.scalars().all()
+        for row in alert_rows
     ]
+
+    p50 = int(avg_latency)
     fleet = [
         {
             "id": model["id"],
             "name": model["display_name"],
-            "quant": model["provider"],
+            "quant": model["provider"].upper(),
             "replicas": 1,
-            "route": model["provider"],
-            "p50": 0 if model["provider"] == "ollama" else int(avg_latency),
+            "route": _route_for_provider(model["provider"]),
+            "p50": p50,
         }
-        for model in _default_models()[:4]
+        for model in model_payload[:4]
     ]
     policy_events = [
         {
             "t": row["ts"],
             "title": "Inference complete",
-            "body": f"{row['tokens']} tokens · {row['latency']} ms · ${row['cost']:.5f}",
+            "body": f"{row['tokens']} tokens - {row['latency']} ms - ${row['cost']:.5f}",
             "tone": "info",
         }
         for row in recent_runs[:5]
     ]
+
+    active_pipelines = await db.scalar(select(func.count()).select_from(Pipeline).where(Pipeline.workspace_id == workspace_id, Pipeline.status == "active")) or 0
+    active_deployments = await db.scalar(select(func.count()).select_from(Deployment).where(Deployment.workspace_id == workspace_id, Deployment.status == "running")) or 0
+    burn_rate = float(spend_today) / elapsed_minutes
+    forecast_eod = burn_rate * 1440
+    spend_pct = round((float(spend_today) / float(budget_limit)) * 100) if budget_limit else 0
 
     return {
         "workspace_id": workspace_id,
@@ -127,14 +167,19 @@ async def workspace_overview(user=Depends(get_current_user), db: AsyncSession = 
         "members_count": 1,
         "models_enabled": models_enabled,
         "total_requests_today": total_requests,
-        "requests_per_min": total_requests,
-        "p50_latency_ms": int(avg_latency),
-        "tokens_per_sec": int(total_tokens),
+        "requests_per_min": requests_per_min,
+        "p50_latency_ms": p50,
+        "tokens_per_sec": int(total_tokens / elapsed_minutes) if total_tokens else 0,
         "spend_today_usd": round(float(spend_today), 4),
-        "spend_cap_usd": 150.0,
-        "budget_remaining_usd": round(150.0 - float(spend_today), 4),
-        "active_pipelines": 2,
-        "active_deployments": 1,
+        "spend_cap_usd": float(budget_limit),
+        "spend_percent": spend_pct,
+        "spend_status": "on-pace" if forecast_eod <= float(budget_limit) else "over-pace",
+        "burn_rate_usd_per_min": round(burn_rate, 4),
+        "forecast_eod_usd": round(forecast_eod, 2),
+        "spend_breakdown": _spend_breakdown(float(spend_today)),
+        "budget_remaining_usd": round(float(budget_limit) - float(spend_today), 4),
+        "active_pipelines": active_pipelines,
+        "active_deployments": active_deployments,
         "active_models": models_enabled,
         "audit_entries": audit_entries,
         "recent_runs": recent_runs,
@@ -143,14 +188,19 @@ async def workspace_overview(user=Depends(get_current_user), db: AsyncSession = 
         "audit_logs": audit_logs,
         "fleet": fleet,
         "routing": {
-            "hetzner_percent": 100 if total_requests else 0,
-            "aws_percent": 0,
+            "hetzner_percent": hetzner_percent,
+            "aws_percent": aws_percent,
             "primary_region": "hetzner-fsn1",
             "burst_region": "aws-us-east-1",
+            "history": routing_history,
+            "regions": [
+                {"label": "Hetzner FSN1", "value": f"{hetzner_percent}% routed", "sub": "Primary private runtime", "route": "hetzner"},
+                {"label": "Hetzner FRA1", "value": f"{active_deployments} active", "sub": "EU-sovereign deployment pool", "route": "hetzner"},
+                {"label": "AWS burst (us-east-1)", "value": f"{aws_percent}% engaged", "sub": "On-demand gated by policy", "route": "aws-burst"},
+            ],
         },
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": now.isoformat(),
     }
-
 
 @router.get("/observability")
 async def workspace_observability(user=Depends(get_current_user)):

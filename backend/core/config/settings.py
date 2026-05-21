@@ -40,12 +40,30 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "veklom"
     POSTGRES_PASSWORD: str = ""
     DATABASE_URL: str = "sqlite+aiosqlite:///./veklom.db"
+    
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        """Auto-convert Docker service names to external host for Coolify."""
+        if "postgres:" in v and "5432" in v:
+            # Replace Docker service name with external IP for Coolify
+            v = v.replace("postgres:", "5.78.135.11:")
+        return v
 
     # Redis
     REDIS_PASSWORD: str = ""
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
+    
+    @field_validator("REDIS_URL", "CELERY_BROKER_URL", "CELERY_RESULT_BACKEND")
+    @classmethod
+    def validate_redis_url(cls, v: str) -> str:
+        """Auto-convert Docker service names to external host for Coolify."""
+        if "redis:" in v and "6379" in v:
+            # Replace Docker service name with external IP for Coolify
+            v = v.replace("redis:", "5.78.135.11:")
+        return v
 
     # JWT
     JWT_SECRET_KEY: str = "veklom-sovereign-secret-key-change-in-production"

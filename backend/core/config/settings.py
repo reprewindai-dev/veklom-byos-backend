@@ -1,5 +1,6 @@
 """Application settings via pydantic-settings."""
 
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Union
 from pydantic import field_validator
@@ -45,9 +46,12 @@ class Settings(BaseSettings):
     @classmethod
     def validate_database_url(cls, v: str) -> str:
         """Auto-convert Docker service names to external host for Coolify."""
+        # If in production and using Docker service names, auto-convert to external IP
         if "postgres:" in v and "5432" in v:
-            # Replace Docker service name with external IP for Coolify
             v = v.replace("postgres:", "5.78.135.11:")
+        # If DATABASE_URL is still using SQLite in production, override with PostgreSQL
+        if "sqlite" in v and os.environ.get("APP_ENV") == "production":
+            v = f"postgresql+asyncpg://veklom_user:Veklom2026SecureDB!@5.78.135.11:5432/veklom_production"
         return v
 
     # Redis
@@ -63,6 +67,9 @@ class Settings(BaseSettings):
         if "redis:" in v and "6379" in v:
             # Replace Docker service name with external IP for Coolify
             v = v.replace("redis:", "5.78.135.11:")
+        # If Redis URL is still using localhost in production, override with external IP
+        if "localhost" in v and os.environ.get("APP_ENV") == "production":
+            v = v.replace("localhost", "5.78.135.11")
         return v
 
     # JWT

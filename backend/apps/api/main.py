@@ -77,6 +77,7 @@ from backend.apps.api.routers import (
     pipelines,
     runtime_jobs,
     security,
+    upload,
     workspace,
 )
 
@@ -118,6 +119,7 @@ app.include_router(pipelines.router)
 
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(upload.router, prefix="/api/v1")
 
 # GPC (Governed Plan Compiler)
 app.include_router(gpc.router, prefix="/api/v1")

@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.db.models.marketplace import Deployment, Pipeline, PipelineRun
+from backend.core.services.autonomous_worker import run_pipeline_background
+import asyncio
+import uuid
 
 router = APIRouter(tags=["Pipelines"])
 
@@ -54,8 +57,19 @@ async def delete_pipeline(pipeline_id: str, user=Depends(get_current_user)):
 
 
 @router.post("/pipelines/{pipeline_id}/run")
-async def run_pipeline(pipeline_id: str, user=Depends(get_current_user)):
-    return {"run_id": "run_placeholder", "pipeline_id": pipeline_id, "status": "running", "progress": 0}
+async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id))
+    pipeline = result.scalar_one_or_none()
+    
+    if not pipeline:
+        # Fallback to mock steps for demonstration if ID doesn't exist
+        steps = _mock_steps()
+    else:
+        steps = pipeline.steps
+        
+    run_id = str(uuid.uuid4())
+    asyncio.create_task(run_pipeline_background(run_id, steps, user.workspace_id or "default", user.id))
+    return {"run_id": run_id, "pipeline_id": pipeline_id, "status": "PENDING", "progress": 0}
 
 
 # --- Interactive Pipeline ---
@@ -76,8 +90,11 @@ async def demo_pipeline_health():
 
 
 @router.post("/demo/pipeline/run")
-async def demo_pipeline_run(body: dict):
-    return {"run_id": "demo_run", "status": "completed", "stages_completed": 7}
+async def demo_pipeline_run(body: dict, user=Depends(get_current_user)):
+    run_id = str(uuid.uuid4())
+    steps = [{"name": s} for s in ["Source", "Build", "Validate", "Test", "Stage", "Gate", "Deploy"]]
+    asyncio.create_task(run_pipeline_background(run_id, steps, user.workspace_id or "default", user.id))
+    return {"run_id": run_id, "status": "PENDING"}
 
 
 @router.get("/demo/pipeline/stream")

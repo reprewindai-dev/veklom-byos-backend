@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from backend.core.security.auth import get_current_user
+from backend.core.services.autonomous_worker import run_gpc_background
+import asyncio
 
 router = APIRouter(prefix="/gpc", tags=["GPC"])
 
@@ -68,11 +70,24 @@ async def list_runs(user=Depends(get_current_user)):
 
 @router.post("/runs")
 async def start_run(body: dict, user=Depends(get_current_user)):
-    run_id = str(uuid.uuid4())[:8]
+    run_id = str(uuid.uuid4())
+    # Assuming frontend sends the graph in the body, otherwise we use a mock one
+    graph = body.get("graph", {
+        "nodes": [
+            {"id": "n1", "description": "Validation & Setup"},
+            {"id": "n2", "description": "Reasoning Engine"},
+            {"id": "n3", "description": "Final Output generation"}
+        ]
+    })
+    provider = body.get("provider", "openai")
+    model = body.get("model", "gpt-4o-mini")
+    
+    asyncio.create_task(run_gpc_background(run_id, graph, user.workspace_id or "default", user.id, provider, model))
+    
     return {
         "id": run_id,
         "planId": body.get("planId", ""),
-        "status": "running",
+        "status": "PENDING",
         "progress": 0,
         "currentStep": "Initializing",
         "startTime": datetime.now(timezone.utc).isoformat(),

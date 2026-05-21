@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api, setToken } from '../api/client';
-import { Shield, Key, AlertCircle, Cpu, Github } from 'lucide-react';
+import { Shield, Key, AlertCircle, Cpu, Github, User } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
@@ -9,13 +9,16 @@ interface LoginProps {
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [isSignup, setIsSignup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError('Please fill in all credentials.');
+    if (!email || !password || (isSignup && !username)) {
+      setError('Please fill in all required credentials.');
       return;
     }
 
@@ -23,9 +26,14 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError('');
 
     try {
-      const data = await api('/auth/login', {
+      const endpoint = isSignup ? '/auth/register' : '/auth/login';
+      const bodyPayload = isSignup 
+        ? { email, password, username, full_name: fullName } 
+        : { email, password };
+
+      const data = await api(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(bodyPayload),
       });
 
       if (data && data.access_token) {
@@ -35,7 +43,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         throw new Error('Authentication returned an invalid response token.');
       }
     } catch (err: any) {
-      setError(err.message || 'Invalid email or password. Access Denied.');
+      setError(err.message || (isSignup ? 'Registration failed.' : 'Invalid email or password. Access Denied.'));
     } finally {
       setIsLoading(false);
     }
@@ -87,6 +95,46 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {isSignup && (
+            <>
+              <div>
+                <label className="form-label" htmlFor="username-input">Operator Alias</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-3.5 text-[var(--text-muted)]">
+                    <User size={14} />
+                  </span>
+                  <input
+                    id="username-input"
+                    type="text"
+                    placeholder="operator_1"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="form-input pl-9"
+                    disabled={isLoading}
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="form-label" htmlFor="fullname-input">Full Designation (Optional)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-3.5 text-[var(--text-muted)]">
+                    <User size={14} />
+                  </span>
+                  <input
+                    id="fullname-input"
+                    type="text"
+                    placeholder="John Doe"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="form-input pl-9"
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
           <div>
             <label className="form-label" htmlFor="email-input">Perimeter Email</label>
             <div className="relative">
@@ -136,22 +184,33 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               {isLoading ? (
                 <>
                   <Cpu size={14} className="animate-spin" />
-                  DECRYPTING CONTROL PLANE...
+                  {isSignup ? 'PROVISIONING ACCOUNT...' : 'DECRYPTING CONTROL PLANE...'}
                 </>
               ) : (
-                'ESTABLISH SECURE ACCESS'
+                isSignup ? 'INITIALIZE NEW PERIMETER' : 'ESTABLISH SECURE ACCESS'
               )}
             </button>
 
             <button
               type="button"
               onClick={handleGithubLogin}
-              className="w-full py-3 text-xs tracking-[0.08em] font-bold bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.08)] transition-colors rounded-md flex items-center justify-center gap-2 text-white"
+              className="w-full py-3 text-xs tracking-[0.08em] font-bold bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.08)] transition-colors rounded-md flex items-center justify-center gap-2 text-white mb-4"
               disabled={isLoading}
             >
               <Github size={16} />
               AUTHENTICATE WITH GITHUB
             </button>
+            
+            <div className="text-center mt-2">
+              <button
+                type="button"
+                onClick={() => setIsSignup(!isSignup)}
+                className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--orange)] font-mono tracking-wider transition-colors"
+                disabled={isLoading}
+              >
+                {isSignup ? 'ALREADY HAVE AN ACCOUNT? SIGN IN' : 'NO ACCOUNT YET? CREATE PERIMETER'}
+              </button>
+            </div>
           </div>
         </form>
 

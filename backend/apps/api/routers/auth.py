@@ -1,5 +1,10 @@
 """Authentication routes."""
 
+import base64
+import hashlib
+import hmac
+import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -235,70 +240,155 @@ async def revoke_api_key(key_id: str, user=Depends(get_current_user), db: AsyncS
     return {"message": "Key revoked"}
 
 
+GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_USER_URL = "https://api.github.com/user"
+GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
+
+
+def _build_github_state() -> str:
+    """Build signed short-lived OAuth state token to mitigate CSRF."""
+    ts = str(int(time.time()))
+    nonce = secrets.token_urlsafe(16)
+    payload = f"{ts}.{nonce}"
+    sig = hmac.new(settings.JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).decode().rstrip("=")
+    return f"{payload}.{sig_b64}"
+
+
+def _validate_github_state(state: str, max_age_seconds: int = 600) -> bool:
+    """Validate signed OAuth state and expiry window."""
+    try:
+        ts, nonce, sig_b64 = state.split(".", 2)
+        if not ts.isdigit() or not nonce:
+            return False
+        payload = f"{ts}.{nonce}"
+        expected_sig = hmac.new(settings.JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected_sig).decode().rstrip("=")
+        if not hmac.compare_digest(expected_b64, sig_b64):
+            return False
+        age = int(time.time()) - int(ts)
+        if age < 0 or age > max_age_seconds:
+            return False
+        return True
+    except Exception:
+        return False
+
+
 @router.get("/github/login")
 async def github_login():
+    """Redirect user to GitHub OAuth consent screen."""
     if not settings.GITHUB_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="GitHub Client ID not configured")
-    url = f"https://github.com/login/oauth/authorize?client_id={settings.GITHUB_CLIENT_ID}&scope=user:email"
-    return {"url": url}
-
-
-@router.get("/github/callback")
-async def github_callback(code: str = "", db: AsyncSession = Depends(get_db)):
-    if not code:
-        raise HTTPException(status_code=400, detail="Authorization code not provided")
+        raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
+    state = _build_github_state()
+    from urllib.parse import urlencode
     
-    # 1. Exchange code for access token
-    token_url = "https://github.com/login/oauth/access_token"
-    headers = {"Accept": "application/json"}
-    data = {
+    params = {
         "client_id": settings.GITHUB_CLIENT_ID,
-        "client_secret": settings.GITHUB_CLIENT_SECRET,
-        "code": code
+        "scope": "user:email read:user repo",
+        "state": state,
     }
-    
+    url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
+    return {"url": url, "state": state}
+
+
+@router.post("/github/callback")
+@router.get("/github/callback")
+async def github_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """Exchange GitHub auth code for tokens. Creates account if needed."""
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            code = code or body.get("code")
+            state = state or body.get("state")
+        except Exception:
+            pass
+
+    if not code:
+        code = request.query_params.get("code")
+    if not state:
+        state = request.query_params.get("state")
+
+    if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing GitHub OAuth code")
+    if not state or not _validate_github_state(state):
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+
     async with httpx.AsyncClient() as client:
-        token_res = await client.post(token_url, data=data, headers=headers)
-        token_data = token_res.json()
-        
-    access_token = token_data.get("access_token")
-    if not access_token:
-        raise HTTPException(status_code=400, detail="Failed to retrieve GitHub access token")
-        
-    # 2. Get user info
-    user_url = "https://api.github.com/user"
-    auth_headers = {"Authorization": f"token {access_token}"}
+        token_resp = await client.post(
+            GITHUB_TOKEN_URL,
+            data={
+                "client_id": settings.GITHUB_CLIENT_ID,
+                "client_secret": settings.GITHUB_CLIENT_SECRET,
+                "code": code,
+            },
+            headers={"Accept": "application/json"},
+        )
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="GitHub token exchange failed")
+        token_data = token_resp.json()
+        gh_access_token = token_data.get("access_token")
+        if not gh_access_token:
+            raise HTTPException(status_code=400, detail=token_data.get("error_description", "No access token"))
+
+        gh_headers = {"Authorization": f"Bearer {gh_access_token}", "Accept": "application/json"}
+        user_resp = await client.get(GITHUB_USER_URL, headers=gh_headers)
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch GitHub profile")
+        gh_user = user_resp.json()
+
+        email = gh_user.get("email")
+        if not email:
+            emails_resp = await client.get(GITHUB_EMAILS_URL, headers=gh_headers)
+            if emails_resp.status_code == 200:
+                for em in emails_resp.json():
+                    if em.get("primary") and em.get("verified"):
+                        email = em["email"]
+                        break
+        if not email:
+            raise HTTPException(status_code=400, detail="No verified email found on GitHub account")
+
+    github_username = gh_user.get("login", "")
+    github_id = str(gh_user.get("id", ""))
+    full_name = gh_user.get("name") or github_username
+
+    # Enforce one GitHub identity per user account
+    existing = await db.execute(select(User).where(User.github_id == github_id))
+    already_linked = existing.scalar_one_or_none()
     
-    async with httpx.AsyncClient() as client:
-        user_res = await client.get(user_url, headers=auth_headers)
-        user_info = user_res.json()
-        
-        # GitHub might not return public email, so we fetch it explicitly
-        emails_res = await client.get(f"{user_url}/emails", headers=auth_headers)
-        emails = emails_res.json()
-        
-    primary_email = next((email["email"] for email in emails if email["primary"]), None)
-    if not primary_email:
-        raise HTTPException(status_code=400, detail="No primary email found for GitHub account")
-        
-    # 3. Find or create user
-    result = await db.execute(select(User).where(User.email == primary_email))
+    result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     
+    if already_linked and user and already_linked.id != user.id:
+        raise HTTPException(status_code=409, detail="This GitHub account is already linked to a different user.")
+
+    is_new = False
     if not user:
-        # Register new user from GitHub
+        is_new = True
         user = User(
-            email=primary_email,
-            username=user_info.get("login", primary_email.split("@")[0]),
-            hashed_password=get_password_hash("github_oauth_managed"),
-            full_name=user_info.get("name", ""),
-            avatar_url=user_info.get("avatar_url", "")
+            email=email,
+            username=github_username,
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            full_name=full_name,
+            github_id=github_id,
+            github_username=github_username,
+            github_access_token=gh_access_token,
+            avatar_url=gh_user.get("avatar_url", "")
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
-        
-    # 4. Generate app tokens
+    else:
+        user.github_id = github_id
+        user.github_username = github_username
+        user.github_access_token = gh_access_token
+        user.last_login = datetime.now(timezone.utc)
+        user.last_activity = datetime.now(timezone.utc)
+        await db.commit()
+
+    # Generate app tokens
     app_access_token = create_access_token(data={"sub": user.id})
     app_refresh_token = create_access_token(
         data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
@@ -319,17 +409,50 @@ async def github_callback(code: str = "", db: AsyncSession = Depends(get_db)):
         "token_type": "bearer",
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "user": _user_dict(user),
+        "is_new_user": is_new,
+        "github_username": github_username,
     }
 
 
 @router.get("/github/repos")
 async def github_repos(user=Depends(get_current_user)):
-    return []
+    if not user.github_access_token:
+        raise HTTPException(status_code=400, detail="GitHub not connected.")
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.github.com/user/repos",
+            headers={
+                "Authorization": f"Bearer {user.github_access_token}",
+                "Accept": "application/json",
+            },
+            params={"sort": "updated", "per_page": 50, "type": "owner"},
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch repos")
+        return {"repos": resp.json()}
 
 
 @router.get("/connected-accounts")
 async def connected_accounts(user=Depends(get_current_user)):
-    return []
+    github_connected = bool(user.github_id and user.github_access_token)
+    return {
+        "github_configured": bool(settings.GITHUB_CLIENT_ID and settings.GITHUB_CLIENT_SECRET),
+        "github_connected": github_connected,
+        "github_username": user.github_username,
+        "github_account_id": user.github_id,
+    }
+
+
+@router.delete("/connected-accounts/github")
+async def unlink_github_account(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not user.github_id:
+        raise HTTPException(status_code=400, detail="GitHub is not connected.")
+    user.github_id = None
+    user.github_username = None
+    user.github_access_token = None
+    user.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"message": "GitHub account disconnected"}
 
 
 @router.delete("/sessions/revoke")

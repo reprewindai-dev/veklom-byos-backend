@@ -39,6 +39,10 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
+    github_id = Column(String(128), unique=True, nullable=True, index=True)
+    github_username = Column(String(255), nullable=True)
+    github_access_token = Column(String(512), nullable=True)
+
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
 

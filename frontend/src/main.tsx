@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Login } from './pages/Login';
+import { GithubCallbackPage } from './pages/GithubCallbackPage';
 import { Workspace } from './pages/Workspace';
 import { Overview } from './components/Overview';
 import { Playground } from './components/Playground';
@@ -44,6 +45,20 @@ const LoginWrapper: React.FC<{ user: any; onLoginSuccess: (u: any) => void }> = 
   }, [user, location, navigate]);
 
   return <Login onLoginSuccess={onLoginSuccess} />;
+};
+
+const GithubCallbackWrapper: React.FC<{ user: any; onLoginSuccess: (u: any) => void }> = ({ user, onLoginSuccess }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      const from = (location.state as any)?.from || '/overview';
+      navigate(from, { replace: true });
+    }
+  }, [user, location, navigate]);
+
+  return <GithubCallbackPage onLoginSuccess={onLoginSuccess} />;
 };
 
 const App: React.FC = () => {
@@ -106,6 +121,7 @@ const App: React.FC = () => {
       <BrowserRouter basename={basename}>
         <Routes>
           <Route path="/login" element={<LoginWrapper user={user} onLoginSuccess={handleLoginSuccess} />} />
+          <Route path="/github/callback" element={<GithubCallbackWrapper user={user} onLoginSuccess={handleLoginSuccess} />} />
           
           {/* Protected Roster of subpages */}
           <Route path="/" element={<ProtectedLayout user={user} onLogout={handleLogout} />}>

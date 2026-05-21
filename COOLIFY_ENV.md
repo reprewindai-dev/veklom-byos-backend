@@ -2,7 +2,29 @@
 
 This file lists all environment variables that must be configured in Coolify for the Veklom BYOS Backend deployment.
 
-## Required Variables (Must Set)
+## CRITICAL: Database and Redis Configuration
+
+The auth endpoints are currently returning 500 errors because the database connection is failing. You MUST configure these environment variables in Coolify:
+
+### Database (REQUIRED for auth to work)
+```
+DATABASE_URL=postgresql+asyncpg://veklom_user:Veklom2026SecureDB!@5.78.135.11:5432/veklom_production
+POSTGRES_DB=veklom_production
+POSTGRES_USER=veklom_user
+POSTGRES_PASSWORD=Veklom2026SecureDB!
+```
+
+### Redis (REQUIRED for session management)
+```
+REDIS_URL=redis://:Veklom2026Redis!@5.78.135.11:6379/0
+REDIS_PASSWORD=Veklom2026Redis!
+CELERY_BROKER_URL=redis://:Veklom2026Redis!@5.78.135.11:6379/0
+CELERY_RESULT_BACKEND=redis://:Veklom2026Redis!@5.78.135.11:6379/1
+```
+
+**IMPORTANT**: Do NOT use Docker service names like `postgres:5432` or `redis:6379` in Coolify. Use the external IP `5.78.135.11` instead.
+
+## Other Required Variables
 
 ### Core Application
 ```

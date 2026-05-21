@@ -6,9 +6,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.ai.provider_router import normalize_messages, provider_order, run_completion
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.core.security.wallet_guard import token_deduction_guard
+from backend.core.security.entitlements import require_entitlement
 from backend.db.models.ai import ExecLog
 
-router = APIRouter(tags=["AI"])
+router = APIRouter(
+    tags=["AI"],
+    dependencies=[
+        Depends(get_current_user),
+        Depends(token_deduction_guard),
+        Depends(require_entitlement("starter"))
+    ]
+)
 
 
 @router.post("/ai/complete")

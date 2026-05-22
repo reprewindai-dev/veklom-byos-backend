@@ -1,58 +1,118 @@
-# Veklom Agents
+# Veklom Agents — Multi-Provider AI Agent System
 
-This directory contains the Level-3 autonomous agent implementation for the Veklom platform.
+Full Level-3 autonomous agent implementation across 4 LLM providers.
+Every agent runs the same THINK → ACT → OBSERVE → ITERATE loop.
+Only the LLM inference backend changes.
 
-## Files
+## Provider Comparison
 
-| File | Purpose |
-|---|---|
-| `agent_loop.py` | Core THINK → ACT → OBSERVE → ITERATE loop |
-
-## How the Agent Works
-
-```
-Goal received
-    │
-    ▼
-[THINK]  LLM reasons, decides which tool to call
-    │
-    ▼
-[ACT]    Tool is called (backend health, workflow, vendor list, etc.)
-    │
-    ▼
-[OBSERVE] Result returned to LLM memory
-    │
-    ▼
-[ITERATE?] LLM judges: goal achieved? → DONE : loop again
-```
+| File | Provider | Cost | Latency | Best For |
+|---|---|---|---|---|
+| `agent_loop.py` | OpenAI GPT-4o-mini | ~$0.001/call | ~800ms | Best tool-calling accuracy |
+| `agent_groq.py` | Groq Llama 3.3 70B | ~$0.0001/call | ~150ms | High-throughput pipelines |
+| `agent_ollama.py` | Ollama (local) | $0.00 | ~500ms | 100% sovereign, no data leaves Hetzner |
+| `agent_huggingface.py` | HuggingFace Inference | Free tier / endpoint | ~1-3s | Open model experimentation |
 
 ## Quick Start
 
+### Use the Router (recommended)
+
 ```bash
-# 1. Set env vars
-export VEKLOM_API_URL=https://veklom.com/api/v1
-export VEKLOM_API_KEY=your_jwt_here
-export OPENAI_API_KEY=your_openai_key_here
+# Run with Groq (default — fastest)
+VEKLOM_AGENT_PROVIDER=groq python agents/agent_router.py
 
-# 2. Install deps
-pip install openai httpx
+# Run with Ollama (local / sovereign)
+VEKLOM_AGENT_PROVIDER=ollama OLLAMA_MODEL=llama3 python agents/agent_router.py
 
-# 3. Run
-python agents/agent_loop.py
+# Run with HuggingFace
+VEKLOM_AGENT_PROVIDER=huggingface HF_MODEL=mistralai/Mistral-7B-Instruct-v0.3 python agents/agent_router.py
+
+# Run with OpenAI
+VEKLOM_AGENT_PROVIDER=openai python agents/agent_router.py
+
+# Custom goal
+AGENT_GOAL="List all vendors and check which ones have active contracts" \
+  VEKLOM_AGENT_PROVIDER=groq python agents/agent_router.py
+```
+
+### Run a specific provider directly
+
+```bash
+python agents/agent_ollama.py
+python agents/agent_groq.py
+python agents/agent_huggingface.py
+```
+
+## Required Env Vars by Provider
+
+### All providers
+```
+VEKLOM_API_URL=https://veklom.com/api/v1
+VEKLOM_API_KEY=your_jwt_here
+```
+
+### OpenAI
+```
+OPENAI_API_KEY=sk-...
+```
+
+### Groq
+```
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+Get key: https://console.groq.com
+
+### Ollama (Hetzner local)
+```
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3
+```
+Install: `curl -fsSL https://ollama.com/install.sh | sh && ollama pull llama3`
+
+### HuggingFace
+```
+HF_API_TOKEN=hf_...
+HF_MODEL=mistralai/Mistral-7B-Instruct-v0.3
+HF_ENDPOINT_URL=https://your-endpoint.huggingface.cloud  # optional private endpoint
+```
+Get token: https://huggingface.co/settings/tokens
+
+## Agent Architecture
+
+```
+Agent Goal
+    │
+    ▼
+[ROUTER] — selects provider via VEKLOM_AGENT_PROVIDER
+    │
+    ▼
+[THINK]  LLM reasons, picks a tool (or says DONE)
+    │
+    ▼
+[ACT]    Tool called: check_backend_health | run_governed_workflow | list_vendors
+    │
+    ▼
+[OBSERVE] Result injected into LLM context
+    │
+    ▼
+[ITERATE?] LLM judges: goal met? → DONE : loop again (max 10 iterations)
+    │
+    ▼
+[FINAL OUTPUT] — structured result returned
 ```
 
 ## Adding New Tools
 
-1. Write an `async def tool_<name>(...)` function in `agent_loop.py`.
-2. Add it to `TOOL_MAP`.
-3. Add its JSON Schema to `TOOL_SCHEMAS`.
+1. Write `async def tool_<name>(...)` in any agent file.
+2. Add to `TOOL_MAP`.
+3. Add JSON schema to `TOOL_SCHEMAS` (OpenAI/Groq) or `TOOL_DESCRIPTIONS` (Ollama/HF).
 
-The agent will automatically discover and use it on the next run.
+All 4 providers pick up the new tool automatically.
 
 ## IronGrid MCP Gateway
 
-See `irongrid/server.py` — this is the FastMCP server that exposes
-`execute_governed_workflow` as an MCP tool consumable by Cursor,
-Claude Desktop, and any 120-agent workforce.
+See `irongrid/server.py` — exposes `execute_governed_workflow` as an MCP tool
+consumable by Cursor, Claude Desktop, and any IDE workforce.
 
 Mount config: `irongrid/mcp_client_config.json`

@@ -1,0 +1,17 @@
+# Veklom Phase 3 Agent Requirements
+# Install: pip install -r requirements-agents.txt
+
+# Core AI
+openai>=1.30.0
+
+# Reddit API (Agent 042)
+praw>=7.7.0
+
+# HTTP client (Agents 040, 041)
+requests>=2.31.0
+
+# Scheduler (run_all_agents.py)
+schedule>=1.2.0
+
+# Optional: Email via Resend
+# resend>=0.7.0

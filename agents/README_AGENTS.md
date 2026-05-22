@@ -1,118 +1,117 @@
-# Veklom Agents — Multi-Provider AI Agent System
+# Veklom Agents — Ollama-First Sovereign AI
 
-Full Level-3 autonomous agent implementation across 4 LLM providers.
-Every agent runs the same THINK → ACT → OBSERVE → ITERATE loop.
-Only the LLM inference backend changes.
+Ollama is the **primary and default** agent engine.
+All inference runs on your Hetzner server.
+Zero data leaves your sovereign infrastructure. Zero cost per call.
 
-## Provider Comparison
+## Provider Priority
 
-| File | Provider | Cost | Latency | Best For |
-|---|---|---|---|---|
-| `agent_loop.py` | OpenAI GPT-4o-mini | ~$0.001/call | ~800ms | Best tool-calling accuracy |
-| `agent_groq.py` | Groq Llama 3.3 70B | ~$0.0001/call | ~150ms | High-throughput pipelines |
-| `agent_ollama.py` | Ollama (local) | $0.00 | ~500ms | 100% sovereign, no data leaves Hetzner |
-| `agent_huggingface.py` | HuggingFace Inference | Free tier / endpoint | ~1-3s | Open model experimentation |
+| Priority | File | Provider | Cost | Speed | Sovereignty |
+|---|---|---|---|---|---|
+| **1 (PRIMARY)** | `agent_ollama.py` | Ollama (local) | **$0.00** | ~500ms | **100% sovereign** |
+| 2 | `agent_groq.py` | Groq cloud | ~$0.0001 | ~150ms | Cloud |
+| 3 | `agent_loop.py` | OpenAI | ~$0.001 | ~800ms | Cloud |
+| 4 | `agent_huggingface.py` | HuggingFace | Free tier | ~1-3s | Cloud/endpoint |
 
 ## Quick Start
 
-### Use the Router (recommended)
-
+### One-time Hetzner setup
 ```bash
-# Run with Groq (default — fastest)
-VEKLOM_AGENT_PROVIDER=groq python agents/agent_router.py
-
-# Run with Ollama (local / sovereign)
-VEKLOM_AGENT_PROVIDER=ollama OLLAMA_MODEL=llama3 python agents/agent_router.py
-
-# Run with HuggingFace
-VEKLOM_AGENT_PROVIDER=huggingface HF_MODEL=mistralai/Mistral-7B-Instruct-v0.3 python agents/agent_router.py
-
-# Run with OpenAI
-VEKLOM_AGENT_PROVIDER=openai python agents/agent_router.py
-
-# Custom goal
-AGENT_GOAL="List all vendors and check which ones have active contracts" \
-  VEKLOM_AGENT_PROVIDER=groq python agents/agent_router.py
+bash agents/ollama_setup.sh
 ```
+This installs Ollama, pulls llama3 + mistral + phi3, and verifies the API.
 
-### Run a specific provider directly
-
+### Run the sovereign agent
 ```bash
+# Default goal (health + vendors + revenue + nodes)
 python agents/agent_ollama.py
-python agents/agent_groq.py
-python agents/agent_huggingface.py
+
+# Custom goal via CLI
+python agents/agent_ollama.py "List all tenants and check their Operating Reserve balances"
+python agents/agent_ollama.py "Run a governed workflow for tenant demo-1 with intent 'Q2 compliance audit'"
+python agents/agent_ollama.py "Check IronGrid node status and route a test payload"
+
+# Via router (ollama is default)
+python agents/agent_router.py
+AGENT_GOAL="Get revenue summary" python agents/agent_router.py
 ```
 
-## Required Env Vars by Provider
-
-### All providers
+### Switch models
+```bash
+OLLAMA_MODEL=mistral python agents/agent_ollama.py
+OLLAMA_MODEL=phi3 python agents/agent_ollama.py
+OLLAMA_MODEL=gemma2 python agents/agent_ollama.py
 ```
+
+## Env Vars
+
+```bash
+# Ollama (sovereign — runs on Hetzner)
+OLLAMA_BASE_URL=http://localhost:11434   # default
+OLLAMA_MODEL=llama3                      # default
+OLLAMA_TIMEOUT=120                       # seconds
+VEKLOM_AGENT_PROVIDER=ollama             # default
+
+# Veklom backend
 VEKLOM_API_URL=https://veklom.com/api/v1
 VEKLOM_API_KEY=your_jwt_here
+
+# Debug
+AGENT_DEBUG=1   # verbose LLM output
+AGENT_MAX_ITER=10
 ```
 
-### OpenAI
-```
-OPENAI_API_KEY=sk-...
-```
+## Tool Suite (15 tools wired to BYOS backend)
 
-### Groq
-```
-GROQ_API_KEY=gsk_...
-GROQ_MODEL=llama-3.3-70b-versatile
-```
-Get key: https://console.groq.com
-
-### Ollama (Hetzner local)
-```
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3
-```
-Install: `curl -fsSL https://ollama.com/install.sh | sh && ollama pull llama3`
-
-### HuggingFace
-```
-HF_API_TOKEN=hf_...
-HF_MODEL=mistralai/Mistral-7B-Instruct-v0.3
-HF_ENDPOINT_URL=https://your-endpoint.huggingface.cloud  # optional private endpoint
-```
-Get token: https://huggingface.co/settings/tokens
+| Tool | Endpoint | What It Does |
+|---|---|---|
+| `health` | GET /health | BYOS backend health check |
+| `list_vendors` | GET /marketplace/vendors | All marketplace vendors |
+| `list_models` | GET /marketplace/models | All AI models in marketplace |
+| `get_vendor` | GET /marketplace/vendors/:id | Specific vendor detail |
+| `run_workflow` | POST /workflows/execute | Execute governed AI task + bill tenant |
+| `get_workflow_status` | GET /workflows/:id/status | Check workflow progress |
+| `list_tenants` | GET /tenants | All tenants |
+| `get_tenant` | GET /tenants/:id | Tenant detail |
+| `get_tenant_balance` | GET /tenants/:id/balance | Operating Reserve balance |
+| `get_revenue_summary` | GET /billing/revenue/summary | Platform revenue totals |
+| `get_audit_log` | GET /audit/log | Immutable SHA-256 audit trail |
+| `get_node_status` | GET /irongrid/nodes | IronGrid node health |
+| `route_to_node` | POST /irongrid/route | Route payload to optimal node |
+| `ollama_list_models` | Ollama /api/tags | Models available locally |
+| `ollama_pull_model` | Ollama /api/pull | Pull new model to Hetzner |
 
 ## Agent Architecture
 
 ```
-Agent Goal
+Goal (CLI or API call)
     │
     ▼
-[ROUTER] — selects provider via VEKLOM_AGENT_PROVIDER
+[ROUTER] — VEKLOM_AGENT_PROVIDER (default: ollama)
     │
     ▼
-[THINK]  LLM reasons, picks a tool (or says DONE)
+[THINK]  Ollama LLM on Hetzner reasons, picks tool
     │
     ▼
-[ACT]    Tool called: check_backend_health | run_governed_workflow | list_vendors
+[ACT]    Tool called → real BYOS backend endpoint hit
     │
     ▼
 [OBSERVE] Result injected into LLM context
     │
     ▼
-[ITERATE?] LLM judges: goal met? → DONE : loop again (max 10 iterations)
+[ITERATE?] Done? → output answer : loop again
     │
     ▼
-[FINAL OUTPUT] — structured result returned
+[AUDIT] SHA-256 session fingerprint written
+    │
+    ▼
+Final structured output: {answer, iterations, audit_hash, sovereign: true}
 ```
 
 ## Adding New Tools
 
-1. Write `async def tool_<name>(...)` in any agent file.
-2. Add to `TOOL_MAP`.
-3. Add JSON schema to `TOOL_SCHEMAS` (OpenAI/Groq) or `TOOL_DESCRIPTIONS` (Ollama/HF).
+1. Write `async def tool_<name>(...)` in `agent_ollama.py`
+2. Add to `TOOL_MAP`
+3. Add one line to `TOOL_SCHEMA_TEXT`
 
-All 4 providers pick up the new tool automatically.
-
-## IronGrid MCP Gateway
-
-See `irongrid/server.py` — exposes `execute_governed_workflow` as an MCP tool
-consumable by Cursor, Claude Desktop, and any IDE workforce.
-
-Mount config: `irongrid/mcp_client_config.json`
+All providers and the router pick it up instantly.

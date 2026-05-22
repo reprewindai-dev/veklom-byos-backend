@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -137,3 +137,13 @@ def _mock_listings():
         {"id": "ml3", "name": "Data Anonymizer", "description": "PII detection and anonymization", "category": "privacy", "price": 0.75, "status": "published", "downloads": 312, "rating": 4.9},
         {"id": "ml4", "name": "Model Router", "description": "Intelligent model selection and routing", "category": "infrastructure", "price": 0.25, "status": "published", "downloads": 456, "rating": 4.6},
     ]
+
+# --- Webhook ---
+@router.post("/marketplace/webhook")
+async def marketplace_webhook(request: Request):
+    # For now, just accept the ping or event and return 200 OK
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", "message": "Marketplace webhook received successfully"}

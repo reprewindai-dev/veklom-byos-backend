@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
 import { 
   Send, Cpu, Sliders, Shield, AlertTriangle, Info, Terminal, 
-  Plus, Trash2, CheckCircle, Activity, Lock, Database, RefreshCw 
+  Plus, Trash2, CheckCircle, Activity, Lock, Database, RefreshCw,
+  Github, FolderGit2
 } from 'lucide-react';
 
 interface ModelInfo {
@@ -28,6 +29,16 @@ interface AuditLog {
   status: 'pass' | 'fail' | 'warning';
 }
 
+interface GithubRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  html_url: string;
+  description: string | null;
+  private: boolean;
+  updated_at: string;
+}
+
 interface SandboxSession {
   id: string;
   name: string;
@@ -41,6 +52,7 @@ interface SandboxSession {
   auditLogs: AuditLog[];
   complianceFetch: boolean;
   vaultRead: boolean;
+  githubRepoId?: number; // Added to store selected repo ID
 }
 
 export const Playground: React.FC = () => {
@@ -146,7 +158,11 @@ export const Playground: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [rightPanelTab, setRightPanelTab] = useState<'params' | 'ledger'>('params');
+  const [rightPanelTab, setRightPanelTab] = useState<'params' | 'ledger' | 'github'>('params');
+
+  const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([]);
+  const [isFetchingRepos, setIsFetchingRepos] = useState(false);
+  const [githubError, setGithubError] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +189,24 @@ export const Playground: React.FC = () => {
         ]);
       }
     };
+
+    const fetchGithubRepos = async () => {
+      setIsFetchingRepos(true);
+      try {
+        const data = await api('/auth/github/repos');
+        if (data && data.repos) {
+          setGithubRepos(data.repos);
+        }
+      } catch (err: any) {
+        console.log('GitHub integration not configured or user not connected:', err);
+        setGithubError(err.message || 'Failed to fetch GitHub repositories.');
+      } finally {
+        setIsFetchingRepos(false);
+      }
+    };
+
     fetchModels();
+    fetchGithubRepos();
   }, []);
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
@@ -590,6 +623,18 @@ export const Playground: React.FC = () => {
               >
                 Audit Ledger
               </button>
+              <button 
+                onClick={() => setRightPanelTab('github')}
+                className={`flex-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider py-1.5 rounded transition-all flex items-center justify-center gap-1.5 ${
+                  rightPanelTab === 'github' 
+                    ? 'text-[var(--orange)] bg-white/5 border border-white/10' 
+                    : 'text-[var(--text-muted)] hover:text-white'
+                }`}
+                title="GitHub Context"
+              >
+                <Github size={12} />
+                Repo
+              </button>
             </div>
 
             {rightPanelTab === 'params' ? (
@@ -714,7 +759,7 @@ export const Playground: React.FC = () => {
                 </div>
 
               </div>
-            ) : (
+            ) : rightPanelTab === 'ledger' ? (
               <div className="space-y-3 h-full flex flex-col overflow-hidden">
                 <span className="form-label mb-1">LEDGER EVIDENCE RECORDS</span>
                 
@@ -743,6 +788,65 @@ export const Playground: React.FC = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : (
+              <div className="space-y-3 h-full flex flex-col overflow-hidden">
+                <span className="form-label mb-1">GITHUB REPOSITORY CONTEXT</span>
+                
+                {isFetchingRepos ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-[var(--text-muted)] p-4 text-center">
+                    <RefreshCw size={24} className="animate-spin mb-2 text-[var(--orange)]" />
+                    <span className="text-[10px] font-mono">Fetching connected repositories...</span>
+                  </div>
+                ) : githubRepos.length > 0 ? (
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                    <div className="text-[10px] text-[var(--text-secondary)] mb-3">
+                      Select a repository to mount as active context for this sandbox session. 
+                      Changes will be scoped to this session.
+                    </div>
+                    {githubRepos.map(repo => {
+                      const isSelected = activeSession.githubRepoId === repo.id;
+                      return (
+                        <div 
+                          key={repo.id}
+                          onClick={() => updateActiveSession({ githubRepoId: repo.id })}
+                          className={`p-2.5 rounded border cursor-pointer transition-all flex flex-col gap-1.5 ${
+                            isSelected 
+                              ? 'bg-[rgba(255,184,0,0.06)] border-[rgba(255,184,0,0.3)] shadow-[0_0_10px_rgba(255,184,0,0.05)]' 
+                              : 'bg-white/[0.01] border-white/5 hover:bg-white/[0.03] hover:border-white/10'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-1.5 overflow-hidden">
+                              <FolderGit2 size={12} className={isSelected ? 'text-[var(--orange)]' : 'text-[var(--text-muted)]'} />
+                              <span className={`text-[11px] font-mono font-bold truncate ${isSelected ? 'text-white' : 'text-white/80'}`}>
+                                {repo.name}
+                              </span>
+                            </div>
+                            {repo.private && (
+                              <span className="text-[8px] font-mono bg-white/10 px-1 rounded uppercase shrink-0 text-[var(--text-secondary)]">Private</span>
+                            )}
+                          </div>
+                          {repo.description && (
+                            <p className="text-[9px] text-[var(--text-secondary)] line-clamp-2 leading-snug">
+                              {repo.description}
+                            </p>
+                          )}
+                          <div className="text-[8px] font-mono text-[var(--text-muted)] uppercase pt-1">
+                            Updated {new Date(repo.updated_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3">
+                    <Github size={32} className="text-[var(--text-muted)]" />
+                    <p className="text-[10px] text-[var(--text-secondary)]">
+                      {githubError || "No GitHub repositories found. Connect your GitHub account to access repositories in the playground."}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

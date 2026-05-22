@@ -44,12 +44,12 @@
       <img src="/static/branding/veklom-wordmark.png" alt="Veklom" class="nav-brand-wordmark" width="170" height="42">
     </a>
     <div class="nav-links">
-      <a href="#features">Features</a>
+      <a href="#ecosystem">Ecosystem</a>
       <a href="#compare">Compare</a>
       <a href="#pricing">Pricing</a>
       <a href="/workspace">Workspace</a>
       <a href="/api/v1/platform/uptime" class="badge badge-green">● Operational</a>
-      <a href="/workspace/login" class="btn btn-primary btn-sm">Sign Up / Login</a>
+      <a href="/workspace/login" class="btn btn-primary btn-sm">Sign In</a>
     </div>
   </div>
 </nav>
@@ -59,11 +59,10 @@
   <div class="container">
     <img src="/static/branding/veklom-wordmark.png" alt="Veklom" class="veklom-wordmark" style="height:84px;margin:0 auto 28px;display:block">
     <span class="label brand-kicker">Sovereign AI Hub</span>
-    <h1>Your AI demo worked.<br>Now your team needs the <span style="color:var(--orange-500)">plan</span>.</h1>
-    <p class="subtitle">Veklom Sovereign AI Hub turns AI experiments into governed private workflows with Playground, GPC, Pipelines, Governance, Monitoring, Billing, and replayable evidence in one tenant-scoped workspace.</p>
+    <h1>Veklom is the governed operational runtime for AI systems.</h1>
     <div class="hero-cta">
-      <a href="/workspace/login" class="btn btn-primary">Sign Up / Login →</a>
-      <a href="#pricing" class="btn btn-secondary">View pricing</a>
+      <a href="/workspace/login" class="btn btn-primary">Sign In →</a>
+      <a href="#ecosystem" class="btn btn-secondary">Explore the Ecosystem</a>
     </div>
     <div style="margin-top:24px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
       <span class="badge badge-green">● Live backend connected</span>
@@ -73,83 +72,62 @@
   </div>
 </section>
 
-<!-- The Missing Middle -->
-<section class="section" id="features">
+<!-- V3 Black Box Embed -->
+<section class="section" style="padding-top: 0;">
   <div class="container">
-    <div style="text-align:center;margin-bottom:60px">
-      <span class="label">What Veklom Does</span>
-      <h2>Most teams can get a model to answer.<br>The hard part is the <span style="color:var(--orange-500)">workflow</span>.</h2>
-      <p class="subtitle" style="margin:16px auto 0">Veklom shows the missing middle between a promising AI test and a workflow security, compliance, operations, and finance can approve, deploy, monitor, and defend.</p>
+    <div style="text-align:center;margin-bottom:24px">
+      <span class="label">V3 Black Box</span>
+      <h2 style="font-size: 1.5rem;">Messy intent in. Governed execution out.</h2>
     </div>
-    <div class="grid-3">
-      <div class="card">
-        <div class="step-num" style="margin-bottom:16px">01</div>
-        <h3>Planned</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">Workflow steps, models, tools, and deployment path are extracted from your intent.</p>
-      </div>
-      <div class="card card-highlight">
-        <div class="step-num" style="margin-bottom:16px">02</div>
-        <h3>Governed</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">Risks, policy requirements, approvals, evidence, and cost controls are attached before code ships.</p>
-      </div>
-      <div class="card">
-        <div class="step-num" style="margin-bottom:16px">03</div>
-        <h3>Provable</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">Private runtime, monitoring, replay, and buyer proof are prepared before rollout.</p>
+    
+    <div class="v3-blackbox-frame" style="margin: 0 auto; position: relative; width: 100%; max-width: 1120px; height: 680px; overflow: hidden; border-radius: 28px; background: #020617; border: 1px solid var(--border);">
+      <div class="v3-side-mask-left" style="position: absolute; top: 0; bottom: 0; width: 220px; pointer-events: none; background: #020617; z-index: 20; left: 0;"></div>
+      <div class="v3-side-mask-right" style="position: absolute; top: 0; bottom: 0; width: 220px; pointer-events: none; background: #020617; z-index: 20; right: 0;"></div>
+      <div class="v3-blackbox-inner" style="position: absolute; top: 0; left: 50%; width: 1440px; height: 100%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center;">
+        <iframe src="https://uacpv3.veklom.com" style="width: 100%; height: 100%; border: none; background: #0a0a0c;"></iframe>
       </div>
     </div>
   </div>
 </section>
 
-<!-- Workspace Features -->
-<section class="section section-alt" id="workspace-features">
+<!-- Ecosystem / Product Language -->
+<section class="section section-alt" id="ecosystem">
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
-      <span class="label">Full Stack</span>
-      <h2>One workspace. Everything governed.</h2>
+      <span class="label">Ecosystem Hierarchy</span>
+      <h2>The Sovereign Infrastructure</h2>
     </div>
-    <div class="grid-4">
-      <div class="card"><h3>Playground</h3><p style="color:var(--text-secondary);margin-top:8px;font-size:0.9rem">Test models, compare outputs, attach governance before anything runs.</p></div>
-      <div class="card card-highlight"><h3 style="color:var(--orange-500)">GPC</h3><p style="color:var(--text-secondary);margin-top:8px;font-size:0.9rem">Governed Plan Compiler — turn messy AI ideas into governed plans.</p></div>
-      <div class="card"><h3>Models</h3><p style="color:var(--text-secondary);margin-top:8px;font-size:0.9rem">BYOK provider catalog with tiered access and governance calls.</p></div>
-      <div class="card"><h3>Tool Hub</h3><p style="color:var(--text-secondary);margin-top:8px;font-size:0.9rem">Browse, install, and govern tools from the marketplace.</p></div>
-      <div class="card"><h3>Pipelines</h3><p style="color:var(--text-secondary);margin-top:8px;font-size:0.9rem">7-stage Railway-style deployment with canary rollout.</p></div>
-      <div class="card"><h3>Governance</h3><p style="color:var(--text-secondary);margin-top:8px;font-size:0.9rem">Policy packs, approval gates, evidence capture, compliance controls.</p></div>
-      <div class="card"><h3>Vault</h3><p style="color:var(--text-secondary);margin-top:8px;font-size:0.9rem">Secure key management with zero-exposure BYOK integration.</p></div>
-      <div class="card"><h3>Monitoring</h3><p style="color:var(--text-secondary);margin-top:8px;font-size:0.9rem">Real-time telemetry, replay, alerts, and audit evidence.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- GPC Showcase -->
-<section class="section" id="gpc">
-  <div class="container">
-    <div class="grid-2" style="align-items:center">
-      <div>
-        <span class="label">GPC — Governed Plan Compiler</span>
-        <h2>Turn messy AI ideas into governed plans before they become pipelines.</h2>
-        <p style="color:var(--text-secondary);margin:16px 0 24px">From prompt to governed workflow. GPC extracts the workflow, risks, policy requirements, approvals, evidence needs, cost controls, and deployment path.</p>
-        <a href="/workspace" class="btn btn-primary">Open Workspace →</a>
+    <div class="grid-3">
+      <div class="card card-highlight">
+        <h3 style="color:var(--orange-500)">UACP</h3>
+        <p style="color:var(--text-secondary);margin-top:8px">The constitutional coordination layer that governs execution.</p>
       </div>
-      <div class="gpc-preview">
-        <div style="font-family:var(--font-mono);font-size:0.85rem">
-          <div style="color:var(--orange-500);margin-bottom:12px">$ veklom gpc compile --intent</div>
-          <div style="color:var(--text-muted);margin-bottom:8px">"Triage incoming support tickets using AI"</div>
-          <div style="margin-top:16px;padding:16px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border)">
-            <div style="color:var(--green);margin-bottom:8px">✓ Workflow extracted — 5 steps</div>
-            <div style="color:var(--orange-400);margin-bottom:8px">⚠ 3 risks identified — mitigation attached</div>
-            <div style="color:var(--blue);margin-bottom:8px">◆ 4 policy requirements — SOC2, HIPAA</div>
-            <div style="color:var(--text-secondary);margin-bottom:8px">$ Cost estimate: $9.50/compile</div>
-            <div style="color:var(--green)">✓ Deployment path: private-runtime (EU-sovereign)</div>
-          </div>
-        </div>
+      <div class="card">
+        <h3>V3</h3>
+        <p style="color:var(--text-secondary);margin-top:8px">The black-box interface where messy intent becomes structured output.</p>
+      </div>
+      <div class="card">
+        <h3>GPC</h3>
+        <p style="color:var(--text-secondary);margin-top:8px">The internal planner/compiler that prepares execution plans.</p>
+      </div>
+      <div class="card">
+        <h3>Marketplace</h3>
+        <p style="color:var(--text-secondary);margin-top:8px">Where vertical modules, tools, and agent capabilities plug in.</p>
+      </div>
+      <div class="card">
+        <h3>GreenVision</h3>
+        <p style="color:var(--text-secondary);margin-top:8px">The carbon/cost-aware routing vertical.</p>
+      </div>
+      <div class="card">
+        <h3>IronGrid / NeuralMesh</h3>
+        <p style="color:var(--text-secondary);margin-top:8px">The routing and pathfinding substrate.</p>
       </div>
     </div>
   </div>
 </section>
 
 <!-- How It Works -->
-<section class="section section-alt">
+<section class="section">
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
       <span class="label">Workflow</span>
@@ -167,7 +145,7 @@
 </section>
 
 <!-- Competitive Comparison -->
-<section class="section" id="compare">
+<section class="section section-alt" id="compare">
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
       <span class="label">Why Veklom</span>
@@ -203,7 +181,7 @@
 </section>
 
 <!-- Pricing -->
-<section class="section section-alt" id="pricing">
+<section class="section" id="pricing">
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
       <span class="label">Pricing</span>
@@ -280,7 +258,7 @@
 </section>
 
 <!-- Platform Transparency Pulse -->
-<section class="section" id="pulse">
+<section class="section section-alt" id="pulse">
   <div class="container">
     <div style="text-align:center;margin-bottom:40px">
       <span class="label">Transparency Pulse</span>
@@ -297,7 +275,7 @@
 </section>
 
 <!-- Uptime Monitor -->
-<section class="section section-alt" id="uptime">
+<section class="section" id="uptime">
   <div class="container">
     <div style="text-align:center;margin-bottom:40px">
       <span class="label">Uptime Monitor</span>
@@ -310,7 +288,7 @@
 </section>
 
 <!-- Vendor / Customer Hook -->
-<section class="section">
+<section class="section section-alt">
   <div class="container" style="text-align:center">
     <h2>You just watched it work.<br>Now run it on <span style="color:var(--orange-500)">your data</span>.</h2>
     <p class="subtitle" style="margin:16px auto 32px">Free Evaluation — 15 governed runs, no card, no key exposure. Keep every audit artifact you generate.</p>
@@ -322,7 +300,7 @@
 </section>
 
 <!-- Feedback / Bug Report -->
-<section class="section section-alt" id="feedback">
+<section class="section" id="feedback">
   <div class="container" style="max-width:640px">
     <div style="text-align:center;margin-bottom:32px">
       <span class="label">Feedback</span>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, Code, Cpu, ShieldCheck, Github, ChevronRight, Layers, Layout, Zap, Package, Compass } from 'lucide-react';
+import { Terminal, Code, Cpu, ShieldCheck, Github, Layers, Layout, Zap, Package, Compass } from 'lucide-react';
 
 interface ToolItem {
   name: string;
@@ -44,21 +44,7 @@ export const DeveloperToolsPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-[1200px] mx-auto animate-fade-in pb-12">
-      
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-[0.05em] flex items-center gap-3">
-            <Package className="text-[var(--orange)]" size={24} />
-            MARKETPLACE CATALOG
-          </h1>
-          <p className="text-sm text-[var(--text-secondary)] mt-2 max-w-2xl">
-            Veklom marketplace packages SDKs, IDE plugins, CI controls, and premium runtime add-ons into governed, billable modules for tenant-scoped deployment.
-          </p>
-        </div>
-      </div>
-
+    <div className="space-y-6">
       {/* Overview Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="glass-panel p-4 flex flex-col justify-between">

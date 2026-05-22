@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 import httpx
 from sqlalchemy import select
@@ -327,7 +328,8 @@ async def github_login():
         "scope": "user:email read:user",
         "state": state,
     }
-    return {"url": f"{GITHUB_AUTH_URL}?{urlencode(params)}", "state": state}
+    redirect_url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
+    return RedirectResponse(url=redirect_url)
 
 
 @router.post("/github/callback")

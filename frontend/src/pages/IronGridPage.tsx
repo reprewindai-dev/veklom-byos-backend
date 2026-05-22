@@ -82,7 +82,7 @@ export const IronGridPage: React.FC = () => {
       <div className="flex flex-col gap-4 border-b border-white/5 pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-            <span>GPC</span>
+            <span>Marketplace</span>
             <span>/</span>
             <span className="text-[var(--orange)]">PY03 IronGrid</span>
           </div>

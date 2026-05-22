@@ -69,10 +69,10 @@ export const GithubCallbackPage: React.FC<GithubCallbackProps> = ({ onLoginSucce
             <span className="text-center">{error}</span>
             <button
               type="button"
-              onClick={() => navigate("/login")}
+              onClick={() => window.location.href = "/"}
               className="mt-4 px-4 py-2 border border-[rgba(255,255,255,0.1)] rounded-md hover:bg-[rgba(255,255,255,0.05)] text-white transition-colors"
             >
-              RETURN TO LOGIN
+              RETURN HOME
             </button>
           </div>
         ) : null}

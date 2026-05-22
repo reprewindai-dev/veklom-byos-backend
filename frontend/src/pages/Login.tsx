@@ -49,18 +49,11 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleGithubLogin = async () => {
-    setError('');
-    try {
-      const data = await api('/auth/github/login');
-      if (data && data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error('Failed to get GitHub redirect URL.');
-      }
-    } catch (err: any) {
-      setError(err.message || 'GitHub OAuth failed.');
-    }
+  const handleGithubLogin = () => {
+    // A true GitHub login must use a full window redirect to the backend's OAuth endpoint,
+    // which then 307 redirects to GitHub. We cannot use `fetch()` for this.
+    const apiBase = (window as any).__VEKLOM_API_BASE__ || '/api/v1';
+    window.location.href = `${apiBase}/auth/github/login`;
   };
 
   return (

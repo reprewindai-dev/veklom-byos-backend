@@ -19,6 +19,8 @@ import { MonitoringPage } from './pages/MonitoringPage';
 import { TeamPage } from './pages/TeamPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { DeveloperToolsPage } from './pages/DeveloperToolsPage';
+import { MarketplaceLayout } from './components/Marketplace/MarketplaceLayout';
+import { GreenVisionPage } from './pages/GreenVisionPage';
 import { getToken, api } from './api/client';
 import './index.css';
 
@@ -131,7 +133,6 @@ const App: React.FC = () => {
             <Route path="overview" element={<Overview />} />
             <Route path="playground" element={<Playground />} />
             <Route path="gpc" element={<GpcPage />} />
-            <Route path="gpc/py03-irongrid" element={<IronGridPage />} />
             <Route path="command-center" element={<CommandCenter />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="pipelines" element={<Pipelines />} />
@@ -142,8 +143,15 @@ const App: React.FC = () => {
             <Route path="monitoring" element={<MonitoringPage />} />
             <Route path="team" element={<TeamPage />} />
             <Route path="settings" element={<SettingsPage user={user} onLogout={handleLogout} />} />
-            <Route path="marketplace" element={<DeveloperToolsPage />} />
-            <Route path="developer-tools" element={<DeveloperToolsPage />} />
+            
+            {/* Marketplace Routing */}
+            <Route path="marketplace" element={<MarketplaceLayout />}>
+              <Route index element={<DeveloperToolsPage />} />
+              <Route path="irongrid" element={<IronGridPage />} />
+              <Route path="greenvision" element={<GreenVisionPage />} />
+            </Route>
+            <Route path="developer-tools" element={<Navigate to="/marketplace" replace />} />
+            
             <Route path="*" element={<Navigate to="/overview" replace />} />
           </Route>
         </Routes>

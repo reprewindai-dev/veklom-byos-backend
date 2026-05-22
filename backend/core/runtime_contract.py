@@ -148,6 +148,90 @@ ECONOMIC_PRESSURE_MODEL: dict[str, Any] = {
 }
 
 
+OPERATIONAL_RUNTIME_CONTRACT: dict[str, Any] = {
+    "category": "governed_operational_runtime",
+    "positioning": (
+        "Veklom is the sovereign multi-agent substrate: a BYOS runtime that governs execution, "
+        "normalizes enterprise systems, preserves state continuity, and emits replayable telemetry."
+    ),
+    "layers": {
+        "runtime_reliability_telemetry": {
+            "owns": [
+                "execution graph lineage",
+                "immutable telemetry ledger",
+                "failure replay controller",
+                "state recovery checkpoints",
+                "model/tool drift observation",
+            ],
+            "failure_mode_resolved": "basic logs cannot reconstruct multi-agent causal state",
+        },
+        "unified_execution_interoperability": {
+            "owns": [
+                "UACP message envelopes",
+                "correlation IDs",
+                "schema-validated payloads",
+                "cryptographic non-repudiation",
+                "step-level workflow composition",
+                "MCP tool/resource bridge compatibility",
+            ],
+            "failure_mode_resolved": "custom agent wrappers create fragmented permissions and brittle handoffs",
+        },
+        "legacy_ingestion_translation": {
+            "owns": [
+                "SNMP normalization",
+                "Modbus normalization",
+                "enterprise webhook normalization",
+                "legacy API wrappers",
+                "on-prem and cloud schema alignment",
+            ],
+            "failure_mode_resolved": "enterprise systems rarely expose clean modern APIs",
+        },
+        "operational_governance_sovereignty": {
+            "owns": [
+                "workspace isolation",
+                "policy-aware execution gates",
+                "approval pauses",
+                "audit evidence immutability",
+                "budget and x402-compatible payment boundaries",
+                "tenant custody over runtime, keys, and ledgers",
+            ],
+            "failure_mode_resolved": "unconstrained agents exceed production boundaries",
+        },
+        "byos_deployment": {
+            "owns": [
+                "self-hosted runtime packaging",
+                "private server initialization",
+                "connector/API key onboarding",
+                "zero external dependency posture",
+                "Coolify/Docker deploy path",
+            ],
+            "failure_mode_resolved": "months-long integration projects block enterprise adoption",
+        },
+        "autonomous_maintenance_survivability": {
+            "owns": [
+                "dependency drift monitoring",
+                "self-healing retries and circuit breakers",
+                "dynamic API adaptation",
+                "provider degradation handling",
+                "operational survival telemetry",
+            ],
+            "failure_mode_resolved": "upstream changes and network degradation cascade through agent systems",
+        },
+    },
+    "approval_function": {
+        "formula": "P_approved = G(agent_identity, target_tool_schema, runtime_context)",
+        "approved_values": [0, 1],
+        "required_inputs": ["agent_identity", "target_tool_schema", "runtime_context", "workspace_entitlement"],
+    },
+    "interoperability_protocols": {
+        "mcp": "model-to-tool and model-to-resource bridge",
+        "uacp": "enterprise agent-to-agent orchestration with auditable step composition",
+        "muacp": "bounded edge/IoT communication profile for constrained devices",
+    },
+    "strategic_target": "one undeniable sovereign flow over scattered developer tools",
+}
+
+
 def get_stack_contract() -> dict[str, Any]:
     return deepcopy(STACK_CONTRACT)
 
@@ -158,6 +242,10 @@ def get_routing_topology() -> dict[str, Any]:
 
 def get_economic_pressure_model() -> dict[str, Any]:
     return deepcopy(ECONOMIC_PRESSURE_MODEL)
+
+
+def get_operational_runtime_contract() -> dict[str, Any]:
+    return deepcopy(OPERATIONAL_RUNTIME_CONTRACT)
 
 
 def classify_route(

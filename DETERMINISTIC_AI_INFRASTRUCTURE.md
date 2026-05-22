@@ -7,6 +7,9 @@ Codify the source-of-truth split between Veklom, UACP, GPC, and `py03-irongrid`.
 Veklom is not positioned as an AI assistant. Veklom is sovereign runtime infrastructure for governed,
 paid, tenant-isolated AI execution.
 
+This doctrine sits under the broader governed operational runtime specification:
+[GOVERNED_OPERATIONAL_RUNTIME.md](./GOVERNED_OPERATIONAL_RUNTIME.md).
+
 ## System Components
 
 | Component | Role | System Boundary |
@@ -35,6 +38,7 @@ Runtime doctrine and routing contracts are exposed through:
 | GET | `/api/v1/routing` | Runtime routing contract |
 | GET | `/api/v1/routing/topology` | Route classes and `py03-irongrid` substrate contract |
 | GET | `/api/v1/routing/economics` | Token, latency, verification, and routing economics model |
+| GET | `/api/v1/routing/operational-runtime` | Governed operational runtime substrate contract |
 | GET | `/api/v1/routing/stack` | Repo responsibility boundaries |
 | POST | `/api/v1/routing/decision` | Deterministic workload route classification |
 | POST | `/api/v1/gpc/intent-to-plan` | Governed plan compilation |

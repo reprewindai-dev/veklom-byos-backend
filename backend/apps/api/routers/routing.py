@@ -11,6 +11,7 @@ from backend.core.runtime_contract import (
     ROUTING_POLICY_VERSION,
     classify_route,
     get_economic_pressure_model,
+    get_operational_runtime_contract,
     get_routing_topology,
     get_stack_contract,
 )
@@ -61,6 +62,12 @@ async def routing_topology():
 async def routing_economics():
     """Return the infrastructure economics model behind deterministic routing."""
     return get_economic_pressure_model()
+
+
+@router.get("/operational-runtime")
+async def operational_runtime():
+    """Return the governed operational runtime substrate contract."""
+    return get_operational_runtime_contract()
 
 
 @router.get("/stack")

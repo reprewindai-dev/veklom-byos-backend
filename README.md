@@ -45,7 +45,7 @@ alembic upgrade head
 uvicorn backend.apps.api.main:app --reload
 ```
 
-Health check: `GET http://localhost:8000/api/v1/health`
+Health check: `GET http://localhost:8088/health`
 
 ---
 
@@ -63,6 +63,7 @@ Health check: `GET http://localhost:8000/api/v1/health`
 | [SELLABLE_BACKEND_AUDIT.md](./SELLABLE_BACKEND_AUDIT.md) | Module readiness audit |
 | [SOURCE_BACKEND_INVENTORY.md](./SOURCE_BACKEND_INVENTORY.md) | Full folder/route/dep inventory |
 | [DETERMINISTIC_AI_INFRASTRUCTURE.md](./DETERMINISTIC_AI_INFRASTRUCTURE.md) | Veklom/UACP/GPC/py03-irongrid role doctrine |
+| [GOVERNED_OPERATIONAL_RUNTIME.md](./GOVERNED_OPERATIONAL_RUNTIME.md) | Operational runtime substrate, telemetry, governance, BYOS, and survivability spec |
 
 ---
 

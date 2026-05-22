@@ -123,6 +123,7 @@ Runtime contract endpoints:
 | GET | `/api/v1/routing` | Runtime routing contract |
 | GET | `/api/v1/routing/topology` | Route classes and `py03-irongrid` substrate contract |
 | GET | `/api/v1/routing/economics` | Infrastructure economics model |
+| GET | `/api/v1/routing/operational-runtime` | Governed operational runtime substrate contract |
 | GET | `/api/v1/routing/stack` | Repo responsibility boundaries |
 | POST | `/api/v1/routing/decision` | Deterministic workload route classification |
 

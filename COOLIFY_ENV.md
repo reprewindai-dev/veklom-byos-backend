@@ -16,18 +16,18 @@ The auth endpoints are currently returning 500 errors because the database conne
 
 ### Database (REQUIRED for auth to work)
 ```
-DATABASE_URL=postgresql+asyncpg://veklom_user:Veklom2026SecureDB!@5.78.135.11:5432/veklom_production
+DATABASE_URL=postgresql+asyncpg://veklom_user:YOUR_SECURE_DB_PASSWORD@YOUR_EXTERNAL_DB_HOST:5432/veklom_production
 POSTGRES_DB=veklom_production
 POSTGRES_USER=veklom_user
-POSTGRES_PASSWORD=Veklom2026SecureDB!
+POSTGRES_PASSWORD=YOUR_SECURE_DB_PASSWORD
 ```
 
 ### Redis (REQUIRED for session management)
 ```
-REDIS_URL=redis://:Veklom2026Redis!@5.78.135.11:6379/0
-REDIS_PASSWORD=Veklom2026Redis!
-CELERY_BROKER_URL=redis://:Veklom2026Redis!@5.78.135.11:6379/0
-CELERY_RESULT_BACKEND=redis://:Veklom2026Redis!@5.78.135.11:6379/1
+REDIS_URL=redis://:YOUR_REDIS_PASSWORD@YOUR_EXTERNAL_REDIS_HOST:6379/0
+REDIS_PASSWORD=YOUR_REDIS_PASSWORD
+CELERY_BROKER_URL=redis://:YOUR_REDIS_PASSWORD@YOUR_EXTERNAL_REDIS_HOST:6379/0
+CELERY_RESULT_BACKEND=redis://:YOUR_REDIS_PASSWORD@YOUR_EXTERNAL_REDIS_HOST:6379/1
 ```
 
 **IMPORTANT**: Do NOT use Docker service names like `postgres:5432` or `redis:6379` in Coolify. Use the external IP `5.78.135.11` instead.

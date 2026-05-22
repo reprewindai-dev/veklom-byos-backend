@@ -66,7 +66,7 @@ if settings.APP_ENV == "production":
 async def not_found(request: Request, exc):
     if request.url.path.startswith("/api/"):
         return JSONResponse(status_code=404, content={"detail": "Not found"})
-    if request.url.path.startswith("/workspace"):
+    if request.url.path.startswith("/workspace") or request.url.path.startswith("/login") or request.url.path.startswith("/github"):
         workspace_index = WORKSPACE_DIR / "index.html"
         if workspace_index.exists():
             return FileResponse(str(workspace_index))
@@ -100,6 +100,7 @@ from backend.apps.api.routers import (
     internal_uacp,
     internal_operators,
     plugins,
+    langchain_ops,
 )
 
 # Health & status (no prefix)

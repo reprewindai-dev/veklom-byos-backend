@@ -1,0 +1,10 @@
+# Please paste your API keys here! I will securely inject them into the Coolify server for you, so you don't have to log into Coolify!
+# Once you have pasted them, just tell me "done" and I will handle the rest.
+
+OPENAI_API_KEY=
+GROQ_API_KEY=
+HUGGINGFACE_API_KEY=
+ANTHROPIC_API_KEY=
+STRIPE_SECRET_KEY=
+RESEND_API_KEY=
+GEMINI_API_KEY=

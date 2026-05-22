@@ -1,4 +1,4 @@
-const getApiBase = (): string => {
+export const getApiBase = (): string => {
   const filePreviewBase =
     window.location.protocol === 'file:' ? 'http://5.78.135.11:8088/api/v1' : '/api/v1';
   const envBase = (import.meta as any).env?.VITE_API_URL;

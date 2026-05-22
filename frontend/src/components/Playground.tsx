@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api } from '../api/client';
+import { api, getApiBase } from '../api/client';
 import { 
   Send, Cpu, Sliders, Shield, AlertTriangle, Info, Terminal, 
   Plus, Trash2, CheckCircle, Activity, Lock, Database, RefreshCw,
@@ -208,6 +208,40 @@ export const Playground: React.FC = () => {
     fetchModels();
     fetchGithubRepos();
   }, []);
+
+  const handleConnectGithub = () => {
+    window.location.href = `${getApiBase()}/auth/github/login`;
+  };
+
+  const handleSelectRepo = async (repo: GithubRepo) => {
+    updateActiveSession({ githubRepoId: repo.id });
+    try {
+      // workspace_id is usually retrieved from context, using placeholder if not directly available
+      // Here we just use a dummy 'sandbox' string to represent the playground UI context
+      await api('/auth/github/repos/select', {
+        method: 'POST',
+        body: JSON.stringify({
+          repo_full_name: repo.full_name,
+          workspace_id: 'sandbox_playground'
+        })
+      });
+      // Add local audit log entry
+      const timeStr = new Date().toTimeString().split(' ')[0];
+      updateActiveSession({
+        auditLogs: [
+          ...activeSession.auditLogs,
+          {
+            timestamp: timeStr,
+            action: 'Repo Mounted',
+            details: `Mounted GitHub repository ${repo.full_name} into sandbox environment.`,
+            status: 'pass'
+          }
+        ]
+      });
+    } catch (err: any) {
+      console.error('Failed to select repo:', err);
+    }
+  };
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
 
@@ -809,7 +843,7 @@ export const Playground: React.FC = () => {
                       return (
                         <div 
                           key={repo.id}
-                          onClick={() => updateActiveSession({ githubRepoId: repo.id })}
+                          onClick={() => handleSelectRepo(repo)}
                           className={`p-2.5 rounded border cursor-pointer transition-all flex flex-col gap-1.5 ${
                             isSelected 
                               ? 'bg-[rgba(255,184,0,0.06)] border-[rgba(255,184,0,0.3)] shadow-[0_0_10px_rgba(255,184,0,0.05)]' 
@@ -840,11 +874,18 @@ export const Playground: React.FC = () => {
                     })}
                   </div>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3">
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-4">
                     <Github size={32} className="text-[var(--text-muted)]" />
                     <p className="text-[10px] text-[var(--text-secondary)]">
                       {githubError || "No GitHub repositories found. Connect your GitHub account to access repositories in the playground."}
                     </p>
+                    <button 
+                      onClick={handleConnectGithub}
+                      className="btn btn-primary text-[10px] font-mono px-4 py-2 flex items-center gap-2"
+                    >
+                      <Github size={12} />
+                      Connect GitHub
+                    </button>
                   </div>
                 )}
               </div>

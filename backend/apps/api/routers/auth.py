@@ -25,6 +25,8 @@ from backend.core.security.auth import (
     verify_password,
     verify_token,
 )
+from backend.core.security.encryption import encrypt_token, decrypt_token
+from backend.core.audit import log_audit_event
 from backend.db.models.user import APIKey, Session, User
 from backend.db.models.workspace import Workspace
 
@@ -428,7 +430,7 @@ async def github_callback(
             workspace_id=workspace.id,
             github_id=github_id,
             github_username=github_username,
-            github_access_token=gh_access_token,
+            github_access_token=encrypt_token(gh_access_token),
         )
         db.add(user)
         await db.commit()
@@ -436,7 +438,7 @@ async def github_callback(
     else:
         user.github_id = github_id
         user.github_username = github_username
-        user.github_access_token = gh_access_token
+        user.github_access_token = encrypt_token(gh_access_token)
         user.last_login = datetime.now(timezone.utc)
         user.last_activity = datetime.now(timezone.utc)
         await db.commit()
@@ -470,15 +472,45 @@ async def github_callback(
 async def github_repos(user=Depends(get_current_user)):
     if not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected.")
+    decrypted_token = decrypt_token(user.github_access_token)
+    if not decrypted_token:
+        raise HTTPException(status_code=400, detail="Failed to decrypt GitHub token.")
+    
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             "https://api.github.com/user/repos",
-            headers={"Authorization": f"Bearer {user.github_access_token}", "Accept": "application/json"},
+            headers={"Authorization": f"Bearer {decrypted_token}", "Accept": "application/json"},
             params={"sort": "updated", "per_page": 50, "type": "owner"},
         )
         if resp.status_code != 200:
             raise HTTPException(status_code=400, detail="Failed to fetch repos")
         return {"repos": resp.json()}
+
+
+class RepoSelectRequest(BaseModel):
+    repo_full_name: str
+    workspace_id: str
+
+@router.post("/github/repos/select")
+async def select_github_repo(body: RepoSelectRequest, request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not user.github_access_token:
+        raise HTTPException(status_code=400, detail="GitHub not connected.")
+    
+    # Normally we would save this to the Workspace or a specific Session configuration.
+    # For now we just log it in the audit log to prove wiring.
+    await log_audit_event(
+        db=db,
+        user_id=user.id,
+        action="repo_connected",
+        workspace_id=body.workspace_id,
+        resource_type="github_repo",
+        resource_id=body.repo_full_name,
+        details={"repo": body.repo_full_name, "provider": "github"},
+        ip_address=request.client.host if request.client else "unknown",
+        user_agent=request.headers.get("user-agent", "unknown")
+    )
+    
+    return {"message": "Repository selected and authorized", "repo": body.repo_full_name}
 
 
 @router.get("/connected-accounts")

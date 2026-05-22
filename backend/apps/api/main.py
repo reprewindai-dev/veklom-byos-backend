@@ -100,7 +100,6 @@ from backend.apps.api.routers import (
     internal_uacp,
     internal_operators,
     plugins,
-    langchain_ops,
 )
 
 # Health & status (no prefix)

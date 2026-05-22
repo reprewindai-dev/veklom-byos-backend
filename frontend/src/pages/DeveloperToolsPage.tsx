@@ -37,7 +37,7 @@ export const DeveloperToolsPage: React.FC = () => {
     arch: [
       { name: 'Veklom Control Plane CLI', type: 'CLI Tool', install: 'npm i -g @veklom/cli', description: 'Advanced command-line interface for managing deployments, routing configurations, and viewing audit logs natively in terminal.', icon: <Terminal size={20} /> },
       { name: 'Veklom CI/CD Shield', type: 'DevOps Action', install: 'GitHub Actions Marketplace', description: 'Injects governance checks directly into your CI pipeline, ensuring no ungoverned models are ever merged to main.', icon: <ShieldCheck size={20} /> },
-      { name: 'IronGrid Route Optimizer Simulator', type: 'Local Emulator', install: 'docker pull veklom/irongrid-sim', description: 'High-end architectural emulator allowing you to test complex asynchronous multi-LLM routing patterns completely offline.', icon: <Cpu size={20} /> },
+      { name: 'PY03 IronGrid Route Optimizer', type: 'Marketplace Add-on', install: 'SKU PY03-IRONGRID', description: 'Deterministic routing mesh sold as a GPC add-on for route scoring, latency topology, and data movement economics.', icon: <Cpu size={20} /> },
       { name: 'UACP Blueprint Designer', type: 'Architecture Tool', install: 'Web Dashboard Extension', description: 'Visual node-based designer for planning Universal AI Control Plane state machines and worker fleets.', icon: <Layers size={20} /> }
     ]
   };
@@ -50,10 +50,10 @@ export const DeveloperToolsPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-[0.05em] flex items-center gap-3">
             <Package className="text-[var(--orange)]" size={24} />
-            DEVELOPER TOOLS CATALOG
+            MARKETPLACE CATALOG
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mt-2 max-w-2xl">
-            Veklom works with the stack your team already uses. Pick your language and get governed AI inference, tamper-evident audit logging, compliance checks, and model routing — without changing your workflow.
+            Veklom marketplace packages SDKs, IDE plugins, CI controls, and premium runtime add-ons into governed, billable modules for tenant-scoped deployment.
           </p>
         </div>
       </div>
@@ -77,12 +77,12 @@ export const DeveloperToolsPage: React.FC = () => {
       {/* Tabs */}
       <div className="flex border-b border-[rgba(255,255,255,0.05)] overflow-x-auto no-scrollbar">
         {[
-          { id: 'python', label: '🐍 Python' },
-          { id: 'ts', label: '🟨 JS/TypeScript' },
-          { id: 'java', label: '☕ Java' },
-          { id: 'net', label: '🔷 .NET/C#' },
-          { id: 'go', label: '🐹 Go' },
-          { id: 'arch', label: '🏛️ High-End Architecture' },
+          { id: 'python', label: 'Python' },
+          { id: 'ts', label: 'JS/TypeScript' },
+          { id: 'java', label: 'Java' },
+          { id: 'net', label: '.NET/C#' },
+          { id: 'go', label: 'Go' },
+          { id: 'arch', label: 'Runtime Add-ons' },
         ].map(tab => (
           <button
             key={tab.id}

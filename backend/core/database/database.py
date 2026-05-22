@@ -1,5 +1,7 @@
 """Database engine and session management."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
@@ -30,6 +32,15 @@ async def get_db():
         error_detail = f"Database connection error: {str(e)}\nTraceback: {traceback.format_exc()}"
         print(error_detail)
         raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
+
+
+@asynccontextmanager
+async def get_db_session():
+    async with async_session() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
 
 async def get_db_status():

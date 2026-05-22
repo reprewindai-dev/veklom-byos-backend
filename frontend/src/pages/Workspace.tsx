@@ -17,7 +17,7 @@ import {
   Layers,
   User,
   UserCheck,
-  Code
+  ShoppingBag
 } from 'lucide-react';
 
 interface WorkspaceProps {
@@ -91,21 +91,31 @@ export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
                 <NavLink to="/playground" className={getNavLinkClass}>
                   <Terminal size={13} /> Playground
                 </NavLink>
+                <NavLink to="/command-center" className={getNavLinkClass}>
+                  <Layers size={13} /> Command Center
+                </NavLink>
+                <NavLink to="/marketplace" className={getNavLinkClass}>
+                  <ShoppingBag size={13} /> Marketplace
+                </NavLink>
+              </nav>
+            </div>
+
+            {/* Sec: GPC */}
+            <div>
+              <span className="text-[9px] font-bold font-mono tracking-wider text-[var(--text-muted)] uppercase block px-3 mb-2">GPC Spine</span>
+              <nav className="space-y-1">
                 <NavLink to="/gpc" className={getNavLinkClass}>
                   <Sliders size={13} /> GPC Compiler
                 </NavLink>
-                <NavLink to="/command-center" className={getNavLinkClass}>
-                  <Layers size={13} /> Twin Terminals
-                </NavLink>
-                <NavLink to="/developer-tools" className={getNavLinkClass}>
-                  <Code size={13} /> Developer Hub
+                <NavLink to="/gpc/py03-irongrid" className={getNavLinkClass}>
+                  <Cpu size={13} /> PY03 IronGrid
                 </NavLink>
               </nav>
             </div>
 
             {/* Sec: Infrastructure */}
             <div>
-              <span className="text-[9px] font-bold font-mono tracking-wider text-[var(--text-muted)] uppercase block px-3 mb-2">Compute Fleet</span>
+              <span className="text-[9px] font-bold font-mono tracking-wider text-[var(--text-muted)] uppercase block px-3 mb-2">Veklom Runtime</span>
               <nav className="space-y-1">
                 <NavLink to="/models" className={getNavLinkClass}>
                   <Cpu size={13} /> Models

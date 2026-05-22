@@ -2,7 +2,24 @@
 
 > **Bring Your Own Server** — Private governed AI backend you run on your own infrastructure.
 
-Veklom BYOS Backend is a private governed AI backend for running AI workloads with:
+Veklom BYOS Backend is the Veklom sovereign runtime infrastructure repo. Its job is to run paid,
+tenant-isolated AI workloads with deterministic routing contracts, audit evidence, billing enforcement,
+and private-runtime support.
+
+The system boundary is:
+
+| Repo / Layer | Role | Owns |
+|--------------|------|------|
+| `veklom-byos-backend` | Sovereign Runtime Infrastructure | tenant runtime, auth, billing, provider execution, audit APIs |
+| `UACP` | Constitutional Coordination Layer | governance hierarchy, worker gates, escalation doctrine |
+| `GPC` | Deterministic Planning / Execution Compiler | intent-to-plan compilation, execution graph state, replay surface |
+| `py03-irongrid` | Deterministic Routing Mesh | route scoring, mesh pressure, latency topology, data movement economics |
+
+The bottleneck is not the model alone. The bottleneck is routing, orchestration, memory movement,
+governance, token waste, inter-agent coordination, latency, deterministic execution, verification,
+and infrastructure economics.
+
+Veklom BYOS Backend runs AI workloads with:
 
 - **Policy enforcement** — content safety, PII/PHI redaction, compliance checks
 - **Intelligent routing** — model fallback, cost-quality-risk autonomous selection
@@ -45,6 +62,7 @@ Health check: `GET http://localhost:8000/api/v1/health`
 | [BUYER_PACKAGE.md](./BUYER_PACKAGE.md) | What you receive, support terms |
 | [SELLABLE_BACKEND_AUDIT.md](./SELLABLE_BACKEND_AUDIT.md) | Module readiness audit |
 | [SOURCE_BACKEND_INVENTORY.md](./SOURCE_BACKEND_INVENTORY.md) | Full folder/route/dep inventory |
+| [DETERMINISTIC_AI_INFRASTRUCTURE.md](./DETERMINISTIC_AI_INFRASTRUCTURE.md) | Veklom/UACP/GPC/py03-irongrid role doctrine |
 
 ---
 

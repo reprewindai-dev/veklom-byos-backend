@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .database import Base
+from backend.core.database.database import Base
 
 
 class GenomeVersion(Base):

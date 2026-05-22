@@ -1,9 +1,9 @@
 # SOURCE_BACKEND_INVENTORY.md
 
-> Source repo: `reprewindai-dev/byosbackened`  
+> Source repo: `reprewindai-dev/veklom-byos-backend`  
 > Source path: `backend/`  
-> Source commit: `8241cb7d45f718a46decc0b5e825bb223973c3f3`  
-> Inventory generated: 2026-05-17
+> Source commit: `71c0571060585157a5d6a17198f81eae7aadb954`  
+> Inventory generated: 2026-05-22
 
 ---
 
@@ -82,7 +82,7 @@
 | `demo_pipeline.py` | `/demo/pipeline` | Demo |
 | `deployments.py` | `/deployments` | Deployments |
 | `edge_canary.py` | `/edge/canary` | Edge |
-| `routing.py` | `/routing` | Routing |
+| `routing.py` | `/routing` | Deterministic Infrastructure |
 | `autonomous.py` | `/autonomous` | Autonomous |
 | `internal_uacp.py` | `/internal/uacp` | Internal/UACP |
 | `internal_operators.py` | `/internal/operators` | Internal/Operators |
@@ -104,6 +104,27 @@
 | `stripe_connect.py` | `/stripe/connect` | Payments |
 | `qstash_webhooks.py` | `/webhooks/qstash` | Webhooks |
 | `resend_webhooks.py` | `/webhooks/resend` | Webhooks |
+
+---
+
+## Deterministic AI Infrastructure Boundary
+
+| Repo / Layer | Role | Backend Contract |
+|--------------|------|------------------|
+| `veklom-byos-backend` | Sovereign Runtime Infrastructure | Auth, tenants, billing, provider execution, audit, runtime routing APIs |
+| `UACP` | Constitutional Coordination Layer | Governance hierarchy, worker gates, escalation doctrine |
+| `GPC` | Deterministic Planning / Execution Compiler | Intent-to-plan compilation, graph execution state, replay surface |
+| `py03-irongrid` | Deterministic Routing Mesh | Route scoring, pressure topology, latency routing, data movement economics |
+
+Runtime contract endpoints:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/routing` | Runtime routing contract |
+| GET | `/api/v1/routing/topology` | Route classes and `py03-irongrid` substrate contract |
+| GET | `/api/v1/routing/economics` | Infrastructure economics model |
+| GET | `/api/v1/routing/stack` | Repo responsibility boundaries |
+| POST | `/api/v1/routing/decision` | Deterministic workload route classification |
 
 ---
 

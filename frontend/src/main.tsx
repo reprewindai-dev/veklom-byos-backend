@@ -7,6 +7,7 @@ import { Workspace } from './pages/Workspace';
 import { Overview } from './components/Overview';
 import { Playground } from './components/Playground';
 import { GpcPage } from './pages/GpcPage';
+import { IronGridPage } from './pages/IronGridPage';
 import { CommandCenter } from './components/CommandCenter';
 import { ModelsPage } from './pages/ModelsPage';
 import { Pipelines } from './components/Pipelines';
@@ -130,6 +131,7 @@ const App: React.FC = () => {
             <Route path="overview" element={<Overview />} />
             <Route path="playground" element={<Playground />} />
             <Route path="gpc" element={<GpcPage />} />
+            <Route path="gpc/py03-irongrid" element={<IronGridPage />} />
             <Route path="command-center" element={<CommandCenter />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="pipelines" element={<Pipelines />} />
@@ -140,6 +142,7 @@ const App: React.FC = () => {
             <Route path="monitoring" element={<MonitoringPage />} />
             <Route path="team" element={<TeamPage />} />
             <Route path="settings" element={<SettingsPage user={user} onLogout={handleLogout} />} />
+            <Route path="marketplace" element={<DeveloperToolsPage />} />
             <Route path="developer-tools" element={<DeveloperToolsPage />} />
             <Route path="*" element={<Navigate to="/overview" replace />} />
           </Route>

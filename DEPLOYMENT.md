@@ -25,7 +25,7 @@ docker build -t veklom-byos-backend .
 ```bash
 docker run -d \
   --name veklom-api \
-  -p 8000:8000 \
+  -p 8088:8088 \
   --env-file .env.production \
   veklom-byos-backend
 ```
@@ -47,9 +47,9 @@ docker compose -f docker-compose.yml up -d
 Coolify will use the Dockerfile at the root of this repository. The runtime is configured as:
 
 - **Base Image**: `python:3.11-slim`
-- **Port**: `8000` (exposed for Coolify's reverse proxy)
+- **Port**: `8088` (exposed for Coolify's reverse proxy)
 - **Health Check**: `/health` endpoint
-- **Command**: `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8000`
+- **Command**: `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port ${PORT:-8088}`
 - **Worker User**: Non-root user `veklom` (UID 1000) for security
 
 ### Deployment Steps

@@ -504,32 +504,3 @@ async def unlink_github_account(user=Depends(get_current_user), db: AsyncSession
 @router.delete("/sessions/revoke")
 async def revoke_sessions(user=Depends(get_current_user)):
     return {"message": "All sessions revoked"}
-
-
-@router.post("/admin/init-db")
-async def init_database():
-    """Manually initialize database schema - call this to ensure tables exist."""
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        return {"status": "success", "message": "Database initialized"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/debug/env")
-async def debug_env():
-    """Debug endpoint to show current environment configuration."""
-    from backend.core.config.settings import settings
-    return {
-        "database_url": settings.DATABASE_URL,
-        "redis_url": settings.REDIS_URL,
-        "app_env": settings.APP_ENV,
-        "debug": settings.DEBUG,
-    }
-
-
-@router.get("/test/no-db")
-async def test_no_db():
-    """Test endpoint without database dependency."""
-    return {"status": "success", "message": "Endpoint works without database"}

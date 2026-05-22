@@ -70,9 +70,11 @@ All routes require `Authorization: Bearer <token>` unless marked public.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/routing` | Auth | Current routing rules |
-| POST | `/routing` | Auth | Set routing rule |
-| PATCH | `/routing/{id}` | Auth | Update routing rule |
+| GET | `/routing` | Auth | Deterministic runtime routing contract |
+| GET | `/routing/topology` | Auth | Route classes and `py03-irongrid` substrate contract |
+| GET | `/routing/economics` | Auth | Token, latency, verification, and routing economics model |
+| GET | `/routing/stack` | Auth | Veklom/UACP/GPC/py03-irongrid responsibility boundaries |
+| POST | `/routing/decision` | Auth | Deterministic workload route classification |
 | GET | `/autonomous/decisions` | Auth | Autonomous routing decision log |
 | POST | `/autonomous/override` | Auth | Manual routing override |
 

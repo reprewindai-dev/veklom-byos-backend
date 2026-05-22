@@ -18,20 +18,8 @@ from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager
 
-# Import all models to ensure they're registered with Base.metadata
-from backend.db.models.user import User, Session, APIKey
-from backend.db.models.workspace import Workspace, WorkspaceMember, ModelConfig
-from backend.db.models.agent import Agent, AgentExecution, AgentTool
-from backend.db.models.ai import AIModel, AIProvider, AIUsage
-from backend.db.models.asset import Asset, AssetVersion
-from backend.db.models.billing import BillingAccount, Invoice, Payment
-from backend.db.models.billing_ext import Subscription, UsageRecord
-from backend.db.models.genome import Genome, GenomeVariant
-from backend.db.models.ledger import LedgerEntry, Transaction
-from backend.db.models.lineage import LineageNode, LineageEdge
-from backend.db.models.marketplace import MarketplaceListing, MarketplacePurchase
-from backend.db.models.plugin import Plugin, WorkspacePlugin
-from backend.db.models.security import AuditLog, SecurityEvent
+# Import model package to ensure tables are registered with Base.metadata.
+import backend.db.models  # noqa: F401
 
 
 @asynccontextmanager
@@ -104,6 +92,7 @@ from backend.apps.api.routers import (
     marketplace,
     monitoring,
     pipelines,
+    routing,
     runtime_jobs,
     security,
     upload,
@@ -115,12 +104,6 @@ from backend.apps.api.routers import (
 
 # Health & status (no prefix)
 app.include_router(health.router)
-
-
-@app.get("/test/no-db")
-async def test_no_db():
-    """Test endpoint without database dependency."""
-    return {"status": "success", "message": "Endpoint works without database"}
 
 # Auth - restore /api/v1 prefix
 app.include_router(auth.router, prefix="/api/v1")
@@ -154,6 +137,7 @@ app.include_router(marketplace.router, prefix="/api/v1")
 # Pipelines, deployments, routing, autonomous, edge/canary
 app.include_router(pipelines.router, prefix="/api/v1")
 app.include_router(pipelines.router)
+app.include_router(routing.router, prefix="/api/v1")
 
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")

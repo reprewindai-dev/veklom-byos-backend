@@ -285,7 +285,9 @@ def _fallback_html():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Veklom Sovereign AI Hub</title>
-<script src="/config.js"></script>`r`n<link rel="stylesheet" href="/static/css/brand.css">`r`n</head>
+<script src="/config.js"></script>
+<link rel="stylesheet" href="/static/css/brand.css">
+</head>
 <body>
 <div id="root"></div>
 <script type="module" src="/assets/index-EUKZeqk4.js"></script>
@@ -300,7 +302,9 @@ def _gpc_html():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GPC — Governed Plan Compiler | Veklom</title>`r`n<link rel="stylesheet" href="/static/css/brand.css">`r`n<style>
+<title>GPC — Governed Plan Compiler | Veklom</title>
+<link rel="stylesheet" href="/static/css/brand.css">
+<style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #050505; color: #e0e0e0; font-family: system-ui, -apple-system, sans-serif; }
 </style>

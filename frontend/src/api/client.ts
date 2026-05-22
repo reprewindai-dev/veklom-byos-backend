@@ -1,6 +1,6 @@
 const getApiBase = (): string => {
   const filePreviewBase =
-    window.location.protocol === 'file:' ? 'http://5.78.135.11:8000/api/v1' : '/api/v1';
+    window.location.protocol === 'file:' ? 'http://5.78.135.11:8088/api/v1' : '/api/v1';
   const envBase = (import.meta as any).env?.VITE_API_URL;
   // @ts-ignore
   const configured = window.__VEKLOM_API_BASE__ || envBase || filePreviewBase;

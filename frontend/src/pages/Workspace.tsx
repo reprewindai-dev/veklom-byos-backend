@@ -47,11 +47,11 @@ export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
       <header className="h-14 bg-[rgba(10,10,12,0.9)] border-b border-[rgba(255,255,255,0.05)] backdrop-blur-md px-6 flex items-center justify-between relative z-20 flex-shrink-0">
         <div className="flex items-center gap-3">
           <NavLink to="/overview" className="flex items-center gap-3">
-            <svg width="24" height="24" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_4px_rgba(255,184,0,0.4)] cursor-pointer">
-              <path d="M15 15 L45 85 C48 91, 52 91, 55 85 L85 15" stroke="#ffb800" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="50" cy="48" r="8" fill="#ffffff" />
-            </svg>
-            <span className="text-sm font-black tracking-[0.1em] text-white">VEKLOM</span>
+            <img
+              src="/static/branding/veklom-wordmark.png"
+              alt="Veklom"
+              className="veklom-wordmark h-8"
+            />
           </NavLink>
           <span className="h-4 w-0.5 bg-neutral-800"></span>
           

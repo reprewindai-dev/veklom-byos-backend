@@ -1,0 +1,115 @@
+/*
+  Veklom brand enforcement.
+  Source-of-truth tone: dark, sovereign, operational, premium, enterprise.
+*/
+:root {
+  --veklom-black: #0a0a0a;
+  --veklom-amber: #ffb800;
+  --veklom-amber-hover: #ffc425;
+  --veklom-amber-deep: #e69d00;
+  --veklom-white: #ffffff;
+  --veklom-gray: #a1a1a6;
+  --veklom-border: rgba(255, 255, 255, 0.08);
+  --veklom-amber-glow: rgba(255, 184, 0, 0.22);
+  --veklom-amber-soft: rgba(255, 184, 0, 0.1);
+  --orange-500: var(--veklom-amber);
+  --orange-400: var(--veklom-amber-hover);
+  --orange-600: var(--veklom-amber-deep);
+  --orange-glow: var(--veklom-amber-glow);
+  --bg-primary: var(--veklom-black);
+  --text-secondary: var(--veklom-gray);
+}
+
+body {
+  background:
+    radial-gradient(circle at 50% -10%, rgba(255, 184, 0, 0.08), transparent 36rem),
+    var(--veklom-black);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  right: clamp(18px, 4vw, 72px);
+  bottom: clamp(18px, 4vw, 72px);
+  width: min(36vw, 420px);
+  aspect-ratio: 1;
+  background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
+  opacity: 0.035;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+.brand-watermark {
+  position: absolute;
+  inset: auto 24px 24px auto;
+  width: min(28vw, 320px);
+  aspect-ratio: 1;
+  background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
+  opacity: 0.045;
+  pointer-events: none;
+}
+
+.card,
+.pricing-card,
+.auth-container,
+.marketplace-card,
+.brand-watermarked-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before,
+.pricing-card::before,
+.auth-container::before,
+.marketplace-card::before,
+.brand-watermarked-panel::before {
+  content: "";
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: clamp(86px, 22%, 160px);
+  aspect-ratio: 1;
+  background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.card > *,
+.pricing-card > *,
+.auth-container > *,
+.marketplace-card > *,
+.brand-watermarked-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.veklom-wordmark,
+.nav-brand-wordmark {
+  display: inline-block;
+  width: auto;
+  object-fit: contain;
+}
+
+.nav-brand-wordmark {
+  height: 34px;
+  filter: drop-shadow(0 0 14px rgba(255, 184, 0, 0.16));
+}
+
+.veklom-icon {
+  border-radius: 8px;
+  object-fit: cover;
+  filter: drop-shadow(0 0 12px rgba(255, 184, 0, 0.28));
+}
+
+.brand-kicker {
+  color: var(--veklom-amber);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}

@@ -7,6 +7,7 @@
 <meta name="description" content="Veklom Command Center — internal operator console for the Sovereign AI Hub."/>
 <meta name="robots" content="noindex, nofollow"/>
 <link rel="icon" type="image/svg+xml" href="/static/branding/favicon.svg"/>
+<link rel="stylesheet" href="/static/css/brand.css"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
@@ -77,6 +78,13 @@ body {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
+}
+#sidebar-header img {
+  width: 156px;
+  height: auto;
+  display: block;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 12px rgba(255,184,0,0.18));
 }
 .sb-section { padding: 12px 12px 4px; }
 .sb-label {
@@ -347,7 +355,8 @@ body {
 <!-- ─── SIDEBAR ────────────────────────────────────── -->
 <nav id="sidebar">
   <div id="sidebar-header">
-    <h1>Veklom Command Center</h1>
+    <img src="/static/branding/veklom-wordmark.png" alt="Veklom">
+    <h1>Command Center</h1>
     <p>Operator Intelligence Console</p>
   </div>
 

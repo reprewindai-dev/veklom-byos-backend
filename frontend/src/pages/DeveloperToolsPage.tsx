@@ -7,6 +7,7 @@ interface ToolItem {
   install: string;
   description: string;
   icon: React.ReactNode;
+  madeByVeklom?: boolean;
 }
 
 export const DeveloperToolsPage: React.FC = () => {
@@ -14,31 +15,31 @@ export const DeveloperToolsPage: React.FC = () => {
 
   const tools: Record<string, ToolItem[]> = {
     python: [
-      { name: 'Veklom SDK for Python', type: 'SDK', install: 'pip install veklom', description: 'Official Python client for governed inference, audit logging, model routing, and compliance via the Veklom API.', icon: <Code size={20} /> },
-      { name: 'Veklom Toolkit for VS Code', type: 'IDE Plugin', install: '[coming soon]', description: 'Prompt testing, audit log inspector, deployment manager inside VS Code.', icon: <Layout size={20} /> },
-      { name: 'Veklom Toolkit for PyCharm', type: 'IDE Plugin', install: '[coming soon]', description: 'Same as VS Code toolkit — for PyCharm and all JetBrains IDEs.', icon: <Layout size={20} /> },
-      { name: 'Veklom Powertools for Python', type: 'Framework', install: 'pip install veklom-powertools', description: 'Lambda-style utilities: structured logging, tracing, audit chain, budget guard.', icon: <Zap size={20} /> },
+      { name: 'Veklom SDK for Python', type: 'SDK', install: 'pip install veklom', description: 'Official Python client for governed inference, audit logging, model routing, and compliance via the Veklom API.', icon: <Code size={20} />, madeByVeklom: true },
+      { name: 'Veklom Toolkit for VS Code', type: 'IDE Plugin', install: '[coming soon]', description: 'Prompt testing, audit log inspector, deployment manager inside VS Code.', icon: <Layout size={20} />, madeByVeklom: true },
+      { name: 'Veklom Toolkit for PyCharm', type: 'IDE Plugin', install: '[coming soon]', description: 'Same as VS Code toolkit — for PyCharm and all JetBrains IDEs.', icon: <Layout size={20} />, madeByVeklom: true },
+      { name: 'Veklom Powertools for Python', type: 'Framework', install: 'pip install veklom-powertools', description: 'Lambda-style utilities: structured logging, tracing, audit chain, budget guard.', icon: <Zap size={20} />, madeByVeklom: true },
     ],
     ts: [
-      { name: 'Veklom SDK for JavaScript', type: 'SDK', install: 'npm install @veklom/sdk', description: 'Official JS/TS client — works in Node.js and browser. Full type safety with TypeScript.', icon: <Code size={20} /> },
-      { name: 'Veklom Toolkit for VS Code', type: 'IDE Plugin', install: '[coming soon]', description: 'Shared with Python toolkit — covers JS/TS projects too.', icon: <Layout size={20} /> },
+      { name: 'Veklom SDK for JavaScript', type: 'SDK', install: 'npm install @veklom/sdk', description: 'Official JS/TS client — works in Node.js and browser. Full type safety with TypeScript.', icon: <Code size={20} />, madeByVeklom: true },
+      { name: 'Veklom Toolkit for VS Code', type: 'IDE Plugin', install: '[coming soon]', description: 'Shared with Python toolkit — covers JS/TS projects too.', icon: <Layout size={20} />, madeByVeklom: true },
     ],
     java: [
-      { name: 'Veklom SDK for Java', type: 'SDK', install: 'Maven/Gradle [coming soon]', description: 'Official Java client for governed inference and audit logging.', icon: <Code size={20} /> },
-      { name: 'Veklom Toolkit for IntelliJ IDEA', type: 'IDE Plugin', install: '[coming soon]', description: 'Prompt testing and audit inspection inside IntelliJ.', icon: <Layout size={20} /> },
+      { name: 'Veklom SDK for Java', type: 'SDK', install: 'Maven/Gradle [coming soon]', description: 'Official Java client for governed inference and audit logging.', icon: <Code size={20} />, madeByVeklom: true },
+      { name: 'Veklom Toolkit for IntelliJ IDEA', type: 'IDE Plugin', install: '[coming soon]', description: 'Prompt testing and audit inspection inside IntelliJ.', icon: <Layout size={20} />, madeByVeklom: true },
     ],
     net: [
-      { name: 'Veklom SDK for .NET', type: 'SDK', install: 'NuGet [coming soon]', description: 'Official .NET client — full async/await support.', icon: <Code size={20} /> },
-      { name: 'Veklom Toolkit for Visual Studio', type: 'IDE Plugin', install: '[coming soon]', description: 'Governed inference testing inside Visual Studio.', icon: <Layout size={20} /> },
+      { name: 'Veklom SDK for .NET', type: 'SDK', install: 'NuGet [coming soon]', description: 'Official .NET client — full async/await support.', icon: <Code size={20} />, madeByVeklom: true },
+      { name: 'Veklom Toolkit for Visual Studio', type: 'IDE Plugin', install: '[coming soon]', description: 'Governed inference testing inside Visual Studio.', icon: <Layout size={20} />, madeByVeklom: true },
     ],
     go: [
-      { name: 'Veklom SDK for Go', type: 'SDK', install: 'go get github.com/veklom/sdk-go [coming soon]', description: 'Idiomatic Go client for governed inference and audit.', icon: <Code size={20} /> },
+      { name: 'Veklom SDK for Go', type: 'SDK', install: 'go get github.com/veklom/sdk-go [coming soon]', description: 'Idiomatic Go client for governed inference and audit.', icon: <Code size={20} />, madeByVeklom: true },
     ],
     arch: [
-      { name: 'Veklom Control Plane CLI', type: 'CLI Tool', install: 'npm i -g @veklom/cli', description: 'Advanced command-line interface for managing deployments, routing configurations, and viewing audit logs natively in terminal.', icon: <Terminal size={20} /> },
-      { name: 'Veklom CI/CD Shield', type: 'DevOps Action', install: 'GitHub Actions Marketplace', description: 'Injects governance checks directly into your CI pipeline, ensuring no ungoverned models are ever merged to main.', icon: <ShieldCheck size={20} /> },
-      { name: 'PY03 IronGrid Route Optimizer', type: 'Marketplace Add-on', install: 'SKU PY03-IRONGRID', description: 'Deterministic routing mesh sold as a GPC add-on for route scoring, latency topology, and data movement economics.', icon: <Cpu size={20} /> },
-      { name: 'UACP Blueprint Designer', type: 'Architecture Tool', install: 'Web Dashboard Extension', description: 'Visual node-based designer for planning Universal AI Control Plane state machines and worker fleets.', icon: <Layers size={20} /> }
+      { name: 'Veklom Control Plane CLI', type: 'CLI Tool', install: 'npm i -g @veklom/cli', description: 'Advanced command-line interface for managing deployments, routing configurations, and viewing audit logs natively in terminal.', icon: <Terminal size={20} />, madeByVeklom: true },
+      { name: 'Veklom CI/CD Shield', type: 'DevOps Action', install: 'GitHub Actions Marketplace', description: 'Injects governance checks directly into your CI pipeline, ensuring no ungoverned models are ever merged to main.', icon: <ShieldCheck size={20} />, madeByVeklom: true },
+      { name: 'PY03 IronGrid Route Optimizer', type: 'Marketplace Add-on', install: 'SKU PY03-IRONGRID', description: 'Deterministic routing mesh sold as a GPC add-on for route scoring, latency topology, and data movement economics.', icon: <Cpu size={20} />, madeByVeklom: true },
+      { name: 'UACP Blueprint Designer', type: 'Architecture Tool', install: 'Web Dashboard Extension', description: 'Visual node-based designer for planning Universal AI Control Plane state machines and worker fleets.', icon: <Layers size={20} />, madeByVeklom: true }
     ]
   };
 
@@ -105,7 +106,7 @@ export const DeveloperToolsPage: React.FC = () => {
           {/* Tools List */}
           <div className="space-y-4">
             {tools[activeTab].map((tool, idx) => (
-              <div key={idx} className="glass-panel p-5 relative overflow-hidden group hover:border-[var(--orange)]/30 transition-all">
+              <div key={idx} className={`glass-panel p-5 relative overflow-hidden group hover:border-[var(--orange)]/30 transition-all ${tool.madeByVeklom ? 'marketplace-card' : ''}`}>
                 <div className="absolute top-0 left-0 w-1 h-full bg-[rgba(255,255,255,0.05)] group-hover:bg-[var(--orange)] transition-colors"></div>
                 
                 <div className="flex items-start justify-between mb-3 pl-2">
@@ -116,6 +117,11 @@ export const DeveloperToolsPage: React.FC = () => {
                     <div>
                       <h3 className="font-bold text-white text-sm">{tool.name}</h3>
                       <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-wider">{tool.type}</span>
+                      {tool.madeByVeklom && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded border border-[rgba(255,184,0,0.22)] bg-[rgba(255,184,0,0.08)] px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-[var(--orange)]">
+                          Veklom made
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

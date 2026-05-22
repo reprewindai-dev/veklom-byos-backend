@@ -70,20 +70,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
       <div className="w-full max-w-[420px] glow-card bg-[rgba(10,10,12,0.8)] border border-[rgba(255,255,255,0.06)] rounded-xl p-8 backdrop-blur-md relative z-10">
         
-        {/* Custom Glowing SVG Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="relative mb-3 flex items-center justify-center">
-            {/* Pulsing outer aura */}
-            <div className="absolute w-12 h-12 rounded-full border border-[rgba(255,184,0,0.4)] animate-ping opacity-25"></div>
-            
-            {/* SVG Glowing V Logo */}
-            <svg width="44" height="44" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_8px_rgba(255,184,0,0.5)]">
-              <path d="M15 15 L45 85 C48 91, 52 91, 55 85 L85 15" stroke="#ffb800" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
-              {/* Central Sovereignty Dot */}
-              <circle cx="50" cy="48" r="8" fill="#ffffff" className="animate-pulse" />
-            </svg>
-          </div>
-          <h1 className="text-xl font-bold tracking-[0.05em] text-white">VEKLOM</h1>
+          <img
+            src="/static/branding/veklom-wordmark.png"
+            alt="Veklom"
+            className="veklom-wordmark h-14 mb-4"
+          />
+          <h1 className="text-xl font-bold tracking-[0.05em] text-white">SOVEREIGN AI HUB</h1>
           <p className="text-xs text-[var(--text-secondary)] mt-1 tracking-[0.02em]">SOVEREIGN AI CONTROL PLANE</p>
         </div>
 

@@ -55,34 +55,194 @@
 </nav>
 
 <!-- Hero -->
-<section class="hero">
+<section class="hero" style="padding-bottom: 40px;">
   <div class="container">
     <img src="/static/branding/veklom-wordmark.png" alt="Veklom" class="veklom-wordmark" style="height:84px;margin:0 auto 28px;display:block">
-    <span class="label brand-kicker">Sovereign AI Hub</span>
-    <h1>Veklom is the governed operational runtime for AI systems.</h1>
+    <span class="label brand-kicker" style="font-size: 0.8rem;">Governed AI Runtime</span>
+    <h1 style="margin-top: 16px; max-width: 900px; margin-left: auto; margin-right: auto;">Govern AI agents before they reach production.</h1>
+    <p class="subtitle" style="margin: 20px auto 32px; font-size: 1.15rem; line-height: 1.6; max-width: 780px;">
+      Veklom gives engineering teams a controlled workspace to test agents, connect repositories, enforce policy gates, monitor runtime activity, and generate audit-ready evidence.
+    </p>
     <div class="hero-cta">
-      <a href="/workspace/login" class="btn btn-primary">Sign In →</a>
-      <a href="#ecosystem" class="btn btn-secondary">Explore the Ecosystem</a>
+      <a href="/workspace/login" class="btn btn-primary" style="padding: 14px 32px;">Start a governed repo review</a>
+      <a href="#deployment-options" class="btn btn-secondary" style="padding: 14px 32px;">View deployment options</a>
     </div>
-    <div style="margin-top:24px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
-      <span class="badge badge-green">● Live backend connected</span>
-      <span class="badge badge-orange">SOC2-ready · HIPAA-aware · EU-sovereign</span>
-      <span class="badge badge-orange">Zero key exposure</span>
+    
+    <div class="hero-badges">
+      <span class="hero-badge-pill"><span style="color: var(--green);">●</span> Backend live — veklom.com</span>
+      <span class="hero-badge-pill">35+ teams signed up</span>
+      <span class="hero-badge-pill">Sovereign Hetzner EU nodes</span>
+      <span class="hero-badge-pill">BYOS ready</span>
+      <span class="hero-badge-pill">Live Demo</span>
+    </div>
+  </div>
+</section>
+
+<!-- Terminal Simulation -->
+<section class="section" style="padding-top: 0; padding-bottom: 60px;">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:16px">
+      <span class="label">Interactive Simulation</span>
+      <h2 style="font-size: 1.75rem; margin-top: 8px;">Run a governed repo review</h2>
+      <p style="color:var(--text-secondary);margin-top:8px;font-size:0.95rem;">Watch Veklom test, verify, and gate an agent against a real repository — before it touches production.</p>
+    </div>
+
+    <div class="terminal-window">
+      <div class="terminal-header">
+        <div class="terminal-dots">
+          <div class="terminal-dot red"></div>
+          <div class="terminal-dot yellow"></div>
+          <div class="terminal-dot green"></div>
+        </div>
+        <div class="terminal-title">veklom-agent — governed-repo-review</div>
+        <div style="width: 52px;"></div>
+      </div>
+      <div class="terminal-body" id="terminal-simulation">
+        <!-- typing command line -->
+        <div class="terminal-line" id="t-line-1">$ <span class="terminal-command" id="t-command-text"></span><span class="terminal-cursor" id="t-cursor"></span></div>
+        <div class="terminal-line" id="t-line-2" style="color: var(--text-muted);">▸ Connecting to Veklom Sovereign Runtime...</div>
+        <div class="terminal-line" id="t-line-3"><span style="color: var(--green);">✓</span> JWT authenticated — workspace: <span style="color: var(--veklom-amber);">reprewindai-dev</span></div>
+        <div class="terminal-line" id="t-line-4"><span style="color: var(--green);">✓</span> IronGrid node assigned — <span style="color: #60a5fa;">hel-sov-03 (Helsinki)</span></div>
+        <div class="terminal-line" id="t-line-5" style="color: var(--text-muted);">▸ Agent scanning repository structure...</div>
+        <div class="terminal-line" id="t-line-6">Files scanned: <span style="color: #60a5fa;">847</span> | Secrets checked: <span style="color: #60a5fa;">12</span> | Tokens isolated: <span style="color: var(--green);">yes</span></div>
+        <div class="terminal-line" id="t-line-7"><span style="color: var(--green);">✓</span> GPC policy gate <span class="terminal-badge success">PASSED</span> — no restricted paths accessed</div>
+        <div class="terminal-line" id="t-line-8" style="color: var(--text-muted);">▸ Running governed agent actions...</div>
+        <div class="terminal-line" id="t-line-9"><span style="color: var(--green);">✓</span> Action: read_file(src/billing.py) — <span class="terminal-badge success">ALLOWED</span></div>
+        <div class="terminal-line" id="t-line-10"><span style="color: var(--green);">✓</span> Action: read_file(src/auth/tokens.py) — <span class="terminal-badge success">ALLOWED</span></div>
+        <div class="terminal-line" id="t-line-11"><span style="color: var(--red);">⚠</span> Action: write_file(config/prod.env) — <span class="terminal-badge warning">BLOCKED by policy P-44</span></div>
+        <div class="terminal-line" id="t-line-12"><span style="color: var(--green);">✓</span> Action: create_review_report() — <span class="terminal-badge success">ALLOWED</span></div>
+        <div class="terminal-line" id="t-line-13" style="color: var(--text-muted);">▸ Generating audit evidence block...</div>
+        <div class="terminal-line" id="t-line-14">SHA-256: <span style="font-family: var(--font-mono); color: #818cf8;">a3f9c2e1b847d6052f3a...</span> | Timestamp: <span style="color: var(--text-muted);">2026-05-23T11:04:22Z</span></div>
+        <div class="terminal-line" id="t-line-15"><span style="color: var(--green);">✓</span> Audit block sealed — evidence ID: <span style="color: var(--veklom-amber);">EVD-8821</span></div>
+        <div class="terminal-line" id="t-line-16"><span style="color: var(--green);">✓</span> Review complete. <span style="color: var(--red);">1 action blocked</span>. Report + evidence ready.</div>
+      </div>
+      <button class="terminal-replay" onclick="runTerminalSimulation()"><span id="replay-icon">🔄</span> Replay simulation</button>
+    </div>
+  </div>
+</section>
+
+<!-- The Problem Section -->
+<section class="section section-alt" id="problem">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:48px">
+      <span class="label">The Problem</span>
+      <h2>Agents are getting access to real systems.<br>Without enough control.</h2>
+      <p class="subtitle" style="margin:16px auto 0; max-width: 720px;">
+        Engineering teams want to use AI agents — but they don't trust them near repositories, cloud tools, customer data, or production workflows. That instinct is right. Veklom answers it.
+      </p>
+    </div>
+    
+    <div class="problem-grid">
+      <!-- 1 -->
+      <div class="problem-card">
+        <span class="problem-icon">🔐</span>
+        <h3>Inspected Safely</h3>
+        <p>"Can I let an agent inspect our repo safely without risking leaks or unintended commits?"</p>
+      </div>
+      <!-- 2 -->
+      <div class="problem-card">
+        <span class="problem-icon">👁</span>
+        <h3>Real-Time Telemetry</h3>
+        <p>"Can I see exactly what the agent did, every file it read, and every API call it made?"</p>
+      </div>
+      <!-- 3 -->
+      <div class="problem-card">
+        <span class="problem-icon">🚫</span>
+        <h3>Risky Path Gating</h3>
+        <p>"Can I dynamically block risky, destructive, or out-of-scope actions before they commit?"</p>
+      </div>
+      <!-- 4 -->
+      <div class="problem-card">
+        <span class="problem-icon">🔑</span>
+        <h3>Zero Key Exposure</h3>
+        <p>"Can I isolate sensitive tokens, secrets, and provider credentials away from the frontend?"</p>
+      </div>
+      <!-- 5 -->
+      <div class="problem-card">
+        <span class="problem-icon">📋</span>
+        <h3>Audit-Ready Records</h3>
+        <p>"Can I produce a sealed, unalterable record if compliance asks why and how this agent ran?"</p>
+      </div>
+      <!-- 6 -->
+      <div class="problem-card">
+        <span class="problem-icon">🏠</span>
+        <h3>Sovereign Infrastructure</h3>
+        <p>"Can I run this runtime privately on our own infrastructure without paying public cloud taxes?"</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- The Product Section -->
+<section class="section" id="product">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:48px">
+      <span class="label">The Product</span>
+      <h2>One workspace. Three access models.</h2>
+      <p class="subtitle" style="margin:16px auto 0; max-width: 760px;">
+        Veklom is a governed AI runtime — not a playground, not a marketplace, not a sandbox. Every module connects to a single policy, billing, and audit layer.
+      </p>
+    </div>
+    
+    <div class="model-grid">
+      <!-- 01 -->
+      <div class="model-card">
+        <div class="model-number">01</div>
+        <span class="model-icon">🧪</span>
+        <div class="model-kicker">Playground</div>
+        <h3>Test before you trust.</h3>
+        <p>Connect agents to real repositories, tools, and workflows in a controlled workspace. Every action is observed, gated, and logged before it reaches production.</p>
+        <div class="model-features">
+          <span class="model-tag">Repo access</span>
+          <span class="model-tag">Tool testing</span>
+          <span class="model-tag">Prompt eval</span>
+          <span class="model-tag">Chain testing</span>
+        </div>
+      </div>
+      <!-- 02 -->
+      <div class="model-card">
+        <div class="model-number">02</div>
+        <span class="model-icon">📡</span>
+        <div class="model-kicker">Command Center</div>
+        <h3>See everything in real time.</h3>
+        <p>Monitor runtime activity, agent actions, GPC decisions, spend, alerts, and audit evidence. Know exactly what ran, what was blocked, and what it cost.</p>
+        <div class="model-features">
+          <span class="model-tag">Live telemetry</span>
+          <span class="model-tag">Spend tracking</span>
+          <span class="model-tag">GPC decisions</span>
+          <span class="model-tag">Evidence log</span>
+        </div>
+      </div>
+      <!-- 03 -->
+      <div class="model-card">
+        <div class="model-number">03</div>
+        <span class="model-icon">🏗</span>
+        <div class="model-kicker">Sovereign Deploy</div>
+        <h3>Run privately when it matters.</h3>
+        <p>Move from hosted evaluation to dedicated or self-hosted BYOS deployment. Same governance. No public cloud dependency. Your data stays in your boundary.</p>
+        <div class="model-features">
+          <span class="model-tag">BYOS</span>
+          <span class="model-tag">Hetzner EU</span>
+          <span class="model-tag">Air-gap ready</span>
+          <span class="model-tag">Zero cloud tax</span>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- V3 Black Box Embed -->
-<section class="section" style="padding-top: 0;">
+<section class="section section-alt" id="v3-blackbox">
   <div class="container">
-    <div style="text-align:center;margin-bottom:24px">
+    <div style="text-align:center;margin-bottom:32px">
       <span class="label">V3 Black Box</span>
-      <h2 style="font-size: 1.5rem;">Messy intent in. Governed execution out.</h2>
+      <h2>Messy intent in. Governed execution out.</h2>
+      <p class="subtitle" style="margin:8px auto 0">Interact with the real-time operational coordination core below.</p>
     </div>
     
     <div class="v3-blackbox-frame" style="margin: 0 auto; position: relative; width: 100%; max-width: 1120px; height: 680px; overflow: hidden; border-radius: 28px; background: #020617; border: 1px solid var(--border);">
-      <div class="v3-side-mask-left" style="position: absolute; top: 0; bottom: 0; width: 220px; pointer-events: none; background: #020617; z-index: 20; left: 0;"></div>
-      <div class="v3-side-mask-right" style="position: absolute; top: 0; bottom: 0; width: 220px; pointer-events: none; background: #020617; z-index: 20; right: 0;"></div>
+      <div class="v3-side-mask-left" style="position: absolute; top: 0; bottom: 0; width: 140px; pointer-events: none; background: linear-gradient(90deg, #020617, transparent); z-index: 20; left: 0;"></div>
+      <div class="v3-side-mask-right" style="position: absolute; top: 0; bottom: 0; width: 140px; pointer-events: none; background: linear-gradient(-90deg, #020617, transparent); z-index: 20; right: 0;"></div>
       <div class="v3-blackbox-inner" style="position: absolute; top: 0; left: 50%; width: 1440px; height: 100%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center;">
         <iframe src="https://uacpv3.veklom.com" style="width: 100%; height: 100%; border: none; background: #0a0a0c;"></iframe>
       </div>
@@ -90,56 +250,98 @@
   </div>
 </section>
 
-<!-- Ecosystem / Product Language -->
-<section class="section section-alt" id="ecosystem">
-  <div class="container">
-    <div style="text-align:center;margin-bottom:48px">
-      <span class="label">Ecosystem Hierarchy</span>
-      <h2>The Sovereign Infrastructure</h2>
-    </div>
-    <div class="grid-3">
-      <div class="card card-highlight">
-        <h3 style="color:var(--orange-500)">UACP</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The constitutional coordination layer that governs execution.</p>
-      </div>
-      <div class="card">
-        <h3>V3</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The black-box interface where messy intent becomes structured output.</p>
-      </div>
-      <div class="card">
-        <h3>GPC</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The internal planner/compiler that prepares execution plans.</p>
-      </div>
-      <div class="card">
-        <h3>Marketplace</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">Where vertical modules, tools, and agent capabilities plug in.</p>
-      </div>
-      <div class="card">
-        <h3>GreenVision</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The carbon/cost-aware routing vertical.</p>
-      </div>
-      <div class="card">
-        <h3>IronGrid / NeuralMesh</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The routing and pathfinding substrate.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- How It Works -->
+<!-- What Veklom Controls & Use Cases -->
 <section class="section">
   <div class="container">
-    <div style="text-align:center;margin-bottom:48px">
-      <span class="label">Workflow</span>
-      <h2>From demo to production in 6 steps</h2>
-    </div>
-    <div style="max-width:700px;margin:0 auto">
-      <div class="step"><div class="step-num">1</div><div><h3>Test in Playground</h3><p style="color:var(--text-secondary)">Start with a vertical workflow idea — support triage, claims intake, contract review.</p></div></div>
-      <div class="step"><div class="step-num">2</div><div><h3>Compile with GPC</h3><p style="color:var(--text-secondary)">Extract workflow, risks, policy requirements, cost controls, and deployment path.</p></div></div>
-      <div class="step"><div class="step-num">3</div><div><h3>Build with Models, Tool Hub & Pipelines</h3><p style="color:var(--text-secondary)">Package the plan into a repeatable workflow using approved models and tools.</p></div></div>
-      <div class="step"><div class="step-num">4</div><div><h3>Govern with policy, vault & approvals</h3><p style="color:var(--text-secondary)">Human review, evidence capture, policy packs, and approval gates attached.</p></div></div>
-      <div class="step"><div class="step-num">5</div><div><h3>Deploy into private/BYOS runtime</h3><p style="color:var(--text-secondary)">Govern private runtimes like a single-node vLLM server behind the BYOS backend.</p></div></div>
-      <div class="step"><div class="step-num">6</div><div><h3>Monitor, bill, archive & replay</h3><p style="color:var(--text-secondary)">Full telemetry, billing, archive records, and replayable evidence for defense.</p></div></div>
+    <div class="grid-2" style="align-items: start; gap: 48px;">
+      
+      <!-- Left: What Veklom Controls -->
+      <div>
+        <span class="label">Governance Scope</span>
+        <h2 style="margin-top: 12px; margin-bottom: 16px;">What Veklom controls</h2>
+        <p style="color:var(--text-secondary); margin-bottom: 24px;">
+          Every agent call, repository hook, and container tool execution routes through our isolated proxy layer to ensure absolute compliance.
+        </p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Agent actions</div>
+            <div class="control-desc">Every call, every single step audited</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Repository access</div>
+            <div class="control-desc">Read, write, fine-grained scopes</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Tool execution</div>
+            <div class="control-desc">Allow, block, or human approvals</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Policy gates (GPC)</div>
+            <div class="control-desc">Enforced prior to runtime execution</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Runtime activity</div>
+            <div class="control-desc">Live telemetry + historical replay</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Cost & tokens</div>
+            <div class="control-desc">Per agent, per job, token limits</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Audit evidence</div>
+            <div class="control-desc">SHA-256 sealed blocks of execution</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Boundaries</div>
+            <div class="control-desc">Hosted → sovereign deployments</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right: Use Cases -->
+      <div>
+        <span class="label">Practical Application</span>
+        <h2 style="margin-top: 12px; margin-bottom: 16px;">What teams use it for</h2>
+        <p style="color:var(--text-secondary); margin-bottom: 24px;">
+          Empower platform and security teams with out-of-the-box templates designed for immediate integration.
+        </p>
+        
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div class="card" style="padding: 24px;">
+            <span class="usecase-tag">Engineering</span>
+            <h3 style="font-size: 1.15rem; margin-bottom: 6px;">Pre-deployment repo reviews</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+              Connect your repository and ask an agent to review it. Veklom tells you what's verified, what's risky, what needs approval, and what gets blocked — before touching production.
+            </p>
+          </div>
+          
+          <div class="card" style="padding: 24px;">
+            <span class="usecase-tag">Engineering</span>
+            <h3 style="font-size: 1.15rem; margin-bottom: 6px;">AI coding-agent oversight</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+              Let Copilot, Cursor, or custom corporate agents operate inside your codebase — with every action logged, policy-gated, and fully revertable. Stop flying blind on agent activity.
+            </p>
+          </div>
+          
+          <div class="card" style="padding: 24px;">
+            <span class="usecase-tag governance">Governance</span>
+            <h3 style="font-size: 1.15rem; margin-bottom: 6px;">LangChain / chain workflow control</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+              Run multi-step LangChain pipelines through our GPC layer. Each node in the chain gets its own policy check, spend limit, and automated audit entry.
+            </p>
+          </div>
+          
+          <div class="card" style="padding: 24px;">
+            <span class="usecase-tag governance">Governance</span>
+            <h3 style="font-size: 1.15rem; margin-bottom: 6px;">Audit-ready execution records</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+              Every agent action produces a SHA-256 signed evidence block — timestamped, immutable, and exportable. Instantly answer compliance: what ran, when, and who approved it.
+            </p>
+          </div>
+        </div>
+      </div>
+      
     </div>
   </div>
 </section>
@@ -176,6 +378,78 @@
           <tr><td>120-agent autonomous workforce</td><td class="check">●</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+</section>
+
+<!-- Deployment Options -->
+<section class="section section-alt" id="deployment-options" style="border-top: 1px solid var(--border);">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:48px">
+      <span class="label">Deployment Tiers</span>
+      <h2>Start hosted. Go sovereign when it matters.</h2>
+      <p class="subtitle" style="margin:12px auto 0; max-width: 720px; margin-left: auto; margin-right: auto;">
+        Three deployment boundaries — running the same policy-governed runtime core.
+      </p>
+    </div>
+    
+    <div class="grid-3">
+      <!-- Tier 1 -->
+      <div class="card" style="padding: 32px; display: flex; flex-direction: column; justify-content: space-between; min-height: 420px;">
+        <div>
+          <div style="font-size: 2.5rem; margin-bottom: 16px;">☁️</div>
+          <h3 style="margin-bottom: 8px;">Hosted Workspace</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">
+            Start immediately on Veklom's managed secure cloud. Full governance, instant setup.
+          </p>
+          <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px; padding: 0;">
+            <li><span style="color: var(--veklom-amber);">✓</span> Instant deployment</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Playground + Command Center</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Immutable audit logging</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Shared secure runtime nodes</li>
+          </ul>
+        </div>
+        <a href="/workspace/login" class="btn btn-secondary" style="justify-content: center; width: 100%;">Start Free Eval</a>
+      </div>
+      
+      <!-- Tier 2 -->
+      <div class="card card-highlight" style="padding: 32px; display: flex; flex-direction: column; justify-content: space-between; min-height: 420px;">
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div style="font-size: 2.5rem;">🔒</div>
+            <span class="badge badge-orange">Sovereign Node</span>
+          </div>
+          <h3 style="margin-bottom: 8px;">Dedicated Runtime</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">
+            Isolated Hetzner EU node, dedicated exclusively to your team. Data never leaves your geography.
+          </p>
+          <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px; padding: 0;">
+            <li><span style="color: var(--veklom-amber);">✓</span> Isolated sovereign Hetzner EU hardware</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Absolute data residency compliance</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Custom policy gates pre-configured</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Zero public cloud architecture overhead</li>
+          </ul>
+        </div>
+        <a href="/workspace/login" class="btn btn-primary" style="justify-content: center; width: 100%;">Deploy Dedicated Node</a>
+      </div>
+      
+      <!-- Tier 3 -->
+      <div class="card" style="padding: 32px; display: flex; flex-direction: column; justify-content: space-between; min-height: 420px;">
+        <div>
+          <div style="font-size: 2.5rem; margin-bottom: 16px;">🏠</div>
+          <h3 style="margin-bottom: 8px;">BYOS / Self-Hosted</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">
+            Deploy the full Veklom runtime in your private VPC or on-prem. Air-gap ready.
+          </p>
+          <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px; padding: 0;">
+            <li><span style="color: var(--veklom-amber);">✓</span> Your physical servers, your network boundary</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Air-gap and dark-site capable</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Zero cloud egress or provider taxes</li>
+            <li><span style="color: var(--veklom-amber);">✓</span> Enterprise SLA available</li>
+          </ul>
+        </div>
+        <a href="mailto:sales@veklom.com" class="btn btn-secondary" style="justify-content: center; width: 100%;">Talk to Sales</a>
+      </div>
     </div>
   </div>
 </section>
@@ -288,13 +562,16 @@
 </section>
 
 <!-- Vendor / Customer Hook -->
-<section class="section section-alt">
-  <div class="container" style="text-align:center">
-    <h2>You just watched it work.<br>Now run it on <span style="color:var(--orange-500)">your data</span>.</h2>
-    <p class="subtitle" style="margin:16px auto 32px">Free Evaluation — 15 governed runs, no card, no key exposure. Keep every audit artifact you generate.</p>
+<section class="section section-alt" style="border-top: 1px solid var(--border);">
+  <div class="container" style="text-align:center; max-width: 800px; margin: 0 auto;">
+    <span class="label">Get Started</span>
+    <h2 style="margin-top: 16px;">We want to use agents. We just don't trust them near production yet.</h2>
+    <p class="subtitle" style="margin:24px auto 32px; font-size: 1.2rem; line-height: 1.6; color: var(--veklom-amber);">
+      Good. Run them through Veklom first. Test, govern, and prove AI execution — before anything matters.
+    </p>
     <div class="hero-cta">
-      <a href="/workspace/login" class="btn btn-primary">Start Free Evaluation →</a>
-      <a href="mailto:sales@veklom.com" class="btn btn-secondary">Talk to Sales</a>
+      <a href="/workspace/login" class="btn btn-primary" style="padding: 14px 32px;">Start a governed review</a>
+      <a href="/docs" class="btn btn-secondary" style="padding: 14px 32px;">Read the docs</a>
     </div>
   </div>
 </section>
@@ -353,6 +630,78 @@
     </div>
   </div>
 </footer>
+
+<script>
+function runTerminalSimulation() {
+  const lines = [
+    { id: 't-line-2', type: 'show', delay: 400 },
+    { id: 't-line-3', type: 'show', delay: 800 },
+    { id: 't-line-4', type: 'show', delay: 1200 },
+    { id: 't-line-5', type: 'show', delay: 1800 },
+    { id: 't-line-6', type: 'show', delay: 2400 },
+    { id: 't-line-7', type: 'show', delay: 3000 },
+    { id: 't-line-8', type: 'show', delay: 3800 },
+    { id: 't-line-9', type: 'show', delay: 4200 },
+    { id: 't-line-10', type: 'show', delay: 4600 },
+    { id: 't-line-11', type: 'show', delay: 5600 },
+    { id: 't-line-12', type: 'show', delay: 6200 },
+    { id: 't-line-13', type: 'show', delay: 6800 },
+    { id: 't-line-14', type: 'show', delay: 7200 },
+    { id: 't-line-15', type: 'show', delay: 7800 },
+    { id: 't-line-16', type: 'show', delay: 8400 }
+  ];
+
+  // Reset lines
+  lines.forEach(line => {
+    const el = document.getElementById(line.id);
+    if (el) {
+      el.classList.remove('visible');
+      el.style.display = 'none';
+    }
+  });
+
+  const cmdText = "veklom review --repo github.com/reprewindai-dev/veklom-byos-backend --agent gpt-4o";
+  const cmdEl = document.getElementById('t-command-text');
+  const cursor = document.getElementById('t-cursor');
+  if (cmdEl) cmdEl.textContent = "";
+  if (cursor) cursor.style.display = 'inline-block';
+
+  let charIdx = 0;
+  function typeCommand() {
+    if (charIdx < cmdText.length) {
+      if (cmdEl) cmdEl.textContent += cmdText.charAt(charIdx);
+      charIdx++;
+      setTimeout(typeCommand, 20 + Math.random() * 30);
+    } else {
+      // Done typing command
+      setTimeout(() => {
+        if (cursor) cursor.style.display = 'none';
+        
+        // Start showing lines sequentially
+        lines.forEach(line => {
+          setTimeout(() => {
+            const el = document.getElementById(line.id);
+            if (el) {
+              el.style.display = 'block';
+              // Force reflow
+              el.offsetHeight;
+              el.classList.add('visible');
+            }
+          }, line.delay - 400);
+        });
+      }, 300);
+    }
+  }
+
+  // Trigger typing
+  setTimeout(typeCommand, 600);
+}
+
+// Auto start on load
+document.addEventListener("DOMContentLoaded", () => {
+  setTimeout(runTerminalSimulation, 800);
+});
+</script>
 
 <script src="/static/js/veklom.js"></script>
 </body>

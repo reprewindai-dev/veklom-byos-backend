@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
+COPY uacp-quantum-terminal.html .
 
 # Create log directory
 RUN mkdir -p /app/logs && \

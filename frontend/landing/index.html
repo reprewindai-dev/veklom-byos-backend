@@ -258,14 +258,16 @@
     <div style="text-align:center;margin-bottom:32px">
       <span class="label">V3 Black Box</span>
       <h2>Messy intent in. Governed execution out.</h2>
-      <p class="subtitle" style="margin:8px auto 0">Interact with the real-time operational coordination core below.</p>
+      <p class="subtitle" style="margin:8px auto 0">Public preview: the top rail and deterministic core are visible while internal operational panes stay masked.</p>
     </div>
     
-    <div class="v3-blackbox-frame" style="margin: 0 auto; position: relative; width: 100%; max-width: 1120px; height: 680px; overflow: hidden; border-radius: 28px; background: #020617; border: 1px solid var(--border);">
-      <div class="v3-side-mask-left" style="position: absolute; top: 0; bottom: 0; width: 140px; pointer-events: none; background: linear-gradient(90deg, #020617, transparent); z-index: 20; left: 0;"></div>
-      <div class="v3-side-mask-right" style="position: absolute; top: 0; bottom: 0; width: 140px; pointer-events: none; background: linear-gradient(-90deg, #020617, transparent); z-index: 20; right: 0;"></div>
-      <div class="v3-blackbox-inner" style="position: absolute; top: 0; left: 50%; width: 1440px; height: 100%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center;">
-        <iframe src="https://uacpv3.onrender.com" style="width: 100%; height: 100%; border: none; background: #0a0a0c;"></iframe>
+    <div class="v3-blackbox-frame" aria-label="Veklom V3 public preview">
+      <div class="v3-public-preview-badge">Public preview</div>
+      <div class="v3-side-mask-left"></div>
+      <div class="v3-side-mask-right"></div>
+      <div class="v3-bottom-mask"></div>
+      <div class="v3-blackbox-inner">
+        <iframe src="https://uacpv3.onrender.com" title="Veklom V3 deterministic engine public preview" loading="lazy"></iframe>
       </div>
     </div>
   </div>

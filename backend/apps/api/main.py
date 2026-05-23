@@ -289,7 +289,7 @@ async def marketplace_info():
                 "name": "PY03 IronGrid API",
                 "type": "Runtime Module",
                 "description": "High-performance route optimization and concurrency sandbox for agent/runtime workloads.",
-                "url": "/terminal"
+                "url": "https://github.com/reprewindai-dev/pyo3-irongrid-api"
             },
             {
                 "id": "lockerphycer",
@@ -319,7 +319,7 @@ async def marketplace_py03():
         "name": "PY03 IronGrid API",
         "type": "Runtime Module",
         "description": "High-performance route optimization and concurrency sandbox for agent/runtime workloads.",
-        "demo_url": "/terminal",
+        "demo_url": "https://github.com/reprewindai-dev/pyo3-irongrid-api",
         "status": "Available in Veklom ecosystem"
     }
 

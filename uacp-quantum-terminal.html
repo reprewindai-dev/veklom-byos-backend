@@ -703,6 +703,33 @@ body::before {
     <canvas id="mesh-canvas" height="110"></canvas>
   </div>
 
+  <!-- ESCALATION ENGINE -->
+  <div id="escalation-panel" style="border-bottom: 1px solid var(--border); padding: 12px 14px; flex-shrink:0;">
+    <div class="panel-title">
+      <span class="panel-title-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></span>Sovereign Escalation Engine
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
+      <div class="zs" style="padding:6px 8px;">
+        <div class="zs-label">Cache Hits</div>
+        <div class="zs-value v-green" id="esc-hits" style="color:var(--green)">18</div>
+      </div>
+      <div class="zs" style="padding:6px 8px;">
+        <div class="zs-label">USD Saved</div>
+        <div class="zs-value v-cyan" id="esc-saved" style="color:var(--primary)">$0.63</div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+      <div class="zs" style="padding:6px 8px;">
+        <div class="zs-label">Ollama Runs</div>
+        <div class="zs-value v-amber" id="esc-local" style="color:var(--amber)">5</div>
+      </div>
+      <div class="zs" style="padding:6px 8px;">
+        <div class="zs-label">Escalations</div>
+        <div class="zs-value v-purple" id="esc-paid" style="color:var(--purple)">1</div>
+      </div>
+    </div>
+  </div>
+
   <!-- INSPECTOR -->
   <div id="inspector">
     <div class="panel-title">
@@ -954,6 +981,25 @@ function boot() {
   }, 80);
 }
 boot();
+async function fetchEscalationStats() {
+  try {
+    const headers = {
+      'Authorization': 'Bearer veklom-demo-token-quantum'
+    };
+    const res = await fetch('/api/v1/ai/escalation/stats', { headers });
+    if (res.ok) {
+      const stats = await res.json();
+      document.getElementById('esc-hits').textContent = stats.cache_hits;
+      document.getElementById('esc-saved').textContent = '$' + stats.usd_saved.toFixed(2);
+      document.getElementById('esc-local').textContent = stats.ollama_runs;
+      document.getElementById('esc-paid').textContent = stats.escalated_runs;
+    }
+  } catch (e) {
+    console.error("Failed to load escalation stats:", e);
+  }
+}
+fetchEscalationStats();
+setInterval(fetchEscalationStats, 10000);
 
 // ─── EXECUTE ──────────────────────────────────────────────────
 function executeCommand() {
@@ -1010,33 +1056,55 @@ async function runAutonomous(intent) {
     });
 
     if (response.ok) {
-      const data = await response.json();
-      tJson({
-        intent: intent,
-        run_id: runId,
-        uacp_version: 'v4',
-        provider: data.llm_provider,
-        model: data.model
-      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let streamContainer = null;
 
-      let stepIdx = 0;
-      function showNextStep() {
-        if (stepIdx < data.steps.length) {
-          const step = data.steps[stepIdx];
-          tLine(step.text, step.type, step.prefix, step.prefixClass || 'p-sys');
-          stepIdx++;
-          setTimeout(showNextStep, 250);
-        } else {
-          tDivider();
-          tLine(`[Ollama Auditor - ${data.model}]:`, 'zeno', 'Ψ', 'p-zeno');
-          tLine(data.llm_analysis, 'info');
-          
-          setPhase('phase_locked');
-          updateZeno(zenoN);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // Keep partial line in buffer
+
+        for (const line of lines) {
+          const cleanLine = line.trim();
+          if (!cleanLine.startsWith("data: ")) continue;
+
+          try {
+            const payload = JSON.parse(cleanLine.substring(6));
+            if (payload.token !== undefined) {
+              // It's a text chunk! Let's render it in a single streamed response block.
+              if (!streamContainer) {
+                tDivider();
+                tLine("[Veklom Governed Response Stream]:", "zeno", "Ψ", "p-zeno");
+                
+                // Create a clean line block for token accumulation
+                const out = document.getElementById('terminal-output');
+                const div = document.createElement('div');
+                div.className = 't-line';
+                div.innerHTML = `<span class="t-ts">${ts()}</span><span class="t-prefix p-sys">◆</span><span class="t-text info" id="stream-text-block"></span>`;
+                out.appendChild(div);
+                streamContainer = document.getElementById('stream-text-block');
+              }
+              streamContainer.textContent += payload.token;
+              document.getElementById('terminal-output').scrollTop = document.getElementById('terminal-output').scrollHeight;
+            } else if (payload.text !== undefined) {
+              // It's a structured step block!
+              tLine(payload.text, payload.type, payload.prefix, payload.prefixClass || 'p-sys');
+            }
+          } catch (e) {
+            // ignore partial JSON parse errors
+          }
         }
       }
-      
-      setTimeout(showNextStep, 300);
+
+      setPhase('phase_locked');
+      updateZeno(zenoN);
+      setTimeout(fetchEscalationStats, 500);
+
     } else {
       tLine(`Execution Failed — HTTP ${response.status}`, 'err', '✗', 'p-err');
     }

@@ -131,8 +131,8 @@ async def record_worker_heartbeat(worker_id: str, request: Request, db: AsyncSes
 
 from datetime import datetime, timezone
 from backend.core.security.auth import get_current_user
-
-from backend.core.ai.provider_router import run_completion
+from fastapi.responses import StreamingResponse
+from backend.core.ai.escalation_router import LocalFirstRouter
 
 # Autonomous execution router
 autonomous_router = APIRouter(
@@ -143,82 +143,14 @@ autonomous_router = APIRouter(
 async def autonomous_execute(body: dict, user=Depends(get_current_user)):
     intent = body.get("intent", "default review request")
     run_id = body.get("run_id", "run_quantum_default")
-    
-    # Run real Ollama completion!
-    prompt = (
-        f"You are the Veklom Governed AI Auditor reviewing a repo or request: '{intent}'. "
-        "Perform a monospaced security audit. Explain what security issues you found in exactly two sentences."
+    return StreamingResponse(
+        LocalFirstRouter.route_intent(intent, run_id),
+        media_type="text/event-stream"
     )
-    
-    try:
-        result = await run_completion({
-            "provider": "ollama",
-            "model": "qwen2.5:3b",
-            "messages": [{"role": "user", "content": prompt}]
-        })
-        llm_analysis = result.payload["choices"][0]["message"]["content"]
-        provider_used = "ollama"
-        model_used = result.payload.get("model", "qwen2.5:3b")
-    except Exception as e:
-        # Fallback to local direct Ollama call in case base URL settings are not loaded yet
-        import httpx
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.post(
-                    "http://veklom-ollama:11434/api/chat",
-                    json={
-                        "model": "qwen2.5:3b",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "stream": False
-                    }
-                )
-                if res.status_code == 200:
-                    data = res.json()
-                    llm_analysis = data.get("message", {}).get("content", "")
-                    provider_used = "ollama"
-                    model_used = "qwen2.5:3b"
-                else:
-                    llm_analysis = f"Veklom analysis: Invariant security parameters verified. No unauthorized writes detected near production. (Status: {res.status_code})"
-                    provider_used = "fallback_rules"
-                    model_used = "rule_engine"
-        except Exception as ex:
-            llm_analysis = f"Veklom analysis: Invariant security parameters verified. No unauthorized writes detected near production. (Fallback error: {str(ex)})"
-            provider_used = "fallback_rules"
-            model_used = "rule_engine"
 
-    import hashlib
-    proof_hash = hashlib.sha256(llm_analysis.encode()).hexdigest()[:20]
-    evidence_id = f"EVD-{hashlib.sha256(intent.encode()).hexdigest()[:4].upper()}"
-
-    steps = [
-        {"type": "sys", "prefix": "▸", "text": "Connecting to Veklom Sovereign Runtime...", "prefixClass": "p-sys"},
-        {"type": "ok", "prefix": "✓", "text": "JWT authenticated — workspace: reprewindai-dev", "prefixClass": "p-ok"},
-        {"type": "ok", "prefix": "✓", "text": "IronGrid node assigned — hel-sov-03 (Helsinki)", "prefixClass": "p-ok"},
-        {"type": "sys", "prefix": "▸", "text": "Agent scanning repository structure...", "prefixClass": "p-sys"},
-        {"type": "info", "prefix": "◆", "text": "Files scanned: 847 | Secrets checked: 12 | Tokens isolated: yes", "prefixClass": "p-sys"},
-        {"type": "ok", "prefix": "✓", "text": "GPC policy gate PASSED — no restricted paths accessed", "prefixClass": "p-ok"},
-        {"type": "sys", "prefix": "▸", "text": "Running governed agent actions...", "prefixClass": "p-sys"},
-        {"type": "ok", "prefix": "✓", "text": "Action: read_file(src/billing.py) — ALLOWED", "prefixClass": "p-ok"},
-        {"type": "ok", "prefix": "✓", "text": "Action: read_file(src/auth/tokens.py) — ALLOWED", "prefixClass": "p-ok"},
-        {"type": "warn", "prefix": "⚠", "text": "Action: write_file(config/prod.env) — BLOCKED by policy P-44", "prefixClass": "p-err"},
-        {"type": "ok", "prefix": "✓", "text": "Action: create_review_report() — ALLOWED", "prefixClass": "p-ok"},
-        {"type": "sys", "prefix": "▸", "text": "Generating audit evidence block...", "prefixClass": "p-sys"},
-        {"type": "info", "prefix": "◆", "text": f"SHA-256: {proof_hash}... | Timestamp: {datetime.now(timezone.utc).isoformat()}", "prefixClass": "p-sys"},
-        {"type": "ok", "prefix": "✓", "text": f"Audit block sealed — evidence ID: {evidence_id}", "prefixClass": "p-ok"},
-        {"type": "ok", "prefix": "✓", "text": "Review complete. 1 action blocked. Report + evidence ready.", "prefixClass": "p-ok"}
-    ]
-
-    return {
-        "run_id": run_id,
-        "status": "completed",
-        "uacp_version": "v4",
-        "llm_provider": provider_used,
-        "model": model_used,
-        "evidence_id": evidence_id,
-        "proof_hash": proof_hash,
-        "steps": steps,
-        "llm_analysis": llm_analysis
-    }
+@autonomous_router.get("/ai/escalation/stats")
+async def get_escalation_stats(user=Depends(get_current_user)):
+    return LocalFirstRouter.get_stats()
 
 @autonomous_router.get("/autonomous/status/{run_id}")
 async def autonomous_status(run_id: str, user=Depends(get_current_user)):

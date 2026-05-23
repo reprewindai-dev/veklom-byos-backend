@@ -278,6 +278,51 @@ async def terminal_page():
     if terminal_path.exists():
         return FileResponse(str(terminal_path))
     return JSONResponse(status_code=404, content={"detail": "Quantum Terminal file not found"})
+@app.get("/marketplace")
+async def marketplace_info():
+    return {
+        "platform": "Veklom",
+        "description": "Marketplace products built for governed execution",
+        "products": [
+            {
+                "id": "py03-irongrid",
+                "name": "PY03 IronGrid API",
+                "type": "Runtime Module",
+                "description": "High-performance route optimization and concurrency sandbox for agent/runtime workloads.",
+                "url": "/terminal"
+            },
+            {
+                "id": "lockerphycer",
+                "name": "Lockerphycer",
+                "type": "Marketplace Product",
+                "description": "A Veklom marketplace product for controlled, governed execution workflows.",
+                "url": "https://lockerphycer-git-main-dksummers-projects.vercel.app/"
+            }
+        ]
+    }
+
+@app.get("/marketplace/lockerphycer")
+async def marketplace_lockerphycer():
+    return {
+        "id": "lockerphycer",
+        "name": "Lockerphycer",
+        "type": "Marketplace Product",
+        "description": "A Veklom marketplace product for controlled, governed execution workflows.",
+        "demo_url": "https://lockerphycer-git-main-dksummers-projects.vercel.app/",
+        "status": "Available in Veklom ecosystem"
+    }
+
+@app.get("/marketplace/py03-irongrid")
+async def marketplace_py03():
+    return {
+        "id": "py03-irongrid",
+        "name": "PY03 IronGrid API",
+        "type": "Runtime Module",
+        "description": "High-performance route optimization and concurrency sandbox for agent/runtime workloads.",
+        "demo_url": "/terminal",
+        "status": "Available in Veklom ecosystem"
+    }
+
 
 
 @app.get("/gpc")

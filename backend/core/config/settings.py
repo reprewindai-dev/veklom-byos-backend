@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     OLLAMA_STARTUP_TIMEOUT_MS: int = 120000
     VLLM_BASE_URL: str = ""
 
+    # Local-First Escalation Router Settings
+    DEFAULT_PROVIDER: str = "ollama"
+    ENABLE_ESCALATION: bool = True
+    OPENAI_MONTHLY_BUDGET_USD: float = 20.0
+    OPENAI_DAILY_SOFT_LIMIT_USD: float = 0.75
+    OPENAI_HARD_STOP_USD: float = 20.0
+    OPENAI_MAX_CALLS_PER_REQUEST: int = 1
+
     # Email (Resend)
     RESEND_API_KEY: str = ""
     RESEND_WORKER_KEY: str = ""

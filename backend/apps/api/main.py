@@ -153,6 +153,7 @@ app.include_router(gfr.router, prefix="/api/v1")
 app.include_router(internal_uacp.router, prefix="/api/v1")
 app.include_router(internal_uacp.operator_router, prefix="/api/v1")
 app.include_router(internal_operators.router, prefix="/api/v1")
+app.include_router(internal_uacp.autonomous_router, prefix="/api/v1")
 
 # Plugins Management
 app.include_router(plugins.router, prefix="/api")
@@ -268,6 +269,15 @@ async def _serve_frontend(request):
     elif static_index.exists():
         return FileResponse(str(static_index))
     return HTMLResponse(content=_fallback_html(), status_code=200)
+
+
+@app.get("/terminal")
+async def terminal_page():
+    root_dir = Path(__file__).resolve().parent.parent.parent.parent
+    terminal_path = root_dir / "uacp-quantum-terminal.html"
+    if terminal_path.exists():
+        return FileResponse(str(terminal_path))
+    return JSONResponse(status_code=404, content={"detail": "Quantum Terminal file not found"})
 
 
 @app.get("/gpc")

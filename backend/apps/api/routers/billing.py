@@ -197,29 +197,86 @@ async def billing_usage(user=Depends(get_current_user), db: AsyncSession = Depen
 
 
 @router.get("/billing/invoices")
-async def list_invoices(user=Depends(get_current_user)):
+async def list_invoices(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    workspace_id = user.workspace_id or ""
+    result = await db.execute(
+        select(Invoice).where(Invoice.workspace_id == workspace_id).order_by(Invoice.created_at.desc()).limit(50)
+    )
+    invoices = result.scalars().all()
     return [
-        {"id": "inv1", "amount": 395, "status": "paid", "description": "Founding activation", "created_at": "2026-05-01"},
-        {"id": "inv2", "amount": 150, "status": "paid", "description": "Initial reserve", "created_at": "2026-05-01"},
+        {
+            "id": inv.id,
+            "amount": inv.amount,
+            "status": inv.status,
+            "description": inv.description,
+            "created_at": inv.created_at.isoformat() if inv.created_at else None,
+        }
+        for inv in invoices
     ]
 
 
 @router.get("/billing/breakdown")
-async def billing_breakdown(user=Depends(get_current_user)):
+async def billing_breakdown(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.ai import ExecLog
+    from sqlalchemy import func
+    from datetime import datetime, timezone
+    
+    workspace_id = user.workspace_id or ""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Group by provider/model to get breakdown
+    result = await db.execute(
+        select(
+            ExecLog.provider,
+            func.count(ExecLog.id).label("count"),
+            func.coalesce(func.sum(ExecLog.cost_usd), 0).label("total")
+        )
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start)
+        .group_by(ExecLog.provider)
+    )
+    rows = result.fetchall()
+    
+    total_spend = sum(row.total for row in rows)
+    
     return {
-        "period": "2026-05",
+        "period": now.strftime("%Y-%m"),
         "items": [
-            {"event": "Playground governed run", "count": 10, "unit_cost": 0.25, "total": 2.50},
-            {"event": "Compare run", "count": 2, "unit_cost": 0.75, "total": 1.50},
-            {"event": "UACP compile", "count": 3, "unit_cost": 1.50, "total": 4.50},
+            {"event": row.provider, "count": row.count, "unit_cost": row.total / row.count if row.count > 0 else 0, "total": row.total}
+            for row in rows
         ],
-        "total_usd": 8.50,
+        "total_usd": round(float(total_spend), 4),
     }
 
 
 @router.get("/billing/report")
-async def billing_report(user=Depends(get_current_user)):
-    return {"total_spend": 8.50, "total_topups": 150.0, "net_balance": 141.50, "period": "2026-05"}
+async def billing_report(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.ai import ExecLog
+    from sqlalchemy import func
+    from datetime import datetime, timezone
+    
+    workspace_id = user.workspace_id or ""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Get total spend
+    spend = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start)
+    ) or 0.0
+    
+    # Get total topups
+    topups = await db.scalar(
+        select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+        .where(WalletTransaction.workspace_id == workspace_id, WalletTransaction.tx_type == "topup")
+    ) or 0.0
+    
+    return {
+        "total_spend": round(float(spend), 4),
+        "total_topups": round(float(topups), 2),
+        "net_balance": round(float(topups) - float(spend), 2),
+        "period": now.strftime("%Y-%m"),
+    }
 
 
 @router.post("/billing/allocate")
@@ -229,40 +286,153 @@ async def billing_allocate(body: dict, user=Depends(get_current_user)):
 
 # --- Budget ---
 @router.get("/budget")
-async def list_budget_rules(user=Depends(get_current_user)):
+async def list_budget_rules(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.ai import ExecLog
+    from sqlalchemy import func
+    from datetime import datetime, timezone
+    
+    workspace_id = user.workspace_id or ""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    result = await db.execute(select(BudgetRule).where(BudgetRule.workspace_id == workspace_id))
+    rules = result.scalars().all()
+    
+    # Get current spend for each rule
+    spend = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start)
+    ) or 0.0
+    
     return [
-        {"id": "br1", "name": "Monthly cap", "limit_usd": 500, "current_spend": 8.50, "period": "monthly", "rule_type": "hard"},
+        {
+            "id": r.id,
+            "name": r.name,
+            "limit_usd": r.limit_usd,
+            "current_spend": round(float(spend), 4),
+            "period": r.period,
+            "rule_type": r.rule_type,
+        }
+        for r in rules
     ]
 
 
 @router.post("/budget")
-async def create_budget_rule(body: dict, user=Depends(get_current_user)):
-    return {"id": "br_new", "name": body.get("name", ""), "limit_usd": body.get("limit_usd", 100), "message": "Rule created"}
+async def create_budget_rule(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    import uuid as _uuid
+    rule = BudgetRule(
+        id=str(_uuid.uuid4()),
+        workspace_id=user.workspace_id or "",
+        name=body.get("name", "Budget Rule"),
+        limit_usd=float(body.get("limit_usd", 100)),
+        period=body.get("period", "monthly"),
+        rule_type=body.get("rule_type", "soft"),
+        is_active=True,
+    )
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return {"id": rule.id, "name": rule.name, "limit_usd": rule.limit_usd, "message": "Rule created"}
 
 
 @router.delete("/budget/{rule_id}")
-async def delete_budget_rule(rule_id: str, user=Depends(get_current_user)):
+async def delete_budget_rule(rule_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(BudgetRule).where(BudgetRule.id == rule_id, BudgetRule.workspace_id == (user.workspace_id or ""))
+    )
+    rule = result.scalar_one_or_none()
+    if rule:
+        await db.delete(rule)
+        await db.commit()
     return {"message": "Rule deleted"}
 
 
 @router.get("/budget/forecast")
-async def budget_forecast(user=Depends(get_current_user)):
-    return {"current_spend": 8.50, "projected_spend": 25.00, "budget_limit": 500.00, "days_remaining": 14}
+async def budget_forecast(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.ai import ExecLog
+    from sqlalchemy import func
+    from datetime import datetime, timezone, timedelta
+    
+    workspace_id = user.workspace_id or ""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    days_remaining = (month_end - now).days
+    
+    # Get current spend
+    spend = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start)
+    ) or 0.0
+    
+    # Get budget limit
+    result = await db.execute(select(BudgetRule).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True))
+    rule = result.scalar_one_or_none()
+    budget_limit = rule.limit_usd if rule else 500.0
+    
+    # Project spend based on daily rate
+    days_elapsed = (now - month_start).days
+    daily_rate = float(spend) / max(1, days_elapsed)
+    projected_spend = daily_rate * (days_elapsed + days_remaining)
+    
+    return {
+        "current_spend": round(float(spend), 4),
+        "projected_spend": round(projected_spend, 4),
+        "budget_limit": float(budget_limit),
+        "days_remaining": days_remaining,
+    }
 
 
 # --- Cost ---
 @router.get("/cost/predict")
-async def cost_predict(user=Depends(get_current_user)):
-    return {"predicted_monthly": 25.00, "predicted_daily": 0.83, "confidence": 0.85}
+async def cost_predict(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.ai import ExecLog
+    from sqlalchemy import func
+    from datetime import datetime, timezone, timedelta
+    
+    workspace_id = user.workspace_id or ""
+    now = datetime.now(timezone.utc)
+    
+    # Get last 7 days of spend
+    week_ago = now - timedelta(days=7)
+    weekly_spend = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= week_ago)
+    ) or 0.0
+    
+    daily_avg = float(weekly_spend) / 7
+    predicted_monthly = daily_avg * 30
+    
+    return {
+        "predicted_monthly": round(predicted_monthly, 4),
+        "predicted_daily": round(daily_avg, 4),
+        "confidence": 0.85,
+    }
 
 
 @router.get("/cost/history")
-async def cost_history(user=Depends(get_current_user)):
-    return [
-        {"date": "2026-05-17", "cost": 2.50},
-        {"date": "2026-05-16", "cost": 1.75},
-        {"date": "2026-05-15", "cost": 0.50},
-    ]
+async def cost_history(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.ai import ExecLog
+    from sqlalchemy import func
+    from datetime import datetime, timezone, timedelta
+    
+    workspace_id = user.workspace_id or ""
+    now = datetime.now(timezone.utc)
+    
+    # Get last 30 days of daily spend
+    history = []
+    for i in range(30):
+        day_start = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        
+        daily_spend = await db.scalar(
+            select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
+            .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= day_start, ExecLog.created_at < day_end)
+        ) or 0.0
+        
+        history.append({"date": day_start.strftime("%Y-%m-%d"), "cost": round(float(daily_spend), 4)})
+    
+    return list(reversed(history))
 
 
 @router.get("/cost/kill-switch/status")

@@ -93,21 +93,52 @@ async def list_providers(user=Depends(get_current_user)):
 
 
 @router.post("/ai/predict-cost")
-async def predict_cost(body: dict, user=Depends(get_current_user)):
-    model = body.get("model", "gpt-4o")
-    tokens = body.get("estimated_tokens", 1000)
-    cost_map = {
-        "gpt-4o": 0.005,
-        "gpt-4o-mini": 0.00015,
-        "llama-3.1-8b-instant": 0.00005,
-        "gemini-2.5-flash": 0.0003,
-        "qwen2.5:3b": 0.0,
-    }
-    rate = cost_map.get(model, 0.002)
+async def predict_cost(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.workspace import ModelConfig
+    from sqlalchemy import select
+    
+    model_id = body.get("model", "gpt-4o")
+    input_tokens = body.get("input_tokens", body.get("estimated_tokens", 1000))
+    output_tokens = body.get("output_tokens", 0)
+    
+    # Try to get real model costs from database
+    workspace_id = user.workspace_id or "default"
+    result = await db.execute(
+        select(ModelConfig).where(
+            ModelConfig.id == model_id,
+            ModelConfig.workspace_id == workspace_id
+        )
+    )
+    model_config = result.scalar_one_or_none()
+    
+    if model_config:
+        # Use real costs from database
+        cost_per_1k_input = float(model_config.cost_per_1k_input or 0)
+        cost_per_1k_output = float(model_config.cost_per_1k_output or 0)
+    else:
+        # Fallback to default costs for known models
+        cost_map = {
+            "gpt-4o": (0.005, 0.015),
+            "gpt-4o-mini": (0.00015, 0.0006),
+            "llama-3.1-8b-instant": (0.00005, 0.0001),
+            "gemini-2.5-flash": (0.0003, 0.001),
+            "qwen2.5:3b": (0.0, 0.0),
+        }
+        cost_per_1k_input, cost_per_1k_output = cost_map.get(model_id, (0.002, 0.006))
+    
+    # Calculate total cost
+    input_cost = (input_tokens / 1000) * cost_per_1k_input
+    output_cost = (output_tokens / 1000) * cost_per_1k_output
+    total_cost = input_cost + output_cost
+    
     return {
-        "model": model,
-        "estimated_tokens": tokens,
-        "estimated_cost_usd": round(tokens / 1000 * rate, 6),
+        "model": model_id,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "cost_per_1k_input": cost_per_1k_input,
+        "cost_per_1k_output": cost_per_1k_output,
+        "estimated_cost_usd": round(total_cost, 6),
         "currency": "USD",
     }
 

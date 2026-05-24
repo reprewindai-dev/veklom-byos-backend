@@ -176,7 +176,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
       case 'terminal':
         return (
           <div className="w-full h-full relative rounded-xl border border-white/5 bg-black overflow-hidden shadow-[0_0_20px_rgba(255,184,0,0.05)]" style={{minHeight: 'calc(100vh - 200px)'}}>
-            <iframe src="/uacp-quantum-terminal.html" className="w-full h-full border-none bg-[#0a0a0a]" title="UACP Quantum Terminal" style={{minHeight: 'calc(100vh - 200px)'}} />
+            <iframe src="/terminal" className="w-full h-full border-none bg-[#0a0a0a]" title="UACP Quantum Terminal" style={{minHeight: 'calc(100vh - 200px)'}} />
           </div>
         );
       

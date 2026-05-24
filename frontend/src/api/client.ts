@@ -21,6 +21,8 @@ export const setToken = (t: string) => {
     localStorage.setItem('veklom_token', t);
   } else {
     localStorage.removeItem('veklom_token');
+    localStorage.removeItem('veklom_refresh_token');
+    localStorage.removeItem('veklom_user');
   }
 };
 

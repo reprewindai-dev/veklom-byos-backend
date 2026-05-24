@@ -1,4 +1,6 @@
 /* Veklom Sovereign AI Hub — Design System */
+@import "tailwindcss";
+
 :root {
   --bg-primary: #0a0a0a;
   --bg-secondary: #0f0f12;
@@ -62,10 +64,10 @@ body::before {
   position: fixed;
   right: clamp(18px, 4vw, 72px);
   bottom: clamp(18px, 4vw, 72px);
-  width: min(34vw, 420px);
+  width: min(28vw, 320px);
   aspect-ratio: 1;
   background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
-  opacity: 0.035;
+  opacity: 0.028;
   pointer-events: none;
   z-index: 0;
 }
@@ -501,4 +503,414 @@ body::before {
 @keyframes pulse-op {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.9); }
+}
+
+/* Workspace authentication */
+.auth-page {
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(24px, 5vw, 64px);
+  background:
+    radial-gradient(circle at 18% 20%, rgba(255, 184, 0, 0.08), transparent 30%),
+    radial-gradient(circle at 90% 70%, rgba(255, 184, 0, 0.045), transparent 34%),
+    linear-gradient(180deg, #0b0a08 0%, #070707 55%, #050505 100%);
+  position: relative;
+}
+
+.auth-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: radial-gradient(circle at center, black 0%, transparent 72%);
+  pointer-events: none;
+}
+
+.auth-page::after {
+  content: "";
+  position: absolute;
+  right: clamp(22px, 7vw, 96px);
+  bottom: clamp(22px, 7vw, 96px);
+  width: min(30vw, 360px);
+  aspect-ratio: 1;
+  background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
+  opacity: 0.035;
+  pointer-events: none;
+}
+
+.auth-layout {
+  position: relative;
+  z-index: 1;
+  width: min(1080px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+  gap: clamp(28px, 5vw, 64px);
+  align-items: center;
+  min-width: 0;
+}
+
+.auth-brand-copy {
+  max-width: 560px;
+  min-width: 0;
+}
+
+.auth-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 44px;
+}
+
+.auth-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  box-shadow: 0 0 28px rgba(255, 184, 0, 0.18);
+}
+
+.auth-wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.auth-wordmark strong {
+  color: #fff;
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.auth-wordmark span,
+.auth-eyebrow,
+.auth-proof span {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.auth-wordmark span {
+  color: var(--orange);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.auth-eyebrow {
+  color: var(--orange);
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.auth-brand-copy h1 {
+  color: #fff;
+  font-size: clamp(38px, 5vw, 68px);
+  line-height: 0.98;
+  letter-spacing: 0;
+  max-width: 760px;
+  margin-bottom: 22px;
+  overflow-wrap: break-word;
+}
+
+.auth-brand-copy p {
+  color: var(--text-secondary);
+  font-size: clamp(16px, 1.4vw, 19px);
+  line-height: 1.7;
+  max-width: 680px;
+  overflow-wrap: break-word;
+}
+
+.auth-proof-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 36px;
+}
+
+.auth-proof {
+  min-height: 92px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.auth-proof svg {
+  color: var(--orange);
+  margin-bottom: 12px;
+}
+
+.auth-proof span {
+  color: #fff;
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.auth-proof small {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.auth-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(12, 12, 14, 0.88);
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.44);
+  backdrop-filter: blur(18px);
+  padding: 28px;
+  min-width: 0;
+}
+
+.auth-card::before {
+  content: "";
+  position: absolute;
+  right: -72px;
+  bottom: -86px;
+  width: 220px;
+  aspect-ratio: 1;
+  background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
+  opacity: 0.025;
+  pointer-events: none;
+}
+
+.auth-card-header,
+.auth-form,
+.auth-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.auth-card-header {
+  margin-bottom: 24px;
+}
+
+.auth-card-header h2 {
+  color: #fff;
+  font-size: 24px;
+  letter-spacing: 0;
+  margin: 16px 0 8px;
+}
+
+.auth-card-header p,
+.auth-footer {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.auth-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.auth-toggle button {
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.auth-toggle button.active {
+  color: #0a0a0a;
+  background: var(--orange);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.auth-field label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-input-wrap {
+  position: relative;
+}
+
+.auth-input-wrap svg {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.auth-input {
+  width: 100%;
+  height: 46px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(0, 0, 0, 0.32);
+  color: #fff;
+  padding: 0 13px 0 42px;
+  outline: none;
+  font-size: 14px;
+}
+
+.auth-input:focus {
+  border-color: rgba(255, 184, 0, 0.75);
+  box-shadow: 0 0 0 3px rgba(255, 184, 0, 0.08);
+}
+
+.auth-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid rgba(255, 68, 102, 0.24);
+  background: rgba(255, 68, 102, 0.08);
+  color: #ff6f8b;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.auth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.auth-primary,
+.auth-secondary {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-primary {
+  border: 0;
+  background: var(--orange);
+  color: #050505;
+}
+
+.auth-secondary {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  color: #fff;
+}
+
+.auth-primary:disabled,
+.auth-secondary:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.auth-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 22px;
+  padding-top: 18px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 920px) {
+  .auth-page {
+    align-items: flex-start;
+  }
+
+  .auth-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-card {
+    width: 100%;
+  }
+
+  .auth-lockup {
+    margin-bottom: 28px;
+  }
+
+  .auth-brand-copy h1 {
+    font-size: 38px;
+  }
+
+  .auth-proof-grid {
+    grid-template-columns: 1fr;
+    margin-top: 24px;
+  }
+}
+
+@media (max-width: 520px) {
+  .auth-page {
+    padding: 24px 16px 36px;
+  }
+
+  .auth-layout {
+    width: 100%;
+    max-width: calc(100vw - 32px);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .auth-brand-copy,
+  .auth-card,
+  .auth-proof {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .auth-brand-copy h1 {
+    font-size: 34px;
+  }
+
+  .auth-brand-copy p {
+    font-size: 16px;
+  }
+
+  .auth-card {
+    padding: 22px;
+  }
+
+  .auth-footer {
+    flex-wrap: wrap;
+  }
 }

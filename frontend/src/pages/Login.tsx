@@ -1,24 +1,46 @@
 import React, { useState } from 'react';
-import { api, setToken } from '../api/client';
-import { Shield, Key, AlertCircle, Cpu, Github, User } from 'lucide-react';
+import { api, getApiBase, setToken } from '../api/client';
+import {
+  AlertCircle,
+  ArrowRight,
+  Building2,
+  Cpu,
+  Github,
+  KeyRound,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  User,
+} from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
 }
 
+type AuthMode = 'signin' | 'signup';
+
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
-  const [isSignup, setIsSignup] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [githubLoading, setGithubLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const isSignup = mode === 'signup';
+
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setError('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password || (isSignup && !username)) {
-      setError('Please fill in all required credentials.');
+
+    if (!email || !password || (isSignup && !fullName)) {
+      setError(isSignup ? 'Full name, work email, and password are required.' : 'Work email and password are required.');
       return;
     }
 
@@ -27,8 +49,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
     try {
       const endpoint = isSignup ? '/auth/register' : '/auth/login';
-      const bodyPayload = isSignup 
-        ? { email, password, username, full_name: fullName } 
+      const bodyPayload = isSignup
+        ? {
+            email,
+            password,
+            full_name: fullName,
+            workspace_name: workspaceName,
+          }
         : { email, password };
 
       const data = await api(endpoint, {
@@ -36,175 +63,223 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         body: JSON.stringify(bodyPayload),
       });
 
-      if (data && data.access_token) {
-        setToken(data.access_token);
-        onLoginSuccess(data.user);
-      } else {
-        throw new Error('Authentication returned an invalid response token.');
+      if (!data?.access_token || !data?.user) {
+        throw new Error('Authentication returned an invalid session.');
       }
+
+      setToken(data.access_token);
+      localStorage.setItem('veklom_refresh_token', data.refresh_token || '');
+      localStorage.setItem('veklom_user', JSON.stringify(data.user));
+      onLoginSuccess(data.user);
     } catch (err: any) {
-      setError(err.message || (isSignup ? 'Registration failed.' : 'Invalid email or password. Access Denied.'));
+      setError(err.message || (isSignup ? 'Account creation failed.' : 'Invalid email or password.'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGithubLogin = () => {
-    // A true GitHub login must use a full window redirect to the backend's OAuth endpoint,
-    // which then 307 redirects to GitHub. We cannot use `fetch()` for this.
-    const apiBase = (window as any).__VEKLOM_API_BASE__ || '/api/v1';
-    window.location.href = `${apiBase}/auth/github/login`;
+  const handleGithubLogin = async () => {
+    setGithubLoading(true);
+    setError('');
+
+    try {
+      const status = await api('/auth/github/status');
+      if (!status?.configured) {
+        setError('GitHub sign-in is not configured on this deployment yet. Use email sign-in for this workspace.');
+        return;
+      }
+
+      window.location.href = `${getApiBase()}/auth/github/login`;
+    } catch (err: any) {
+      setError(err.message || 'GitHub sign-in is unavailable right now.');
+    } finally {
+      setGithubLoading(false);
+    }
   };
 
   return (
-    <div className="grid-bg min-h-screen flex items-center justify-center p-4">
-      {/* Decorative center grid glow */}
-      <div className="absolute w-96 h-96 rounded-full bg-[#ffb800] opacity-[0.03] blur-[100px] pointer-events-none"></div>
-
-      <div className="w-full max-w-[420px] glow-card bg-[rgba(10,10,12,0.8)] border border-[rgba(255,255,255,0.06)] rounded-xl p-8 backdrop-blur-md relative z-10">
-        
-        <div className="flex flex-col items-center mb-8">
-          <img
-            src="/static/branding/veklom-wordmark.png"
-            alt="Veklom"
-            className="veklom-wordmark h-14 mb-4"
-          />
-          <h1 className="text-xl font-bold tracking-[0.05em] text-white">SOVEREIGN AI HUB</h1>
-          <p className="text-xs text-[var(--text-secondary)] mt-1 tracking-[0.02em]">SOVEREIGN AI CONTROL PLANE</p>
-        </div>
-
-        {error && (
-          <div className="mb-6 p-3 rounded-md bg-[rgba(255,68,102,0.08)] border border-[rgba(255,68,102,0.2)] flex items-start gap-3 text-red-400 text-xs">
-            <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {isSignup && (
-            <>
-              <div>
-                <label className="form-label" htmlFor="username-input">Operator Alias</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-3.5 text-[var(--text-muted)]">
-                    <User size={14} />
-                  </span>
-                  <input
-                    id="username-input"
-                    type="text"
-                    placeholder="operator_1"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="form-input pl-9"
-                    disabled={isLoading}
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="form-label" htmlFor="fullname-input">Full Designation (Optional)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-3.5 text-[var(--text-muted)]">
-                    <User size={14} />
-                  </span>
-                  <input
-                    id="fullname-input"
-                    type="text"
-                    placeholder="John Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="form-input pl-9"
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className="form-label" htmlFor="email-input">Perimeter Email</label>
-            <div className="relative">
-              <span className="absolute left-3 top-3.5 text-[var(--text-muted)]">
-                <Shield size={14} />
-              </span>
-              <input
-                id="email-input"
-                type="email"
-                placeholder="operator@veklom.perimeter"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="form-input pl-9"
-                disabled={isLoading}
-                autoComplete="email"
-                required
-              />
+    <div className="auth-page">
+      <div className="auth-layout">
+        <section className="auth-brand-copy" aria-label="Veklom workspace access">
+          <div className="auth-lockup">
+            <img src="/favicon.svg" alt="" className="auth-mark" />
+            <div className="auth-wordmark">
+              <strong>Veklom</strong>
+              <span>Sovereign AI Hub</span>
             </div>
           </div>
 
-          <div>
-            <label className="form-label" htmlFor="password-input">Runtime Key</label>
-            <div className="relative">
-              <span className="absolute left-3 top-3.5 text-[var(--text-muted)]">
-                <Key size={14} />
-              </span>
-              <input
-                id="password-input"
-                type="password"
-                placeholder="••••••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="form-input pl-9"
-                disabled={isLoading}
-                autoComplete="current-password"
-                required
-              />
+          <div className="auth-eyebrow">Workspace access</div>
+          <h1>Enter the governed execution layer.</h1>
+          <p>
+            Sign in to manage agent workflows, marketplace tools, policy gates, audit evidence, and tenant-isolated
+            runtime controls from one workspace.
+          </p>
+
+          <div className="auth-proof-grid" aria-label="Workspace controls">
+            <div className="auth-proof">
+              <ShieldCheck size={19} />
+              <span>Tenant isolated</span>
+              <small>Sessions resolve to one workspace boundary.</small>
+            </div>
+            <div className="auth-proof">
+              <KeyRound size={19} />
+              <span>JWT secured</span>
+              <small>Bearer sessions are verified before workspace access.</small>
+            </div>
+            <div className="auth-proof">
+              <Building2 size={19} />
+              <span>BYOS ready</span>
+              <small>Hosted, dedicated, and self-hosted paths share one login.</small>
             </div>
           </div>
+        </section>
 
-          <div className="pt-2">
-            <button
-              type="submit"
-              className="btn btn-primary w-full py-3 text-xs tracking-[0.08em] font-bold mb-3"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Cpu size={14} className="animate-spin" />
-                  {isSignup ? 'PROVISIONING ACCOUNT...' : 'DECRYPTING CONTROL PLANE...'}
-                </>
-              ) : (
-                isSignup ? 'INITIALIZE NEW PERIMETER' : 'ESTABLISH SECURE ACCESS'
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleGithubLogin}
-              className="w-full py-3 text-xs tracking-[0.08em] font-bold bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.08)] transition-colors rounded-md flex items-center justify-center gap-2 text-white mb-4"
-              disabled={isLoading}
-            >
-              <Github size={16} />
-              AUTHENTICATE WITH GITHUB
-            </button>
-            
-            <div className="text-center mt-2">
+        <section className="auth-card" aria-label={isSignup ? 'Create Veklom account' : 'Sign in to Veklom'}>
+          <div className="auth-card-header">
+            <div className="auth-toggle" role="tablist" aria-label="Authentication mode">
               <button
                 type="button"
-                onClick={() => setIsSignup(!isSignup)}
-                className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--orange)] font-mono tracking-wider transition-colors"
-                disabled={isLoading}
+                className={mode === 'signin' ? 'active' : ''}
+                onClick={() => switchMode('signin')}
+                aria-selected={mode === 'signin'}
               >
-                {isSignup ? 'ALREADY HAVE AN ACCOUNT? SIGN IN' : 'NO ACCOUNT YET? CREATE PERIMETER'}
+                Sign in
+              </button>
+              <button
+                type="button"
+                className={mode === 'signup' ? 'active' : ''}
+                onClick={() => switchMode('signup')}
+                aria-selected={mode === 'signup'}
+              >
+                Create account
               </button>
             </div>
+
+            <h2>{isSignup ? 'Create your workspace' : 'Access your workspace'}</h2>
+            <p>
+              {isSignup
+                ? 'A new tenant workspace is created for this account and separated from every other customer.'
+                : 'Use the same account for Playground, Command Center, GPC, marketplace, billing, and evidence logs.'}
+            </p>
           </div>
-        </form>
 
-        <div className="mt-8 pt-6 border-t border-[rgba(255,255,255,0.05)] text-[10px] text-center text-[var(--text-muted)] flex flex-col gap-1 font-mono">
-          <div>REGIONAL GATEWAY: HETZNER-FSN1</div>
-          <div>ENCRYPTION: AES-GCM-256-CHAOS</div>
-        </div>
+          {error && (
+            <div className="auth-error" role="alert">
+              <AlertCircle size={16} />
+              <span>{error}</span>
+            </div>
+          )}
 
+          <form onSubmit={handleSubmit} className="auth-form">
+            {isSignup && (
+              <>
+                <div className="auth-field">
+                  <label htmlFor="full-name-input">Full name</label>
+                  <div className="auth-input-wrap">
+                    <User size={16} />
+                    <input
+                      id="full-name-input"
+                      type="text"
+                      placeholder="Your name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="auth-input"
+                      autoComplete="name"
+                      disabled={isLoading}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="auth-field">
+                  <label htmlFor="workspace-name-input">Workspace name</label>
+                  <div className="auth-input-wrap">
+                    <Building2 size={16} />
+                    <input
+                      id="workspace-name-input"
+                      type="text"
+                      placeholder="Company or team name"
+                      value={workspaceName}
+                      onChange={(e) => setWorkspaceName(e.target.value)}
+                      className="auth-input"
+                      autoComplete="organization"
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="auth-field">
+              <label htmlFor="email-input">Work email</label>
+              <div className="auth-input-wrap">
+                <Mail size={16} />
+                <input
+                  id="email-input"
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="auth-input"
+                  disabled={isLoading}
+                  autoComplete="email"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="password-input">Password</label>
+              <div className="auth-input-wrap">
+                <LockKeyhole size={16} />
+                <input
+                  id="password-input"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="auth-input"
+                  disabled={isLoading}
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="auth-actions">
+              <button type="submit" className="auth-primary" disabled={isLoading || githubLoading}>
+                {isLoading ? (
+                  <>
+                    <Cpu size={16} className="animate-spin" />
+                    {isSignup ? 'Creating workspace' : 'Signing in'}
+                  </>
+                ) : (
+                  <>
+                    {isSignup ? 'Create workspace' : 'Sign in'}
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGithubLogin}
+                className="auth-secondary"
+                disabled={isLoading || githubLoading}
+              >
+                {githubLoading ? <Cpu size={16} className="animate-spin" /> : <Github size={16} />}
+                Continue with GitHub
+              </button>
+            </div>
+          </form>
+
+          <div className="auth-footer">
+            <span>JWT bearer</span>
+            <span>Tenant scoped</span>
+            <span>Audit ready</span>
+          </div>
+        </section>
       </div>
     </div>
   );

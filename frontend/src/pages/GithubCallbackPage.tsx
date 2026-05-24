@@ -32,6 +32,8 @@ export const GithubCallbackPage: React.FC<GithubCallbackProps> = ({ onLoginSucce
 
         if (payload && payload.access_token) {
           setToken(payload.access_token);
+          localStorage.setItem("veklom_refresh_token", payload.refresh_token || "");
+          localStorage.setItem("veklom_user", JSON.stringify(payload.user));
           onLoginSuccess(payload.user);
         } else {
           throw new Error("Invalid response from authentication server.");

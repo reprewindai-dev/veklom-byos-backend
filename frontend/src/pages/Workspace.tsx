@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { setToken } from '../api/client';
 import { 
@@ -26,7 +26,8 @@ interface WorkspaceProps {
 }
 
 export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
-  const [profile] = useState<any>(user || { email: 'operator@veklom.perimeter', role: 'owner' });
+  const profile = user || { email: 'workspace@veklom.com', role: 'USER', workspace_id: '' };
+  const workspaceLabel = profile.workspace_id ? `WS-${String(profile.workspace_id).slice(0, 8).toUpperCase()}` : 'WORKSPACE';
 
   const handleLogoutAction = () => {
     setToken('');
@@ -57,7 +58,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
           
           {/* Project selector */}
           <div className="flex items-center gap-1.5 font-mono text-[10px] text-white/80 bg-neutral-900 border border-white/5 rounded px-2 py-0.5 cursor-pointer">
-            <span className="pulse-dot"></span> ACME-PROD
+            <span className="pulse-dot"></span> {workspaceLabel}
           </div>
         </div>
 

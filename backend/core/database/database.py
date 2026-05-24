@@ -2,7 +2,6 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -21,17 +20,14 @@ class Base(DeclarativeBase):
 
 
 async def get_db():
-    try:
-        async with async_session() as session:
-            try:
-                yield session
-            finally:
-                await session.close()
-    except Exception as e:
-        import traceback
-        error_detail = f"Database connection error: {str(e)}\nTraceback: {traceback.format_exc()}"
-        print(error_detail)
-        raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
+    async with async_session() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 @asynccontextmanager

@@ -21,7 +21,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { DeveloperToolsPage } from './pages/DeveloperToolsPage';
 import { MarketplaceLayout } from './components/Marketplace/MarketplaceLayout';
 import { GreenVisionPage } from './pages/GreenVisionPage';
-import { getToken, api } from './api/client';
+import { getToken, setToken, api } from './api/client';
 import './index.css';
 
 // Dynamic basename determination supporting local Vite root and FastAPI /workspace mounts
@@ -80,16 +80,12 @@ const App: React.FC = () => {
       }
 
       try {
-        const memberInfo = await api('/workspace/members');
-        if (Array.isArray(memberInfo) && memberInfo.length > 0) {
-          setUser(memberInfo[0]);
-        } else {
-          setUser({ email: 'operator@veklom.perimeter', role: 'owner' });
-        }
+        const activeUser = await api('/auth/me');
+        setUser(activeUser);
       } catch (err) {
-        console.warn('Session verification rejected or testing on bare-metal fallback:', err);
-        // Robust fallback for previewing/offline deployment
-        setUser({ email: 'operator@veklom.perimeter', role: 'owner' });
+        console.warn('Session verification rejected:', err);
+        setToken('');
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -104,6 +100,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    setToken('');
     setUser(null);
     setTokenState('');
   };

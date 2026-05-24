@@ -8,7 +8,7 @@ interface SettingsPageProps {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout }) => {
-  const [profile] = useState<any>(user || { email: 'operator@veklom.perimeter', role: 'owner' });
+  const profile = user || { email: 'workspace@veklom.com', role: 'USER' };
   const [sovereignMode, setSovereignMode] = useState(true);
   const [firewallPolicy, setFirewallPolicy] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);

@@ -60,7 +60,9 @@ async def get_current_user(
             id="demo-user-id",
             email="demo@veklom.com",
             role="super_admin",
-            status="active",
+            status="ACTIVE",
+            is_active=True,
+            workspace_id="demo",
             is_public_demo=True,
         )
 
@@ -80,7 +82,8 @@ async def get_current_user(
         user = result.scalar_one_or_none()
         if user is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-        if user.status != "active":
+        status_value = (user.status or "").upper()
+        if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
 
         user.last_activity = datetime.now(timezone.utc)
@@ -89,14 +92,14 @@ async def get_current_user(
 
 
 async def get_current_admin(user=Depends(get_current_user)):
-    if user.role not in ("admin", "super_admin"):
+    if (user.role or "").lower() not in ("admin", "super_admin", "owner"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
 
 
 async def require_internal_operator(user=Depends(get_current_user)):
     """Guard for UACP internal API routes."""
-    if user.role not in ("admin", "super_admin", "operator"):
+    if (user.role or "").lower() not in ("admin", "super_admin", "operator", "owner"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="UACP Internal Operator access required"

@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import hmac
+import json
 import re
 import secrets
 import time
@@ -10,14 +11,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
-from backend.core.database.database import get_db, Base, engine
+from backend.core.database.database import get_db
 from backend.core.security.auth import (
     create_access_token,
     get_current_user,
@@ -28,7 +29,7 @@ from backend.core.security.auth import (
 from backend.core.security.encryption import encrypt_token, decrypt_token
 from backend.core.audit import log_audit_event
 from backend.db.models.user import APIKey, Session, User
-from backend.db.models.workspace import Workspace
+from backend.db.models.workspace import Workspace, WorkspaceMember
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -41,6 +42,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     full_name: str = ""
+    workspace_name: str = ""
     # username kept for backwards-compat with the frontend form but ignored
     username: Optional[str] = None
 
@@ -74,25 +76,100 @@ def _user_dict(user: User) -> dict:
     }
 
 
+def _external_origin(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    ).split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
+def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> str:
+    payload = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user": _user_dict(user),
+    }
+    encoded = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Completing Veklom GitHub sign-in</title>
+  <style>
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #0a0a0a;
+      color: #ffffff;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    .panel {{
+      width: min(420px, calc(100vw - 40px));
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px;
+      padding: 28px;
+      background: rgba(18,18,22,.82);
+      text-align: center;
+    }}
+    .mark {{
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 16px;
+      border-radius: 10px;
+      background: #0d0c0a url("/favicon.svg") center / cover no-repeat;
+      box-shadow: 0 0 28px rgba(255,184,0,.18);
+    }}
+    h1 {{ margin: 0 0 8px; font-size: 20px; }}
+    p {{ margin: 0; color: #a1a1a6; font-size: 13px; line-height: 1.6; }}
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="mark"></div>
+    <h1>Completing sign-in</h1>
+    <p>Your GitHub account is verified. Opening the Veklom workspace.</p>
+  </div>
+  <script>
+    const payload = {encoded};
+    localStorage.setItem("veklom_token", payload.access_token);
+    localStorage.setItem("veklom_refresh_token", payload.refresh_token);
+    localStorage.setItem("veklom_user", JSON.stringify(payload.user));
+    window.location.replace("/workspace/overview");
+  </script>
+</body>
+</html>"""
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
 @router.post("/register")
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     try:
-        # Ensure database tables exist
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        
-        existing = await db.execute(select(User).where(User.email == body.email))
+        email = body.email.strip().lower()
+        full_name = body.full_name.strip()
+        workspace_name = body.workspace_name.strip() or f"{full_name or email.split('@')[0]}'s Workspace"
+
+        if not email or "@" not in email or "." not in email.split("@")[-1]:
+            raise HTTPException(status_code=422, detail="A valid work email is required")
+        if len(body.password) < 8:
+            raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+
+        existing = await db.execute(select(User).where(User.email == email))
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email already registered")
 
         # Create a workspace for this new user
         workspace = Workspace(
-            name=f"{body.full_name or body.email.split('@')[0]}'s Workspace",
-            slug=_slug_from_email(body.email),
+            name=workspace_name,
+            slug=_slug_from_email(email),
             industry="generic",
             playground_profile="standard",
             risk_tier="generic",
@@ -101,21 +178,31 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         await db.flush()  # Get workspace.id before creating user
 
         user = User(
-            email=body.email,
+            email=email,
             hashed_password=get_password_hash(body.password),
-            full_name=body.full_name,
-            role="USER",
+            full_name=full_name,
+            role="OWNER",
             status="ACTIVE",
             workspace_id=workspace.id,
         )
         db.add(user)
-        await db.commit()
-        await db.refresh(user)
+        await db.flush()
+        db.add(WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role="owner", invited_by=user.id))
 
         access_token = create_access_token(data={"sub": user.id})
         refresh_token = create_access_token(
             data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         )
+        db.add(Session(
+            user_id=user.id,
+            session_token=access_token,
+            refresh_token=refresh_token,
+            ip_address=request.client.host if request.client else "",
+            user_agent=request.headers.get("user-agent", "")[:512],
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        ))
+        await db.commit()
+        await db.refresh(user)
 
         return {
             "access_token": access_token,
@@ -124,6 +211,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
             "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             "user": _user_dict(user),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         error_detail = f"Registration error: {str(e)}\nTraceback: {traceback.format_exc()}"
@@ -132,18 +221,19 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login")
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
+async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    email = body.email.strip().lower()
+    result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # Status check uses uppercase enum values from live DB
-    if user.status in ("LOCKED", "SUSPENDED"):
+    status_value = (user.status or "").upper()
+    if status_value in ("LOCKED", "SUSPENDED"):
         raise HTTPException(status_code=401, detail="Account is locked or suspended")
 
-    if not user.is_active:
+    if status_value == "INACTIVE" or not user.is_active:
         raise HTTPException(status_code=401, detail="Account is inactive")
 
     # Reset failed attempts and log login time
@@ -160,6 +250,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
         user_id=user.id,
         session_token=access_token,
         refresh_token=refresh_token,
+        ip_address=request.client.host if request.client else "",
+        user_agent=request.headers.get("user-agent", "")[:512],
         expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
     db.add(session)
@@ -319,14 +411,20 @@ def _validate_github_state(state: str, max_age_seconds: int = 600) -> bool:
         return False
 
 
+@router.get("/github/status")
+async def github_status():
+    return {"configured": bool(settings.GITHUB_CLIENT_ID and settings.GITHUB_CLIENT_SECRET)}
+
+
 @router.get("/github/login")
-async def github_login():
+async def github_login(request: Request):
     if not settings.GITHUB_CLIENT_ID:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
     state = _build_github_state()
     from urllib.parse import urlencode
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
+        "redirect_uri": f"{_external_origin(request)}/api/v1/auth/github/callback",
         "scope": "user:email read:user",
         "state": state,
     }
@@ -425,7 +523,7 @@ async def github_callback(
             email=email,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             full_name=full_name,
-            role="USER",
+            role="OWNER",
             status="ACTIVE",
             workspace_id=workspace.id,
             github_id=github_id,
@@ -433,6 +531,8 @@ async def github_callback(
             github_access_token=encrypt_token(gh_access_token),
         )
         db.add(user)
+        await db.flush()
+        db.add(WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role="owner", invited_by=user.id))
         await db.commit()
         await db.refresh(user)
     else:
@@ -452,10 +552,15 @@ async def github_callback(
         user_id=user.id,
         session_token=app_access_token,
         refresh_token=app_refresh_token,
+        ip_address=request.client.host if request.client else "",
+        user_agent=request.headers.get("user-agent", "")[:512],
         expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
     db.add(session)
     await db.commit()
+
+    if request.method == "GET":
+        return HTMLResponse(content=_github_bridge_html(app_access_token, app_refresh_token, user))
 
     return {
         "access_token": app_access_token,

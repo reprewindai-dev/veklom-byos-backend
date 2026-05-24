@@ -649,10 +649,14 @@ async def update_settings(body: dict, user=Depends(get_current_user)):
 
 
 @router.get("/models")
-async def list_models(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(ModelConfig).where(ModelConfig.workspace_id == (user.workspace_id or "default"))
-    )
+async def list_models(provider: str = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """List models with optional provider filtering."""
+    workspace_id = user.workspace_id or "default"
+    query = select(ModelConfig).where(ModelConfig.workspace_id == workspace_id)
+    if provider:
+        query = query.where(ModelConfig.provider == provider)
+    
+    result = await db.execute(query)
     models = result.scalars().all()
     if not models:
         return _default_models()
@@ -665,9 +669,143 @@ async def list_models(user=Depends(get_current_user), db: AsyncSession = Depends
             "is_enabled": m.is_enabled,
             "cost_per_1k_input": m.cost_per_1k_input,
             "cost_per_1k_output": m.cost_per_1k_output,
+            "config_json": m.config_json,
         }
         for m in models
     ]
+
+
+@router.post("/models/{model_id}/deploy")
+async def deploy_model(model_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Create a deployment from a selected model."""
+    from backend.db.models.marketplace import Deployment
+    import uuid as _uuid
+
+    body = body or {}
+    result = await db.execute(
+        select(ModelConfig).where(
+            ModelConfig.id == model_id,
+            ModelConfig.workspace_id == (user.workspace_id or "default")
+        )
+    )
+    model = result.scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    deployment = Deployment(
+        id=str(_uuid.uuid4()),
+        workspace_id=user.workspace_id or "default",
+        name=body.get("name", f"{model.display_name} Endpoint"),
+        deployment_type="private",
+        endpoint_url=f"/api/v1/deployments/{str(_uuid.uuid4())}",
+        status="pending",
+        config_json={
+            "model_id": model.id,
+            "model_name": model.model_name,
+            "provider": model.provider,
+            **body.get("config", {})
+        },
+        health_status="initializing"
+    )
+    db.add(deployment)
+    await db.commit()
+    await db.refresh(deployment)
+
+    return {
+        "id": deployment.id,
+        "name": deployment.name,
+        "status": deployment.status,
+        "endpoint_url": deployment.endpoint_url,
+        "model": {
+            "id": model.id,
+            "display_name": model.display_name,
+            "provider": model.provider
+        }
+    }
+
+
+@router.get("/models/{model_id}/versions")
+async def model_versions(model_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get version history for a model (placeholder for now)."""
+    result = await db.execute(
+        select(ModelConfig).where(
+            ModelConfig.id == model_id,
+            ModelConfig.workspace_id == (user.workspace_id or "default")
+        )
+    )
+    model = result.scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    return {
+        "model_id": model_id,
+        "versions": [
+            {
+                "version": "1.0.0",
+                "created_at": model.created_at.isoformat() if model.created_at else None,
+                "is_current": True
+            }
+        ]
+    }
+
+
+@router.post("/models/upload")
+async def upload_model(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Upload/register a custom model (placeholder for now)."""
+    import uuid as _uuid
+
+    model = ModelConfig(
+        id=str(_uuid.uuid4()),
+        workspace_id=user.workspace_id or "default",
+        provider=body.get("provider", "ollama"),
+        model_name=body.get("model_name"),
+        display_name=body.get("display_name", body.get("model_name")),
+        is_enabled=body.get("is_enabled", True),
+        config_json=body.get("config", "{}"),
+        cost_per_1k_input=str(body.get("cost_per_1k_input", "0.0")),
+        cost_per_1k_output=str(body.get("cost_per_1k_output", "0.0"))
+    )
+    db.add(model)
+    await db.commit()
+    await db.refresh(model)
+
+    return {
+        "id": model.id,
+        "provider": model.provider,
+        "model_name": model.model_name,
+        "display_name": model.display_name,
+        "is_enabled": model.is_enabled
+    }
+
+
+@router.get("/providers")
+async def list_providers(user=Depends(get_current_user)):
+    """List available providers based on user role and plan."""
+    # Provider rule: Ollama first for all tenants
+    # Customer tenant: Ollama + tenant BYOK only
+    # Founder/admin: Ollama + owner Groq/Gemini/HuggingFace/OpenAI
+    
+    base_providers = [
+        {"id": "ollama", "name": "Ollama", "icon": "cpu", "description": "Local inference", "default": True}
+    ]
+    
+    # Add owner-only providers for admin/founder
+    if user.role in ["owner", "admin", "super_admin"]:
+        base_providers.extend([
+            {"id": "groq", "name": "Groq", "icon": "zap", "description": "Fast inference", "default": False},
+            {"id": "gemini", "name": "Gemini", "icon": "sparkle", "description": "Google AI", "default": False},
+            {"id": "huggingface", "name": "Hugging Face", "icon": "cloud", "description": "Model hub", "default": False},
+            {"id": "openai", "name": "OpenAI", "icon": "brain", "description": "GPT models", "default": False}
+        ])
+    
+    return {"providers": base_providers}
+
+
+@router.post("/providers")
+async def add_provider(body: dict, user=Depends(get_current_user)):
+    """Add a custom provider (BYOK) for the workspace."""
+    # Placeholder for BYOK provider management
+    return {"message": "Provider management not yet implemented", "provider": body.get("provider_id")}
 
 
 @router.patch("/models/{model_id}")

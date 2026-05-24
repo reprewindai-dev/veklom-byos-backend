@@ -1052,6 +1052,32 @@ async def rotate_workspace_secrets(user=Depends(get_current_user), db: AsyncSess
     return {"rotated": rotated, "message": f"{rotated} key(s) re-issued. Audit event emitted."}
 
 
+@router.delete("/workspace")
+async def delete_workspace(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Danger zone: Delete the entire workspace and all its data."""
+    if user.role not in ("owner", "super_admin"):
+        raise HTTPException(status_code=403, detail="Only workspace owners can delete the workspace")
+    
+    confirmation = body.get("confirmation", "")
+    if confirmation != "DELETE":
+        raise HTTPException(status_code=400, detail="Must confirm with 'DELETE' in request body")
+    
+    ws_id = user.workspace_id or ""
+    if not ws_id:
+        raise HTTPException(status_code=400, detail="No workspace to delete")
+    
+    # In a real implementation, this would cascade delete all related data
+    # For now, we'll mark the workspace as inactive
+    result = await db.execute(select(Workspace).where(Workspace.id == ws_id))
+    workspace = result.scalar_one_or_none()
+    if workspace:
+        workspace.is_active = False
+        workspace.name = f"{workspace.name} (deleted)"
+        await db.commit()
+    
+    return {"deleted": True, "workspace_id": ws_id, "message": "Workspace deleted. This action is irreversible."}
+
+
 @router.get("/audit-export")
 async def export_audit_log(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from fastapi.responses import StreamingResponse

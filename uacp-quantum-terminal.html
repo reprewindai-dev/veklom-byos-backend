@@ -1057,21 +1057,13 @@ async function runAutonomous(intent) {
 
   tLine('→ POST /autonomous/execute', 'cmd', '⟶', 'p-cmd');
 
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer veklom-demo-token-quantum'
-  };
+  const headers = demoHeaders({ 'Content-Type': 'application/json' });
 
   try {
     const response = await fetch('/api/v1/autonomous/execute', {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({
-        intent: intent,
-        run_id: runId,
-        uacp_version: 'v4',
-        zeno_cycles: zenoN
-      })
+      body: JSON.stringify(publicDemoPayload(intent, runId))
     });
 
     if (response.ok) {

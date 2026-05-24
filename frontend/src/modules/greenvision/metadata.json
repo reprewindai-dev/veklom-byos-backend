@@ -1,8 +1,0 @@
-{
-  "name": "Veklom Terminal",
-  "description": "A high-fidelity decision engine for tracking global emissions, mitigation pathways, and planetary energy transitions, secured by a Zero-Trust MCP implementation framework.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

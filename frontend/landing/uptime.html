@@ -22,11 +22,11 @@
     <img src="/static/branding/veklom-wordmark.png" alt="Veklom" width="150" height="37">
   </div>
   <nav class="status-tabs" aria-label="Status navigation">
-    <span class="active">Status</span>
-    <span>Maintenance</span>
-    <span>Previous incidents</span>
+    <button type="button" class="status-tab active" data-status-target="status">Status</button>
+    <button type="button" class="status-tab" data-status-target="maintenance">Maintenance</button>
+    <button type="button" class="status-tab" data-status-target="incidents">Previous incidents</button>
   </nav>
-  <span class="status-update-btn">Get updates</span>
+  <button type="button" class="status-update-btn" id="status-updates-toggle" aria-expanded="false" aria-controls="status-updates-panel">Get updates</button>
 </header>
 
 <main class="status-page">
@@ -38,7 +38,23 @@
     <p id="status-page-updated">Last updated moments ago</p>
   </section>
 
-  <section class="status-monitor-card brand-watermarked-panel" aria-label="Veklom system status">
+  <section class="status-updates-panel" id="status-updates-panel" hidden>
+    <div>
+      <span class="label">Status Updates</span>
+      <h2>Get operational notices.</h2>
+      <p>Subscribe for Veklom status changes, maintenance windows, and incident resolutions.</p>
+    </div>
+    <form id="status-updates-form" class="status-updates-form">
+      <label for="status-updates-email">Email</label>
+      <div>
+        <input id="status-updates-email" name="email" type="email" autocomplete="email" placeholder="ops@example.com" required>
+        <button type="submit">Subscribe</button>
+      </div>
+      <p id="status-updates-result" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <section class="status-monitor-card brand-watermarked-panel" id="status" aria-label="Veklom system status">
     <div class="status-monitor-head">
       <div>
         <h2>Veklom</h2>

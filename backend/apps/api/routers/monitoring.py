@@ -1,9 +1,11 @@
 """Monitoring, metrics, insights, telemetry, platform pulse routes."""
 
 import json
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from backend.core.security.auth import get_current_user
@@ -224,6 +226,25 @@ async def platform_uptime():
             },
         ],
     }
+
+
+@router.post("/platform/status-updates")
+async def subscribe_status_updates(body: dict):
+    email = str(body.get("email", "")).strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=422, detail="Enter a valid email address.")
+
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "email": email,
+        "source": "veklom-status-page",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with (log_dir / "status_update_subscribers.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, separators=(",", ":")) + "\n")
+
+    return {"subscribed": True, "message": "Subscribed to Veklom status updates."}
 
 
 @router.get("/platform/pulse/stream")

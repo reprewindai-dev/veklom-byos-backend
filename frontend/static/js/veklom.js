@@ -315,6 +315,58 @@
     }, 4000);
   }
 
+  function initStatusControls() {
+    const tabs = Array.from(document.querySelectorAll(".status-tab[data-status-target]"));
+    const updatesToggle = document.getElementById("status-updates-toggle");
+    const updatesPanel = document.getElementById("status-updates-panel");
+    const updatesForm = document.getElementById("status-updates-form");
+    const updatesResult = document.getElementById("status-updates-result");
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const target = document.getElementById(tab.dataset.statusTarget);
+        if (!target) return;
+        tabs.forEach((item) => item.classList.toggle("active", item === tab));
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    if (updatesToggle && updatesPanel) {
+      updatesToggle.addEventListener("click", () => {
+        const isOpening = updatesPanel.hidden;
+        updatesPanel.hidden = !isOpening;
+        updatesToggle.setAttribute("aria-expanded", String(isOpening));
+        if (isOpening) {
+          updatesPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+          const input = document.getElementById("status-updates-email");
+          setTimeout(() => input && input.focus(), 300);
+        }
+      });
+    }
+
+    if (updatesForm && updatesResult) {
+      updatesForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const email = String(new FormData(updatesForm).get("email") || "").trim();
+        updatesResult.textContent = "Saving subscription...";
+
+        try {
+          const response = await fetch(`${API}/platform/status-updates`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.detail || "Unable to subscribe.");
+          updatesResult.textContent = payload.message || "Subscribed to Veklom status updates.";
+          updatesForm.reset();
+        } catch (error) {
+          updatesResult.textContent = error.message || "Unable to subscribe right now.";
+        }
+      });
+    }
+  }
+
   function initFeedbackForm() {
     const form = document.getElementById("feedback-form");
     if (!form) return;
@@ -354,6 +406,7 @@
       setInterval(fetchUptime, 60000);
     }
     initFeedbackForm();
+    initStatusControls();
     setInterval(fetchPulse, 60000);
   });
 })();

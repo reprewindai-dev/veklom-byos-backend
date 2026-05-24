@@ -457,7 +457,11 @@
   // ------ TENANT NAME INJECTION ------
   // Fetch real user info and replace any hardcoded "Elliot J" / placeholder names
   async function injectTenantUser() {
-    const res = await api("GET", "/auth/me").catch(() => null);
+    // Try cached user first, then API
+    let res = window.__VEKLOM_USER__ || window.__VEKLOM_AUTH__?.getUser?.() || null;
+    if (!res) {
+      res = await api("GET", "/auth/me").catch(() => null);
+    }
     if (!res) return;
     const fullName = res.full_name || res.name || res.email?.split("@")[0] || "";
     const email = res.email || "";

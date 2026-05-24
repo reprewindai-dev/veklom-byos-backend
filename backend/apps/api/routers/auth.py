@@ -62,6 +62,19 @@ def _slug_from_email(email: str) -> str:
 
 
 def _user_dict(user: User) -> dict:
+    role = (user.role or "USER").upper()
+    # Derive plan from role
+    if role in ("OWNER", "SUPER_ADMIN"):
+        plan = "sovereign"
+    elif role in ("ADMIN",):
+        plan = "pro"
+    elif role in ("ANALYST", "USER"):
+        plan = "starter"
+    else:
+        plan = "free"
+
+    is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
+
     return {
         "id": user.id,
         "email": user.email,
@@ -73,6 +86,8 @@ def _user_dict(user: User) -> dict:
         "workspace_id": user.workspace_id or "",
         "github_username": user.github_username or "",
         "created_at": user.created_at.isoformat() if user.created_at else None,
+        "plan": plan,
+        "is_admin": is_admin,
     }
 
 
@@ -155,6 +170,74 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> st
   </script>
 </body>
 </html>"""
+
+
+# ---------------------------------------------------------------------------
+# Free Evaluation Session
+# ---------------------------------------------------------------------------
+
+@router.post("/eval-session")
+async def create_eval_session(body: dict = None, db: AsyncSession = Depends(get_db)):
+    """Create or resume a free evaluation session.
+
+    Unauthenticated visitors get a limited free-tier account so the workspace
+    is functional without requiring sign-up. Limited to 10 AI runs per day.
+    """
+    import uuid as _uuid
+    from backend.db.models.workspace import Workspace
+
+    body = body or {}
+    fingerprint = (body.get("fingerprint") or "anonymous")[:64]
+
+    # Deterministic eval email from fingerprint
+    eval_email = f"eval-{fingerprint[:16]}@eval.veklom.local"
+    result = await db.execute(select(User).where(User.email == eval_email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # Create workspace first (FK constraint)
+        ws_id = str(_uuid.uuid4())
+        ws = Workspace(
+            id=ws_id,
+            name="Free Evaluation",
+            slug=f"eval-{_uuid.uuid4().hex[:8]}",
+            is_active=True,
+            industry="generic",
+            playground_profile="standard",
+            risk_tier="generic",
+        )
+        db.add(ws)
+        await db.flush()
+
+        user = User(
+            id=str(_uuid.uuid4()),
+            email=eval_email,
+            full_name="Free Evaluation",
+            hashed_password="",
+            role="viewer",
+            status="ACTIVE",
+            is_active=True,
+            workspace_id=ws_id,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    access_token = create_access_token(data={"sub": user.id})
+    return {
+        "access_token": access_token,
+        "refresh_token": access_token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "user": _user_dict(user),
+        "is_eval": True,
+        "plan": "free",
+        "limits": {
+            "ai_runs_per_day": 10,
+            "max_sessions": 3,
+            "features": ["playground", "models", "pipelines_view", "marketplace_browse"],
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -11,12 +11,32 @@
 (function () {
   'use strict';
 
-  var ROUTES = {
-    '#/command-center': { url: '/command-center/', label: 'Command Center', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
-    '#/gpc': { url: 'https://uacpv3.onrender.com', label: 'GPC', icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>' },
-    '#/irongrid': { url: '/irongrid/', label: 'IronGrid', icon: '<rect x="2" y="2" width="20" height="20" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/><line x1="2" y1="15" x2="22" y2="15"/><line x1="9" y1="2" x2="9" y2="22"/><line x1="15" y1="2" x2="15" y2="22"/>' },
-    '#/terminal': { url: '/terminal', label: 'Terminal', icon: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>' }
+  var ALL_ROUTES = {
+    '#/command-center': { url: '/command-center/', label: 'Command Center', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>', adminOnly: true },
+    '#/gpc': { url: 'https://uacpv3.onrender.com', label: 'GPC', icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>', adminOnly: true },
+    '#/irongrid': { url: '/irongrid/', label: 'IronGrid', icon: '<rect x="2" y="2" width="20" height="20" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/><line x1="2" y1="15" x2="22" y2="15"/><line x1="9" y1="2" x2="9" y2="22"/><line x1="15" y1="2" x2="15" y2="22"/>', adminOnly: true },
+    '#/terminal': { url: '/terminal', label: 'Terminal', icon: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>', adminOnly: true }
   };
+
+  function isAdmin() {
+    var user = window.__VEKLOM_USER__ || (window.__VEKLOM_AUTH__ && window.__VEKLOM_AUTH__.getUser ? window.__VEKLOM_AUTH__.getUser() : null);
+    if (!user) return false;
+    var role = (user.role || '').toUpperCase();
+    return role === 'OWNER' || role === 'SUPER_ADMIN' || role === 'ADMIN';
+  }
+
+  function getVisibleRoutes() {
+    var admin = isAdmin();
+    var routes = {};
+    Object.keys(ALL_ROUTES).forEach(function (key) {
+      if (!ALL_ROUTES[key].adminOnly || admin) {
+        routes[key] = ALL_ROUTES[key];
+      }
+    });
+    return routes;
+  }
+
+  var ROUTES = getVisibleRoutes();
 
   var OVERLAY_ID = 'addon-overlay';
   var activeRoute = null;
@@ -53,6 +73,9 @@
    *  Sidebar injection — add links for each addon
    * ================================================================ */
   function injectSidebarLinks() {
+    // Re-evaluate routes each time (user data may have arrived)
+    ROUTES = getVisibleRoutes();
+
     // Try multiple selectors for the sidebar navigation
     var nav = document.querySelector('nav') || document.querySelector('aside nav') || document.querySelector('[class*="sidebar"] nav') || document.querySelector('aside');
     if (!nav) return false;
@@ -135,11 +158,15 @@
    * ================================================================ */
   function handleRoute() {
     var hash = window.location.hash || '#/';
+    ROUTES = getVisibleRoutes();
 
     if (ROUTES[hash]) {
       if (activeRoute !== hash) {
         showOverlay(hash);
       }
+    } else if (ALL_ROUTES[hash] && ALL_ROUTES[hash].adminOnly && !isAdmin()) {
+      // Non-admin tried to access admin route — redirect away
+      window.location.hash = '#/';
     } else {
       if (activeRoute) {
         hideOverlay();

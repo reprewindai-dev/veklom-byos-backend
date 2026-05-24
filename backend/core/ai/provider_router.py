@@ -130,8 +130,9 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
                 return CompletionResult(provider, await _gemini_completion(body))
             if provider == "ollama":
                 return CompletionResult(provider, await _ollama_completion(body))
-        except HTTPException:
-            raise
+        except HTTPException as he:
+            errors.append(f"{provider}: HTTP {he.status_code} {he.detail}")
+            continue
         except Exception as exc:
             errors.append(f"{provider}: {exc}")
             continue

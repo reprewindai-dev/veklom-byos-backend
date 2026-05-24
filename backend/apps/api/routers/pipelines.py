@@ -18,6 +18,66 @@ import uuid
 router = APIRouter(tags=["Pipelines"])
 
 
+# --- Pipeline Node Database ---
+@router.get("/pipelines/nodes")
+async def list_pipeline_nodes(user=Depends(get_current_user)):
+    return {
+        "categories": [
+            {
+                "id": "models", "label": "Models",
+                "nodes": [
+                    {"id": "llm-openai", "name": "OpenAI LLM", "type": "model", "provider": "openai", "description": "GPT-4o, GPT-4o-mini"},
+                    {"id": "llm-groq", "name": "Groq LLM", "type": "model", "provider": "groq", "description": "Llama 3.1 8B Instant (fast)"},
+                    {"id": "llm-ollama", "name": "Ollama LLM", "type": "model", "provider": "ollama", "description": "Local models — Qwen, Llama, Mistral"},
+                    {"id": "llm-gemini", "name": "Gemini LLM", "type": "model", "provider": "gemini", "description": "Gemini 2.5 Flash / Pro"},
+                    {"id": "embed-bge", "name": "BGE-M3 Embedding", "type": "embedding", "provider": "ollama", "description": "Multi-lingual 1024d embeddings"},
+                    {"id": "embed-openai", "name": "OpenAI Embedding", "type": "embedding", "provider": "openai", "description": "text-embedding-3-small/large"},
+                ]
+            },
+            {
+                "id": "retrieval", "label": "Retrieval",
+                "nodes": [
+                    {"id": "pgvector", "name": "pgvector Store", "type": "vector_store", "description": "PostgreSQL vector similarity search"},
+                    {"id": "qdrant", "name": "Qdrant Store", "type": "vector_store", "description": "Qdrant cloud/self-hosted vector DB"},
+                    {"id": "chunker", "name": "Document Chunker", "type": "transform", "description": "Split docs into overlapping chunks"},
+                    {"id": "reranker", "name": "Re-Ranker", "type": "transform", "description": "Cross-encoder re-ranking for top-k results"},
+                    {"id": "hybrid-search", "name": "Hybrid Search", "type": "retrieval", "description": "BM25 + vector fusion search"},
+                ]
+            },
+            {
+                "id": "tools", "label": "Tools",
+                "nodes": [
+                    {"id": "web-search", "name": "Web Search", "type": "tool", "description": "Brave/SerpAPI web search"},
+                    {"id": "code-exec", "name": "Code Executor", "type": "tool", "description": "Sandboxed Python/JS execution"},
+                    {"id": "http-call", "name": "HTTP Request", "type": "tool", "description": "Call external REST APIs"},
+                    {"id": "sql-query", "name": "SQL Query", "type": "tool", "description": "Execute SQL against configured DBs"},
+                    {"id": "file-read", "name": "File Reader", "type": "tool", "description": "Read documents from S3/local storage"},
+                ]
+            },
+            {
+                "id": "routing", "label": "Routing",
+                "nodes": [
+                    {"id": "policy-gate", "name": "Policy Gate", "type": "gate", "description": "Apply compliance policy before execution"},
+                    {"id": "cost-router", "name": "Cost Router", "type": "router", "description": "Route to cheapest capable model"},
+                    {"id": "fallback", "name": "Fallback Chain", "type": "router", "description": "Try providers in order until success"},
+                    {"id": "load-balancer", "name": "Load Balancer", "type": "router", "description": "Round-robin across providers"},
+                    {"id": "classifier", "name": "Intent Classifier", "type": "router", "description": "Route based on query classification"},
+                ]
+            },
+            {
+                "id": "output", "label": "Output",
+                "nodes": [
+                    {"id": "json-format", "name": "JSON Formatter", "type": "output", "description": "Structure output as JSON schema"},
+                    {"id": "pii-redact", "name": "PII Redactor", "type": "output", "description": "Strip/mask PII before response"},
+                    {"id": "audit-log", "name": "Audit Logger", "type": "output", "description": "Log to immutable audit trail"},
+                    {"id": "webhook", "name": "Webhook", "type": "output", "description": "POST results to external URL"},
+                    {"id": "stream-out", "name": "Stream Output", "type": "output", "description": "SSE streaming response"},
+                ]
+            },
+        ]
+    }
+
+
 # --- Pipeline Templates ---
 @router.get("/pipelines/templates")
 async def list_pipeline_templates(user=Depends(get_current_user)):
@@ -101,6 +161,66 @@ async def update_pipeline(pipeline_id: str, body: dict, user=Depends(get_current
         await db.refresh(pipe)
         return _pipe_dict(pipe)
     return {"id": pipeline_id, "updated": True}
+
+
+@router.get("/pipelines/{pipeline_id}/graph")
+async def get_pipeline_graph(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get the saved graph state (nodes, edges, viewport) for a pipeline."""
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id))
+    pipe = result.scalar_one_or_none()
+    if pipe and isinstance(pipe.steps, dict) and "graph" in pipe.steps:
+        return pipe.steps["graph"]
+    # Return default graph for the mock pipelines
+    return {
+        "nodes": [
+            {"id": "input-1", "type": "input", "position": {"x": 50, "y": 200}, "data": {"label": "Input", "nodeType": "input"}},
+            {"id": "policy-1", "type": "gate", "position": {"x": 250, "y": 200}, "data": {"label": "Policy Gate", "nodeType": "policy-gate"}},
+            {"id": "embed-1", "type": "embedding", "position": {"x": 450, "y": 120}, "data": {"label": "BGE-M3 Embedding", "nodeType": "embed-bge"}},
+            {"id": "retrieve-1", "type": "retrieval", "position": {"x": 450, "y": 280}, "data": {"label": "pgvector", "nodeType": "pgvector"}},
+            {"id": "rerank-1", "type": "transform", "position": {"x": 650, "y": 200}, "data": {"label": "Re-Ranker", "nodeType": "reranker"}},
+            {"id": "llm-1", "type": "model", "position": {"x": 850, "y": 200}, "data": {"label": "Llama 3.1 70B", "nodeType": "llm-ollama"}},
+            {"id": "output-1", "type": "output", "position": {"x": 1050, "y": 200}, "data": {"label": "Output", "nodeType": "stream-out"}},
+        ],
+        "edges": [
+            {"id": "e-input-policy", "source": "input-1", "target": "policy-1", "animated": True},
+            {"id": "e-policy-embed", "source": "policy-1", "target": "embed-1", "animated": True},
+            {"id": "e-policy-retrieve", "source": "policy-1", "target": "retrieve-1", "animated": True},
+            {"id": "e-embed-rerank", "source": "embed-1", "target": "rerank-1", "animated": True},
+            {"id": "e-retrieve-rerank", "source": "retrieve-1", "target": "rerank-1", "animated": True},
+            {"id": "e-rerank-llm", "source": "rerank-1", "target": "llm-1", "animated": True},
+            {"id": "e-llm-output", "source": "llm-1", "target": "output-1", "animated": True},
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    }
+
+
+@router.put("/pipelines/{pipeline_id}/graph")
+@router.post("/pipelines/{pipeline_id}/graph")
+async def save_pipeline_graph(pipeline_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Save graph state (nodes, edges, viewport, node_configs) for a pipeline."""
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
+    pipe = result.scalar_one_or_none()
+    if not pipe:
+        # Create pipeline if it doesn't exist
+        pipe = Pipeline(
+            id=pipeline_id,
+            workspace_id=user.workspace_id or "default",
+            name=body.get("name", "Untitled Pipeline"),
+            description="",
+            steps={},
+        )
+        db.add(pipe)
+
+    steps = pipe.steps if isinstance(pipe.steps, dict) else {}
+    steps["graph"] = {
+        "nodes": body.get("nodes", []),
+        "edges": body.get("edges", []),
+        "viewport": body.get("viewport", {"x": 0, "y": 0, "zoom": 1}),
+        "node_configs": body.get("node_configs", {}),
+    }
+    pipe.steps = steps
+    await db.commit()
+    return {"saved": True, "pipeline_id": pipeline_id, "nodes_count": len(steps["graph"]["nodes"]), "edges_count": len(steps["graph"]["edges"])}
 
 
 @router.delete("/pipelines/{pipeline_id}")

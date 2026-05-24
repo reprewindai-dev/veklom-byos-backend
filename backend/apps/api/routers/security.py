@@ -408,10 +408,15 @@ async def vault_reveal(secret_id: str, user=Depends(get_current_user), db: Async
     row = (await db.execute(_select(ProviderKey).where(ProviderKey.id == secret_id, ProviderKey.workspace_id == (user.workspace_id or "")))).scalar_one_or_none()
     if not row:
         raise _HTTPException(status_code=404, detail="Secret not found")
-    try:
-        value = decrypt_key(row.key_encrypted)
-    except Exception:
-        value = row.key_prefix + "••••••••••••••••"
+    # Role-gated: only admin/owner can see full secret
+    role = (getattr(user, "role", "") or "").upper()
+    if role in ("OWNER", "SUPER_ADMIN", "ADMIN"):
+        try:
+            value = decrypt_key(row.key_encrypted)
+        except Exception:
+            value = row.key_prefix + "••••••••••••••••"
+    else:
+        value = row.key_prefix + "••••••••" + " [restricted — admin access required]"
     return {"id": row.id, "name": row.label or row.provider, "value": value, "type": row.provider}
 
 

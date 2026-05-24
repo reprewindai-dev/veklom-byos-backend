@@ -69,7 +69,34 @@ export default function App() {
       case "pipelines":
         return <PipelinesTab isDarkMode={isDarkMode} />;
       case "gpc":
-        return <GpcTab isDarkMode={isDarkMode} />;
+        return (
+          <div className="w-full h-[calc(100vh-200px)] rounded-2xl overflow-hidden border border-zinc-800 bg-[#080b0f]">
+            <iframe
+              src="https://uacpv3.onrender.com?api_base=https%3A%2F%2Fveklom.com%2Fapi%2Fv1&source=veklom-byos-backend&provider=ollama&public_demo=1"
+              className="w-full h-full border-none"
+              title="Veklom V3 Governed Plan Compiler"
+              loading="lazy"
+            />
+          </div>
+        );
+      case "command-center":
+        return (
+          <div className="w-full h-[calc(100vh-200px)] rounded-2xl overflow-hidden border border-zinc-800">
+            <iframe src="/command-center/" className="w-full h-full border-none bg-[#0a0a0a]" title="Veklom Command Center" allow="clipboard-write" />
+          </div>
+        );
+      case "irongrid":
+        return (
+          <div className="w-full h-[calc(100vh-200px)] rounded-2xl overflow-hidden border border-zinc-800">
+            <iframe src="/irongrid/" className="w-full h-full border-none bg-[#0a0a0a]" title="PYO3 IronGrid Simulator" />
+          </div>
+        );
+      case "terminal":
+        return (
+          <div className="w-full h-[calc(100vh-200px)] rounded-2xl overflow-hidden border border-zinc-800">
+            <iframe src="/uacp-quantum-terminal.html" className="w-full h-full border-none bg-[#0a0a0a]" title="UACP Quantum Terminal" />
+          </div>
+        );
       default:
         return <DashboardTab isDarkMode={isDarkMode} onNavigateToPlayground={() => setActiveTab("playground")} />;
     }

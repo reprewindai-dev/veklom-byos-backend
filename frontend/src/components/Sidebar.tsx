@@ -8,7 +8,10 @@ import {
   Settings, 
   Activity, 
   Cpu, 
-  FileText 
+  FileText,
+  LayoutDashboard,
+  Grid3x3,
+  MonitorDot
 } from "lucide-react";
 
 interface SidebarProps {
@@ -25,7 +28,10 @@ export default function Sidebar({ activeTab, setActiveTab, isDarkMode, systemNam
     { id: "security", label: "Identity & Security", desc: "API Vault & Kill Switch", icon: ShieldAlert },
     { id: "workspace", label: "Workspace & Cost", desc: "Quota Budget Rules", icon: CreditCard },
     { id: "pipelines", label: "Pipelines & Route", desc: "Canary Deployments", icon: Network },
-    { id: "gpc", label: "GPC Controller", desc: "Air Gap Flight Systems", icon: Cpu }
+    { id: "gpc", label: "GPC Controller", desc: "Air Gap Flight Systems", icon: Cpu },
+    { id: "command-center", label: "Command Center", desc: "Sovereign Operations", icon: LayoutDashboard },
+    { id: "irongrid", label: "PYO3 IronGrid", desc: "FFI Gradient Pathfinding", icon: Grid3x3 },
+    { id: "terminal", label: "Quantum Terminal", desc: "UACP Context Engine", icon: MonitorDot }
   ];
 
   return (

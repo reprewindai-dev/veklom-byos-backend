@@ -86,6 +86,11 @@ async def create_listing_alt(body: dict, user=Depends(get_current_user)):
     return {"id": "lst_new", "name": body.get("name", ""), "status": "draft"}
 
 
+@router.patch("/listings/{listing_id}")
+async def update_listing_short(listing_id: str, body: dict, user=Depends(get_current_user)):
+    return {"id": listing_id, "updated": True, **body}
+
+
 @router.post("/listings/submit")
 async def submit_listing(body: dict, user=Depends(get_current_user)):
     return {"id": body.get("listing_id", ""), "status": "pending_review"}
@@ -155,13 +160,61 @@ async def get_order(order_id: str, user=Depends(get_current_user)):
 
 
 # --- Plugins ---
+_PLUGIN_REGISTRY = {
+    "p1": {"id": "p1", "name": "Document Parser", "category": "tool", "status": "active", "version": "1.2.0", "description": "Parses PDF, DOCX, HTML and emits structured chunks with metadata.", "author": "Veklom Native", "docs_url": "/docs/plugins/document-parser"},
+    "p2": {"id": "p2", "name": "Code Analyzer", "category": "tool", "status": "active", "version": "2.0.1", "description": "Static analysis and security scanning for Python, TypeScript, and Go codebases.", "author": "Veklom Native", "docs_url": "/docs/plugins/code-analyzer"},
+    "p3": {"id": "p3", "name": "Data Validator", "category": "governance", "status": "active", "version": "1.0.0", "description": "Schema and policy validation for structured data before LLM ingestion.", "author": "Veklom Native", "docs_url": "/docs/plugins/data-validator"},
+    "p4": {"id": "p4", "name": "PII Redactor", "category": "privacy", "status": "active", "version": "3.1.0", "description": "Real-time PII detection and redaction proxy using NER + regex + LLM-assist.", "author": "Veklom Native", "docs_url": "/docs/plugins/pii-redactor"},
+    "p5": {"id": "p5", "name": "Audit Sealer", "category": "evidence", "status": "active", "version": "1.4.0", "description": "Seals every action into a deterministic evidence block for SOC2 replay.", "author": "Veklom Native", "docs_url": "/docs/plugins/audit-sealer"},
+}
+
+_plugin_states: dict = {}
+
+
 @router.get("/plugins")
 async def list_plugins(user=Depends(get_current_user)):
-    return [
-        {"id": "p1", "name": "Document Parser", "category": "tool", "status": "active", "version": "1.2.0"},
-        {"id": "p2", "name": "Code Analyzer", "category": "tool", "status": "active", "version": "2.0.1"},
-        {"id": "p3", "name": "Data Validator", "category": "governance", "status": "active", "version": "1.0.0"},
-    ]
+    ws_id = getattr(user, "workspace_id", "") or ""
+    result = []
+    for pid, meta in _PLUGIN_REGISTRY.items():
+        state = _plugin_states.get(f"{ws_id}:{pid}", True)
+        result.append({**meta, "enabled": state, "status": "active" if state else "inactive"})
+    return result
+
+
+@router.post("/plugins/{plugin_id}/enable")
+async def enable_plugin_mp(plugin_id: str, user=Depends(get_current_user)):
+    ws_id = getattr(user, "workspace_id", "") or ""
+    _plugin_states[f"{ws_id}:{plugin_id}"] = True
+    meta = _PLUGIN_REGISTRY.get(plugin_id, {"id": plugin_id, "name": plugin_id})
+    return {"id": plugin_id, "enabled": True, "status": "active", "name": meta.get("name", plugin_id)}
+
+
+@router.post("/plugins/{plugin_id}/disable")
+async def disable_plugin_mp(plugin_id: str, user=Depends(get_current_user)):
+    ws_id = getattr(user, "workspace_id", "") or ""
+    _plugin_states[f"{ws_id}:{plugin_id}"] = False
+    meta = _PLUGIN_REGISTRY.get(plugin_id, {"id": plugin_id, "name": plugin_id})
+    return {"id": plugin_id, "enabled": False, "status": "inactive", "name": meta.get("name", plugin_id)}
+
+
+@router.get("/plugins/{plugin_id}/docs")
+async def plugin_docs(plugin_id: str, user=Depends(get_current_user)):
+    meta = _PLUGIN_REGISTRY.get(plugin_id)
+    if not meta:
+        return {"id": plugin_id, "docs": "No documentation available for this plugin.", "sections": []}
+    return {
+        "id": plugin_id,
+        "name": meta["name"],
+        "version": meta["version"],
+        "description": meta["description"],
+        "author": meta["author"],
+        "docs": f"# {meta['name']}\n\n{meta['description']}\n\n## Installation\n\nEnabled per-workspace. No additional setup required.\n\n## Configuration\n\nNo configuration needed for the default setup.",
+        "sections": [
+            {"title": "Overview", "content": meta["description"]},
+            {"title": "Usage", "content": f"This plugin is automatically activated for all pipelines in your workspace once enabled."},
+            {"title": "Version history", "content": f"v{meta['version']} — current stable release."},
+        ],
+    }
 
 
 def _listing_dict(l: MarketplaceListing) -> dict:

@@ -259,16 +259,18 @@ async def list_models(user=Depends(get_current_user), db: AsyncSession = Depends
 
 @router.patch("/models/{model_id}")
 async def toggle_model(model_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # bundle sends {enabled: bool}, DB uses is_enabled — accept both
+    enabled_value = body.get("enabled", body.get("is_enabled"))
     result = await db.execute(select(ModelConfig).where(ModelConfig.id == model_id, ModelConfig.workspace_id == (user.workspace_id or "default")))
     model = result.scalar_one_or_none()
     if model:
-        if "is_enabled" in body:
-            model.is_enabled = body["is_enabled"]
+        if enabled_value is not None:
+            model.is_enabled = bool(enabled_value)
         if "display_name" in body:
             model.display_name = body["display_name"]
         await db.commit()
-        return {"id": model.id, "is_enabled": model.is_enabled, "display_name": model.display_name, "updated": True}
-    return {"id": model_id, "is_enabled": body.get("is_enabled", True), "updated": True}
+        return {"id": model.id, "enabled": model.is_enabled, "is_enabled": model.is_enabled, "display_name": model.display_name, "updated": True}
+    return {"id": model_id, "enabled": bool(enabled_value) if enabled_value is not None else True, "is_enabled": bool(enabled_value) if enabled_value is not None else True, "updated": True}
 
 
 @router.get("/api-keys")
@@ -539,14 +541,14 @@ def _ws_dict(ws: Workspace) -> dict:
 
 def _default_models():
     return [
-        {"id": "veklom-llama3-70b", "name": "Llama 3.1 70B Instruct", "family": "Llama", "provider": "Open Source", "modality": "chat", "context": 131072, "quant": "INT4", "inputCost": 0.00018, "outputCost": 0.00027, "p50": 96, "p95": 240, "features": ["function-calling", "json-mode", "streaming", "code"], "status": "active", "replicas": 8, "route": "hetzner", "license": "Apache 2.0"},
-        {"id": "veklom-mixtral-8x22", "name": "Mixtral 8×22B Instruct", "family": "Mixtral", "provider": "Open Source", "modality": "chat", "context": 65536, "quant": "INT4", "inputCost": 0.00065, "outputCost": 0.00065, "p50": 140, "p95": 380, "features": ["function-calling", "json-mode", "streaming", "multilingual"], "status": "active", "replicas": 4, "route": "hetzner", "license": "Apache 2.0"},
-        {"id": "veklom-qwen2-72b", "name": "Qwen 2.5 72B Chat", "family": "Qwen", "provider": "Open Source", "modality": "chat", "context": 131072, "quant": "INT4", "inputCost": 0.00018, "outputCost": 0.00027, "p50": 96, "p95": 240, "features": ["function-calling", "json-mode", "streaming", "code"], "status": "active", "replicas": 8, "route": "hetzner", "license": "Apache 2.0"},
-        {"id": "veklom-claude-haiku", "name": "Claude 3.5 Haiku (proxy)", "family": "Claude", "provider": "Anthropic-compatible", "modality": "chat", "context": 200000, "quant": "FP16", "inputCost": 0.0008, "outputCost": 0.004, "p50": 220, "p95": 540, "features": ["function-calling", "vision", "json-mode", "streaming"], "status": "active", "replicas": 2, "route": "aws-burst", "license": "Commercial"},
-        {"id": "veklom-deepseek-v3", "name": "DeepSeek v3 Coder", "family": "DeepSeek", "provider": "Open Source", "modality": "completion", "context": 65536, "quant": "INT8", "inputCost": 0.00027, "outputCost": 0.00041, "p50": 88, "p95": 210, "features": ["streaming", "code", "fim"], "status": "active", "replicas": 3, "route": "hetzner", "license": "MIT"},
-        {"id": "veklom-bge-large", "name": "BGE-M3 Embeddings", "family": "BGE", "provider": "Open Source", "modality": "embedding", "context": 8192, "quant": "FP16", "inputCost": 0.00002, "outputCost": 0, "p50": 14, "p95": 38, "features": ["multilingual", "long-context"], "status": "active", "replicas": 12, "route": "hetzner", "license": "MIT"},
-        {"id": "veklom-cohere-rerank", "name": "Veklom Reranker", "family": "Cross-encoder", "provider": "Veklom Native", "modality": "rerank", "context": 4096, "quant": "FP16", "inputCost": 0.00001, "outputCost": 0, "p50": 22, "p95": 60, "features": ["fast", "binary"], "status": "active", "replicas": 6, "route": "hetzner", "license": "Commercial"},
-        {"id": "veklom-whisper-v3", "name": "Whisper Large v3", "family": "Whisper", "provider": "Whisper", "modality": "audio-stt", "context": 0, "quant": "FP16", "inputCost": 0.00006, "outputCost": 0, "p50": 380, "p95": 920, "features": ["multilingual", "diarization"], "status": "active", "replicas": 2, "route": "hetzner", "license": "MIT"},
+        {"id": "veklom-llama3-70b", "name": "Llama 3.1 70B Instruct", "family": "Llama 3", "provider": "Meta", "modality": "chat", "context": 128000, "quant": "FP16", "inputCost": 59e-5, "outputCost": 79e-5, "p50": 142, "p95": 380, "features": ["function-calling", "json-mode", "streaming", "vision-rag"], "status": "active", "replicas": 4, "route": "hetzner", "license": "Llama 3 Community", "is_enabled": True, "enabled": True},
+        {"id": "veklom-mixtral-8x22", "name": "Mixtral 8x22B", "family": "Mixtral", "provider": "Mistral", "modality": "chat", "context": 65536, "quant": "INT8", "inputCost": 38e-5, "outputCost": 6e-4, "p50": 121, "p95": 290, "features": ["function-calling", "json-mode", "streaming"], "status": "active", "replicas": 6, "route": "hetzner", "license": "Apache 2.0", "is_enabled": True, "enabled": True},
+        {"id": "veklom-qwen2-72b", "name": "Qwen 2.5 72B", "family": "Qwen", "provider": "Open Source", "modality": "chat", "context": 131072, "quant": "INT4", "inputCost": 18e-5, "outputCost": 27e-5, "p50": 96, "p95": 240, "features": ["function-calling", "json-mode", "streaming", "code"], "status": "active", "replicas": 8, "route": "hetzner", "license": "Apache 2.0", "is_enabled": True, "enabled": True},
+        {"id": "veklom-claude-haiku", "name": "Claude 3.5 Haiku (proxy)", "family": "Claude", "provider": "Anthropic-compatible", "modality": "chat", "context": 200000, "quant": "FP16", "inputCost": 8e-4, "outputCost": 0.004, "p50": 220, "p95": 540, "features": ["function-calling", "vision", "json-mode", "streaming"], "status": "active", "replicas": 2, "route": "aws-burst", "license": "Commercial", "is_enabled": True, "enabled": True},
+        {"id": "veklom-deepseek-v3", "name": "DeepSeek v3 Coder", "family": "DeepSeek", "provider": "Open Source", "modality": "completion", "context": 65536, "quant": "INT8", "inputCost": 27e-5, "outputCost": 41e-5, "p50": 88, "p95": 210, "features": ["streaming", "code", "fim"], "status": "active", "replicas": 3, "route": "hetzner", "license": "MIT", "is_enabled": True, "enabled": True},
+        {"id": "veklom-bge-large", "name": "BGE-M3 Embeddings", "family": "BGE", "provider": "Open Source", "modality": "embedding", "context": 8192, "quant": "FP16", "inputCost": 2e-5, "outputCost": 0, "p50": 14, "p95": 38, "features": ["multilingual", "long-context"], "status": "active", "replicas": 12, "route": "hetzner", "license": "MIT", "is_enabled": True, "enabled": True},
+        {"id": "veklom-cohere-rerank", "name": "Veklom Reranker", "family": "Cross-encoder", "provider": "Veklom Native", "modality": "rerank", "context": 4096, "quant": "FP16", "inputCost": 1e-5, "outputCost": 0, "p50": 22, "p95": 60, "features": ["fast", "binary"], "status": "active", "replicas": 6, "route": "hetzner", "license": "Commercial", "is_enabled": True, "enabled": True},
+        {"id": "veklom-whisper-v3", "name": "Whisper Large v3", "family": "Whisper", "provider": "Whisper", "modality": "audio-stt", "context": 0, "quant": "FP16", "inputCost": 6e-5, "outputCost": 0, "p50": 380, "p95": 920, "features": ["multilingual", "diarization"], "status": "active", "replicas": 2, "route": "hetzner", "license": "MIT", "is_enabled": True, "enabled": True},
     ]
 
 

@@ -345,13 +345,15 @@ async def ingest_telemetry(body: dict, user=Depends(get_current_user)):
 
 # --- Explain ---
 @router.get("/explain/cost")
+@router.post("/explain/cost")
 async def explain_cost(user=Depends(get_current_user)):
-    return {"explanation": "Cost is driven by token usage × per-model rate. Hetzner-primary routes are 3–5× cheaper than AWS burst.", "top_driver": "inference", "tip": "Route short tasks to Llama 3.1 70B on Hetzner primary."}
+    return {"explanation": "Cost is driven by token usage × per-model rate. Hetzner-primary routes are 3–5× cheaper than AWS burst.", "top_driver": "inference", "tip": "Route short tasks to Llama 3.1 70B on Hetzner primary.", "breakdown": {"inference": 0.64, "embeddings": 0.13, "storage": 0.09, "compute": 0.14}}
 
 
 @router.get("/explain/routing")
+@router.post("/explain/routing")
 async def explain_routing(user=Depends(get_current_user)):
-    return {"explanation": "Routing selects the cheapest capable model that passes policy. Hetzner primary is tried first; AWS burst activates when Hetzner utilisation exceeds 80%.", "strategy": "cost_quality_balanced", "fallback_active": False}
+    return {"explanation": "Routing selects the cheapest capable model that passes policy. Hetzner primary is tried first; AWS burst activates when Hetzner utilisation exceeds 80%.", "strategy": "cost_quality_balanced", "fallback_active": False, "current_split": {"hetzner": 0.88, "aws": 0.12}}
 
 
 # --- Status ---

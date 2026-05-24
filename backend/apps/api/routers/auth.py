@@ -7,7 +7,7 @@ import json
 import re
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -199,7 +199,7 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
             refresh_token=refresh_token,
             ip_address=request.client.host if request.client else "",
             user_agent=request.headers.get("user-agent", "")[:512],
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            expires_at=datetime.utcnow() + timedelta(hours=1),
         ))
         await db.commit()
         await db.refresh(user)
@@ -238,8 +238,8 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
     # Reset failed attempts and log login time
     user.failed_login_attempts = 0
-    user.last_login = datetime.now(timezone.utc)
-    user.last_activity = datetime.now(timezone.utc)
+    user.last_login = datetime.utcnow()
+    user.last_activity = datetime.utcnow()
 
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_access_token(
@@ -252,7 +252,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         refresh_token=refresh_token,
         ip_address=request.client.host if request.client else "",
         user_agent=request.headers.get("user-agent", "")[:512],
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        expires_at=datetime.utcnow() + timedelta(hours=1),
     )
     db.add(session)
     await db.commit()
@@ -307,7 +307,7 @@ async def update_me(body: dict, user=Depends(get_current_user), db: AsyncSession
     for field in ("full_name",):
         if field in body:
             setattr(user, field, body[field])
-    user.updated_at = datetime.now(timezone.utc)
+    user.updated_at = datetime.utcnow()
     await db.commit()
     return _user_dict(user)
 
@@ -539,8 +539,8 @@ async def github_callback(
         user.github_id = github_id
         user.github_username = github_username
         user.github_access_token = encrypt_token(gh_access_token)
-        user.last_login = datetime.now(timezone.utc)
-        user.last_activity = datetime.now(timezone.utc)
+        user.last_login = datetime.utcnow()
+        user.last_activity = datetime.utcnow()
         await db.commit()
 
     app_access_token = create_access_token(data={"sub": user.id})
@@ -554,7 +554,7 @@ async def github_callback(
         refresh_token=app_refresh_token,
         ip_address=request.client.host if request.client else "",
         user_agent=request.headers.get("user-agent", "")[:512],
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        expires_at=datetime.utcnow() + timedelta(hours=1),
     )
     db.add(session)
     await db.commit()
@@ -635,7 +635,7 @@ async def unlink_github_account(user=Depends(get_current_user), db: AsyncSession
     user.github_id = None
     user.github_username = None
     user.github_access_token = None
-    user.updated_at = datetime.now(timezone.utc)
+    user.updated_at = datetime.utcnow()
     await db.commit()
     return {"message": "GitHub account disconnected"}
 

@@ -86,7 +86,7 @@ async def get_current_user(
         if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
 
-        user.last_activity = datetime.now(timezone.utc)
+        user.last_activity = datetime.utcnow()
         await db.commit()
         return user
 

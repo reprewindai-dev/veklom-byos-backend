@@ -349,9 +349,11 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     fetchPulse();
-    fetchUptime();
+    if (document.getElementById("uptime-dashboard") || document.getElementById("status-page-services")) {
+      fetchUptime();
+      setInterval(fetchUptime, 60000);
+    }
     initFeedbackForm();
     setInterval(fetchPulse, 60000);
-    setInterval(fetchUptime, 60000);
   });
 })();

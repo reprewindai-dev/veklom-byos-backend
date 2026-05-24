@@ -394,6 +394,17 @@ async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSes
     return {"message": f"Invitation successfully sent and {email} has been provisioned."}
 
 
+@router.post("/budget")
+async def set_workspace_budget(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.billing import BudgetRule
+    ws = user.workspace_id or "default"
+    limit = float(body.get("limit_usd", body.get("total_budget_usd", 150.0)))
+    rule = BudgetRule(workspace_id=ws, limit_usd=limit, period="monthly", rule_type="soft", is_active=True)
+    db.add(rule)
+    await db.commit()
+    return {"total_budget_usd": limit, "updated": True}
+
+
 @router.get("/budget")
 async def workspace_budget(user=Depends(get_current_user)):
     return {

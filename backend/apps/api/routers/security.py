@@ -58,6 +58,17 @@ async def security_alerts(user=Depends(get_current_user), db: AsyncSession = Dep
     return [{"id": e.id, "severity": e.severity, "message": e.description, "timestamp": e.created_at.isoformat() if e.created_at else "", "acknowledged": e.status == "acknowledged", "source": e.event_type, "time": "recently"} for e in events]
 
 
+@router.put("/security/alerts/{alert_id}/acknowledge")
+@router.post("/security/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(alert_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == alert_id))
+    ev = result.scalar_one_or_none()
+    if ev:
+        ev.status = "acknowledged"
+        await db.commit()
+    return {"id": alert_id, "status": "acknowledged", "acknowledged_by": user.email}
+
+
 @router.patch("/security/alerts/{alert_id}")
 async def update_alert(alert_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == alert_id))
@@ -68,6 +79,24 @@ async def update_alert(alert_id: str, body: dict, user=Depends(get_current_user)
         await db.commit()
         return {"id": ev.id, "status": ev.status, "updated": True}
     return {"id": alert_id, "updated": True}
+
+
+@router.post("/security/events")
+async def create_security_event(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    import uuid as _uuid
+    ev = SecurityEvent(
+        id=str(_uuid.uuid4()),
+        workspace_id=user.workspace_id or "",
+        event_type=body.get("event_type", "manual"),
+        severity=body.get("severity", "low"),
+        description=body.get("description", ""),
+        status="open",
+        user_id=user.id,
+    )
+    db.add(ev)
+    await db.commit()
+    await db.refresh(ev)
+    return _event_dict(ev)
 
 
 @router.get("/security/events/{event_id}")
@@ -90,7 +119,8 @@ async def acknowledge_event(event_id: str, user=Depends(get_current_user), db: A
 
 
 @router.post("/security/events/{event_id}/resolve")
-async def resolve_event(event_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@router.put("/security/events/{event_id}/resolve")
+async def resolve_event(event_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == event_id))
     ev = result.scalar_one_or_none()
     if ev:
@@ -100,6 +130,7 @@ async def resolve_event(event_id: str, user=Depends(get_current_user), db: Async
 
 
 @router.post("/security/events/{event_id}/assign")
+@router.put("/security/events/{event_id}/assign")
 async def assign_event(event_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == event_id))
     ev = result.scalar_one_or_none()

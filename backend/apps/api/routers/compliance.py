@@ -63,6 +63,7 @@ async def compliance_check(body: dict, user=Depends(get_current_user), db: Async
 
 
 @router.get("/compliance/report")
+@router.post("/compliance/report")
 async def compliance_report(user=Depends(get_current_user)):
     return {
         "overall_score": 94,
@@ -181,6 +182,7 @@ async def verify_audit(log_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/audit/compliance-report")
+@router.post("/audit/compliance-report")
 async def audit_compliance_report(user=Depends(get_current_user)):
     return {
         "report_id": "rpt_placeholder",

@@ -261,6 +261,14 @@ async def legal_terms():
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
+@app.get("/uptime")
+async def uptime_page():
+    path = LANDING_DIR / "uptime.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
 async def _serve_frontend(request):
     landing_index = LANDING_DIR / "index.html"
     static_index = FRONTEND_DIR / "index.html"

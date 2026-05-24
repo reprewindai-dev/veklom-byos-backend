@@ -26,23 +26,172 @@
     try {
       const res = await fetch(`${API}/platform/uptime`);
       const d = await res.json();
-      const container = document.getElementById("uptime-dashboard");
-      if (!container) return;
-      container.innerHTML = d.services
-        .map(
-          (s) => `
-        <div class="card" style="text-align:center">
-          <div style="font-size:1.5rem;margin-bottom:8px;color:${s.status === "up" ? "var(--green)" : "var(--red)"}">${s.status === "up" ? "●" : "○"}</div>
-          <h3 style="font-size:1rem;text-transform:capitalize">${s.service}</h3>
-          <div style="color:var(--text-muted);font-size:0.8rem;margin-top:4px">${s.response_time_ms || 0}ms</div>
-          <div style="color:${s.status === "up" ? "var(--green)" : "var(--red)"};font-size:0.8rem;margin-top:4px">${s.status === "up" ? "Operational" : "Down"}</div>
-        </div>
-      `
-        )
-        .join("");
+      renderUptimePreview(d);
+      renderStatusPage(d);
     } catch (e) {
       console.warn("Uptime fetch failed:", e);
     }
+  }
+
+  function renderUptimePreview(data) {
+    const container = document.getElementById("uptime-dashboard");
+    if (!container) return;
+
+    setText("uptime-overall-title", data.headline || "All governed runtime systems operational");
+    setText("uptime-overall-copy", `${data.services?.length || 0} runtime boundaries reporting. Last sync ${formatTime(data.updated_at)}.`);
+    setText("uptime-percent", `${formatPercent(data.uptime_percent)}%`);
+    setText("uptime-latency", `${data.avg_response_time_ms || 0}ms`);
+    setText("uptime-incidents", data.active_incidents ?? 0);
+
+    container.innerHTML = (data.services || [])
+      .slice(0, 6)
+      .map((service) => serviceSymbol(service, "compact"))
+      .join("");
+
+    renderLedger("uptime-ledger", data.history || []);
+  }
+
+  function renderStatusPage(data) {
+    const services = document.getElementById("status-page-services");
+    if (!services) return;
+
+    setText("status-page-headline", data.headline || "All governed runtime systems operational");
+    setText("status-page-uptime", `${formatPercent(data.uptime_percent)}%`);
+    setText("status-page-latency", `${data.avg_response_time_ms || 0}ms`);
+    setText("status-page-checks", Number(data.checks_passed_24h || 0).toLocaleString());
+    setText("status-page-incidents", data.active_incidents ?? 0);
+    setText("status-page-updated", `Last verified ${formatTime(data.updated_at)} · ${data.window_days || 90}-day evidence window`);
+
+    services.innerHTML = (data.services || [])
+      .map((service) => serviceSymbol(service, "full"))
+      .join("");
+
+    renderLedger("status-page-ledger", data.history || []);
+    renderIncidents(data.incidents || []);
+  }
+
+  function serviceSymbol(service, mode) {
+    const status = normalizeStatus(service.status);
+    const label = status === "up" ? "Operational" : status === "degraded" ? "Degraded" : "Incident";
+    const icon = statusIcon(service.symbol || "vmark");
+
+    if (mode === "compact") {
+      return `
+        <a class="status-symbol-tile status-${status}" href="/uptime" aria-label="${escapeHtml(service.service)} ${label}">
+          <span class="status-icon-wrap">${icon}</span>
+          <span>${escapeHtml(shortServiceName(service.service))}</span>
+        </a>
+      `;
+    }
+
+    return `
+      <article class="status-service-card status-${status}">
+        <div class="status-service-icon">${icon}</div>
+        <div class="status-service-body">
+          <div class="status-service-topline">
+            <span>${escapeHtml(service.region || "Runtime")}</span>
+            <strong>${label}</strong>
+          </div>
+          <h3>${escapeHtml(service.service)}</h3>
+          <p>${escapeHtml(service.description || "Operational boundary is reporting normally.")}</p>
+          <div class="status-service-meta">
+            <span>${service.response_time_ms || 0}ms response</span>
+            <span>${formatPercent(service.uptime_90d)}% 90d</span>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderLedger(id, history) {
+    const container = document.getElementById(id);
+    if (!container) return;
+    container.innerHTML = history
+      .map((entry) => {
+        const status = normalizeStatus(entry.status);
+        return `<span class="status-ledger-mark status-${status}" title="${escapeHtml(entry.day)} · ${statusLabel(status)}" aria-label="${escapeHtml(entry.day)} ${statusLabel(status)}"></span>`;
+      })
+      .join("");
+  }
+
+  function renderIncidents(incidents) {
+    const container = document.getElementById("status-page-incidents-list");
+    if (!container) return;
+    container.innerHTML = incidents
+      .map((incident) => `
+        <article class="status-incident">
+          <div>
+            <span class="status-incident-date">${escapeHtml(incident.date)}</span>
+            <h3>${escapeHtml(incident.title)}</h3>
+            <p>${escapeHtml(incident.impact)}</p>
+          </div>
+          <span class="status-incident-pill status-${normalizeStatus(incident.status === "resolved" || incident.status === "informational" ? "up" : incident.status)}">${escapeHtml(incident.status)}</span>
+        </article>
+      `)
+      .join("");
+  }
+
+  function statusIcon(symbol) {
+    const common = 'viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"';
+    const stroke = 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+    const icons = {
+      shield: `<svg ${common}><path ${stroke} d="M16 4 26 8v7c0 6.2-3.8 10.4-10 13-6.2-2.6-10-6.8-10-13V8l10-4Z"/><path ${stroke} d="m12 16 3 3 6-7"/></svg>`,
+      lock: `<svg ${common}><rect ${stroke} x="7" y="14" width="18" height="12" rx="2"/><path ${stroke} d="M11 14v-3a5 5 0 0 1 10 0v3"/><path ${stroke} d="M16 19v3"/></svg>`,
+      lens: `<svg ${common}><circle ${stroke} cx="14" cy="14" r="8"/><path ${stroke} d="m20 20 6 6"/><path ${stroke} d="M14 10v8M10 14h8"/></svg>`,
+      stack: `<svg ${common}><path ${stroke} d="m16 5 11 6-11 6-11-6 11-6Z"/><path ${stroke} d="m5 16 11 6 11-6"/><path ${stroke} d="m5 21 11 6 11-6"/></svg>`,
+      globe: `<svg ${common}><circle ${stroke} cx="16" cy="16" r="11"/><path ${stroke} d="M5 16h22M16 5c3 3 4.5 6.7 4.5 11S19 24 16 27c-3-3-4.5-6.7-4.5-11S13 8 16 5Z"/></svg>`,
+      vmark: `<svg ${common}><path ${stroke} d="m7 7 9 19L25 7"/><circle fill="currentColor" cx="16" cy="16" r="2.2"/></svg>`,
+    };
+    return icons[symbol] || icons.vmark;
+  }
+
+  function normalizeStatus(status) {
+    const value = String(status || "").toLowerCase();
+    if (value === "up" || value === "operational" || value === "resolved" || value === "informational") return "up";
+    if (value === "degraded" || value === "warning") return "degraded";
+    return "down";
+  }
+
+  function statusLabel(status) {
+    return status === "up" ? "operational" : status === "degraded" ? "degraded" : "incident";
+  }
+
+  function shortServiceName(name) {
+    return String(name || "")
+      .replace("Governed Compiler (GPC)", "GPC")
+      .replace("API Gateway", "API")
+      .replace("Compliance Auditor", "Auditor")
+      .replace("Autonomous Router", "Router")
+      .replace("Playground Engine", "Playground");
+  }
+
+  function formatPercent(value) {
+    const n = Number(value || 0);
+    return n % 1 === 0 ? n.toFixed(0) : n.toFixed(2);
+  }
+
+  function formatTime(value) {
+    if (!value) return "just now";
+    try {
+      return new Date(value).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return "just now";
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    }[char]));
   }
 
   // --- Premium Toast Notification ---

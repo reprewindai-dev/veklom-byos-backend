@@ -392,8 +392,41 @@ async def refresh(body: dict, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me")
-async def me(user=Depends(get_current_user)):
-    return _user_dict(user)
+async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    user_data = _user_dict(user)
+    
+    # Add workspace data if user has a workspace
+    workspace_data = None
+    if user.workspace_id:
+        result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
+        workspace = result.scalar_one_or_none()
+        if workspace:
+            workspace_data = {
+                "id": workspace.id,
+                "name": workspace.name,
+                "slug": workspace.slug,
+                "plan": user_data.get("plan", "free"),
+                "license_tier": workspace.license_tier or "standard",
+                "is_active": workspace.is_active,
+            }
+    
+    # Determine capabilities based on role and plan
+    role = (user.role or "USER").upper()
+    is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
+    is_founder = role in ("SUPER_ADMIN",)
+    
+    capabilities = {
+        "command_center": is_founder,
+        "owner_provider_keys": is_founder,
+        "premium_marketplace": user_data.get("plan") in ("pro", "sovereign"),
+        "pipeline_deploy": True,
+    }
+    
+    return {
+        **user_data,
+        "workspace": workspace_data,
+        "capabilities": capabilities,
+    }
 
 
 @router.patch("/me")

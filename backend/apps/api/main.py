@@ -315,9 +315,11 @@ async def terminal_page():
 
 
 @app.get("/lockerphycer")
-async def lockerphycer_redirect():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="https://lockerphycer-oekpbtuf6-dksummers-projects.vercel.app/", status_code=302)
+async def lockerphycer_page():
+    lockerphycer_index = FRONTEND_DIR / "lockerphycer" / "index.html"
+    if lockerphycer_index.exists():
+        return FileResponse(str(lockerphycer_index))
+    return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
 @app.get("/marketplace")
 async def marketplace_info():
     return {

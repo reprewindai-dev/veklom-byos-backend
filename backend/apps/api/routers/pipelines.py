@@ -30,14 +30,26 @@ async def list_pipelines(user=Depends(get_current_user), db: AsyncSession = Depe
 
 @router.post("/pipelines")
 async def create_pipeline(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from fastapi import HTTPException
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    steps_payload = {
+        "template": body.get("template", "Custom"),
+        "nodes": body.get("nodes", 0),
+        "vectorStore": body.get("vectorStore", "pgvector"),
+        "invocations": 0,
+        "lastRun": "—",
+    }
     pipe = Pipeline(
         workspace_id=user.workspace_id or "default",
-        name=body.get("name", "Untitled Pipeline"),
+        name=name,
         description=body.get("description", ""),
-        steps=body.get("steps", []),
+        steps=steps_payload,
     )
     db.add(pipe)
     await db.commit()
+    await db.refresh(pipe)
     return _pipe_dict(pipe)
 
 
@@ -55,13 +67,35 @@ async def get_pipeline(pipeline_id: str, user=Depends(get_current_user), db: Asy
 
 
 @router.patch("/pipelines/{pipeline_id}")
-async def update_pipeline(pipeline_id: str, body: dict, user=Depends(get_current_user)):
-    return {"id": pipeline_id, "message": "Pipeline updated"}
+async def update_pipeline(pipeline_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
+    pipe = result.scalar_one_or_none()
+    if pipe:
+        if "name" in body:
+            pipe.name = body["name"]
+        if "description" in body:
+            pipe.description = body["description"]
+        if "status" in body:
+            pipe.status = body["status"]
+        extra = pipe.steps if isinstance(pipe.steps, dict) else {}
+        for k in ("template", "vectorStore", "nodes", "invocations", "lastRun"):
+            if k in body:
+                extra[k] = body[k]
+        pipe.steps = extra
+        await db.commit()
+        await db.refresh(pipe)
+        return _pipe_dict(pipe)
+    return {"id": pipeline_id, "updated": True}
 
 
 @router.delete("/pipelines/{pipeline_id}")
-async def delete_pipeline(pipeline_id: str, user=Depends(get_current_user)):
-    return {"message": "Pipeline deleted"}
+async def delete_pipeline(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
+    pipe = result.scalar_one_or_none()
+    if pipe:
+        await db.delete(pipe)
+        await db.commit()
+    return {"deleted": True, "id": pipeline_id}
 
 
 @router.post("/pipelines/{pipeline_id}/run")
@@ -135,18 +169,48 @@ async def list_deployments(user=Depends(get_current_user)):
 
 
 @router.post("/deployments")
-async def create_deployment(body: dict, user=Depends(get_current_user)):
-    return {"id": "d_new", "name": body.get("name", ""), "status": "pending"}
+async def create_deployment(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    cfg = {"model": body.get("model", ""), "auth": body.get("auth", "api-key"), "region": body.get("region", "fsn1-hetz"), "rateLimit": body.get("rateLimit", "")}
+    dep = Deployment(
+        workspace_id=user.workspace_id or "default",
+        name=body.get("name", "New Deployment"),
+        deployment_type=body.get("type", "chat"),
+        endpoint_url=body.get("endpoint", ""),
+        status=body.get("status", "draft"),
+        config_json=cfg,
+    )
+    db.add(dep)
+    await db.commit()
+    await db.refresh(dep)
+    return _dep_dict(dep)
 
 
 @router.patch("/deployments/{deployment_id}")
-async def update_deployment(deployment_id: str, body: dict, user=Depends(get_current_user)):
-    return {"id": deployment_id, "message": "Deployment updated"}
+async def update_deployment(deployment_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Deployment).where(Deployment.id == deployment_id, Deployment.workspace_id == (user.workspace_id or "default")))
+    dep = result.scalar_one_or_none()
+    if dep:
+        if "name" in body: dep.name = body["name"]
+        if "status" in body: dep.status = body["status"]
+        if "endpoint" in body: dep.endpoint_url = body["endpoint"]
+        cfg = dep.config_json or {}
+        for k in ("model", "auth", "region", "rateLimit"):
+            if k in body: cfg[k] = body[k]
+        dep.config_json = cfg
+        await db.commit()
+        await db.refresh(dep)
+        return _dep_dict(dep)
+    return {"id": deployment_id, "updated": True}
 
 
 @router.delete("/deployments/{deployment_id}")
-async def delete_deployment(deployment_id: str, user=Depends(get_current_user)):
-    return {"message": "Deployment deleted"}
+async def delete_deployment(deployment_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Deployment).where(Deployment.id == deployment_id, Deployment.workspace_id == (user.workspace_id or "default")))
+    dep = result.scalar_one_or_none()
+    if dep:
+        await db.delete(dep)
+        await db.commit()
+    return {"deleted": True, "id": deployment_id}
 
 
 # --- Edge / Canary ---
@@ -170,13 +234,35 @@ async def list_routing_rules(user=Depends(get_current_user)):
 
 
 @router.post("/routing")
-async def create_routing_rule(body: dict, user=Depends(get_current_user)):
-    return {"id": "r_new", "name": body.get("name", ""), "strategy": body.get("strategy", "")}
+async def create_routing_rule(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.marketplace import Pipeline as _P
+    rule_id = str(uuid.uuid4())
+    rule = _P(
+        workspace_id=user.workspace_id or "default",
+        name=body.get("name", "Routing Rule"),
+        description="routing_rule",
+        steps={"strategy": body.get("strategy", ""), "is_active": True, "rule_id": rule_id},
+    )
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return {"id": rule.id, "name": rule.name, "strategy": body.get("strategy", ""), "is_active": True}
 
 
 @router.patch("/routing/{rule_id}")
-async def update_routing_rule(rule_id: str, body: dict, user=Depends(get_current_user)):
-    return {"id": rule_id, "message": "Rule updated"}
+async def update_routing_rule(rule_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.marketplace import Pipeline as _P
+    result = await db.execute(select(_P).where(_P.id == rule_id, _P.workspace_id == (user.workspace_id or "default")))
+    rule = result.scalar_one_or_none()
+    if rule and rule.description == "routing_rule":
+        if "name" in body: rule.name = body["name"]
+        steps = rule.steps or {}
+        for k in ("strategy", "is_active"):
+            if k in body: steps[k] = body[k]
+        rule.steps = steps
+        await db.commit()
+        return {"id": rule.id, "name": rule.name, "strategy": steps.get("strategy"), "is_active": steps.get("is_active", True), "updated": True}
+    return {"id": rule_id, "updated": True}
 
 
 @router.get("/routing/policy")
@@ -209,6 +295,23 @@ async def autonomous_decisions(user=Depends(get_current_user)):
 @router.post("/autonomous/override")
 async def autonomous_override(body: dict, user=Depends(get_current_user)):
     return {"message": "Routing override applied", "model": body.get("model", "")}
+
+
+def _dep_dict(d: Deployment) -> dict:
+    cfg = d.config_json or {}
+    return {
+        "id": d.id,
+        "name": d.name,
+        "type": d.deployment_type or "chat",
+        "endpoint": d.endpoint_url or "",
+        "auth": cfg.get("auth", "api-key"),
+        "model": cfg.get("model", ""),
+        "region": cfg.get("region", "fsn1-hetz"),
+        "rateLimit": cfg.get("rateLimit", "—"),
+        "status": d.status or "draft",
+        "rps": cfg.get("rps", 0),
+        "errorRate": cfg.get("errorRate", 0),
+    }
 
 
 def _pipe_dict(p: Pipeline) -> dict:

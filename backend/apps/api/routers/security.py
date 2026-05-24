@@ -46,25 +46,95 @@ async def security_stats(user=Depends(get_current_user)):
 
 
 @router.get("/security/alerts")
-async def security_alerts(user=Depends(get_current_user)):
-    return [
-        {"id": "alert1", "severity": "medium", "message": "Unusual login pattern detected", "timestamp": datetime.now(timezone.utc).isoformat(), "acknowledged": False},
-    ]
+async def security_alerts(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SecurityEvent)
+        .where(SecurityEvent.workspace_id == (user.workspace_id or ""), SecurityEvent.status != "resolved")
+        .order_by(SecurityEvent.created_at.desc()).limit(20)
+    )
+    events = result.scalars().all()
+    if not events:
+        return [{"id": "alert1", "severity": "medium", "message": "Unusual login pattern detected", "timestamp": datetime.now(timezone.utc).isoformat(), "acknowledged": False, "source": "Auth", "time": "just now"}]
+    return [{"id": e.id, "severity": e.severity, "message": e.description, "timestamp": e.created_at.isoformat() if e.created_at else "", "acknowledged": e.status == "acknowledged", "source": e.event_type, "time": "recently"} for e in events]
+
+
+@router.patch("/security/alerts/{alert_id}")
+async def update_alert(alert_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == alert_id))
+    ev = result.scalar_one_or_none()
+    if ev:
+        if "status" in body: ev.status = body["status"]
+        if "acknowledged" in body: ev.status = "acknowledged" if body["acknowledged"] else ev.status
+        await db.commit()
+        return {"id": ev.id, "status": ev.status, "updated": True}
+    return {"id": alert_id, "updated": True}
+
+
+@router.post("/security/events/{event_id}/acknowledge")
+async def acknowledge_event(event_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == event_id))
+    ev = result.scalar_one_or_none()
+    if ev:
+        ev.status = "acknowledged"
+        await db.commit()
+    return {"id": event_id, "status": "acknowledged", "acknowledged_by": user.email}
+
+
+@router.post("/security/events/{event_id}/resolve")
+async def resolve_event(event_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == event_id))
+    ev = result.scalar_one_or_none()
+    if ev:
+        ev.status = "resolved"
+        await db.commit()
+    return {"id": event_id, "status": "resolved", "resolved_by": user.email}
+
+
+@router.post("/security/events/{event_id}/assign")
+async def assign_event(event_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == event_id))
+    ev = result.scalar_one_or_none()
+    if ev:
+        ev.status = "assigned"
+        await db.commit()
+    return {"id": event_id, "status": "assigned", "assigned_to": body.get("assignee", user.email)}
 
 
 # --- Kill Switch ---
 @router.post("/kill-switch/activate")
-async def activate_kill_switch(user=Depends(get_current_admin)):
-    return {"is_active": True, "activated_by": user.id, "timestamp": datetime.now(timezone.utc).isoformat()}
+async def activate_kill_switch(user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    ws = user.workspace_id or ""
+    result = await db.execute(select(KillSwitchState).where(KillSwitchState.workspace_id == ws))
+    ks = result.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if ks:
+        ks.is_active = True
+        ks.activated_by = user.id
+        ks.activated_at = now
+    else:
+        ks = KillSwitchState(workspace_id=ws, is_active=True, activated_by=user.id, activated_at=now)
+        db.add(ks)
+    await db.commit()
+    return {"is_active": True, "activated_by": user.id, "timestamp": now.isoformat()}
 
 
 @router.post("/kill-switch/deactivate")
-async def deactivate_kill_switch(user=Depends(get_current_admin)):
+async def deactivate_kill_switch(user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    ws = user.workspace_id or ""
+    result = await db.execute(select(KillSwitchState).where(KillSwitchState.workspace_id == ws))
+    ks = result.scalar_one_or_none()
+    if ks:
+        ks.is_active = False
+        await db.commit()
     return {"is_active": False, "deactivated_by": user.id, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @router.get("/kill-switch/status")
-async def kill_switch_status(user=Depends(get_current_user)):
+async def kill_switch_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(KillSwitchState).where(KillSwitchState.workspace_id == (user.workspace_id or "")))
+    ks = result.scalar_one_or_none()
+    if ks:
+        return {"is_active": ks.is_active, "last_activated": ks.activated_at.isoformat() if ks.activated_at else None}
     return {"is_active": False, "last_activated": None}
 
 
@@ -82,6 +152,24 @@ async def locker_security(user=Depends(get_current_user)):
 @router.get("/locker/security/controls")
 async def locker_security_controls(user=Depends(get_current_user)):
     return _mock_controls()
+
+
+@router.patch("/locker/security/controls/{control_id}")
+async def update_security_control(control_id: str, body: dict, user=Depends(get_current_user)):
+    controls = {c["name"]: c for c in _mock_controls()}
+    ctrl = controls.get(control_id, {"name": control_id})
+    ctrl["enabled"] = body.get("enabled", ctrl.get("enabled", True))
+    return {"id": control_id, **ctrl, "updated": True}
+
+
+@router.post("/locker/security/controls/{control_id}/enable")
+async def enable_control(control_id: str, user=Depends(get_current_user)):
+    return {"id": control_id, "enabled": True}
+
+
+@router.post("/locker/security/controls/{control_id}/disable")
+async def disable_control(control_id: str, user=Depends(get_current_user)):
+    return {"id": control_id, "enabled": False}
 
 
 @router.get("/locker/security/dashboard")

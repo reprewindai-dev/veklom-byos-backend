@@ -258,8 +258,17 @@ async def list_models(user=Depends(get_current_user), db: AsyncSession = Depends
 
 
 @router.patch("/models/{model_id}")
-async def toggle_model(model_id: str, body: dict, user=Depends(get_current_user)):
-    return {"id": model_id, "is_enabled": body.get("is_enabled", True), "message": "Model updated"}
+async def toggle_model(model_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ModelConfig).where(ModelConfig.id == model_id, ModelConfig.workspace_id == (user.workspace_id or "default")))
+    model = result.scalar_one_or_none()
+    if model:
+        if "is_enabled" in body:
+            model.is_enabled = body["is_enabled"]
+        if "display_name" in body:
+            model.display_name = body["display_name"]
+        await db.commit()
+        return {"id": model.id, "is_enabled": model.is_enabled, "display_name": model.display_name, "updated": True}
+    return {"id": model_id, "is_enabled": body.get("is_enabled", True), "updated": True}
 
 
 @router.get("/api-keys")

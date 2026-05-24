@@ -109,6 +109,7 @@ from backend.apps.api.routers import (
     internal_uacp,
     internal_operators,
     plugins,
+    playground,
 )
 
 # Health & status (no prefix)
@@ -124,6 +125,9 @@ app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(exec_router.router, prefix="/api")
 app.include_router(exec_router.router, prefix="/api/v1")
+
+# Playground — sessions, prompts, tools
+app.include_router(playground.router, prefix="/api/v1")
 
 # Runtime Jobs Status
 app.include_router(runtime_jobs.router, prefix="/api/v1")

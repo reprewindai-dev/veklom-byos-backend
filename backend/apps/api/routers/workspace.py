@@ -391,6 +391,42 @@ async def security_alerts(limit: int = 10, user=Depends(get_current_user), db: A
     }
 
 
+# --- Audit Export ---
+@router.get("/audit-export")
+async def audit_export(session_id: str = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Export audit logs for a playground session or full workspace."""
+    workspace_id = user.workspace_id or "default"
+
+    query = select(AuditLog).where(AuditLog.workspace_id == workspace_id)
+    if session_id:
+        query = query.where(AuditLog.resource_id == session_id)
+
+    result = await db.execute(query.order_by(AuditLog.created_at.desc()).limit(500))
+    logs = result.scalars().all()
+
+    return {
+        "export_type": "session" if session_id else "workspace",
+        "session_id": session_id,
+        "workspace_id": workspace_id,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "logs": [
+            {
+                "id": log.id,
+                "action": log.action,
+                "resource_type": log.resource_type,
+                "resource_id": log.resource_id,
+                "user_id": log.user_id,
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
+                "hash_chain": log.hash_chain,
+                "prev_hash": log.prev_hash,
+                "created_at": log.created_at.isoformat() if log.created_at else None
+            }
+            for log in logs
+        ]
+    }
+
+
 @router.get("")
 async def get_workspace(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.workspace_id:

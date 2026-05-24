@@ -158,6 +158,7 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
 
 
 @router.get("/subscriptions/portal")
+@router.post("/subscriptions/portal")
 async def subscription_portal(user=Depends(get_current_user)):
     client = _stripe_client()
     if not getattr(user, "stripe_customer_id", None):

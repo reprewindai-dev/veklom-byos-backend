@@ -336,6 +336,7 @@ async def mfa_verify(body: dict, user=Depends(get_current_user), db: AsyncSessio
 
 
 @router.post("/mfa/disable")
+@router.delete("/mfa/disable")
 async def mfa_disable(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     user.mfa_enabled = False
     user.mfa_secret = ""

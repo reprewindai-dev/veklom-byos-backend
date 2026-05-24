@@ -170,8 +170,12 @@ app.include_router(providers.router, prefix="/api/v1")
 # Team management — members, invitations, roles, SSO, MFA
 app.include_router(team.router, prefix="/api/v1")
 
-# Plugins Management
+# Plugins Management — mounted at both /api and /api/v1 (bundle calls ${re}/plugins = /api/v1/plugins)
 app.include_router(plugins.router, prefix="/api")
+app.include_router(plugins.router, prefix="/api/v1")
+
+# Exec alias for bundle's ${re}/v1/exec pattern (re=/api/v1 → /api/v1/v1/exec)
+app.include_router(exec_router.router, prefix="/api/v1/v1")
 
 
 # --- Frontend static files ---

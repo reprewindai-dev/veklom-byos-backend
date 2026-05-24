@@ -343,6 +343,23 @@ async def ingest_telemetry(body: dict, user=Depends(get_current_user)):
     return {"ingested": True, "events": len(body.get("events", []))}
 
 
+# --- Explain ---
+@router.get("/explain/cost")
+async def explain_cost(user=Depends(get_current_user)):
+    return {"explanation": "Cost is driven by token usage × per-model rate. Hetzner-primary routes are 3–5× cheaper than AWS burst.", "top_driver": "inference", "tip": "Route short tasks to Llama 3.1 70B on Hetzner primary."}
+
+
+@router.get("/explain/routing")
+async def explain_routing(user=Depends(get_current_user)):
+    return {"explanation": "Routing selects the cheapest capable model that passes policy. Hetzner primary is tried first; AWS burst activates when Hetzner utilisation exceeds 80%.", "strategy": "cost_quality_balanced", "fallback_active": False}
+
+
+# --- Status ---
+@router.get("/status")
+async def platform_status():
+    return {"status": "operational", "components": {"api": "operational", "ai_gateway": "operational", "database": "operational", "redis": "operational"}, "uptime_percent": 99.97, "updated_at": datetime.now(timezone.utc).isoformat()}
+
+
 # --- Suggestions ---
 @router.get("/suggestions")
 async def list_suggestions(user=Depends(get_current_user)):

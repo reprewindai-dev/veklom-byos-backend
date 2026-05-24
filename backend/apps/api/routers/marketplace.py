@@ -53,6 +53,14 @@ async def list_listings(user=Depends(get_current_user)):
     return _mock_listings()
 
 
+@router.get("/listings/{listing_id}")
+async def get_listing_short(listing_id: str, user=Depends(get_current_user)):
+    for item in _mock_listings():
+        if item["id"] == listing_id:
+            return item
+    return {"id": listing_id, "title": "AI Pack", "provider": "Veklom", "install": {"type": "managed"}, "featured": False, "compliance": []}
+
+
 @router.get("/marketplace/listings/{listing_id}")
 async def get_listing(listing_id: str, user=Depends(get_current_user)):
     return {"id": listing_id, "name": "AI Document Processor", "category": "tool", "price": 0.50, "status": "published"}
@@ -130,6 +138,20 @@ async def onboard_vendor(body: dict, user=Depends(get_current_user)):
 @router.get("/vendors/me/listings")
 async def my_listings(user=Depends(get_current_user)):
     return []
+
+
+@router.get("/vendors/{vendor_id}")
+async def get_vendor(vendor_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Vendor).where(Vendor.id == vendor_id))
+    v = result.scalar_one_or_none()
+    if v:
+        return {"id": v.id, "business_name": v.business_name, "status": v.status}
+    return {"id": vendor_id, "business_name": "Unknown Vendor", "status": "not_found"}
+
+
+@router.get("/orders/{order_id}")
+async def get_order(order_id: str, user=Depends(get_current_user)):
+    return {"id": order_id, "status": "pending", "items": [], "total_usd": 0}
 
 
 # --- Plugins ---

@@ -70,6 +70,15 @@ async def update_alert(alert_id: str, body: dict, user=Depends(get_current_user)
     return {"id": alert_id, "updated": True}
 
 
+@router.get("/security/events/{event_id}")
+async def get_security_event(event_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == event_id))
+    ev = result.scalar_one_or_none()
+    if ev:
+        return _event_dict(ev)
+    return {"id": event_id, "event_type": "unknown", "severity": "low", "status": "open", "description": "Event not found", "created_at": None}
+
+
 @router.post("/security/events/{event_id}/acknowledge")
 async def acknowledge_event(event_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SecurityEvent).where(SecurityEvent.id == event_id))
@@ -140,8 +149,49 @@ async def kill_switch_status(user=Depends(get_current_user), db: AsyncSession = 
 
 # --- Locker ---
 @router.get("/locker/users")
-async def locker_users(user=Depends(get_current_user)):
-    return {"users": [], "total": 0, "isolated": True}
+async def locker_users(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.user import User
+    from backend.db.models.workspace import WorkspaceMember
+    ws = user.workspace_id or ""
+    result = await db.execute(
+        select(User).join(WorkspaceMember, WorkspaceMember.user_id == User.id, isouter=True)
+        .where(User.workspace_id == ws)
+        .limit(50)
+    )
+    users = result.scalars().all()
+    now = datetime.now(timezone.utc)
+    return {"users": [{"id": u.id, "email": u.email, "role": getattr(u, 'role', 'user'), "last_login": u.last_login.isoformat() if getattr(u, 'last_login', None) else None, "status": "active"} for u in users], "total": len(users), "isolated": True}
+
+
+@router.get("/locker/users/{user_id}")
+async def get_locker_user(user_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.user import User
+    result = await db.execute(select(User).where(User.id == user_id))
+    u = result.scalar_one_or_none()
+    if u:
+        return {"id": u.id, "email": u.email, "role": getattr(u, 'role', 'user'), "status": "active", "mfa_enabled": getattr(u, 'mfa_enabled', False)}
+    return {"id": user_id, "status": "not_found"}
+
+
+@router.get("/locker/users/{user_id}/activity")
+async def get_user_activity(user_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.security import AuditLog
+    result = await db.execute(
+        select(AuditLog).where(AuditLog.user_id == user_id).order_by(AuditLog.created_at.desc()).limit(20)
+    )
+    logs = result.scalars().all()
+    return {"user_id": user_id, "activity": [{"id": l.id, "action": l.action, "resource_type": l.resource_type, "created_at": l.created_at.isoformat() if l.created_at else None} for l in logs]}
+
+
+@router.post("/locker/users/{user_id}/sessions/revoke")
+async def revoke_user_sessions(user_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.user import Session
+    result = await db.execute(select(Session).where(Session.user_id == user_id))
+    sessions = result.scalars().all()
+    for s in sessions:
+        s.is_active = False
+    await db.commit()
+    return {"user_id": user_id, "sessions_revoked": len(sessions), "message": "All sessions revoked"}
 
 
 @router.get("/locker/security")

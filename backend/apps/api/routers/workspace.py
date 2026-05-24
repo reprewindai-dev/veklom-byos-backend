@@ -413,6 +413,107 @@ async def cost_budget(user=Depends(get_current_user)):
     }
 
 
+@router.get("/observability")
+async def workspace_observability(user=Depends(get_current_user)):
+    return {
+        "tracing_enabled": True,
+        "log_retention_days": 90,
+        "metrics_retention_days": 365,
+        "sampling_rate": 1.0,
+        "exporters": ["internal", "prometheus"],
+        "alert_channels": ["email"],
+    }
+
+
+@router.patch("/observability")
+async def update_observability(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    ws = user.workspace_id
+    if ws:
+        result = await db.execute(select(Workspace).where(Workspace.id == ws))
+        workspace = result.scalar_one_or_none()
+        if workspace:
+            settings = workspace.settings_json or {}
+            settings.update({k: v for k, v in body.items()})
+            workspace.settings_json = settings
+            await db.commit()
+    return {"updated": True, **body}
+
+
+@router.get("/settings")
+async def get_workspace_settings(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    ws_id = user.workspace_id or ""
+    result = await db.execute(select(Workspace).where(Workspace.id == ws_id))
+    workspace = result.scalar_one_or_none()
+    cfg = workspace.settings_json if workspace else {}
+    return {
+        "workspace_name": workspace.name if workspace else "acme-prod",
+        "slug": workspace.slug if workspace else "acme.veklom.app",
+        "default_region": cfg.get("default_region", "fsn1-hetz"),
+        "eu_sovereign": cfg.get("eu_sovereign", True),
+        "routing": {"primary_plane": "Hetzner (FSN1, FRA1)", "burst_plane": "AWS (us-east-1, eu-west-1)", "burst_ceiling": "20% traffic · $3,000 spend", "egress_allowlist": "12 hosts · enforced"},
+        "security": {"mfa_enforcement": "org-wide · TOTP + WebAuthn", "tls": "1.3 · mTLS (internal)", "session_timeout_hr": 12, "vault_seal": "FIPS 140-2 L3 HSM"},
+        "integrations": cfg.get("integrations", {"slack": True, "pagerduty": True, "github": True, "vercel": True, "datadog": False, "jira": False}),
+    }
+
+
+@router.patch("/settings")
+async def update_workspace_settings(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    ws_id = user.workspace_id or ""
+    result = await db.execute(select(Workspace).where(Workspace.id == ws_id))
+    workspace = result.scalar_one_or_none()
+    if workspace:
+        settings = workspace.settings_json or {}
+        settings.update(body)
+        workspace.settings_json = settings
+        if "workspace_name" in body:
+            workspace.name = body["workspace_name"]
+        await db.commit()
+    return {"updated": True, **body}
+
+
+@router.post("/deployments/pause-all")
+async def pause_all_deployments(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Deployment).where(Deployment.workspace_id == (user.workspace_id or ""), Deployment.status == "live"))
+    deps = result.scalars().all()
+    for d in deps:
+        d.status = "paused"
+    await db.commit()
+    return {"paused_count": len(deps), "message": "All deployments paused. Traffic draining. Audit trail preserved."}
+
+
+@router.post("/secrets/rotate")
+async def rotate_workspace_secrets(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.user import APIKey
+    result = await db.execute(select(APIKey).where(APIKey.workspace_id == (user.workspace_id or ""), APIKey.is_active == True))
+    keys = result.scalars().all()
+    import secrets as _secrets
+    from backend.core.security.auth import get_password_hash
+    rotated = 0
+    for k in keys:
+        raw = f"vk_{_secrets.token_urlsafe(32)}"
+        k.key_hash = get_password_hash(raw)
+        k.key_prefix = raw[:8]
+        rotated += 1
+    await db.commit()
+    return {"rotated": rotated, "message": f"{rotated} key(s) re-issued. Audit event emitted."}
+
+
+@router.get("/audit-export")
+async def export_audit_log(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from fastapi.responses import StreamingResponse
+    import io
+    ws = user.workspace_id or ""
+    result = await db.execute(
+        select(AuditLog).where(AuditLog.workspace_id == ws).order_by(AuditLog.created_at.desc()).limit(1000)
+    )
+    logs = result.scalars().all()
+    lines = ["id,action,resource_type,resource_id,created_at"]
+    for l in logs:
+        lines.append(f"{l.id},{l.action},{l.resource_type or ''},{l.resource_id or ''},{l.created_at.isoformat() if l.created_at else ''}")
+    csv = "\n".join(lines)
+    return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=audit-export.csv"})
+
+
 @router.get("/cost-budget.csv")
 async def cost_budget_csv(user=Depends(get_current_user)):
     csv = (

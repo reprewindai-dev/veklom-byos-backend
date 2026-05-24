@@ -184,7 +184,7 @@ class LocalFirstRouter:
         return stats
 
     @classmethod
-    async def route_intent(cls, intent: str, run_id: str) -> AsyncGenerator[str, None]:
+    async def route_intent(cls, intent: str, run_id: str, allow_paid_escalation: bool = True) -> AsyncGenerator[str, None]:
         """Main hybrid routing execution stream."""
         yield cls.clean_sse_chunk("sys", "▸", "Connecting to Veklom Sovereign Runtime...", "p-sys")
         await asyncio.sleep(0.04)
@@ -279,13 +279,15 @@ class LocalFirstRouter:
             "don't know", "cannot", "apologize", "unauthorized", "offline", "limited"
         ])
 
-        needs_escalation = (len(triggered_rules) > 0 or low_confidence) and budget.can_escalate()
+        needs_escalation = (len(triggered_rules) > 0 or low_confidence) and allow_paid_escalation and budget.can_escalate()
 
         # Output policy gate evaluations
         for rule in triggered_rules:
             yield cls.clean_sse_chunk("warn", "⚠", f"Policy Gate Triggered: {rule.upper()}_SENSITIVE", "p-err")
         if low_confidence:
             yield cls.clean_sse_chunk("warn", "⚠", "Policy Gate Triggered: LOCAL_REASONING_LOW_CONFIDENCE", "p-err")
+        if (triggered_rules or low_confidence) and not allow_paid_escalation:
+            yield cls.clean_sse_chunk("ok", "✓", "Public demo cost boundary enforced - paid escalation disabled, continuing on Ollama/rule-engine only.", "p-ok")
 
         if needs_escalation:
             trigger_reason = f"triggered by: {', '.join(triggered_rules)}" if triggered_rules else "low confidence local output"

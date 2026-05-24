@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,31 @@ async def list_marketplace(user=Depends(get_current_user), db: AsyncSession = De
     if not items:
         return _mock_listings()
     return [_listing_dict(i) for i in items]
+
+
+@router.get("/marketplace/tools")
+async def list_marketplace_tools(
+    query: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    """Public-demo-safe MCP tool registry backed by the Veklom BYOS route surface."""
+    tools = _source_marketplace_tools()
+    if query:
+        needle = query.lower()
+        tools = [
+            tool for tool in tools
+            if needle in tool["name"].lower()
+            or needle in tool["category"].lower()
+            or any(needle in cap.lower() for cap in tool["capabilities"])
+        ]
+    return {
+        "source": "veklom-byos-backend",
+        "protocol": "MCP JSON-RPC 2.0 over HTTPS",
+        "provider_policy": "ollama_only_for_public_demo",
+        "billing_impact": "$0.00 public demo run",
+        "count": len(tools),
+        "tools": tools,
+    }
 
 
 @router.get("/listings")
@@ -136,6 +161,71 @@ def _mock_listings():
         {"id": "ml2", "name": "Compliance Checker", "description": "Automated HIPAA/GDPR compliance checks", "category": "governance", "price": 1.00, "status": "published", "downloads": 189, "rating": 4.8},
         {"id": "ml3", "name": "Data Anonymizer", "description": "PII detection and anonymization", "category": "privacy", "price": 0.75, "status": "published", "downloads": 312, "rating": 4.9},
         {"id": "ml4", "name": "Model Router", "description": "Intelligent model selection and routing", "category": "infrastructure", "price": 0.25, "status": "published", "downloads": 456, "rating": 4.6},
+    ]
+
+
+def _source_marketplace_tools() -> list[dict]:
+    return [
+        {
+            "id": "veklom-gpc",
+            "name": "Governed Plan Compiler (GPC)",
+            "category": "governance",
+            "description": "Compiles messy intent into policy-checked execution plans.",
+            "method": "POST",
+            "endpoint": "/api/v1/gpc/compile",
+            "runtime_provider": "ollama",
+            "capabilities": ["intent_compile", "policy_check", "plan_generation"],
+            "veklom_made": True,
+            "watermark": "Veklom Sovereign AI Hub",
+        },
+        {
+            "id": "veklom-autonomous-router",
+            "name": "Autonomous Execution Router",
+            "category": "execution",
+            "description": "Routes public demo intents through the BYOS control layer with Ollama-first execution.",
+            "method": "POST",
+            "endpoint": "/api/v1/autonomous/execute",
+            "runtime_provider": "ollama",
+            "capabilities": ["agent_execution", "vendor_discovery", "uacp_dispatch"],
+            "veklom_made": True,
+            "watermark": "Veklom Sovereign AI Hub",
+        },
+        {
+            "id": "veklom-policy-vault",
+            "name": "Policy Vault",
+            "category": "security",
+            "description": "Evaluates tool calls, repository actions, and runtime boundaries before execution.",
+            "method": "GET",
+            "endpoint": "/api/v1/compliance/report",
+            "runtime_provider": "ollama",
+            "capabilities": ["policy_gate", "approval_boundary", "risk_classification"],
+            "veklom_made": True,
+            "watermark": "Veklom Sovereign AI Hub",
+        },
+        {
+            "id": "veklom-marketplace-vendor-discovery",
+            "name": "Marketplace Vendor Discovery",
+            "category": "marketplace",
+            "description": "Finds potential Veklom-compatible vendors and tools without leaving the public demo boundary.",
+            "method": "GET",
+            "endpoint": "/api/v1/marketplace/tools",
+            "runtime_provider": "ollama",
+            "capabilities": ["vendor_lookup", "tool_registry", "marketplace_match"],
+            "veklom_made": True,
+            "watermark": "Veklom Sovereign AI Hub",
+        },
+        {
+            "id": "veklom-audit-sealer",
+            "name": "Replayable Audit Evidence Sealer",
+            "category": "evidence",
+            "description": "Seals every demo action into a deterministic evidence block for replay.",
+            "method": "GET",
+            "endpoint": "/api/v1/internal/uacp/events",
+            "runtime_provider": "ollama",
+            "capabilities": ["audit_trail", "evidence_block", "lineage_tracking"],
+            "veklom_made": True,
+            "watermark": "Veklom Sovereign AI Hub",
+        },
     ]
 
 # --- Webhook ---

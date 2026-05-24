@@ -159,14 +159,21 @@
     setTimeout(handleRoute, 10);
   });
 
-  // Poll for sidebar to inject links (React might re-render)
-  var injectAttempts = 0;
-  var injectInterval = setInterval(function () {
-    injectAttempts++;
-    var success = injectSidebarLinks();
-    if (success && injectAttempts > 5) clearInterval(injectInterval);
-    if (injectAttempts > 30) clearInterval(injectInterval); // stop after 15s
-  }, 500);
+  // Initial injection attempts
+  injectSidebarLinks();
+  setTimeout(injectSidebarLinks, 500);
+  setTimeout(injectSidebarLinks, 1500);
+  setTimeout(injectSidebarLinks, 3000);
+
+  // Persistent MutationObserver — re-inject whenever nav/sidebar DOM changes
+  var navObserver = new MutationObserver(function () {
+    // Check if any injected link is missing
+    var missing = Object.keys(ROUTES).some(function (hash) {
+      return !document.querySelector('a[href="' + hash + '"]');
+    });
+    if (missing) injectSidebarLinks();
+  });
+  navObserver.observe(document.body, { childList: true, subtree: true });
 
   // Handle route immediately and on short delay
   handleRoute();

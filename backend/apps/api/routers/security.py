@@ -399,6 +399,58 @@ async def vault_add(body: dict, user=Depends(get_current_user), db: AsyncSession
     return {"id": k.id, "name": k.label, "type": k.provider, "key_prefix": k.key_prefix, "created_at": k.created_at.isoformat() if k.created_at else None}
 
 
+@router.get("/security/vault/{secret_id}/reveal")
+async def vault_reveal(secret_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.provider import ProviderKey
+    from sqlalchemy import select as _select
+    from backend.core.security.key_encryption import decrypt_key
+    from fastapi import HTTPException as _HTTPException
+    row = (await db.execute(_select(ProviderKey).where(ProviderKey.id == secret_id, ProviderKey.workspace_id == (user.workspace_id or "")))).scalar_one_or_none()
+    if not row:
+        raise _HTTPException(status_code=404, detail="Secret not found")
+    try:
+        value = decrypt_key(row.key_encrypted)
+    except Exception:
+        value = row.key_prefix + "••••••••••••••••"
+    return {"id": row.id, "name": row.label or row.provider, "value": value, "type": row.provider}
+
+
+@router.post("/security/vault/{secret_id}/rotate")
+async def vault_rotate_one(secret_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.provider import ProviderKey
+    from sqlalchemy import select as _select
+    from backend.core.security.key_encryption import key_prefix
+    import secrets as _secrets
+    row = (await db.execute(_select(ProviderKey).where(ProviderKey.id == secret_id, ProviderKey.workspace_id == (user.workspace_id or "")))).scalar_one_or_none()
+    if not row:
+        return {"id": secret_id, "rotated": False, "reason": "not found"}
+    new_raw = _secrets.token_urlsafe(40)
+    from backend.core.security.key_encryption import encrypt_key
+    row.key_encrypted = encrypt_key(new_raw)
+    row.key_prefix = key_prefix(new_raw)
+    await db.commit()
+    return {"id": row.id, "name": row.label or row.provider, "rotated": True, "new_prefix": row.key_prefix}
+
+
+@router.post("/security/vault/rotate-all")
+async def vault_rotate_all(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.provider import ProviderKey
+    from sqlalchemy import select as _select
+    from backend.core.security.key_encryption import encrypt_key, key_prefix
+    import secrets as _secrets
+    ws = user.workspace_id or ""
+    keys = (await db.execute(_select(ProviderKey).where(ProviderKey.workspace_id == ws))).scalars().all()
+    rotated = []
+    for k in keys:
+        new_raw = _secrets.token_urlsafe(40)
+        k.key_encrypted = encrypt_key(new_raw)
+        k.key_prefix = key_prefix(new_raw)
+        rotated.append(k.id)
+    if rotated:
+        await db.commit()
+    return {"rotated": len(rotated), "ids": rotated, "message": f"{len(rotated)} secret(s) rotated"}
+
+
 @router.delete("/security/vault/{secret_id}")
 async def vault_delete(secret_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.db.models.provider import ProviderKey

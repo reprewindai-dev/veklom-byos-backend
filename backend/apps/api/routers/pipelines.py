@@ -18,6 +18,21 @@ import uuid
 router = APIRouter(tags=["Pipelines"])
 
 
+# --- Pipeline Templates ---
+@router.get("/pipelines/templates")
+async def list_pipeline_templates(user=Depends(get_current_user)):
+    return {
+        "templates": [
+            {"id": "clinical-rag", "name": "Clinical RAG", "description": "PHI-safe RAG over clinical PDFs with redaction, chunking, and signed evidence export.", "vectorStore": "pgvector", "nodes": 9, "compliance": ["HIPAA", "SOC2"], "category": "Healthcare"},
+            {"id": "legal-redactor", "name": "Legal Redactor", "description": "Strip PII, redline contracts, and emit signed redaction reports.", "vectorStore": "pgvector", "nodes": 7, "compliance": ["GDPR", "SOC2"], "category": "Legal"},
+            {"id": "code-review", "name": "Code Review Pipeline", "description": "Security and style analysis — integrates with GitHub PRs.", "vectorStore": "qdrant", "nodes": 6, "compliance": ["SOC2"], "category": "Engineering"},
+            {"id": "batch-summarizer", "name": "Batch Summarizer", "description": "Nightly batch summarisation with Mixtral 8x22B and audit trail.", "vectorStore": "pgvector", "nodes": 5, "compliance": [], "category": "Operations"},
+            {"id": "semantic-search", "name": "Semantic Search", "description": "Multi-stage embedding, rerank, and retrieval pipeline.", "vectorStore": "qdrant", "nodes": 8, "compliance": [], "category": "Search"},
+            {"id": "pii-strip-proxy", "name": "PII Strip Proxy", "description": "Inline PII detection and redaction for all LLM traffic.", "vectorStore": "pgvector", "nodes": 4, "compliance": ["GDPR", "CCPA", "HIPAA"], "category": "Privacy"},
+        ]
+    }
+
+
 # --- Pipelines ---
 @router.get("/pipelines")
 async def list_pipelines(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):

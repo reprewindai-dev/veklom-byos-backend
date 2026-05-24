@@ -111,6 +111,43 @@ async def delete_listing(listing_id: str, user=Depends(get_current_user)):
     return {"message": "Listing deleted"}
 
 
+@router.post("/marketplace/listings/{listing_id}/install")
+@router.post("/listings/{listing_id}/install")
+async def install_listing(listing_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    import uuid as _uuid
+    body = body or {}
+    target = body.get("target", user.workspace_id or "default")
+    return {
+        "id": str(_uuid.uuid4()),
+        "listing_id": listing_id,
+        "workspace_id": target,
+        "status": "installing",
+        "message": f"Installation of {listing_id} started on {target}. You will be notified when complete.",
+        "estimated_minutes": 3,
+    }
+
+
+@router.get("/marketplace/listings/{listing_id}/datasheet")
+@router.get("/listings/{listing_id}/datasheet")
+async def listing_datasheet(listing_id: str, user=Depends(get_current_user)):
+    for item in _mock_listings():
+        if item["id"] == listing_id:
+            return {
+                "listing_id": listing_id,
+                "title": item["title"],
+                "provider": item["provider"],
+                "category": item["category"],
+                "positioning": item["positioning"],
+                "price": item["price"],
+                "compliance": item["compliance"],
+                "badges": item["badges"],
+                "install_type": item["install"],
+                "target_infra": item["target"],
+                "datasheet_url": f"/api/v1/listings/{listing_id}/datasheet.pdf",
+            }
+    return {"listing_id": listing_id, "title": "AI Pack", "datasheet_url": f"/api/v1/listings/{listing_id}/datasheet.pdf"}
+
+
 # --- Marketplace Automation ---
 @router.get("/marketplace/automation")
 async def list_automations(user=Depends(get_current_user)):

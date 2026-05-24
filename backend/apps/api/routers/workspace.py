@@ -639,16 +639,33 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     }
 
 @router.get("/observability")
-async def workspace_observability(user=Depends(get_current_user)):
+async def workspace_observability(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    workspace_id = user.workspace_id or "default"
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Get real metrics from database
+    total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
+    error_count = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start, ExecLog.status == "failed")) or 0
+    error_rate = (error_count / total_requests) if total_requests > 0 else 0.0
+    
+    avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
+    
+    # Get active routes from recent executions
+    recent_routes = await db.execute(
+        select(ExecLog.provider).distinct().where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)
+    )
+    active_routes = [row[0] for row in recent_routes.fetchall()] if recent_routes else ["playground"]
+    
     return {
         "status": "healthy",
         "region": "hetzner-fsn1",
-        "latency_ms": 42,
-        "requests_today": 342,
-        "error_rate": 0.001,
-        "policy_pass_rate": 0.998,
-        "active_routes": ["playground", "gpc", "pipelines", "billing"],
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "latency_ms": int(avg_latency) if avg_latency else 42,
+        "requests_today": total_requests,
+        "error_rate": round(error_rate, 4),
+        "policy_pass_rate": 0.998,  # TODO: calculate from audit logs
+        "active_routes": active_routes,
+        "updated_at": now.isoformat(),
         "tracing_enabled": True,
         "log_retention_days": 90,
         "metrics_retention_days": 365,

@@ -320,6 +320,14 @@ async def lockerphycer_page():
     if lockerphycer_index.exists():
         return FileResponse(str(lockerphycer_index))
     return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
+
+
+@app.get("/lockerphycer/{path:path}")
+async def lockerphycer_assets(path: str):
+    lockerphycer_file = FRONTEND_DIR / "lockerphycer" / path
+    if lockerphycer_file.exists() and lockerphycer_file.is_file():
+        return FileResponse(str(lockerphycer_file))
+    return JSONResponse(status_code=404, content={"detail": "File not found"})
 @app.get("/marketplace")
 async def marketplace_info():
     return {

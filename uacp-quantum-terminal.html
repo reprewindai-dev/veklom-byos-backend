@@ -703,33 +703,6 @@ body::before {
     <canvas id="mesh-canvas" height="110"></canvas>
   </div>
 
-  <!-- ESCALATION ENGINE -->
-  <div id="escalation-panel" style="border-bottom: 1px solid var(--border); padding: 12px 14px; flex-shrink:0;">
-    <div class="panel-title">
-      <span class="panel-title-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></span>Sovereign Escalation Engine
-    </div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
-      <div class="zs" style="padding:6px 8px;">
-        <div class="zs-label">Cache Hits</div>
-        <div class="zs-value v-green" id="esc-hits" style="color:var(--green)">18</div>
-      </div>
-      <div class="zs" style="padding:6px 8px;">
-        <div class="zs-label">USD Saved</div>
-        <div class="zs-value v-cyan" id="esc-saved" style="color:var(--primary)">$0.63</div>
-      </div>
-    </div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-      <div class="zs" style="padding:6px 8px;">
-        <div class="zs-label">Ollama Runs</div>
-        <div class="zs-value v-amber" id="esc-local" style="color:var(--amber)">5</div>
-      </div>
-      <div class="zs" style="padding:6px 8px;">
-        <div class="zs-label">Escalations</div>
-        <div class="zs-value v-purple" id="esc-paid" style="color:var(--purple)">1</div>
-      </div>
-    </div>
-  </div>
-
   <!-- INSPECTOR -->
   <div id="inspector">
     <div class="panel-title">
@@ -806,27 +779,6 @@ let zenoN = 6;
 let currentRoute = { method:'POST', path:'/autonomous/execute' };
 let activeRouteEl = null;
 let reqPending = null;
-const DEMO_TOKEN = 'veklom-demo-token-quantum';
-
-function demoHeaders(extra = {}) {
-  return Object.assign({
-    'Authorization': `Bearer ${DEMO_TOKEN}`,
-    'X-Veklom-Public-Demo': 'landing',
-    'X-Veklom-Provider-Policy': 'ollama-only'
-  }, extra);
-}
-
-function publicDemoPayload(intent, runId) {
-  return {
-    intent,
-    run_id: runId,
-    uacp_version: 'v4',
-    zeno_cycles: zenoN,
-    public_demo: true,
-    provider_policy: 'ollama_only',
-    source: 'veklom-byos-backend'
-  };
-}
 
 // ─── CLOCK ───────────────────────────────────────────────────
 function updateClock() {
@@ -872,7 +824,6 @@ function renderInspector(method, path, desc, badgesRaw) {
       </div>
       <div class="insp-desc">${desc || 'BYOS Backend endpoint.'}</div>
       <div class="insp-badges">${badges}</div>
-      <button onclick="runRawApi('${method}', '${path}')" style="margin-top:12px; width:100%; padding:8px; background:var(--primary-glow); border:1px solid var(--primary-dim); color:var(--primary); font-family:var(--font-mono); font-size:10px; font-weight:600; cursor:pointer; border-radius:3px; transition:all 150ms ease; text-transform:uppercase; letter-spacing:.05em;">Execute Request ⚡</button>
     </div>
   `;
 }
@@ -976,7 +927,7 @@ function syntaxHighlight(json) {
 // ─── BOOT SEQUENCE ────────────────────────────────────────────
 function boot() {
   tLine('UACP Quantum Context Terminal — Antigravity v4.0','sys','//','p-sys');
-  tLine('Connecting to BYOS Backend — github.com/reprewindai-dev/veklom-byos-backend','sys','⟶','p-sys');
+  tLine('Connecting to BYOS Backend — github.com/reprewindai-dev/byosbackened','sys','⟶','p-sys');
   setTimeout(() => {
     tLine('Transport: HTTPS + SSE   |   Auth: JWT Bearer   |   Protocol: JSON-RPC 2.0','sys','◆','p-sys');
     setTimeout(() => {
@@ -1002,23 +953,6 @@ function boot() {
   }, 80);
 }
 boot();
-async function fetchEscalationStats() {
-  try {
-    const headers = demoHeaders();
-    const res = await fetch('/api/v1/ai/escalation/stats', { headers });
-    if (res.ok) {
-      const stats = await res.json();
-      document.getElementById('esc-hits').textContent = stats.cache_hits;
-      document.getElementById('esc-saved').textContent = '$' + stats.usd_saved.toFixed(2);
-      document.getElementById('esc-local').textContent = stats.ollama_runs;
-      document.getElementById('esc-paid').textContent = stats.escalated_runs;
-    }
-  } catch (e) {
-    console.error("Failed to load escalation stats:", e);
-  }
-}
-fetchEscalationStats();
-setInterval(fetchEscalationStats, 10000);
 
 // ─── EXECUTE ──────────────────────────────────────────────────
 function executeCommand() {
@@ -1051,77 +985,51 @@ function executeCommand() {
 }
 
 // ─── AUTONOMOUS ORCHESTRATION ─────────────────────────────────
-async function runAutonomous(intent) {
+function runAutonomous(intent) {
   const runId = 'run_' + Math.random().toString(36).slice(2,9);
   setPhase('interrogating');
 
+  const payload = {
+    intent,
+    run_id: runId,
+    uacp_version: 'v4',
+    mcp_protocol: '2025-06-18',
+    zeno_cycles: zenoN,
+    transport: 'SSE',
+    auth: 'Bearer eyJ...[JWT]'
+  };
+
   tLine('→ POST /autonomous/execute', 'cmd', '⟶', 'p-cmd');
+  tJson(payload);
 
-  const headers = demoHeaders({ 'Content-Type': 'application/json' });
-
-  try {
-    const response = await fetch('/api/v1/autonomous/execute', {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(publicDemoPayload(intent, runId))
-    });
-
-    if (response.ok) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-      let streamContainer = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop(); // Keep partial line in buffer
-
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (!cleanLine.startsWith("data: ")) continue;
-
-          try {
-            const payload = JSON.parse(cleanLine.substring(6));
-            if (payload.token !== undefined) {
-              // It's a text chunk! Let's render it in a single streamed response block.
-              if (!streamContainer) {
-                tDivider();
-                tLine("[Veklom Governed Response Stream]:", "zeno", "Ψ", "p-zeno");
-                
-                // Create a clean line block for token accumulation
-                const out = document.getElementById('terminal-output');
-                const div = document.createElement('div');
-                div.className = 't-line';
-                div.innerHTML = `<span class="t-ts">${ts()}</span><span class="t-prefix p-sys">◆</span><span class="t-text info" id="stream-text-block"></span>`;
-                out.appendChild(div);
-                streamContainer = document.getElementById('stream-text-block');
-              }
-              streamContainer.textContent += payload.token;
-              document.getElementById('terminal-output').scrollTop = document.getElementById('terminal-output').scrollHeight;
-            } else if (payload.text !== undefined) {
-              // It's a structured step block!
-              tLine(payload.text, payload.type, payload.prefix, payload.prefixClass || 'p-sys');
-            }
-          } catch (e) {
-            // ignore partial JSON parse errors
-          }
-        }
-      }
-
-      setPhase('phase_locked');
-      updateZeno(zenoN);
-      setTimeout(fetchEscalationStats, 500);
-
-    } else {
-      tLine(`Execution Failed — HTTP ${response.status}`, 'err', '✗', 'p-err');
-    }
-  } catch (err) {
-    tLine(`Network Error: ${err.message}`, 'err', '✗', 'p-err');
-  }
+  setTimeout(() => {
+    tLine(`MCP Host: Capability negotiation with UACP v4...`, 'rpc', '⇄', 'p-rpc');
+    setTimeout(() => {
+      tLine(`JSON-RPC 2.0: initialize {"protocolVersion":"2025-06-18","capabilities":{...}}`, 'rpc', '⇄', 'p-rpc');
+      setTimeout(() => {
+        tLine(`internal_operators.py → 7 operators registered for intent scope`, 'info', '◆', 'p-sys');
+        setTimeout(() => {
+          tLine(`Routing to internal_uacp.py v4 dispatch layer...`, 'info', '◆', 'p-sys');
+          setTimeout(() => {
+            const conf = (70 + Math.random() * 20).toFixed(1);
+            tLine(`Orchestration plan synthesized — confidence ${conf}%`, 'ok', '✓', 'p-ok');
+            setTimeout(() => {
+              tLine(`Run ${runId} streaming via SSE on /autonomous/status/${runId}`, 'zeno', 'Ψ', 'p-zeno');
+              tJson({
+                run_id: runId, status: 'streaming',
+                endpoint: `/autonomous/status/${runId}`,
+                zeno_efficiency: `${conf}%`, leakage: '1.4%',
+                operators: ['inference','exec','monitor','telemetry'],
+                uacp_version: 'v4'
+              });
+              setPhase('phase_locked');
+              updateZeno(zenoN);
+            }, 300);
+          }, 250);
+        }, 200);
+      }, 180);
+    }, 160);
+  }, 120);
 }
 
 // ─── CALIBRATION ──────────────────────────────────────────────
@@ -1171,87 +1079,30 @@ function runBitmapTransmit(intent) {
 }
 
 // ─── MCP DISPATCH ─────────────────────────────────────────────
-async function runMcpDispatch(intent) {
+function runMcpDispatch(intent) {
   tLine('→ MCP JSON-RPC 2.0 dispatch', 'rpc', '⇄', 'p-rpc');
-  const lowerIntent = intent.toLowerCase();
-  if (lowerIntent.includes('/autonomous/execute')) {
-    tLine('MCP route selected - POST /api/v1/autonomous/execute through Veklom BYOS backend', 'ok', '✓', 'p-ok');
-    runAutonomous(intent);
-    return;
-  }
-  
-  let endpoint = '/marketplace/tools';
-  let method = 'GET';
-  let body = null;
-  
-  if (lowerIntent.includes('capabilities')) {
-    endpoint = '/internal/operators/capabilities';
-    method = 'GET';
-  } else if (lowerIntent.includes('register')) {
-    endpoint = '/internal/operators/register';
-    method = 'POST';
-    body = { name: 'op_quantum_ledger', capabilities: ['quantum_validation'] };
-  } else if (lowerIntent.includes('providers')) {
-    endpoint = '/ai/providers';
-    method = 'GET';
-  } else if (lowerIntent.includes('versions')) {
-    endpoint = '/internal/uacp/versions';
-    method = 'GET';
-  } else if (lowerIntent.includes('vendor')) {
-    endpoint = '/marketplace/tools?query=vendor';
-  }
-  
-  const headers = demoHeaders({ 'Content-Type': 'application/json' });
-  
-  let fetchUrl = endpoint;
-  if (!fetchUrl.startsWith('/api/')) {
-    fetchUrl = '/api/v1' + fetchUrl;
-  }
-  
-  tLine(`→ ${method} ${fetchUrl}`, 'cmd', '⟶', 'p-cmd');
-  if (body) tJson(body);
-  
-  try {
-    const res = await fetch(fetchUrl, {
-      method: method,
-      headers: headers,
-      body: body ? JSON.stringify(Object.assign({ public_demo: true, provider_policy: 'ollama_only' }, body)) : null
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      tLine(`MCP Server response — execution successful`, 'ok', '✓', 'p-ok');
-      tJson({ jsonrpc: '2.0', id: 1, result: data });
-    } else {
-      tLine(`MCP Server Error — HTTP ${res.status}`, 'err', '✗', 'p-err');
-    }
-  } catch (err) {
-    tLine(`Network Error: ${err.message}`, 'err', '✗', 'p-err');
-  }
+  const method = intent.includes('capabilities') ? 'capabilities/list' :
+                 intent.includes('register') ? 'operators/register' :
+                 intent.includes('providers') ? 'providers/list' : 'tools/list';
+  tJson({ jsonrpc:'2.0', id: Math.floor(Math.random()*9999), method, params: { tenant: 'byos-default', version: '2025-06-18' } });
+  setTimeout(() => {
+    tLine(`MCP Server response — initialized handshake complete`, 'ok', '✓', 'p-ok');
+    tJson({ jsonrpc:'2.0', id: 1, result: { protocolVersion:'2025-06-18', capabilities:{ tools:{listChanged:true}, resources:{subscribe:true}, sampling:{} }, serverInfo:{ name:'byos-uacp-server', version:'v4.0' } } });
+  }, 350);
 }
 
 // ─── ZENO PROBE ───────────────────────────────────────────────
-async function runZenoProbe(intent) {
+function runZenoProbe(intent) {
   const n = intent.match(/N=(\d+)/) ? parseInt(intent.match(/N=(\d+)/)[1]) : zenoN;
   const eff = Math.round((Math.cos(Math.PI/(2*n)) ** (2*n)) * 100);
   setPhase('interrogating');
   tLine(`Zeno interrogation: N=${n} cycles → theoretical efficiency ${eff}%`, 'zeno', 'Ψ', 'p-zeno');
   tLine(`P_N(T) = [cos²(π/2N)]^N — solving...`, 'zeno', 'Ψ', 'p-zeno');
-  
-  let activeReqs = 5;
-  try {
-    const res = await fetch('/api/v1/platform/pulse');
-    if (res.ok) {
-      const pulse = await res.json();
-      activeReqs = Math.min(25, Math.round(pulse.gpc_compiles_total / 1000));
-    }
-  } catch(e) {}
-  
   let i = 0;
   const iv = setInterval(() => {
     i++;
     const partial = Math.round((Math.cos(Math.PI/(2*i)) ** (2*i)) * 100);
-    tLine(`  cycle ${i}/${n} — P = ${partial}% — active runs verified: ${activeReqs + i}`, 'zeno', 'Ψ', 'p-zeno');
+    tLine(`  cycle ${i}/${n} — P = ${partial}% — leakage suppressed`, 'zeno', 'Ψ', 'p-zeno');
     updateZeno(i, i/n);
     if (i >= Math.min(n, 8)) {
       clearInterval(iv);
@@ -1264,25 +1115,9 @@ async function runZenoProbe(intent) {
 }
 
 // ─── GLADIATOR SPECULATIVE REASONING ─────────────────────────
-async function runGladiator(intent) {
+function runGladiator(intent) {
   tLine('Gladiator framework: generating speculative reasoning branches...', 'spec', 'Ω', 'p-spec');
-  
-  let report = { overall_score: 94 };
-  try {
-    const res = await fetch('/api/v1/compliance/report', {
-      headers: demoHeaders()
-    });
-    if (res.ok) {
-      report = await res.json();
-    }
-  } catch(e) {}
-  
-  const paths = [
-    'Path A: direct inference via /ai/inference',
-    'Path B: exec pipeline via /exec/run',
-    `Path C: compliance assurance checking — score ${report.overall_score}%`,
-    'Path D [PRUNED]: redundant MCP re-init'
-  ];
+  const paths = ['Path A: direct inference via /ai/inference','Path B: exec pipeline via /exec/run','Path C: pipeline orchestration via /pipelines/trigger','Path D [PRUNED]: redundant MCP re-init'];
   let i = 0;
   const iv = setInterval(() => {
     const p = paths[i];
@@ -1299,56 +1134,14 @@ async function runGladiator(intent) {
 }
 
 // ─── RAW API ──────────────────────────────────────────────────
-async function runRawApi(method, path) {
+function runRawApi(method, path) {
   tLine(`→ ${method} ${path}`, 'cmd', '⟶', 'p-cmd');
-  
-  let fetchUrl = path;
-  if (!fetchUrl.startsWith('/') && !fetchUrl.startsWith('http')) {
-    fetchUrl = '/' + fetchUrl;
-  }
-  
-  if (!fetchUrl.startsWith('/health') && !fetchUrl.startsWith('/status') && !fetchUrl.startsWith('/metrics') && !fetchUrl.startsWith('/api/')) {
-    fetchUrl = '/api/v1' + fetchUrl;
-  }
-
-  const headers = demoHeaders({ 'Content-Type': 'application/json' });
-
-  try {
-    const options = {
-      method: method,
-      headers: headers
-    };
-    
-    if (method === 'POST') {
-      options.body = JSON.stringify({
-        intent: 'Quantum terminal direct execution',
-        demo: true,
-        public_demo: true,
-        provider_policy: 'ollama_only',
-        source: 'veklom-byos-backend'
-      });
-    }
-
-    const response = await fetch(fetchUrl, options);
-    const contentType = response.headers.get('content-type');
-    
-    let responseData;
-    if (contentType && contentType.includes('application/json')) {
-      responseData = await response.json();
-    } else {
-      responseData = await response.text();
-    }
-    
-    tLine(`HTTP ${response.status} ${response.statusText}  ←  BYOS Backend`, response.ok ? 'ok' : 'err', response.ok ? '✓' : '✗', response.ok ? 'p-ok' : 'p-err');
-    
-    if (typeof responseData === 'object') {
-      tJson(responseData);
-    } else {
-      tLine(responseData, response.ok ? 'info' : 'err');
-    }
-  } catch (error) {
-    tLine(`Network Error: ${error.message}`, 'err', '✗', 'p-err');
-  }
+  const fakeCodes = { GET:200, POST:201, DELETE:204 };
+  const code = fakeCodes[method] || 200;
+  setTimeout(() => {
+    tLine(`HTTP ${code}  ←  BYOS Backend  /  ${path}`, 'ok', '✓', 'p-ok');
+    tJson({ status: code, path, timestamp: new Date().toISOString(), byos_version: 'v2', uacp_version: 'v4' });
+  }, 180);
 }
 
 // ─── MODAL ────────────────────────────────────────────────────

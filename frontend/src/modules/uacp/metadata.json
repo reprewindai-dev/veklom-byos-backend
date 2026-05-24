@@ -1,0 +1,6 @@
+{
+  "name": "UACP Sovereign Governance Portal",
+  "description": "Unified Access Control Platform (UACP) v6 with Bürokratt-style sovereign governance layer, 5 integrity gates security pipeline, and cryptographic Merkle-chained transaction ledger.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

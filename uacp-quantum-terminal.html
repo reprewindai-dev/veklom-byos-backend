@@ -1173,30 +1173,35 @@ function runBitmapTransmit(intent) {
 // ─── MCP DISPATCH ─────────────────────────────────────────────
 async function runMcpDispatch(intent) {
   tLine('→ MCP JSON-RPC 2.0 dispatch', 'rpc', '⇄', 'p-rpc');
+  const lowerIntent = intent.toLowerCase();
+  if (lowerIntent.includes('/autonomous/execute')) {
+    tLine('MCP route selected - POST /api/v1/autonomous/execute through Veklom BYOS backend', 'ok', '✓', 'p-ok');
+    runAutonomous(intent);
+    return;
+  }
   
   let endpoint = '/marketplace/tools';
   let method = 'GET';
   let body = null;
   
-  if (intent.includes('capabilities')) {
+  if (lowerIntent.includes('capabilities')) {
     endpoint = '/internal/operators/capabilities';
     method = 'GET';
-  } else if (intent.includes('register')) {
+  } else if (lowerIntent.includes('register')) {
     endpoint = '/internal/operators/register';
     method = 'POST';
     body = { name: 'op_quantum_ledger', capabilities: ['quantum_validation'] };
-  } else if (intent.includes('providers')) {
+  } else if (lowerIntent.includes('providers')) {
     endpoint = '/ai/providers';
     method = 'GET';
-  } else if (intent.includes('versions')) {
+  } else if (lowerIntent.includes('versions')) {
     endpoint = '/internal/uacp/versions';
     method = 'GET';
+  } else if (lowerIntent.includes('vendor')) {
+    endpoint = '/marketplace/tools?query=vendor';
   }
   
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer veklom-demo-token-quantum'
-  };
+  const headers = demoHeaders({ 'Content-Type': 'application/json' });
   
   let fetchUrl = endpoint;
   if (!fetchUrl.startsWith('/api/')) {
@@ -1210,7 +1215,7 @@ async function runMcpDispatch(intent) {
     const res = await fetch(fetchUrl, {
       method: method,
       headers: headers,
-      body: body ? JSON.stringify(body) : null
+      body: body ? JSON.stringify(Object.assign({ public_demo: true, provider_policy: 'ollama_only' }, body)) : null
     });
     
     if (res.ok) {
@@ -1265,7 +1270,7 @@ async function runGladiator(intent) {
   let report = { overall_score: 94 };
   try {
     const res = await fetch('/api/v1/compliance/report', {
-      headers: { 'Authorization': 'Bearer veklom-demo-token-quantum' }
+      headers: demoHeaders()
     });
     if (res.ok) {
       report = await res.json();
@@ -1306,10 +1311,7 @@ async function runRawApi(method, path) {
     fetchUrl = '/api/v1' + fetchUrl;
   }
 
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer veklom-demo-token-quantum'
-  };
+  const headers = demoHeaders({ 'Content-Type': 'application/json' });
 
   try {
     const options = {
@@ -1320,7 +1322,10 @@ async function runRawApi(method, path) {
     if (method === 'POST') {
       options.body = JSON.stringify({
         intent: 'Quantum terminal direct execution',
-        demo: true
+        demo: true,
+        public_demo: true,
+        provider_policy: 'ollama_only',
+        source: 'veklom-byos-backend'
       });
     }
 

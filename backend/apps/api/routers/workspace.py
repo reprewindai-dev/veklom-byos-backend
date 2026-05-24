@@ -227,6 +227,12 @@ async def workspace_observability(user=Depends(get_current_user)):
         "policy_pass_rate": 0.998,
         "active_routes": ["playground", "gpc", "pipelines", "billing"],
         "updated_at": datetime.now(timezone.utc).isoformat(),
+        "tracing_enabled": True,
+        "log_retention_days": 90,
+        "metrics_retention_days": 365,
+        "sampling_rate": 1.0,
+        "exporters": ["internal", "prometheus"],
+        "alert_channels": ["email"],
     }
 
 
@@ -426,16 +432,6 @@ async def cost_budget(user=Depends(get_current_user)):
     }
 
 
-@router.get("/observability")
-async def workspace_observability(user=Depends(get_current_user)):
-    return {
-        "tracing_enabled": True,
-        "log_retention_days": 90,
-        "metrics_retention_days": 365,
-        "sampling_rate": 1.0,
-        "exporters": ["internal", "prometheus"],
-        "alert_channels": ["email"],
-    }
 
 
 @router.patch("/observability")

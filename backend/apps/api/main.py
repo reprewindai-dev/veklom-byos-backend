@@ -188,7 +188,6 @@ LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" 
 GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "gpc"
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
 COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
-LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
 
 
@@ -204,8 +203,6 @@ def _mount_static():
             StaticFiles(directory=str(COMMAND_CENTER_DIR), html=True),
             name="command-center",
         )
-    if LOCKERPHYCER_DIR.exists():
-        app.mount("/lockerphycer", StaticFiles(directory=str(LOCKERPHYCER_DIR), html=True), name="lockerphycer")
     if GPC_DIR.exists():
         app.mount("/gpc-engine", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc-engine")
         app.mount("/gpc", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc")
@@ -315,6 +312,12 @@ async def terminal_page():
     if terminal_path.exists():
         return FileResponse(str(terminal_path))
     return JSONResponse(status_code=404, content={"detail": "Quantum Terminal file not found"})
+
+
+@app.get("/lockerphycer")
+async def lockerphycer_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="https://lockerphycer-oekpbtuf6-dksummers-projects.vercel.app/", status_code=302)
 @app.get("/marketplace")
 async def marketplace_info():
     return {

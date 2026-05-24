@@ -50,21 +50,6 @@ def _prompt_dict(p: PlaygroundPrompt) -> dict:
     }
 
 
-def _default_sessions() -> list:
-    return [
-        {"id": "demo-session-1", "name": "PHI redaction test", "model": "qwen2.5:3b", "mode": "chat", "messages": [], "tools": [], "response_format": "text", "policy": "outbound.public.v3", "tags": ["demo"], "created_at": None, "updated_at": None},
-        {"id": "demo-session-2", "name": "SOC2 evidence run", "model": "qwen2.5:3b", "mode": "chat", "messages": [], "tools": [], "response_format": "json", "policy": "outbound.public.v3", "tags": ["demo"], "created_at": None, "updated_at": None},
-    ]
-
-
-def _default_prompts() -> list:
-    return [
-        {"id": "soc2.evidence.collect", "name": "SOC2 evidence collect", "slug": "soc2.evidence.collect", "version": "v3", "body": "Collect and format SOC2 control evidence from the following context. Return structured JSON with control_id, evidence_type, status, and findings.", "system_prompt": "You are a compliance automation agent.", "response_format": "json", "policy": "outbound.public.v3", "tools": ["compliance.fetch"], "tags": ["soc2", "compliance"], "created_at": None},
-        {"id": "phi.summarize.json", "name": "PHI-safe summary", "slug": "phi.summarize.json", "version": "v7", "body": "Summarize the following medical text. Redact all PHI before returning. Format as JSON with fields: summary, redacted_count, risk_level.", "system_prompt": "You are a HIPAA-compliant medical summarization assistant.", "response_format": "json", "policy": "hipaa.strict.v1", "tools": ["compliance.fetch", "vault.read"], "tags": ["phi", "hipaa"], "created_at": None},
-        {"id": "rag.ingest.pipeline", "name": "RAG ingest pipeline", "slug": "rag.ingest.pipeline", "version": "v2", "body": "Ingest the following document chunks into the retrieval pipeline. Return chunk_count, embedding_model, and index_name.", "system_prompt": "You are a RAG pipeline orchestration agent.", "response_format": "json", "policy": "outbound.public.v3", "tools": ["vault.read"], "tags": ["rag", "ingest"], "created_at": None},
-    ]
-
-
 def _available_tools() -> list:
     return [
         {"id": "compliance.fetch", "name": "compliance.fetch", "status": "enabled", "description": "Fetch compliance regulations and control requirements", "schema": '{"type":"object","properties":{"regulation":{"type":"string"},"control_id":{"type":"string"}}}', "scope": "compliance:read", "mockable": True},
@@ -89,8 +74,6 @@ async def list_sessions(user=Depends(get_current_user), db: AsyncSession = Depen
         .limit(50)
     )
     sessions = result.scalars().all()
-    if not sessions:
-        return _default_sessions()
     return [_session_dict(s) for s in sessions]
 
 
@@ -247,8 +230,6 @@ async def list_prompts(user=Depends(get_current_user), db: AsyncSession = Depend
         .limit(100)
     )
     prompts = result.scalars().all()
-    if not prompts:
-        return _default_prompts()
     return [_prompt_dict(p) for p in prompts]
 
 

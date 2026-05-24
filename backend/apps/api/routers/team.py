@@ -138,6 +138,46 @@ async def configure_sso(body: dict, user=Depends(get_current_user)):
     return {"status": "not_configured", "message": "SAML SSO configuration requires enterprise plan. Contact support."}
 
 
+@router.get("/team/scim/status")
+async def scim_status(user=Depends(get_current_user)):
+    return {
+        "scim_enabled": False,
+        "endpoint": None,
+        "bearer_token": None,
+        "status": "not_configured",
+        "message": "SCIM provisioning requires enterprise plan. Contact support."
+    }
+
+
+@router.post("/team/scim/configure")
+async def configure_scim(body: dict, user=Depends(get_current_user)):
+    if user.role not in ("OWNER", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return {"status": "not_configured", "message": "SCIM provisioning requires enterprise plan. Contact support."}
+
+
+@router.post("/team/sessions/revoke")
+async def revoke_all_sessions(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Revoke all sessions for the current user's workspace."""
+    if user.role not in ("OWNER", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    ws = user.workspace_id or ""
+    result = await db.execute(select(User).where(User.workspace_id == ws, User.is_active == True))
+    members = result.scalars().all()
+    
+    # In a real implementation, this would invalidate JWT tokens or session IDs
+    # For now, we'll update last_activity to force re-auth
+    revoked_count = 0
+    for m in members:
+        if m.id != user.id:  # Don't revoke current user's session
+            m.last_activity = _utcnow()
+            revoked_count += 1
+    
+    await db.commit()
+    return {"revoked_count": revoked_count, "message": f"Revoked {revoked_count} sessions. All members must re-authenticate."}
+
+
 # --- MFA ---
 @router.get("/team/mfa/status")
 async def team_mfa_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):

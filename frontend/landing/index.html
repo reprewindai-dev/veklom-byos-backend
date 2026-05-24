@@ -576,28 +576,32 @@
   <div class="container">
     <div class="status-preview-heading">
       <span class="label">Sovereign Status</span>
-      <h2>Operational health, proved in public.</h2>
-      <p class="subtitle">A Veklom status surface for runtime uptime, governance services, evidence capture, and routing health.</p>
+      <h2>All services are online.</h2>
+      <p class="subtitle">Public runtime status for Veklom-governed products, APIs, and execution services.</p>
     </div>
-    <div class="status-preview-shell brand-watermarked-panel">
-      <div class="status-preview-main">
-        <div class="status-seal" aria-hidden="true"></div>
+    <div class="status-preview-card brand-watermarked-panel">
+      <div class="status-monitor-head">
         <div>
-          <div class="status-eyebrow">Live boundary state</div>
-          <h3 id="uptime-overall-title">All governed runtime systems operational</h3>
-          <p id="uptime-overall-copy">API, GPC, vault, evidence, routing, and playground checks are passing.</p>
+          <h3>Veklom</h3>
+          <p>System status</p>
         </div>
-        <a href="/uptime" class="btn btn-primary btn-sm">Open status page</a>
+        <a href="/uptime" class="status-state-pill">
+          <span class="status-dot"></span>
+          <strong>Operational</strong>
+          <span class="status-chevron">v</span>
+        </a>
       </div>
-      <div class="status-preview-metrics">
-        <div><span id="uptime-percent">99.99%</span><small>90-day uptime</small></div>
-        <div><span id="uptime-latency">20ms</span><small>avg response</small></div>
-        <div><span id="uptime-incidents">0</span><small>active incidents</small></div>
+      <div class="status-preview-meta">
+        <span class="status-eyebrow">Live boundary state</span>
+        <strong id="uptime-overall-title">All governed runtime systems operational</strong>
+        <span id="uptime-overall-copy">6 runtime boundaries reporting. Last sync moments ago.</span>
       </div>
-      <div class="status-symbol-row" id="uptime-dashboard" aria-label="Live Veklom service status">
-        <!-- populated by JS -->
+      <div class="status-boundary-metrics status-boundary-metrics-preview" aria-label="Uptime summary">
+        <div><strong id="uptime-percent">99.99%</strong><span>90-day uptime</span></div>
+        <div><strong id="uptime-latency">20ms</strong><span>avg response</span></div>
+        <div><strong id="uptime-incidents">0</strong><span>active incidents</span></div>
       </div>
-      <div class="status-ledger-strip" id="uptime-ledger" aria-label="30 day uptime ledger">
+      <div class="status-service-list status-service-list-compact" id="uptime-dashboard" aria-label="Live Veklom service status">
         <!-- populated by JS -->
       </div>
     </div>

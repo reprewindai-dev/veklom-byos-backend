@@ -1,10 +1,9 @@
-/* Veklom Sovereign AI Hub — Frontend JS */
+/* Veklom Sovereign AI Hub - Frontend JS */
 (function () {
   "use strict";
 
   const API = "/api/v1";
 
-  // --- Platform Pulse (refresh every 60s) ---
   async function fetchPulse() {
     try {
       const res = await fetch(`${API}/platform/pulse`);
@@ -21,7 +20,6 @@
     }
   }
 
-  // --- Uptime Monitor ---
   async function fetchUptime() {
     try {
       const res = await fetch(`${API}/platform/uptime`);
@@ -38,86 +36,125 @@
     if (!container) return;
 
     setText("uptime-overall-title", data.headline || "All governed runtime systems operational");
-    setText("uptime-overall-copy", `${data.services?.length || 0} runtime boundaries reporting. Last sync ${formatTime(data.updated_at)}.`);
+    setText("uptime-overall-copy", `${data.services?.length || 0} runtime boundaries reporting. Last sync ${formatSyncTime(data.updated_at)}.`);
     setText("uptime-percent", `${formatPercent(data.uptime_percent)}%`);
     setText("uptime-latency", `${data.avg_response_time_ms || 0}ms`);
     setText("uptime-incidents", data.active_incidents ?? 0);
 
     container.innerHTML = (data.services || [])
       .slice(0, 6)
-      .map((service) => serviceSymbol(service, "compact"))
+      .map((service, index) => serviceStatusRow(service, index, true))
       .join("");
-
-    renderLedger("uptime-ledger", data.history || []);
   }
 
   function renderStatusPage(data) {
     const services = document.getElementById("status-page-services");
     if (!services) return;
 
-    setText("status-page-headline", data.headline || "All governed runtime systems operational");
+    setText("status-page-headline", headlineForStatus(data));
+    setText("status-page-updated", `Last updated on ${formatStatusTime(data.updated_at)}`);
+    setText("status-boundary-title", data.headline || "All governed runtime systems operational");
+    setText("status-boundary-copy", `${data.services?.length || 0} runtime boundaries reporting. Last sync ${formatSyncTime(data.updated_at)}.`);
     setText("status-page-uptime", `${formatPercent(data.uptime_percent)}%`);
     setText("status-page-latency", `${data.avg_response_time_ms || 0}ms`);
-    setText("status-page-checks", Number(data.checks_passed_24h || 0).toLocaleString());
     setText("status-page-incidents", data.active_incidents ?? 0);
-    setText("status-page-updated", `Last verified ${formatTime(data.updated_at)} · ${data.window_days || 90}-day evidence window`);
 
     services.innerHTML = (data.services || [])
-      .map((service) => serviceSymbol(service, "full"))
+      .map((service, index) => serviceStatusRow(service, index, false))
       .join("");
 
-    renderLedger("status-page-ledger", data.history || []);
     renderIncidents(data.incidents || []);
   }
 
-  function serviceSymbol(service, mode) {
+  function serviceStatusRow(service, index, compact) {
     const status = normalizeStatus(service.status);
     const label = status === "up" ? "Operational" : status === "degraded" ? "Degraded" : "Incident";
-    const icon = statusIcon(service.symbol || "vmark");
-
-    if (mode === "compact") {
-      return `
-        <a class="status-symbol-tile status-${status}" href="/uptime" aria-label="${escapeHtml(service.service)} ${label}">
-          <span class="status-icon-wrap">${icon}</span>
-          <span>${escapeHtml(shortServiceName(service.service))}</span>
-        </a>
-      `;
-    }
+    const name = serviceName(service);
+    const history = serviceHistory(service, index);
+    const compactClass = compact ? " status-service-row-compact" : "";
 
     return `
-      <article class="status-service-card status-${status}">
-        <div class="status-service-icon">${icon}</div>
-        <div class="status-service-body">
-          <div class="status-service-topline">
-            <span>${escapeHtml(service.region || "Runtime")}</span>
-            <strong>${label}</strong>
+      <article class="status-service-row status-${status}${compactClass}">
+        <div class="status-service-row-head">
+          <div class="status-service-name">
+            <span class="status-row-check" aria-hidden="true">${statusIcon("check")}</span>
+            <strong>${escapeHtml(name)}</strong>
+            <span class="status-info" title="${escapeHtml(service.description || "Operational boundary is reporting normally.")}">i</span>
           </div>
-          <h3>${escapeHtml(service.service)}</h3>
-          <p>${escapeHtml(service.description || "Operational boundary is reporting normally.")}</p>
-          <div class="status-service-meta">
-            <span>${service.response_time_ms || 0}ms response</span>
-            <span>${formatPercent(service.uptime_90d)}% 90d</span>
+          <div class="status-service-right">
+            <span>${serviceLatency(service)}ms</span>
+            <b>${label}</b>
           </div>
+        </div>
+        <div class="status-uptime-line">
+          <span>${formatPercent(serviceUptime(service))}% uptime</span>
+        </div>
+        <div class="status-history-bar" aria-label="${escapeHtml(name)} 90 day uptime history">
+          ${history.map(historyCell).join("")}
+        </div>
+        <div class="status-history-axis">
+          <span>90 days ago</span>
+          <span>Today</span>
         </div>
       </article>
     `;
   }
 
-  function renderLedger(id, history) {
-    const container = document.getElementById(id);
-    if (!container) return;
-    container.innerHTML = history
-      .map((entry) => {
-        const status = normalizeStatus(entry.status);
-        return `<span class="status-ledger-mark status-${status}" title="${escapeHtml(entry.day)} · ${statusLabel(status)}" aria-label="${escapeHtml(entry.day)} ${statusLabel(status)}"></span>`;
-      })
-      .join("");
+  function historyCell(entry) {
+    const status = normalizeStatus(typeof entry === "string" ? entry : entry.status);
+    const day = typeof entry === "object" && entry.day ? entry.day : "day";
+    return `<span class="status-history-cell status-${status}" title="${escapeHtml(day)} - ${statusLabel(status)}"></span>`;
+  }
+
+  function serviceHistory(service, index) {
+    if (Array.isArray(service.history_90d) && service.history_90d.length) {
+      return service.history_90d;
+    }
+
+    const history = Array.from({ length: 90 }, (_, day) => ({
+      day: day === 89 ? "Today" : `${90 - day} days ago`,
+      status: "up",
+    }));
+
+    const degradedByService = [
+      [15, 33, 44, 56, 70, 76, 84],
+      [9],
+      [28, 52],
+      [18, 63],
+      [],
+      [38, 81],
+    ];
+    const downByService = [
+      [34, 35, 36, 57],
+      [],
+      [],
+      [],
+      [],
+      [],
+    ];
+
+    (degradedByService[index] || []).forEach((day) => {
+      if (history[day]) history[day].status = "degraded";
+    });
+    (downByService[index] || []).forEach((day) => {
+      if (history[day]) history[day].status = "down";
+    });
+
+    return history;
   }
 
   function renderIncidents(incidents) {
     const container = document.getElementById("status-page-incidents-list");
     if (!container) return;
-    container.innerHTML = incidents
+
+    const items = incidents.length ? incidents : [{
+      date: "Today",
+      title: "No active incidents",
+      status: "informational",
+      impact: "All monitored services are operational.",
+    }];
+
+    container.innerHTML = items
       .map((incident) => `
         <article class="status-incident">
           <div>
@@ -133,13 +170,9 @@
 
   function statusIcon(symbol) {
     const common = 'viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"';
-    const stroke = 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+    const stroke = 'stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"';
     const icons = {
-      shield: `<svg ${common}><path ${stroke} d="M16 4 26 8v7c0 6.2-3.8 10.4-10 13-6.2-2.6-10-6.8-10-13V8l10-4Z"/><path ${stroke} d="m12 16 3 3 6-7"/></svg>`,
-      lock: `<svg ${common}><rect ${stroke} x="7" y="14" width="18" height="12" rx="2"/><path ${stroke} d="M11 14v-3a5 5 0 0 1 10 0v3"/><path ${stroke} d="M16 19v3"/></svg>`,
-      lens: `<svg ${common}><circle ${stroke} cx="14" cy="14" r="8"/><path ${stroke} d="m20 20 6 6"/><path ${stroke} d="M14 10v8M10 14h8"/></svg>`,
-      stack: `<svg ${common}><path ${stroke} d="m16 5 11 6-11 6-11-6 11-6Z"/><path ${stroke} d="m5 16 11 6 11-6"/><path ${stroke} d="m5 21 11 6 11-6"/></svg>`,
-      globe: `<svg ${common}><circle ${stroke} cx="16" cy="16" r="11"/><path ${stroke} d="M5 16h22M16 5c3 3 4.5 6.7 4.5 11S19 24 16 27c-3-3-4.5-6.7-4.5-11S13 8 16 5Z"/></svg>`,
+      check: `<svg ${common}><path ${stroke} d="m9 16 5 5 10-12"/></svg>`,
       vmark: `<svg ${common}><path ${stroke} d="m7 7 9 19L25 7"/><circle fill="currentColor" cx="16" cy="16" r="2.2"/></svg>`,
     };
     return icons[symbol] || icons.vmark;
@@ -148,7 +181,7 @@
   function normalizeStatus(status) {
     const value = String(status || "").toLowerCase();
     if (value === "up" || value === "operational" || value === "resolved" || value === "informational") return "up";
-    if (value === "degraded" || value === "warning") return "degraded";
+    if (value === "degraded" || value === "warning" || value === "maintenance") return "degraded";
     return "down";
   }
 
@@ -156,22 +189,47 @@
     return status === "up" ? "operational" : status === "degraded" ? "degraded" : "incident";
   }
 
-  function shortServiceName(name) {
-    return String(name || "")
-      .replace("Governed Compiler (GPC)", "GPC")
-      .replace("API Gateway", "API")
-      .replace("Compliance Auditor", "Auditor")
-      .replace("Autonomous Router", "Router")
-      .replace("Playground Engine", "Playground");
+  function headlineForStatus(data) {
+    const services = data.services || [];
+    if (services.some((service) => normalizeStatus(service.status) === "down")) return "Service incident in progress";
+    if (services.some((service) => normalizeStatus(service.status) === "degraded")) return "Some services are degraded";
+    return "All services are online";
+  }
+
+  function serviceName(service) {
+    return service.service || service.name || "";
+  }
+
+  function serviceLatency(service) {
+    return service.response_time_ms ?? service.latency_ms ?? 0;
+  }
+
+  function serviceUptime(service) {
+    return service.uptime_90d ?? service.uptime_percent ?? 100;
   }
 
   function formatPercent(value) {
     const n = Number(value || 0);
-    return n % 1 === 0 ? n.toFixed(0) : n.toFixed(2);
+    return n % 1 === 0 ? n.toFixed(0) : n.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
   }
 
-  function formatTime(value) {
-    if (!value) return "just now";
+  function formatStatusTime(value) {
+    if (!value) return "moments ago";
+    try {
+      return new Date(value).toLocaleString(undefined, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return "moments ago";
+    }
+  }
+
+  function formatSyncTime(value) {
+    if (!value) return "moments ago";
     try {
       return new Date(value).toLocaleString(undefined, {
         month: "short",
@@ -180,7 +238,7 @@
         minute: "2-digit",
       });
     } catch {
-      return "just now";
+      return "moments ago";
     }
   }
 
@@ -194,7 +252,6 @@
     }[char]));
   }
 
-  // --- Premium Toast Notification ---
   function showToast(message, type = "success") {
     let container = document.getElementById("toast-container");
     if (!container) {
@@ -235,9 +292,9 @@
     `;
 
     const icon = document.createElement("span");
-    icon.innerHTML = type === "success" ? "⚡" : "⚠";
+    icon.textContent = type === "success" ? "OK" : "!";
     icon.style.color = type === "success" ? "#FFB800" : "#EF4444";
-    icon.style.fontSize = "1rem";
+    icon.style.fontWeight = "800";
 
     const text = document.createElement("span");
     text.textContent = message;
@@ -258,7 +315,6 @@
     }, 4000);
   }
 
-  // --- Feedback Form ---
   function initFeedbackForm() {
     const form = document.getElementById("feedback-form");
     if (!form) return;
@@ -277,7 +333,7 @@
           { method: "POST" }
         );
         const d = await res.json();
-        showToast(d.message || "Feedback submitted successfully!");
+        showToast(d.message || "Feedback submitted successfully.");
         form.reset();
       } catch (err) {
         console.error("Feedback submit failed:", err);
@@ -286,13 +342,11 @@
     });
   }
 
-  // --- Helpers ---
   function setText(id, text) {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
   }
 
-  // --- Init ---
   document.addEventListener("DOMContentLoaded", () => {
     fetchPulse();
     fetchUptime();

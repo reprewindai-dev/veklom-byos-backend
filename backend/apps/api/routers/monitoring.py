@@ -84,6 +84,16 @@ async def platform_pulse():
 
 
 # --- Uptime Monitor ---
+def _status_history_90d(degraded_days=None, down_days=None):
+    degraded = set(degraded_days or [])
+    down = set(down_days or [])
+    history = []
+    for day in range(90):
+        status = "down" if day in down else "degraded" if day in degraded else "up"
+        history.append({"day": "Today" if day == 89 else f"{90 - day} days ago", "status": status})
+    return history
+
+
 @router.get("/platform/uptime")
 async def platform_uptime():
     now = datetime.now(timezone.utc).isoformat()
@@ -106,6 +116,10 @@ async def platform_uptime():
                 "region": "Evaluation Plane",
                 "symbol": "shield",
                 "description": "Safe agent tests, repository review sessions, and controlled tool trials.",
+                "history_90d": _status_history_90d(
+                    degraded_days=[15, 33, 44, 56, 70, 76, 84],
+                    down_days=[34, 35, 36, 57],
+                ),
             },
             {
                 "service": "Governed Compiler (GPC)",
@@ -116,6 +130,7 @@ async def platform_uptime():
                 "region": "Runtime Core",
                 "symbol": "stack",
                 "description": "Policy-aware planning, execution compile checks, and deterministic handoff.",
+                "history_90d": _status_history_90d(degraded_days=[9]),
             },
             {
                 "service": "API Gateway",
@@ -126,6 +141,7 @@ async def platform_uptime():
                 "region": "Hetzner EU",
                 "symbol": "globe",
                 "description": "Public API ingress, auth routing, and workspace request boundary.",
+                "history_90d": _status_history_90d(degraded_days=[28, 52]),
             },
             {
                 "service": "Policy Vault",
@@ -136,6 +152,7 @@ async def platform_uptime():
                 "region": "Encrypted Boundary",
                 "symbol": "lock",
                 "description": "Key custody, rule evaluation, tenant isolation, and guarded secret access.",
+                "history_90d": _status_history_90d(degraded_days=[18, 63]),
             },
             {
                 "service": "Compliance Auditor",
@@ -146,6 +163,7 @@ async def platform_uptime():
                 "region": "Audit Plane",
                 "symbol": "lens",
                 "description": "Signed event trails, replay records, and compliance export pipeline.",
+                "history_90d": _status_history_90d(),
             },
             {
                 "service": "Autonomous Router",
@@ -156,6 +174,7 @@ async def platform_uptime():
                 "region": "Routing Mesh",
                 "symbol": "vmark",
                 "description": "Cost, latency, policy, and capability routing for governed workloads.",
+                "history_90d": _status_history_90d(degraded_days=[38, 81]),
             },
         ],
         "history": [

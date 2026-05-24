@@ -292,15 +292,14 @@ async def demo_pipeline_stream():
 
 # --- Deployments ---
 @router.get("/deployments")
-async def list_deployments(user=Depends(get_current_user)):
-    return [
-        {"id": "d_chat_main", "name": "chat-prod", "type": "chat", "endpoint": "https://api.veklom.com/v1/chat/completions", "auth": "api-key", "model": "veklom-llama3-70b", "region": "fsn1-hetz", "rateLimit": "240 rpm / 1.2M tpm", "status": "live", "rps": 38.4, "errorRate": 0.002},
-        {"id": "d_embed_rag", "name": "embed-rag", "type": "embedding", "endpoint": "https://api.veklom.com/v1/embeddings", "auth": "api-key", "model": "veklom-bge-large", "region": "fra1-hetz", "rateLimit": "600 rpm / 4M tpm", "status": "live", "rps": 112.7, "errorRate": 0},
-        {"id": "d_code_assist", "name": "code-assist", "type": "completion", "endpoint": "https://api.veklom.com/v1/completions", "auth": "jwt", "model": "veklom-deepseek-v3", "region": "fsn1-hetz", "rateLimit": "120 rpm", "status": "live", "rps": 6.1, "errorRate": 0.001},
-        {"id": "d_intake_pipe", "name": "patient-intake-pipeline", "type": "pipeline", "endpoint": "https://api.veklom.com/p/patient-intake", "auth": "api-key", "model": "veklom-llama3-70b", "region": "fsn1-hetz", "rateLimit": "60 rpm", "status": "live", "rps": 1.4, "errorRate": 0},
-        {"id": "d_batch_ingest", "name": "nightly-batch-summarize", "type": "batch", "endpoint": "https://api.veklom.com/v1/batches", "auth": "api-key", "model": "veklom-mixtral-8x22", "region": "ash-aws", "rateLimit": "burst 4\u00d7 nightly", "status": "paused", "rps": 0, "errorRate": 0},
-        {"id": "d_audit_classifier", "name": "audit-pii-classifier", "type": "chat", "endpoint": "https://api.veklom.com/v1/chat/completions", "auth": "ip-allowlist", "model": "veklom-qwen2-72b", "region": "fsn1-hetz", "rateLimit": "60 rpm", "status": "draft", "rps": 0, "errorRate": 0},
-    ]
+async def list_deployments(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """List all deployments for the workspace."""
+    result = await db.execute(
+        select(Deployment).where(Deployment.workspace_id == (user.workspace_id or "default")).order_by(Deployment.created_at.desc())
+    )
+    deployments = result.scalars().all()
+
+    return [_dep_dict(d) for d in deployments]
 
 
 @router.post("/deployments")
@@ -346,6 +345,94 @@ async def delete_deployment(deployment_id: str, user=Depends(get_current_user), 
         await db.delete(dep)
         await db.commit()
     return {"deleted": True, "id": deployment_id}
+
+
+@router.post("/deployments/{deployment_id}/pause")
+async def pause_deployment(deployment_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Pause a deployment."""
+    result = await db.execute(select(Deployment).where(Deployment.id == deployment_id, Deployment.workspace_id == (user.workspace_id or "default")))
+    dep = result.scalar_one_or_none()
+    if dep:
+        dep.status = "paused"
+        dep.health_status = "stopped"
+        await db.commit()
+    return {"id": deployment_id, "status": "paused"}
+
+
+@router.post("/deployments/{deployment_id}/resume")
+async def resume_deployment(deployment_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Resume a paused deployment."""
+    result = await db.execute(select(Deployment).where(Deployment.id == deployment_id, Deployment.workspace_id == (user.workspace_id or "default")))
+    dep = result.scalar_one_or_none()
+    if dep:
+        dep.status = "live"
+        dep.health_status = "healthy"
+        await db.commit()
+    return {"id": deployment_id, "status": "live"}
+
+
+@router.get("/deployments/{deployment_id}/webhooks")
+async def list_deployment_webhooks(deployment_id: str, user=Depends(get_current_user)):
+    """List webhooks for a deployment (placeholder)."""
+    return {"deployment_id": deployment_id, "webhooks": []}
+
+
+@router.post("/deployments/{deployment_id}/webhooks")
+async def create_deployment_webhook(deployment_id: str, body: dict, user=Depends(get_current_user)):
+    """Create a webhook for a deployment (placeholder)."""
+    return {"deployment_id": deployment_id, "webhook_id": "wh_" + deployment_id[:8], "url": body.get("url"), "events": body.get("events", [])}
+
+
+@router.get("/deployments/{deployment_id}/code")
+async def get_deployment_code(deployment_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get code snippets for a deployment."""
+    result = await db.execute(select(Deployment).where(Deployment.id == deployment_id, Deployment.workspace_id == (user.workspace_id or "default")))
+    dep = result.scalar_one_or_none()
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+
+    endpoint = dep.endpoint_url or f"https://api.veklom.com/v1/deployments/{deployment_id}"
+    cfg = dep.config_json or {}
+    model = cfg.get("model", "llama3.1")
+
+    return {
+        "deployment_id": deployment_id,
+        "endpoint": endpoint,
+        "snippets": {
+            "curl": f"""curl -X POST {endpoint} \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -d '{{
+    "model": "{model}",
+    "messages": [{{"role": "user", "content": "Hello"}}]
+  }}'""",
+            "python": f"""import requests
+
+response = requests.post(
+    "{endpoint}",
+    headers={{
+        "Content-Type": "application/json",
+        "Authorization": "Bearer YOUR_API_KEY"
+    }},
+    json={{
+        "model": "{model}",
+        "messages": [{{"role": "user", "content": "Hello"}}]
+    }}
+)
+print(response.json())""",
+            "javascript": f"""fetch("{endpoint}", {{
+  method: "POST",
+  headers: {{
+    "Content-Type": "application/json",
+    "Authorization": "Bearer YOUR_API_KEY"
+  }},
+  body: JSON.stringify({{
+    model: "{model}",
+    messages: [{{role: "user", content: "Hello"}}]
+  }})
+}}).then(r => r.json()).then(console.log)"""
+        }
+    }
 
 
 # --- Edge / Canary ---

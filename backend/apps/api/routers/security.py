@@ -129,6 +129,64 @@ async def locker_alerts_summary(user=Depends(get_current_user)):
     return {"total": 0, "critical": 0, "warning": 0, "info": 0}
 
 
+# --- Vault (AES-256 secrets store) ---
+@router.get("/security/vault")
+async def vault_list(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    workspace_id = user.workspace_id or ""
+    from backend.db.models.provider import ProviderKey
+    from sqlalchemy import select as _select
+    keys = (await db.execute(_select(ProviderKey).where(ProviderKey.workspace_id == workspace_id))).scalars().all()
+    return {
+        "workspace_id": workspace_id,
+        "encryption": "AES-256-GCM",
+        "status": "active",
+        "secrets_count": len(keys),
+        "secrets": [
+            {
+                "id": k.id,
+                "name": k.label or k.provider,
+                "type": "provider_key",
+                "provider": k.provider,
+                "key_prefix": k.key_prefix,
+                "is_active": k.is_active,
+                "created_at": k.created_at.isoformat() if k.created_at else None,
+            }
+            for k in keys
+        ],
+    }
+
+
+@router.post("/security/vault")
+async def vault_add(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.provider import ProviderKey
+    from backend.core.security.key_encryption import encrypt_key, key_prefix
+    workspace_id = user.workspace_id or ""
+    raw = (body.get("value") or body.get("key") or "").strip()
+    if not raw:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=400, detail="value is required")
+    k = ProviderKey(
+        workspace_id=workspace_id, user_id=user.id,
+        provider=body.get("type", "custom"),
+        label=body.get("name", "Vault secret"),
+        key_encrypted=encrypt_key(raw), key_prefix=key_prefix(raw),
+    )
+    db.add(k); await db.commit(); await db.refresh(k)
+    return {"id": k.id, "name": k.label, "type": k.provider, "key_prefix": k.key_prefix, "created_at": k.created_at.isoformat() if k.created_at else None}
+
+
+@router.delete("/security/vault/{secret_id}")
+async def vault_delete(secret_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.provider import ProviderKey
+    from sqlalchemy import select as _select
+    from fastapi import HTTPException as _HTTPException
+    row = (await db.execute(_select(ProviderKey).where(ProviderKey.id == secret_id, ProviderKey.workspace_id == (user.workspace_id or "")))).scalar_one_or_none()
+    if not row:
+        raise _HTTPException(status_code=404, detail="Secret not found")
+    await db.delete(row); await db.commit()
+    return {"deleted": True, "id": secret_id}
+
+
 # --- Threats ---
 @router.get("/threats/stats")
 async def threat_stats(user=Depends(get_current_user)):

@@ -101,6 +101,7 @@ from backend.apps.api.routers import (
     pipelines,
     providers,
     routing,
+    team,
     runtime_jobs,
     security,
     upload,
@@ -165,6 +166,9 @@ app.include_router(internal_uacp.autonomous_router, prefix="/api/v1")
 
 # Provider management — BYOK, routing rules, audit logs
 app.include_router(providers.router, prefix="/api/v1")
+
+# Team management — members, invitations, roles, SSO, MFA
+app.include_router(team.router, prefix="/api/v1")
 
 # Plugins Management
 app.include_router(plugins.router, prefix="/api")

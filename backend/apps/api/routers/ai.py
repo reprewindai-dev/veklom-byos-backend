@@ -53,6 +53,7 @@ async def ai_complete(body: dict, user=Depends(get_current_user), db: AsyncSessi
     return data
 
 
+@router.get("/models")
 @router.get("/ai/models")
 async def list_models(user=Depends(get_current_user)):
     return [

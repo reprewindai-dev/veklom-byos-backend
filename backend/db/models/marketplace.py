@@ -73,6 +73,23 @@ class Deployment(Base):
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
+class InstalledAsset(Base):
+    """Tenant-scoped record of a marketplace listing installation."""
+    __tablename__ = "installed_assets"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    workspace_id = Column(String(36), nullable=False, index=True)
+    listing_id = Column(String(36), nullable=False, index=True)
+    installed_by = Column(String(36), nullable=False)
+    asset_type = Column(String(64), default="tool")  # tool, pipeline, model, prompt, connector
+    name = Column(String(255), nullable=False)
+    status = Column(String(32), default="installing")  # installing, active, disabled, failed
+    config_json = Column(JSON, default=dict)
+    version = Column(String(32), default="1.0.0")
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 class Vendor(Base):
     __tablename__ = "vendors"
 

@@ -114,16 +114,84 @@ async def delete_listing(listing_id: str, user=Depends(get_current_user)):
 @router.post("/marketplace/listings/{listing_id}/install")
 @router.post("/listings/{listing_id}/install")
 async def install_listing(listing_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Install a marketplace listing into the current workspace."""
     import uuid as _uuid
+    from backend.db.models.marketplace import MarketplaceListing, InstalledAsset
+    from sqlalchemy import select as _select
+    from fastapi import HTTPException as _HTTPException
+
     body = body or {}
     target = body.get("target", user.workspace_id or "default")
+
+    # Verify listing exists
+    result = await db.execute(_select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+    listing = result.scalar_one_or_none()
+    if not listing:
+        raise _HTTPException(status_code=404, detail="Listing not found")
+
+    # Check if already installed
+    existing = await db.execute(_select(InstalledAsset).where(
+        InstalledAsset.workspace_id == target,
+        InstalledAsset.listing_id == listing_id
+    ))
+    if existing.scalar_one_or_none():
+        return {"id": listing_id, "status": "already_installed", "message": "This listing is already installed in your workspace"}
+
+    # Create InstalledAsset record
+    asset = InstalledAsset(
+        id=str(_uuid.uuid4()),
+        workspace_id=target,
+        listing_id=listing_id,
+        installed_by=user.id,
+        asset_type=listing.category,
+        name=listing.name,
+        status="active",
+        config_json=listing.config_json or {},
+        version="1.0.0",
+    )
+    db.add(asset)
+
+    # Increment listing downloads
+    listing.downloads = (listing.downloads or 0) + 1
+
+    await db.commit()
+    await db.refresh(asset)
+
     return {
-        "id": str(_uuid.uuid4()),
+        "id": asset.id,
         "listing_id": listing_id,
         "workspace_id": target,
-        "status": "installing",
-        "message": f"Installation of {listing_id} started on {target}. You will be notified when complete.",
-        "estimated_minutes": 3,
+        "asset_type": asset.asset_type,
+        "name": asset.name,
+        "status": asset.status,
+        "installed_at": asset.created_at.isoformat() if asset.created_at else None,
+        "message": f"{listing.name} installed successfully",
+    }
+
+
+@router.get("/marketplace/installed")
+@router.get("/installed")
+async def list_installed(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """List all installed assets for the current workspace."""
+    from backend.db.models.marketplace import InstalledAsset, MarketplaceListing
+    from sqlalchemy import select as _select
+
+    result = await db.execute(_select(InstalledAsset).where(InstalledAsset.workspace_id == (user.workspace_id or "default")))
+    assets = result.scalars().all()
+
+    return {
+        "installed": [
+            {
+                "id": a.id,
+                "listing_id": a.listing_id,
+                "asset_type": a.asset_type,
+                "name": a.name,
+                "status": a.status,
+                "version": a.version,
+                "installed_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in assets
+        ]
     }
 
 

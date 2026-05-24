@@ -126,14 +126,14 @@ screenshots `Screenshot_3-5-2026_*.jpeg` in this repo.
 
 **Required files (do not delete or overwrite):**
 ```
-frontend/static/workspace/assets/index-CJHtaWiX.js   ← compiled app (THE REAL ONE)
-frontend/static/workspace/assets/index-C7_isucR.css  ← styles
+frontend/static/workspace/assets/index-EUKZeqk4.js   ← compiled app (THE REAL ONE)
+frontend/static/workspace/assets/index-WqgIFi2m.css  ← styles (83KB full CSS)
 frontend/static/workspace/overview-live.js            ← live telemetry
-frontend/static/workspace/index.html                  ← SPA shell (loads index-CJHtaWiX.js)
+frontend/static/workspace/index.html                  ← SPA shell (loads index-EUKZeqk4.js)
 frontend/static/workspace/config.js                   ← API base injection
 ```
 
-**The index.html MUST load `index-CJHtaWiX.js` — not any other bundle.**
+**The index.html MUST load `index-EUKZeqk4.js` and `index-WqgIFi2m.css` — not any other bundle.**
 
 **Pages:** Overview, Playground, Marketplace, Models, Pipelines, Deployments,
 Vault, Compliance, Monitoring, Billing, Team, Settings.
@@ -156,9 +156,9 @@ Vault, Compliance, Monitoring, Billing, Team, Settings.
 1. **NEVER run `npm run build` or `vite build` in `frontend/` and copy output
    to `frontend/static/workspace/`.** This destroys the real workspace.
 
-2. **NEVER replace `frontend/static/workspace/assets/index-CJHtaWiX.js`.**
+2. **NEVER replace `frontend/static/workspace/assets/index-EUKZeqk4.js`.**
    It is a compiled binary. There is no source to rebuild it from.
-   The index.html must always load `index-CJHtaWiX.js` and `index-C7_isucR.css`.
+   The index.html must always load `index-EUKZeqk4.js` and `index-WqgIFi2m.css`.
 
 3. **`frontend/src/` is NOT the workspace source.** It is a separate scaffold.
    Do not build it and treat the output as the workspace.

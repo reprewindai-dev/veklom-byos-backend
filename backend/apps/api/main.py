@@ -99,6 +99,7 @@ from backend.apps.api.routers import (
     marketplace,
     monitoring,
     pipelines,
+    providers,
     routing,
     runtime_jobs,
     security,
@@ -161,6 +162,9 @@ app.include_router(internal_uacp.router, prefix="/api/v1")
 app.include_router(internal_uacp.operator_router, prefix="/api/v1")
 app.include_router(internal_operators.router, prefix="/api/v1")
 app.include_router(internal_uacp.autonomous_router, prefix="/api/v1")
+
+# Provider management — BYOK, routing rules, audit logs
+app.include_router(providers.router, prefix="/api/v1")
 
 # Plugins Management
 app.include_router(plugins.router, prefix="/api")

@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     HUGGINGFACE_API_KEY: str = ""
     SERPAPI_KEY: str = ""
-    DEFAULT_AI_PROVIDER: str = "openai"
+    DEFAULT_AI_PROVIDER: str = "ollama"
     AI_PROVIDER: str = ""
     LLM_PROVIDER: str = ""
     AI_FALLBACK_PROVIDER: str = ""
@@ -91,7 +91,9 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
     BEDROCK_MODEL_ID: str = ""
-    OLLAMA_BASE_URL: str = ""
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    FOUNDER_WORKSPACE_ID: str = ""            # Set this to the founder workspace UUID
+    PROVIDER_ENCRYPTION_KEY: str = ""         # Fernet key for encrypting BYOK keys at rest
     OLLAMA_MODEL: str = "qwen2.5:3b"
     OLLAMA_AUTOSTART: bool = False
     OLLAMA_PULL_ON_BOOT: bool = False

@@ -10,6 +10,7 @@ from backend.db.models.agent import Account, AgentUser, Agent
 from backend.db.models.genome import GenomeVersion
 from backend.db.models.ledger import LedgerEvent
 from backend.db.models.lineage import BirthCertificate, LineageEdge
+from backend.db.models.provider import ProviderKey, ProviderRoutingLog
 
 __all__ = [
     # existing
@@ -26,4 +27,6 @@ __all__ = [
     "BirthCertificate", "LineageEdge",
     # billing extension
     "BillingUsage", "BillingEvent", "AnalyticsEvent",
+    # provider management
+    "ProviderKey", "ProviderRoutingLog",
 ]

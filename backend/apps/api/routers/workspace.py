@@ -582,10 +582,25 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     forecast_eod = burn_rate * 1440
     spend_pct = round((float(spend_today) / float(budget_limit)) * 100) if budget_limit else 0
 
+    # Get real workspace data for plan and member count
+    plan = "free_evaluation"
+    members_count = 1
+    if workspace_id != "default":
+        ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+        workspace = ws_result.scalar_one_or_none()
+        if workspace:
+            # Derive plan from workspace license tier or role
+            plan = workspace.license_tier or "free_evaluation"
+            # Get member count
+            members_result = await db.execute(
+                select(func.count()).select_from(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
+            )
+            members_count = members_result.scalar() or 1
+
     return {
         "workspace_id": workspace_id,
-        "plan": "free_evaluation",
-        "members_count": 1,
+        "plan": plan,
+        "members_count": members_count,
         "models_enabled": models_enabled,
         "total_requests_today": total_requests,
         "requests_per_min": requests_per_min,

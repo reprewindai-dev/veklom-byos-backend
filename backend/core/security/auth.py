@@ -59,11 +59,15 @@ async def get_current_user(
         return SimpleNamespace(
             id="demo-user-id",
             email="demo@veklom.com",
+            full_name="Veklom Admin",
             role="super_admin",
             status="ACTIVE",
             is_active=True,
             workspace_id="demo",
             is_public_demo=True,
+            mfa_enabled=False,
+            github_username="",
+            created_at=None,
         )
 
     if credentials is None:

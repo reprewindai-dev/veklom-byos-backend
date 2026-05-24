@@ -86,6 +86,17 @@ def _external_origin(request: Request) -> str:
     return f"{proto}://{host}"
 
 
+def _is_real_config_value(value: str) -> bool:
+    candidate = (value or "").strip()
+    if not candidate:
+        return False
+    return not candidate.upper().startswith(("NEED_", "YOUR_", "CHANGE_", "REPLACE_", "TODO"))
+
+
+def _github_oauth_configured() -> bool:
+    return _is_real_config_value(settings.GITHUB_CLIENT_ID) and _is_real_config_value(settings.GITHUB_CLIENT_SECRET)
+
+
 def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> str:
     payload = {
         "access_token": access_token,
@@ -413,12 +424,12 @@ def _validate_github_state(state: str, max_age_seconds: int = 600) -> bool:
 
 @router.get("/github/status")
 async def github_status():
-    return {"configured": bool(settings.GITHUB_CLIENT_ID and settings.GITHUB_CLIENT_SECRET)}
+    return {"configured": _github_oauth_configured()}
 
 
 @router.get("/github/login")
 async def github_login(request: Request):
-    if not settings.GITHUB_CLIENT_ID:
+    if not _github_oauth_configured():
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
     state = _build_github_state()
     from urllib.parse import urlencode
@@ -451,7 +462,7 @@ async def github_callback(
     code = code or request.query_params.get("code")
     state = state or request.query_params.get("state")
 
-    if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_CLIENT_SECRET:
+    if not _github_oauth_configured():
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
     if not code:
         raise HTTPException(status_code=400, detail="Missing GitHub OAuth code")
@@ -621,7 +632,7 @@ async def select_github_repo(body: RepoSelectRequest, request: Request, user=Dep
 @router.get("/connected-accounts")
 async def connected_accounts(user=Depends(get_current_user)):
     return {
-        "github_configured": bool(settings.GITHUB_CLIENT_ID and settings.GITHUB_CLIENT_SECRET),
+        "github_configured": _github_oauth_configured(),
         "github_connected": bool(user.github_id and user.github_access_token),
         "github_username": user.github_username,
         "github_account_id": user.github_id,

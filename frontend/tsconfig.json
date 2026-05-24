@@ -21,6 +21,5 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  "exclude": ["src/modules/uacp/server.ts", "src/modules/greenvision/server.ts"]
+  "include": ["src"]
 }

@@ -1,0 +1,15 @@
+name: Deploy to Coolify
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify Deploy
+        run: |
+          curl --silent --fail --show-error \
+            -X GET "${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}" \
+            || echo "Webhook call failed — check COOLIFY_DEPLOY_WEBHOOK secret"

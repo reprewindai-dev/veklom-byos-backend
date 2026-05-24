@@ -69,7 +69,14 @@ async def not_found(request: Request, exc):
     if request.url.path.startswith("/workspace") or request.url.path.startswith("/login") or request.url.path.startswith("/github"):
         workspace_index = WORKSPACE_DIR / "index.html"
         if workspace_index.exists():
-            return FileResponse(str(workspace_index))
+            return FileResponse(
+                str(workspace_index),
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+            )
     return await _serve_frontend(request)
 
 

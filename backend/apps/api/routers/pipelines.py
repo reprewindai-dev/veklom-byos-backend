@@ -98,8 +98,6 @@ async def list_pipeline_templates(user=Depends(get_current_user)):
 async def list_pipelines(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == (user.workspace_id or "default")).limit(50))
     pipes = result.scalars().all()
-    if not pipes:
-        return _mock_pipelines()
     return [_pipe_dict(p) for p in pipes]
 
 
@@ -130,15 +128,12 @@ async def create_pipeline(body: dict, user=Depends(get_current_user), db: AsyncS
 
 @router.get("/pipelines/{pipeline_id}")
 async def get_pipeline(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id))
+    from fastapi import HTTPException
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
     pipe = result.scalar_one_or_none()
-    if pipe:
-        return _pipe_detail_dict(pipe)
-    # Fallback: check if it's one of the default pipeline IDs
-    defaults = {p["id"]: p for p in _mock_pipelines()}
-    if pipeline_id in defaults:
-        return _pipe_detail_from_mock(defaults[pipeline_id])
-    return {"id": pipeline_id, "name": "Pipeline", "status": "draft", "template": "Custom", "nodes": 0, "vectorStore": "none", "invocations": 0, "lastRun": "—", "stages": _mock_stages()}
+    if not pipe:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    return _pipe_detail_dict(pipe)
 
 
 @router.patch("/pipelines/{pipeline_id}")
@@ -235,15 +230,14 @@ async def delete_pipeline(pipeline_id: str, user=Depends(get_current_user), db: 
 
 @router.post("/pipelines/{pipeline_id}/run")
 async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id))
+    from fastapi import HTTPException
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
     pipeline = result.scalar_one_or_none()
     
     if not pipeline:
-        # Fallback to mock steps for demonstration if ID doesn't exist
-        steps = _mock_steps()
-    else:
-        steps = pipeline.steps
+        raise HTTPException(status_code=404, detail="Pipeline not found")
         
+    steps = pipeline.steps or {}
     run_id = str(uuid.uuid4())
     asyncio.create_task(run_pipeline_background(run_id, steps, user.workspace_id or "default", user.id))
     return {"run_id": run_id, "pipeline_id": pipeline_id, "status": "PENDING", "progress": 0}
@@ -267,9 +261,15 @@ async def demo_pipeline_health():
 
 
 @router.post("/demo/pipeline/run")
-async def demo_pipeline_run(body: dict, user=Depends(get_current_user)):
+async def demo_pipeline_run(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     run_id = str(uuid.uuid4())
-    steps = [{"name": s} for s in ["Source", "Build", "Validate", "Test", "Stage", "Gate", "Deploy"]]
+    # Use a real pipeline if available, otherwise use default steps
+    result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == (user.workspace_id or "default")).limit(1))
+    pipeline = result.scalar_one_or_none()
+    if pipeline:
+        steps = pipeline.steps or {}
+    else:
+        steps = [{"name": s} for s in ["Source", "Build", "Validate", "Test", "Stage", "Gate", "Deploy"]]
     asyncio.create_task(run_pipeline_background(run_id, steps, user.workspace_id or "default", user.id))
     return {"run_id": run_id, "status": "PENDING"}
 
@@ -563,33 +563,13 @@ def _pipe_dict(p: Pipeline) -> dict:
 
 def _pipe_detail_dict(p: Pipeline) -> dict:
     d = _pipe_dict(p)
-    d["stages"] = _mock_stages()
+    stages = []
+    if isinstance(p.steps, dict) and "stages" in p.steps:
+        stages = p.steps["stages"]
+    elif isinstance(p.steps, list):
+        stages = [{"id": f"st{i}", "name": step.get("name", f"Stage {i}"), "type": step.get("type", "transform"), "status": "pending"} for i, step in enumerate(p.steps)]
+    d["stages"] = stages
     d["description"] = p.description or ""
     return d
 
 
-def _pipe_detail_from_mock(mock: dict) -> dict:
-    d = dict(mock)
-    d["stages"] = _mock_stages()
-    return d
-
-
-def _mock_pipelines():
-    return [
-        {"id": "p_rag_clinical", "name": "clinical-rag", "template": "RAG / pgvector", "nodes": 9, "vectorStore": "pgvector", "status": "deployed", "invocations": 18420, "lastRun": "2 min ago"},
-        {"id": "p_intake", "name": "patient-intake", "template": "Intake form → triage", "nodes": 12, "vectorStore": "Qdrant", "status": "deployed", "invocations": 412, "lastRun": "12 min ago"},
-        {"id": "p_legal_redact", "name": "legal-redactor", "template": "PII strip → redline", "nodes": 7, "vectorStore": "Weaviate", "status": "deployed", "invocations": 2210, "lastRun": "1 hr ago"},
-        {"id": "p_risk_class", "name": "risk-classifier", "template": "Multi-label classifier", "nodes": 5, "vectorStore": "pgvector", "status": "draft", "invocations": 0, "lastRun": "—"},
-    ]
-
-
-def _mock_stages():
-    return [
-        {"id": "st1", "name": "Source", "type": "input", "status": "complete"},
-        {"id": "st2", "name": "Build", "type": "transform", "status": "complete"},
-        {"id": "st3", "name": "Validate", "type": "check", "status": "running"},
-        {"id": "st4", "name": "Test", "type": "check", "status": "pending"},
-        {"id": "st5", "name": "Stage", "type": "deploy", "status": "pending"},
-        {"id": "st6", "name": "Gate", "type": "approval", "status": "pending"},
-        {"id": "st7", "name": "Deploy", "type": "deploy", "status": "pending"},
-    ]

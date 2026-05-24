@@ -20,6 +20,377 @@ from backend.db.models.billing import BudgetRule
 router = APIRouter(prefix="/workspace", tags=["Workspace"])
 
 
+# --- Search ---
+@router.get("/search")
+async def workspace_search(q: str = "", user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Search across models, deployments, pipelines, audit logs, and docs."""
+    workspace_id = user.workspace_id or "default"
+    if not q or len(q) < 2:
+        return {"results": []}
+
+    q_lower = q.lower()
+    results = []
+
+    # Search models
+    model_result = await db.execute(
+        select(ModelConfig).where(
+            ModelConfig.workspace_id == workspace_id,
+            ModelConfig.display_name.ilike(f"%{q}%")
+        ).limit(5)
+    )
+    for m in model_result.scalars():
+        results.append({
+            "type": "model",
+            "id": m.id,
+            "title": m.display_name,
+            "subtitle": m.provider,
+            "url": "#/models"
+        })
+
+    # Search deployments
+    deploy_result = await db.execute(
+        select(Deployment).where(
+            Deployment.workspace_id == workspace_id,
+            Deployment.name.ilike(f"%{q}%")
+        ).limit(5)
+    )
+    for d in deploy_result.scalars():
+        results.append({
+            "type": "deployment",
+            "id": d.id,
+            "title": d.name,
+            "subtitle": d.status,
+            "url": "#/deployments"
+        })
+
+    # Search pipelines
+    pipeline_result = await db.execute(
+        select(Pipeline).where(
+            Pipeline.workspace_id == workspace_id,
+            Pipeline.name.ilike(f"%{q}%")
+        ).limit(5)
+    )
+    for p in pipeline_result.scalars():
+        results.append({
+            "type": "pipeline",
+            "id": p.id,
+            "title": p.name,
+            "subtitle": p.status,
+            "url": "#/pipelines"
+        })
+
+    # Search audit logs
+    audit_result = await db.execute(
+        select(AuditLog).where(
+            AuditLog.workspace_id == workspace_id,
+            AuditLog.action.ilike(f"%{q}%")
+        ).limit(5)
+    )
+    for a in audit_result.scalars():
+        results.append({
+            "type": "audit",
+            "id": a.id,
+            "title": a.action,
+            "subtitle": a.resource_type or "workspace",
+            "url": "#/compliance"
+        })
+
+    return {"results": results[:20]}
+
+
+# --- Monitoring ---
+@router.get("/monitoring/health")
+async def monitoring_health(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Health status of the workspace infrastructure."""
+    workspace_id = user.workspace_id or "default"
+    now = datetime.now(timezone.utc)
+    last_5m = now - timedelta(minutes=5)
+
+    # Check recent execution logs for health
+    recent_execs = await db.scalar(
+        select(func.count()).select_from(ExecLog).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_5m
+        )
+    ) or 0
+
+    # Check for recent errors
+    recent_errors = await db.scalar(
+        select(func.count()).select_from(ExecLog).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_5m,
+            ExecLog.status == "error"
+        )
+    ) or 0
+
+    # Check security events
+    recent_alerts = await db.scalar(
+        select(func.count()).select_from(SecurityEvent).where(
+            SecurityEvent.workspace_id == workspace_id,
+            SecurityEvent.created_at >= last_5m,
+            SecurityEvent.status != "resolved"
+        )
+    ) or 0
+
+    status = "healthy"
+    if recent_errors > 10 or recent_alerts > 5:
+        status = "degraded"
+    elif recent_errors > 50 or recent_alerts > 20:
+        status = "unhealthy"
+
+    return {
+        "status": status,
+        "timestamp": now.isoformat(),
+        "checks": {
+            "executions_last_5m": recent_execs,
+            "errors_last_5m": recent_errors,
+            "unresolved_alerts": recent_alerts,
+            "database": "connected",
+            "region": "hetzner-fsn1"
+        }
+    }
+
+
+@router.get("/monitoring/metrics")
+async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Metrics data for the workspace."""
+    workspace_id = user.workspace_id or "default"
+    now = datetime.now(timezone.utc)
+    last_24h = now - timedelta(hours=24)
+
+    # Execution metrics
+    total_execs = await db.scalar(
+        select(func.count()).select_from(ExecLog).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_24h
+        )
+    ) or 0
+
+    total_tokens = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_24h
+        )
+    ) or 0
+
+    total_cost = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_24h
+        )
+    ) or 0.0
+
+    avg_latency = await db.scalar(
+        select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_24h
+        )
+    ) or 0
+
+    # Provider breakdown
+    provider_breakdown = {}
+    provider_rows = await db.execute(
+        select(ExecLog.provider, func.count(), func.sum(ExecLog.total_tokens))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
+        .group_by(ExecLog.provider)
+    )
+    for provider, count, tokens in provider_rows:
+        provider_breakdown[provider or "unknown"] = {
+            "count": count,
+            "tokens": int(tokens or 0)
+        }
+
+    return {
+        "period": "24h",
+        "executions": total_execs,
+        "tokens": total_tokens,
+        "cost_usd": round(total_cost, 4),
+        "avg_latency_ms": round(avg_latency, 2),
+        "provider_breakdown": provider_breakdown
+    }
+
+
+# --- Audit Logs ---
+@router.get("/audit/logs")
+async def audit_logs(limit: int = 20, offset: int = 0, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Paginated audit logs for the workspace."""
+    workspace_id = user.workspace_id or "default"
+
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.workspace_id == workspace_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    logs = result.scalars().all()
+
+    total = await db.scalar(
+        select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id)
+    ) or 0
+
+    return {
+        "logs": [
+            {
+                "id": log.id,
+                "action": log.action,
+                "resource_type": log.resource_type,
+                "resource_id": log.resource_id,
+                "user_id": log.user_id,
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
+                "hash_chain": log.hash_chain,
+                "created_at": log.created_at.isoformat() if log.created_at else None
+            }
+            for log in logs
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
+# --- Autonomous Decisions ---
+@router.get("/autonomous/decisions")
+async def autonomous_decisions(limit: int = 10, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Recent autonomous decisions made by the system."""
+    workspace_id = user.workspace_id or "default"
+    now = datetime.now(timezone.utc)
+    last_24h = now - timedelta(hours=24)
+
+    # Use ExecLog with policy decisions as proxy for autonomous decisions
+    result = await db.execute(
+        select(ExecLog)
+        .where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_24h,
+            ExecLog.policy_id.isnot(None)
+        )
+        .order_by(ExecLog.created_at.desc())
+        .limit(limit)
+    )
+    logs = result.scalars().all()
+
+    return {
+        "decisions": [
+            {
+                "id": log.id,
+                "type": "policy_routing",
+                "description": f"Routed to {log.provider} via policy {log.policy_id}",
+                "model": log.model,
+                "tokens": log.total_tokens,
+                "cost_usd": log.cost_usd,
+                "latency_ms": log.latency_ms,
+                "created_at": log.created_at.isoformat() if log.created_at else None
+            }
+            for log in logs
+        ]
+    }
+
+
+# --- Billing Breakdown ---
+@router.get("/billing/breakdown")
+async def billing_breakdown(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Billing breakdown for the current period."""
+    workspace_id = user.workspace_id or "default"
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Spend from ExecLog
+    spend = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= month_start
+        )
+    ) or 0.0
+
+    # Budget rule
+    budget = await db.scalar(
+        select(BudgetRule.limit_usd).where(
+            BudgetRule.workspace_id == workspace_id,
+            BudgetRule.is_active == True
+        )
+    )
+
+    return {
+        "period_start": month_start.isoformat(),
+        "period_end": now.isoformat(),
+        "spend_usd": round(spend, 4),
+        "budget_limit_usd": budget if budget else 150.0,
+        "remaining_usd": round((budget or 150.0) - spend, 4) if budget else None,
+        "utilization_pct": round((spend / (budget or 150.0)) * 100, 2) if budget else None
+    }
+
+
+# --- Wallet Stats ---
+@router.get("/wallet/stats/usage")
+async def wallet_stats_usage(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Wallet usage statistics."""
+    from backend.db.models.billing import WalletTransaction
+
+    workspace_id = user.workspace_id or "default"
+
+    # Balance
+    balance = await db.scalar(
+        select(func.coalesce(func.sum(WalletTransaction.amount), 0.0)).where(
+            WalletTransaction.workspace_id == workspace_id
+        )
+    ) or 0.0
+
+    # Recent transactions
+    result = await db.execute(
+        select(WalletTransaction)
+        .where(WalletTransaction.workspace_id == workspace_id)
+        .order_by(WalletTransaction.created_at.desc())
+        .limit(10)
+    )
+    transactions = result.scalars().all()
+
+    return {
+        "balance_usd": round(balance, 4),
+        "transactions": [
+            {
+                "id": t.id,
+                "amount": t.amount,
+                "type": t.transaction_type,
+                "description": t.description,
+                "created_at": t.created_at.isoformat() if t.created_at else None
+            }
+            for t in transactions
+        ]
+    }
+
+
+# --- Security Alerts ---
+@router.get("/security/alerts")
+async def security_alerts(limit: int = 10, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Security alerts for the workspace."""
+    workspace_id = user.workspace_id or "default"
+
+    result = await db.execute(
+        select(SecurityEvent)
+        .where(SecurityEvent.workspace_id == workspace_id)
+        .order_by(SecurityEvent.created_at.desc())
+        .limit(limit)
+    )
+    events = result.scalars().all()
+
+    return {
+        "alerts": [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "severity": e.severity,
+                "description": e.description,
+                "source_ip": e.source_ip,
+                "status": e.status,
+                "created_at": e.created_at.isoformat() if e.created_at else None
+            }
+            for e in events
+        ]
+    }
+
+
 @router.get("")
 async def get_workspace(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.workspace_id:

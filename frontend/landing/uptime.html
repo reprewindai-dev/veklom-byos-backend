@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Veklom Status - Sovereign Runtime Uptime</title>
+<meta name="description" content="Live Veklom platform status for API, GPC, Policy Vault, Evidence Ledger, Playground, and Autonomous Router services.">
+<meta name="theme-color" content="#0A0A0A">
+<link rel="canonical" href="https://veklom.com/uptime">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20260520-veklom">
+<link rel="shortcut icon" href="/favicon.ico?v=20260520-veklom">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20260520-veklom">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/veklom.css">
+<link rel="stylesheet" href="/static/css/brand.css">
+<script src="/config.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="container nav-inner">
+    <a href="/" class="nav-brand">
+      <img src="/static/branding/veklom-wordmark.png" alt="Veklom" class="nav-brand-wordmark" width="170" height="42">
+    </a>
+    <div class="nav-links">
+      <a href="/#ecosystem">Ecosystem</a>
+      <a href="/#compare">Compare</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/workspace">Workspace</a>
+      <a href="/uptime" class="badge badge-green">● Operational</a>
+      <a href="/workspace/login" class="btn btn-primary btn-sm">Sign In</a>
+    </div>
+  </div>
+</nav>
+
+<main class="status-page">
+  <section class="status-hero">
+    <div class="container">
+      <div class="status-hero-grid">
+        <div>
+          <span class="label">Veklom Sovereign Status</span>
+          <h1>Runtime health with audit-grade visibility.</h1>
+          <p class="subtitle">
+            A public status page for governed execution infrastructure: API ingress, GPC, policy vault, evidence ledger, playground, and autonomous routing.
+          </p>
+          <div class="status-hero-actions">
+            <a href="/api/v1/platform/uptime" class="btn btn-secondary">View status API</a>
+            <a href="/workspace/login" class="btn btn-primary">Open workspace</a>
+          </div>
+        </div>
+        <div class="status-command-card brand-watermarked-panel">
+          <div class="status-command-top">
+            <div class="status-seal large" aria-hidden="true"></div>
+            <div>
+              <div class="status-eyebrow">Current perimeter state</div>
+              <h2 id="status-page-headline">All governed runtime systems operational</h2>
+            </div>
+          </div>
+          <div class="status-command-grid">
+            <div><span id="status-page-uptime">99.99%</span><small>90-day uptime</small></div>
+            <div><span id="status-page-latency">20ms</span><small>avg response</small></div>
+            <div><span id="status-page-checks">18,432</span><small>checks passed</small></div>
+            <div><span id="status-page-incidents">0</span><small>active incidents</small></div>
+          </div>
+          <div class="status-updated" id="status-page-updated">Syncing live status...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section status-section-tight">
+    <div class="container">
+      <div class="status-section-title">
+        <span class="label">Service Boundary</span>
+        <h2>Component status</h2>
+      </div>
+      <div class="status-service-grid" id="status-page-services">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt status-section-tight">
+    <div class="container">
+      <div class="status-page-ledger-wrap brand-watermarked-panel">
+        <div>
+          <span class="label">Evidence Ledger</span>
+          <h2>30-day operational history</h2>
+          <p class="subtitle">Amber Veklom marks indicate verified operational days. Muted amber indicates monitored degradation. Red indicates customer-impacting incident.</p>
+        </div>
+        <div class="status-ledger-strip status-ledger-large" id="status-page-ledger">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section status-section-tight">
+    <div class="container">
+      <div class="status-section-title">
+        <span class="label">Incident Record</span>
+        <h2>Recent events</h2>
+      </div>
+      <div class="status-incident-list" id="status-page-incidents-list">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <a href="/" class="nav-brand" style="margin-bottom:12px;display:inline-flex">
+          <img src="/icon.png" alt="" width="24" height="24" style="width:24px;height:24px;border-radius:6px;object-fit:cover">
+          Veklom<span style="color:var(--orange-500)">Hub</span>
+        </a>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin-top:8px">Sovereign Control Node<br>© Veklom</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="/workspace">Workspace</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/docs">API Docs</a>
+      </div>
+      <div class="footer-col">
+        <h4>Resources</h4>
+        <a href="/uptime">Status</a>
+        <a href="/docs">Docs</a>
+        <a href="/#feedback">Feedback</a>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="mailto:security@veklom.com">Security</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="/static/js/veklom.js"></script>
+</body>
+</html>

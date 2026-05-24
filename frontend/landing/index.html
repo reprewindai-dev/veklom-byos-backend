@@ -48,7 +48,7 @@
       <a href="#compare">Compare</a>
       <a href="#pricing">Pricing</a>
       <a href="/workspace">Workspace</a>
-      <a href="/api/v1/platform/uptime" class="badge badge-green">● Operational</a>
+      <a href="/uptime" class="badge badge-green">● Operational</a>
       <a href="/workspace/login" class="btn btn-primary btn-sm">Sign In</a>
     </div>
   </div>
@@ -571,15 +571,35 @@
   </div>
 </section>
 
-<!-- Uptime Monitor -->
-<section class="section" id="uptime">
+<!-- Sovereign Uptime Monitor -->
+<section class="section status-preview-section" id="uptime">
   <div class="container">
-    <div style="text-align:center;margin-bottom:40px">
-      <span class="label">Uptime Monitor</span>
-      <h2>System status</h2>
+    <div class="status-preview-heading">
+      <span class="label">Sovereign Status</span>
+      <h2>Operational health, proved in public.</h2>
+      <p class="subtitle">A Veklom status surface for runtime uptime, governance services, evidence capture, and routing health.</p>
     </div>
-    <div id="uptime-dashboard" class="grid-3" style="max-width:800px;margin:0 auto">
-      <!-- populated by JS -->
+    <div class="status-preview-shell brand-watermarked-panel">
+      <div class="status-preview-main">
+        <div class="status-seal" aria-hidden="true"></div>
+        <div>
+          <div class="status-eyebrow">Live boundary state</div>
+          <h3 id="uptime-overall-title">All governed runtime systems operational</h3>
+          <p id="uptime-overall-copy">API, GPC, vault, evidence, routing, and playground checks are passing.</p>
+        </div>
+        <a href="/uptime" class="btn btn-primary btn-sm">Open status page</a>
+      </div>
+      <div class="status-preview-metrics">
+        <div><span id="uptime-percent">99.99%</span><small>90-day uptime</small></div>
+        <div><span id="uptime-latency">20ms</span><small>avg response</small></div>
+        <div><span id="uptime-incidents">0</span><small>active incidents</small></div>
+      </div>
+      <div class="status-symbol-row" id="uptime-dashboard" aria-label="Live Veklom service status">
+        <!-- populated by JS -->
+      </div>
+      <div class="status-ledger-strip" id="uptime-ledger" aria-label="30 day uptime ledger">
+        <!-- populated by JS -->
+      </div>
     </div>
   </div>
 </section>
@@ -640,7 +660,7 @@
       </div>
       <div class="footer-col">
         <h4>Resources</h4>
-        <a href="#uptime">Status</a>
+        <a href="/uptime">Status</a>
         <a href="/docs">Docs</a>
         <a href="#feedback">Feedback</a>
       </div>

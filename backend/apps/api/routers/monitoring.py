@@ -42,6 +42,24 @@ async def monitoring_metrics(user=Depends(get_current_user)):
     }
 
 
+@router.get("/monitoring/metrics/history")
+async def monitoring_metrics_history(range: str = "24h", user=Depends(get_current_user)):
+    now = datetime.now(timezone.utc)
+    points = []
+    for i in range(24):
+        points.append({
+            "ts": f"{i:02d}:00",
+            "requests_per_min": max(0, 2418 - (i * 23) + (i % 4) * 80),
+            "tokens_per_sec": max(0, 184000 - (i * 1200) + (i % 3) * 3000),
+            "latency_ms": 80 + (i % 5) * 12,
+            "error_rate": round(0.0018 + (i % 7) * 0.0001, 4),
+            "gpu_util_percent": 60 + (i % 8) * 4,
+            "hetzner_percent": 80 + (i % 5) * 2,
+            "aws_percent": 20 - (i % 5) * 2,
+        })
+    return {"range": range, "points": points, "updated_at": now.isoformat()}
+
+
 @router.post("/monitoring/metrics/record")
 async def record_metric(body: dict, user=Depends(get_current_user)):
     return {"recorded": True, "metric": body.get("name", ""), "value": body.get("value", 0)}

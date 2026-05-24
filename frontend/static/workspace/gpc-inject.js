@@ -89,7 +89,7 @@
 
     gpc.innerHTML =
       '<iframe id="gpc-engine-frame" src="' + UACPGEMINI_URL + '" ' +
-        'style="width:300%;height:100%;border:none;background:#050505;position:absolute;left:-100%;top:0;" ' +
+        'style="width:100%;height:100%;border:none;background:#050505;" ' +
         'allow="clipboard-read;clipboard-write"></iframe>';
 
     main.appendChild(gpc);

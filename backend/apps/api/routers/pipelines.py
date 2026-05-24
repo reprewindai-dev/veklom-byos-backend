@@ -373,14 +373,14 @@ async def resume_deployment(deployment_id: str, user=Depends(get_current_user), 
 
 @router.get("/deployments/{deployment_id}/webhooks")
 async def list_deployment_webhooks(deployment_id: str, user=Depends(get_current_user)):
-    """List webhooks for a deployment (placeholder)."""
-    return {"deployment_id": deployment_id, "webhooks": []}
+    """List webhooks for a deployment (not configured yet)."""
+    return {"deployment_id": deployment_id, "webhooks": [], "message": "Webhooks not configured yet"}
 
 
 @router.post("/deployments/{deployment_id}/webhooks")
 async def create_deployment_webhook(deployment_id: str, body: dict, user=Depends(get_current_user)):
-    """Create a webhook for a deployment (placeholder)."""
-    return {"deployment_id": deployment_id, "webhook_id": "wh_" + deployment_id[:8], "url": body.get("url"), "events": body.get("events", [])}
+    """Create a webhook for a deployment (not configured yet)."""
+    return {"deployment_id": deployment_id, "message": "Webhook creation not configured yet", "status": "not_implemented"}
 
 
 @router.get("/deployments/{deployment_id}/code")

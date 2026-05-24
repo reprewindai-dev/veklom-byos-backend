@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "skills": [
+    {
+      "id": "veklom-backend",
+      "name": "Veklom BYOS Backend Development",
+      "description": "Guidance for developing the Veklom BYOS Backend",
+      "path": ".windsurf/skills/veklom-backend.md",
+      "tags": ["backend", "development", "veklom"],
+      "language": "markdown"
+    }
+  ]
+}

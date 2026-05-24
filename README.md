@@ -47,6 +47,40 @@ uvicorn backend.apps.api.main:app --reload
 
 Health check: `GET http://localhost:8088/health`
 
+### Login & Registration
+
+The backend supports three authentication methods:
+
+1. **Register** - Create a new account:
+   ```bash
+   POST /api/v1/auth/register
+   {
+     "email": "your@email.com",
+     "password": "your-password",
+     "full_name": "Your Name",
+     "workspace_name": "My Workspace"
+   }
+   ```
+
+2. **Login** - Sign in with email/password:
+   ```bash
+   POST /api/v1/auth/login
+   {
+     "email": "your@email.com",
+     "password": "your-password"
+   }
+   ```
+
+3. **Free Evaluation Session** - Try without registration:
+   ```bash
+   POST /api/v1/auth/eval-session
+   {
+     "fingerprint": "browser-fingerprint"
+   }
+   ```
+
+After login, use the `access_token` in the `Authorization: Bearer <token>` header for authenticated requests.
+
 ---
 
 ## Documentation

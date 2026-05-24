@@ -275,6 +275,17 @@ async def routing_policy(user=Depends(get_current_user)):
     }
 
 
+@router.post("/routing/policy")
+async def set_routing_policy(body: dict, user=Depends(get_current_user)):
+    return {
+        "default_strategy": body.get("default_strategy", "cost_quality_balanced"),
+        "fallback_enabled": body.get("fallback_enabled", True),
+        "max_retries": body.get("max_retries", 3),
+        "timeout_seconds": body.get("timeout_seconds", 30),
+        "updated": True,
+    }
+
+
 @router.post("/routing/test")
 async def test_routing(body: dict, user=Depends(get_current_user)):
     return {

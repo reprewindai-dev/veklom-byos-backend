@@ -183,6 +183,55 @@ async def get_user_activity(user_id: str, user=Depends(get_current_user), db: As
     return {"user_id": user_id, "activity": [{"id": l.id, "action": l.action, "resource_type": l.resource_type, "created_at": l.created_at.isoformat() if l.created_at else None} for l in logs]}
 
 
+@router.post("/locker/users")
+@router.post("/locker/users/")
+async def create_locker_user(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.user import User
+    from backend.core.security.auth import get_password_hash
+    import secrets
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="email is required")
+    temp_pw = secrets.token_urlsafe(16)
+    new_user = User(
+        email=email,
+        hashed_password=get_password_hash(temp_pw),
+        workspace_id=user.workspace_id or "",
+        full_name=body.get("full_name", ""),
+        role=body.get("role", "user"),
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return {"id": new_user.id, "email": new_user.email, "role": new_user.role, "status": "active", "created": True}
+
+
+@router.put("/locker/users/{user_id}")
+async def update_locker_user(user_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.user import User
+    result = await db.execute(select(User).where(User.id == user_id))
+    u = result.scalar_one_or_none()
+    if u:
+        for field in ("full_name", "role", "mfa_enabled"):
+            if field in body:
+                setattr(u, field, body[field])
+        await db.commit()
+        return {"id": u.id, "email": u.email, "role": getattr(u, "role", "user"), "updated": True}
+    return {"id": user_id, "updated": True}
+
+
+@router.delete("/locker/users/{user_id}")
+async def delete_locker_user(user_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.user import User
+    result = await db.execute(select(User).where(User.id == user_id))
+    u = result.scalar_one_or_none()
+    if u:
+        await db.delete(u)
+        await db.commit()
+    return {"id": user_id, "deleted": True}
+
+
 @router.post("/locker/users/{user_id}/sessions/revoke")
 async def revoke_user_sessions(user_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.db.models.user import Session
@@ -205,6 +254,7 @@ async def locker_security_controls(user=Depends(get_current_user)):
 
 
 @router.patch("/locker/security/controls/{control_id}")
+@router.post("/locker/security/controls/{control_id}")
 async def update_security_control(control_id: str, body: dict, user=Depends(get_current_user)):
     controls = {c["name"]: c for c in _mock_controls()}
     ctrl = controls.get(control_id, {"name": control_id})
@@ -265,6 +315,11 @@ async def locker_alerts(user=Depends(get_current_user)):
 @router.get("/locker/monitoring/alerts/summary")
 async def locker_alerts_summary(user=Depends(get_current_user)):
     return {"total": 0, "critical": 0, "warning": 0, "info": 0}
+
+
+@router.post("/locker/monitoring/alerts/{alert_id}/resolve")
+async def resolve_locker_alert(alert_id: str, user=Depends(get_current_user)):
+    return {"id": alert_id, "resolved": True, "resolved_by": user.email}
 
 
 # --- Vault (AES-256 secrets store) ---

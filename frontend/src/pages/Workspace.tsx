@@ -167,6 +167,18 @@ export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
         return <Billing />;
       case 'command-center':
         return <CommandCenter />;
+      case 'irongrid':
+        return (
+          <div className="w-full h-full relative rounded-xl border border-white/5 bg-black overflow-hidden shadow-[0_0_20px_rgba(255,184,0,0.05)]" style={{minHeight: 'calc(100vh - 200px)'}}>
+            <iframe src="/irongrid/" className="w-full h-full border-none bg-[#0a0a0a]" title="PYO3 IronGrid Simulator" style={{minHeight: 'calc(100vh - 200px)'}} />
+          </div>
+        );
+      case 'terminal':
+        return (
+          <div className="w-full h-full relative rounded-xl border border-white/5 bg-black overflow-hidden shadow-[0_0_20px_rgba(255,184,0,0.05)]" style={{minHeight: 'calc(100vh - 200px)'}}>
+            <iframe src="/uacp-quantum-terminal.html" className="w-full h-full border-none bg-[#0a0a0a]" title="UACP Quantum Terminal" style={{minHeight: 'calc(100vh - 200px)'}} />
+          </div>
+        );
       
       // Secondary inline compiled views
       case 'models':
@@ -578,6 +590,26 @@ export const Workspace: React.FC<WorkspaceProps> = ({ onLogout, user }) => {
                   }`}
                 >
                   <Sliders size={13} /> Sovereign Routing
+                </button>
+                <button
+                  onClick={() => navigateTo('irongrid')}
+                  className={`w-full text-left px-3 py-2 text-xs font-mono font-semibold rounded flex items-center gap-2.5 transition-all ${
+                    currentView === 'irongrid'
+                      ? 'bg-[rgba(255,184,0,0.08)] border-l-2 border-[var(--orange)] text-white'
+                      : 'text-[var(--text-secondary)] hover:text-white'
+                  }`}
+                >
+                  <Layers size={13} /> PYO3 IronGrid
+                </button>
+                <button
+                  onClick={() => navigateTo('terminal')}
+                  className={`w-full text-left px-3 py-2 text-xs font-mono font-semibold rounded flex items-center gap-2.5 transition-all ${
+                    currentView === 'terminal'
+                      ? 'bg-[rgba(255,184,0,0.08)] border-l-2 border-[var(--orange)] text-white'
+                      : 'text-[var(--text-secondary)] hover:text-white'
+                  }`}
+                >
+                  <Terminal size={13} /> Quantum Terminal
                 </button>
               </nav>
             </div>

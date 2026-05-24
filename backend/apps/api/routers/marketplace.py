@@ -18,8 +18,6 @@ router = APIRouter(tags=["Marketplace"])
 async def list_marketplace(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.status == "published").limit(50))
     items = result.scalars().all()
-    if not items:
-        return _mock_listings()
     return [_listing_dict(i) for i in items]
 
 
@@ -49,21 +47,28 @@ async def list_marketplace_tools(
 
 
 @router.get("/listings")
-async def list_listings(user=Depends(get_current_user)):
-    return _mock_listings()
+async def list_listings(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.status == "published").limit(50))
+    items = result.scalars().all()
+    return [_listing_dict(i) for i in items]
 
 
 @router.get("/listings/{listing_id}")
-async def get_listing_short(listing_id: str, user=Depends(get_current_user)):
-    for item in _mock_listings():
-        if item["id"] == listing_id:
-            return item
-    return {"id": listing_id, "title": "AI Pack", "provider": "Veklom", "install": {"type": "managed"}, "featured": False, "compliance": []}
+async def get_listing_short(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+    listing = result.scalar_one_or_none()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return _listing_dict(listing)
 
 
 @router.get("/marketplace/listings/{listing_id}")
-async def get_listing(listing_id: str, user=Depends(get_current_user)):
-    return {"id": listing_id, "name": "AI Document Processor", "category": "tool", "price": 0.50, "status": "published"}
+async def get_listing(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+    listing = result.scalar_one_or_none()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return _listing_dict(listing)
 
 
 @router.post("/marketplace/listings")
@@ -197,23 +202,25 @@ async def list_installed(user=Depends(get_current_user), db: AsyncSession = Depe
 
 @router.get("/marketplace/listings/{listing_id}/datasheet")
 @router.get("/listings/{listing_id}/datasheet")
-async def listing_datasheet(listing_id: str, user=Depends(get_current_user)):
-    for item in _mock_listings():
-        if item["id"] == listing_id:
-            return {
-                "listing_id": listing_id,
-                "title": item["title"],
-                "provider": item["provider"],
-                "category": item["category"],
-                "positioning": item["positioning"],
-                "price": item["price"],
-                "compliance": item["compliance"],
-                "badges": item["badges"],
-                "install_type": item["install"],
-                "target_infra": item["target"],
-                "datasheet_url": f"/api/v1/listings/{listing_id}/datasheet.pdf",
-            }
-    return {"listing_id": listing_id, "title": "AI Pack", "datasheet_url": f"/api/v1/listings/{listing_id}/datasheet.pdf"}
+async def listing_datasheet(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+    listing = result.scalar_one_or_none()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    return {
+        "listing_id": listing_id,
+        "title": listing.name,
+        "provider": listing.vendor_id,
+        "category": listing.category,
+        "positioning": listing.description,
+        "price": listing.price,
+        "compliance": listing.compliance_tags or [],
+        "badges": listing.badges or [],
+        "install_type": "managed",
+        "target_infra": ["hetzner"],
+        "datasheet_url": f"/api/v1/listings/{listing_id}/datasheet.pdf",
+    }
 
 
 # --- Marketplace Automation ---
@@ -246,8 +253,10 @@ async def onboard_vendor(body: dict, user=Depends(get_current_user)):
 
 
 @router.get("/vendors/me/listings")
-async def my_listings(user=Depends(get_current_user)):
-    return []
+async def my_listings(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.vendor_id == user.id))
+    listings = result.scalars().all()
+    return [_listing_dict(l) for l in listings]
 
 
 @router.get("/vendors/{vendor_id}")
@@ -333,17 +342,6 @@ def _listing_dict(l: MarketplaceListing) -> dict:
         "downloads": l.downloads,
         "rating": l.rating,
     }
-
-
-def _mock_listings():
-    return [
-        {"id": "ls_clinical_rag", "title": "Clinical-RAG \u00b7 HIPAA Pack", "provider": "Veklom Native", "category": "RAG Templates", "positioning": "PHI-safe RAG over clinical PDFs with redaction, chunking, audit trail, and signed evidence export.", "price": "$1,490 / mo", "billing": "monthly", "install": "container", "target": ["hetzner"], "rating": 4.9, "installs": 218, "badges": ["HIPAA-ready", "Audit-signed", "Hetzner-native"], "featured": True, "compliance": ["HIPAA", "SOC2"]},
-        {"id": "ls_legal_redactor", "title": "Legal Redactor + Diff Engine", "provider": "Stelos Labs", "category": "Pipelines", "positioning": "Strip PII, redline contracts, and emit signed redaction reports without leaving your perimeter.", "price": "$890 / mo", "billing": "monthly", "install": "container", "target": ["hetzner", "aws"], "rating": 4.8, "installs": 142, "badges": ["GDPR", "PII-strip"], "featured": False, "compliance": ["GDPR", "SOC2"]},
-        {"id": "ls_qwen_72_image", "title": "Qwen 2.5 72B \u00b7 INT4 Image", "provider": "Veklom Native", "category": "Deploy Images", "positioning": "Drop-in Ollama-compatible Qwen 2.5 72B INT4 container, pre-tuned for Hetzner AX-line hardware.", "price": "$0 / pull", "billing": "free", "install": "image", "target": ["hetzner"], "rating": 4.7, "installs": 891, "badges": ["Hetzner-native", "Ollama-compat"], "featured": True, "compliance": []},
-        {"id": "ls_soc2_pack", "title": "SOC 2 Compliance Pack", "provider": "AuditMesh", "category": "Compliance", "positioning": "Automated SOC 2 Type II evidence collection, control mapping, and auditor-ready exports.", "price": "$2,100 / mo", "billing": "monthly", "install": "saas", "target": ["any"], "rating": 4.9, "installs": 76, "badges": ["SOC2", "Audit-signed"], "featured": False, "compliance": ["SOC2"]},
-        {"id": "ls_pgvector_connector", "title": "pgvector Sovereign Connector", "provider": "Veklom Native", "category": "Connectors", "positioning": "Zero-egress pgvector integration with tenant-scoped namespaces, schema migration tooling, and RBAC.", "price": "$490 / mo", "billing": "monthly", "install": "container", "target": ["hetzner"], "rating": 4.8, "installs": 334, "badges": ["Hetzner-native", "Zero-egress"], "featured": False, "compliance": ["HIPAA", "SOC2"]},
-        {"id": "ls_pii_strip", "title": "PII Strip \u00b7 Real-time Proxy", "provider": "PrivacyLayer", "category": "Privacy", "positioning": "Inline PII detection and redaction proxy for all LLM traffic. Regex + NER + LLM-assist modes.", "price": "$690 / mo", "billing": "monthly", "install": "sidecar", "target": ["hetzner", "aws"], "rating": 4.7, "installs": 203, "badges": ["GDPR", "CCPA", "HIPAA-ready"], "featured": False, "compliance": ["GDPR", "HIPAA", "CCPA"]},
-    ]
 
 
 def _source_marketplace_tools() -> list[dict]:

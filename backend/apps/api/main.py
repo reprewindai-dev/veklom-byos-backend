@@ -188,6 +188,7 @@ LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" 
 GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "gpc"
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
 COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
+LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
 
 
@@ -203,6 +204,8 @@ def _mount_static():
             StaticFiles(directory=str(COMMAND_CENTER_DIR), html=True),
             name="command-center",
         )
+    if LOCKERPHYCER_DIR.exists():
+        app.mount("/lockerphycer", StaticFiles(directory=str(LOCKERPHYCER_DIR), html=True), name="lockerphycer")
     if GPC_DIR.exists():
         app.mount("/gpc-engine", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc-engine")
         app.mount("/gpc", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc")

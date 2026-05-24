@@ -21,7 +21,7 @@ router = APIRouter(tags=["Pipelines"])
 # --- Pipelines ---
 @router.get("/pipelines")
 async def list_pipelines(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Pipeline).limit(50))
+    result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == (user.workspace_id or "default")).limit(50))
     pipes = result.scalars().all()
     if not pipes:
         return _mock_pipelines()
@@ -42,8 +42,16 @@ async def create_pipeline(body: dict, user=Depends(get_current_user), db: AsyncS
 
 
 @router.get("/pipelines/{pipeline_id}")
-async def get_pipeline(pipeline_id: str, user=Depends(get_current_user)):
-    return {"id": pipeline_id, "name": "Support Triage Pipeline", "status": "active", "steps": _mock_steps()}
+async def get_pipeline(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id))
+    pipe = result.scalar_one_or_none()
+    if pipe:
+        return _pipe_detail_dict(pipe)
+    # Fallback: check if it's one of the default pipeline IDs
+    defaults = {p["id"]: p for p in _mock_pipelines()}
+    if pipeline_id in defaults:
+        return _pipe_detail_from_mock(defaults[pipeline_id])
+    return {"id": pipeline_id, "name": "Pipeline", "status": "draft", "template": "Custom", "nodes": 0, "vectorStore": "none", "invocations": 0, "lastRun": "—", "stages": _mock_stages()}
 
 
 @router.patch("/pipelines/{pipeline_id}")
@@ -117,8 +125,12 @@ async def demo_pipeline_stream():
 @router.get("/deployments")
 async def list_deployments(user=Depends(get_current_user)):
     return [
-        {"id": "d1", "name": "Production vLLM", "type": "private", "status": "running", "endpoint": "https://vllm.internal:8000"},
-        {"id": "d2", "name": "Staging Ollama", "type": "private", "status": "running", "endpoint": "https://ollama.internal:11434"},
+        {"id": "d_chat_main", "name": "chat-prod", "type": "chat", "endpoint": "https://api.veklom.com/v1/chat/completions", "auth": "api-key", "model": "veklom-llama3-70b", "region": "fsn1-hetz", "rateLimit": "240 rpm / 1.2M tpm", "status": "live", "rps": 38.4, "errorRate": 0.002},
+        {"id": "d_embed_rag", "name": "embed-rag", "type": "embedding", "endpoint": "https://api.veklom.com/v1/embeddings", "auth": "api-key", "model": "veklom-bge-large", "region": "fra1-hetz", "rateLimit": "600 rpm / 4M tpm", "status": "live", "rps": 112.7, "errorRate": 0},
+        {"id": "d_code_assist", "name": "code-assist", "type": "completion", "endpoint": "https://api.veklom.com/v1/completions", "auth": "jwt", "model": "veklom-deepseek-v3", "region": "fsn1-hetz", "rateLimit": "120 rpm", "status": "live", "rps": 6.1, "errorRate": 0.001},
+        {"id": "d_intake_pipe", "name": "patient-intake-pipeline", "type": "pipeline", "endpoint": "https://api.veklom.com/p/patient-intake", "auth": "api-key", "model": "veklom-llama3-70b", "region": "fsn1-hetz", "rateLimit": "60 rpm", "status": "live", "rps": 1.4, "errorRate": 0},
+        {"id": "d_batch_ingest", "name": "nightly-batch-summarize", "type": "batch", "endpoint": "https://api.veklom.com/v1/batches", "auth": "api-key", "model": "veklom-mixtral-8x22", "region": "ash-aws", "rateLimit": "burst 4\u00d7 nightly", "status": "paused", "rps": 0, "errorRate": 0},
+        {"id": "d_audit_classifier", "name": "audit-pii-classifier", "type": "chat", "endpoint": "https://api.veklom.com/v1/chat/completions", "auth": "ip-allowlist", "model": "veklom-qwen2-72b", "region": "fsn1-hetz", "rateLimit": "60 rpm", "status": "draft", "rps": 0, "errorRate": 0},
     ]
 
 
@@ -200,20 +212,48 @@ async def autonomous_override(body: dict, user=Depends(get_current_user)):
 
 
 def _pipe_dict(p: Pipeline) -> dict:
-    return {"id": p.id, "name": p.name, "description": p.description, "status": p.status, "steps": p.steps}
+    extra = p.steps if isinstance(p.steps, dict) else {}
+    return {
+        "id": p.id,
+        "name": p.name,
+        "template": extra.get("template", p.description or "Custom"),
+        "nodes": extra.get("nodes", len(p.steps) if isinstance(p.steps, list) else 0),
+        "vectorStore": extra.get("vectorStore", "pgvector"),
+        "status": p.status or "draft",
+        "invocations": extra.get("invocations", 0),
+        "lastRun": extra.get("lastRun", "—"),
+    }
+
+
+def _pipe_detail_dict(p: Pipeline) -> dict:
+    d = _pipe_dict(p)
+    d["stages"] = _mock_stages()
+    d["description"] = p.description or ""
+    return d
+
+
+def _pipe_detail_from_mock(mock: dict) -> dict:
+    d = dict(mock)
+    d["stages"] = _mock_stages()
+    return d
 
 
 def _mock_pipelines():
     return [
-        {"id": "pipe1", "name": "Support Triage", "description": "AI-powered support ticket triage", "status": "active", "steps": _mock_steps()},
-        {"id": "pipe2", "name": "Document Review", "description": "Automated document compliance review", "status": "draft", "steps": []},
+        {"id": "p_rag_clinical", "name": "clinical-rag", "template": "RAG / pgvector", "nodes": 9, "vectorStore": "pgvector", "status": "deployed", "invocations": 18420, "lastRun": "2 min ago"},
+        {"id": "p_intake", "name": "patient-intake", "template": "Intake form → triage", "nodes": 12, "vectorStore": "Qdrant", "status": "deployed", "invocations": 412, "lastRun": "12 min ago"},
+        {"id": "p_legal_redact", "name": "legal-redactor", "template": "PII strip → redline", "nodes": 7, "vectorStore": "Weaviate", "status": "deployed", "invocations": 2210, "lastRun": "1 hr ago"},
+        {"id": "p_risk_class", "name": "risk-classifier", "template": "Multi-label classifier", "nodes": 5, "vectorStore": "pgvector", "status": "draft", "invocations": 0, "lastRun": "—"},
     ]
 
 
-def _mock_steps():
+def _mock_stages():
     return [
-        {"id": "s1", "name": "Intake", "type": "input", "status": "ready"},
-        {"id": "s2", "name": "Classify", "type": "ai", "status": "ready"},
-        {"id": "s3", "name": "Route", "type": "logic", "status": "ready"},
-        {"id": "s4", "name": "Respond", "type": "output", "status": "ready"},
+        {"id": "st1", "name": "Source", "type": "input", "status": "complete"},
+        {"id": "st2", "name": "Build", "type": "transform", "status": "complete"},
+        {"id": "st3", "name": "Validate", "type": "check", "status": "running"},
+        {"id": "st4", "name": "Test", "type": "check", "status": "pending"},
+        {"id": "st5", "name": "Stage", "type": "deploy", "status": "pending"},
+        {"id": "st6", "name": "Gate", "type": "approval", "status": "pending"},
+        {"id": "st7", "name": "Deploy", "type": "deploy", "status": "pending"},
     ]

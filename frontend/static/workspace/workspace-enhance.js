@@ -917,13 +917,98 @@
     }
 
     // ------ COMPLIANCE ------
+    if (label === "export audit package" || label === "export audit pkg" || label.includes("export audit")) {
+      e.preventDefault(); e.stopPropagation();
+      toast("Generating full audit package — downloading…", "ok");
+      try {
+        const res = await fetch(`${base}/compliance/evidence/export-all`, {
+          method: "POST", headers: authHeaders(), credentials: "include",
+        });
+        if (res.ok) {
+          const text = await res.text();
+          const date = new Date().toISOString().slice(0, 10);
+          downloadBlob(text, `veklom-full-audit-${date}.md`, "text/markdown");
+          toast("Full audit package downloaded — all 6 frameworks included", "ok");
+        } else {
+          toast("Audit export failed — check console", "error");
+        }
+      } catch (err) { toast("Export failed: " + err.message, "error"); }
+      return;
+    }
+    if (label === "schedule report" || label === "schedule" && page.includes("compliance")) {
+      e.preventDefault(); e.stopPropagation();
+      document.getElementById("veklom-schedule-modal")?.remove();
+      const sm = document.createElement("div");
+      sm.id = "veklom-schedule-modal";
+      sm.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      const fwOptions = ["HIPAA","SOC 2 Type II","PCI-DSS v4","ISO 27001","GDPR","FedRAMP Moderate"].map(f =>
+        `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" class="sched-fw" value="${f.toLowerCase().replace(/ /g,"_").replace(/-/g,"_")}" checked style="accent-color:#f97316;"> ${f}</label>`
+      ).join("");
+      sm.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:480px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:6px;">Schedule Compliance Report</div>
+        <div style="font-size:12px;color:#555;margin-bottom:18px;">Automatically generate and deliver audit packages on a schedule.</div>
+        <div style="display:grid;gap:12px;margin-bottom:20px;">
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Frequency</label>
+            <select id="sched-freq" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;">
+              <option value="daily">Daily</option>
+              <option value="weekly" selected>Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Frameworks to include</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px;background:#0a0a14;border-radius:6px;">${fwOptions}</div>
+          </div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Recipient email</label><input id="sched-email" type="email" placeholder="auditor@company.com" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="sched-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="sched-save" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Schedule</button>
+        </div>
+      </div>`;
+      document.body.appendChild(sm);
+      sm.querySelector("#sched-cancel").onclick = () => sm.remove();
+      sm.onclick = ev => { if (ev.target === sm) sm.remove(); };
+      sm.querySelector("#sched-save").onclick = async () => {
+        const freq = sm.querySelector("#sched-freq").value;
+        const fws = [...sm.querySelectorAll(".sched-fw:checked")].map(el => el.value);
+        const recipient = sm.querySelector("#sched-email").value.trim();
+        sm.remove();
+        const res = await api("POST", "/compliance/schedule", { frequency: freq, frameworks: fws, recipient });
+        const nextRun = res?.next_run ? new Date(res.next_run).toLocaleDateString() : "soon";
+        toast(res?.id ? `Report scheduled ${freq} — ID: ${res.id} · Next: ${nextRun}` : "Report scheduled", "ok");
+      };
+      return;
+    }
     if (label === "run check" || label.includes("run compliance")) {
       e.preventDefault(); e.stopPropagation();
-      const regulation = window.prompt("Run compliance check for (HIPAA / GDPR / SOC2 / ISO27001):", "HIPAA") || "HIPAA";
+      const regulation = window.prompt("Run compliance check for (HIPAA / GDPR / SOC2 / ISO27001 / PCI-DSS / FedRAMP):", "HIPAA") || "HIPAA";
       const res = await api("POST", "/compliance/check", { regulation });
       if (res) {
         toast(`${regulation}: ${res.result?.toUpperCase()} — score ${Math.round((res.score || 0) * 100)}%`, "ok");
       }
+      return;
+    }
+    // Per-framework evidence download (eye icon on framework cards)
+    if (page.includes("compliance") && label === "" && btn.querySelector("svg")) {
+      e.preventDefault(); e.stopPropagation();
+      const card = btn.closest("[class*='card'], [class*='framework'], [class*='panel'], div");
+      const titleEl = card?.querySelector("h3, h4, [class*='title'], [class*='name'], strong, b");
+      const titleText = (titleEl?.textContent || "").toLowerCase();
+      const FW_MAP = { "hipaa": "hipaa", "soc 2": "soc2", "soc2": "soc2", "pci": "pci_dss", "iso 27001": "iso27001", "iso27001": "iso27001", "gdpr": "gdpr", "fedramp": "fedramp" };
+      const fwId = Object.entries(FW_MAP).find(([k]) => titleText.includes(k))?.[1] || "hipaa";
+      try {
+        const res = await fetch(`${base}/compliance/evidence/${fwId}/export`, {
+          method: "POST", headers: authHeaders(), credentials: "include",
+        });
+        if (res.ok) {
+          const text = await res.text();
+          const date = new Date().toISOString().slice(0,10);
+          downloadBlob(text, `veklom-audit-${fwId}-${date}.md`, "text/markdown");
+          toast(`Evidence package for ${fwId.toUpperCase()} downloaded`, "ok");
+        } else {
+          toast("Failed to generate evidence package", "error");
+        }
+      } catch (err) { toast("Download failed", "error"); }
       return;
     }
 

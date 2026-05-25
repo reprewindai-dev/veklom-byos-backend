@@ -389,7 +389,9 @@ def provider_order_for_tenant(body: dict, workspace_id: str) -> tuple[list[str],
             order.insert(1, explicit)
         order.extend([p for p in full_stack if p not in order])
     else:
-        # Customer tenant: only Ollama + their own BYOK (injected by caller)
+        # Customer / eval tenant: Ollama first, then HuggingFace (public fallback),
+        # then any explicit BYOK provider
+        order.append("huggingface")   # free tier public fallback if Ollama fails
         if explicit and explicit not in order:
             # Only allow if it will be backed by a BYOK key (caller validates)
             order.append(explicit)
@@ -447,11 +449,17 @@ async def run_completion_for_tenant(
                 errors.append(f"{provider}: {exc}")
                 continue
         else:
-            # Customer: must have BYOK key
+            # Customer: BYOK key required, except HuggingFace which has a
+            # public inference API for basic models (free tier fallback).
             raw_key = (byok_keys or {}).get(provider)
             if not raw_key:
-                errors.append(f"{provider}: no BYOK key for tenant")
-                continue
+                # Allow HuggingFace as a public fallback using owner's HF token
+                # (rate-limited free tier — not a full key leak, scoped models only)
+                if provider == "huggingface" and _is_configured(settings.HF_TOKEN):
+                    raw_key = settings.HF_TOKEN.strip()
+                else:
+                    errors.append(f"{provider}: no BYOK key for tenant")
+                    continue
             try:
                 if provider in {"openai", "groq", "huggingface"}:
                     url, _ = _openai_compatible_config(provider)

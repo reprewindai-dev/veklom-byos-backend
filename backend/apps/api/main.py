@@ -190,8 +190,67 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=settings.APP_NAME,
+    title="Veklom Sovereign AI Hub",
     version=settings.VERSION,
+    summary="API-native governed AI execution layer for humans, developers, enterprises, and autonomous agents.",
+    description="""
+## Veklom Sovereign AI Hub
+
+Veklom is an **API-native governed execution layer** for humans, developers, enterprises, and autonomous agents.
+
+### Four-tier access model
+| Tier | Interface | Auth |
+|------|-----------|------|
+| **Humans** | Workspace UI at /workspace/ | Browser session |
+| **Developers** | REST API | Bearer JWT |
+| **Agents** | Paid routes | x402 (USDC on Base), no sign-up |
+| **Enterprises** | Governance + evidence layer | Bearer JWT + SLA |
+
+### Machine discovery
+- OpenAPI schema: `https://api.veklom.com/openapi.json`
+- Agent manifest: `https://api.veklom.com/.well-known/agent.json`
+- x402 config: `https://api.veklom.com/.well-known/x402.json`
+- MCP SSE: `https://api.veklom.com/mcp/sse`
+- llms.txt: `https://api.veklom.com/llms.txt`
+- Pricing: `https://api.veklom.com/api/v1/pricing`
+
+### Agent controls on every paid route
+Every paid execution returns a machine-readable receipt with `request_id`, `cost_usdc`,
+`policy_result`, `evidence_id`, and `receipt_url`. Budget caps, kill switches, and wallet
+isolation are enforced before execution.
+
+### x402 micropayments
+Unauthenticated agents receive HTTP 402 with payment requirements. Pay per call in USDC on Base.
+Free tier: 5 calls/day per IP on inference and GPC compile.
+
+### OpenAI-compatible endpoint
+Drop-in replacement: `base_url=https://api.veklom.com/v1`
+""",
+    contact={
+        "name": "Veklom API",
+        "url": "https://veklom.com",
+        "email": "api@veklom.com",
+    },
+    license_info={
+        "name": "Proprietary",
+        "url": "https://veklom.com/legal/terms",
+    },
+    servers=[
+        {"url": "https://api.veklom.com", "description": "Production (machine-facing API surface)"},
+        {"url": "https://veklom.com",     "description": "Production (main site)"},
+    ],
+    openapi_tags=[
+        {"name": "AI",          "description": "Governed AI inference, chat, smart tier routing. Ollama-first, escalates to Groq/Gemini/OpenAI."},
+        {"name": "GPC",         "description": "Governed Plan Compiler — compile agent intent into deterministic, policy-checked plans."},
+        {"name": "Pipelines",   "description": "Pipeline orchestration — trigger, manage, and monitor governed pipelines."},
+        {"name": "Evidence",    "description": "SHA-256 sealed audit evidence for every governed execution."},
+        {"name": "Compliance",  "description": "Compliance reports for SOC2, HIPAA, GDPR, ISO 27001, EU AI Act, FedRAMP."},
+        {"name": "Billing",     "description": "Operating reserve, wallet top-up, subscriptions, invoices, budget caps."},
+        {"name": "Marketplace", "description": "Sovereign AI model marketplace — acquire, configure, and deploy governed models."},
+        {"name": "Monitoring",  "description": "Real-time observability, structured logs, alerts, and platform pulse."},
+        {"name": "discovery",   "description": "Machine-readable discovery: .well-known, llms.txt, mcp/sse, pricing, SDK examples."},
+        {"name": "Auth",        "description": "JWT authentication, GitHub OAuth, multi-tenant workspace registration."},
+    ],
     lifespan=lifespan,
 )
 

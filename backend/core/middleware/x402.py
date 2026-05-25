@@ -57,6 +57,8 @@ _FREE_ROUTES_PREFIX = (
     "/llms.txt", "/pricing", "/robots.txt", "/docs", "/redoc",
     "/api/v1/ai/models", "/api/v1/workspace/providers",
     "/api/v1/auth/", "/api/v1/platform/pulse",
+    "/api/v1/pricing", "/api/v1/sdk/", "/api/v1/agent-use-cases",
+    "/agent-use-cases", "/sdk/examples",
     "/mcp/", "/static/", "/assets/", "/favicon",
 )
 

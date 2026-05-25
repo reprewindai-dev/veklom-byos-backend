@@ -300,7 +300,10 @@ OpenAPI schema:   https://api.veklom.com/openapi.json
 Agent manifest:   https://api.veklom.com/.well-known/agent.json
 x402 config:      https://api.veklom.com/.well-known/x402.json
 MCP SSE:          https://api.veklom.com/mcp/sse
-Pricing:          https://veklom.com/pricing
+Machine pricing:  https://api.veklom.com/pricing
+Agent use cases:  https://api.veklom.com/agent-use-cases
+SDK examples:     https://api.veklom.com/api/v1/sdk/examples
+Human pricing:    https://veklom.com/pricing
 
 ## Authentication
 
@@ -502,3 +505,428 @@ async def mcp_sse(request: Request):
             "X-Veklom-MCP-Version": "1.0",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# /pricing  — machine-readable pricing (public, no auth)
+# ---------------------------------------------------------------------------
+@router.get("/pricing")
+@router.get("/api/v1/pricing")
+async def machine_pricing():
+    """
+    Machine-readable pricing for every governed operation.
+    Agents read this before submitting requests to know cost + budget requirements.
+    Also returned in /.well-known/x402.json per the x402 payment protocol.
+    """
+    return JSONResponse({
+        "currency": "USDC",
+        "network": VEKLOM_NETWORK,
+        "payment_protocol": "x402",
+        "free_tier": {
+            "requests_per_day": 5,
+            "routes": ["/api/v1/ai/inference", "/api/v1/gpc/compile"],
+            "note": "5 free governed calls/day per IP. No sign-up required.",
+        },
+        "routes": {
+            "ai_inference": {
+                "path": "/api/v1/ai/inference",
+                "method": "POST",
+                "price_usdc": VEKLOM_PRICING["ai_inference"]["price_usdc"],
+                "unit": "per request",
+                "description": "Policy-gated AI inference. Ollama-first, escalates to Groq/Gemini/OpenAI based on task complexity.",
+                "receipt": True,
+                "evidence": True,
+            },
+            "ai_chat": {
+                "path": "/api/v1/ai/chat",
+                "method": "POST",
+                "price_usdc": VEKLOM_PRICING["ai_chat"]["price_usdc"],
+                "unit": "per request",
+                "description": "AI chat with 20-message persistent memory (24h TTL). Hot/warm Redis cache.",
+                "receipt": True,
+                "evidence": True,
+            },
+            "gpc_compile": {
+                "path": "/api/v1/gpc/compile",
+                "method": "POST",
+                "price_usdc": VEKLOM_PRICING["gpc_compile"]["price_usdc"],
+                "unit": "per compile",
+                "description": "Compile agent intent into a deterministic, policy-checked governed plan.",
+                "receipt": True,
+                "evidence": True,
+            },
+            "gpc_intent_to_plan": {
+                "path": "/api/v1/gpc/intent-to-plan",
+                "method": "POST",
+                "price_usdc": VEKLOM_PRICING["gpc_intent_to_plan"]["price_usdc"],
+                "unit": "per plan",
+                "description": "Convert high-level intent string into a structured governed execution plan.",
+                "receipt": True,
+                "evidence": True,
+            },
+            "gpc_run": {
+                "path": "/api/v1/gpc/runs",
+                "method": "POST",
+                "price_usdc": VEKLOM_PRICING["gpc_run"]["price_usdc"],
+                "unit": "per run",
+                "description": "Execute a compiled governed plan. All steps are policy-checked and evidence-sealed.",
+                "receipt": True,
+                "evidence": True,
+            },
+            "pipeline_trigger": {
+                "path": "/api/v1/pipelines/trigger",
+                "method": "POST",
+                "price_usdc": VEKLOM_PRICING["pipeline_trigger"]["price_usdc"],
+                "unit": "per trigger",
+                "description": "Trigger a governed pipeline. Budget caps and kill switches enforced.",
+                "receipt": True,
+                "evidence": True,
+            },
+            "runtime_job": {
+                "path": "/api/v1/runtime/jobs",
+                "method": "POST",
+                "price_usdc": VEKLOM_PRICING["runtime_job"]["price_usdc"],
+                "unit": "per job",
+                "description": "Submit a runtime job to the governed execution layer.",
+                "receipt": True,
+                "evidence": True,
+            },
+            "evidence_export": {
+                "path": "/api/v1/evidence/export",
+                "method": "GET",
+                "price_usdc": VEKLOM_PRICING["evidence_export"]["price_usdc"],
+                "unit": "per export",
+                "description": "Export SHA-256 sealed audit evidence for a governed execution.",
+                "receipt": True,
+                "evidence": True,
+            },
+            "compliance_report": {
+                "path": "/api/v1/compliance/report",
+                "method": "GET",
+                "price_usdc": VEKLOM_PRICING["compliance_report"]["price_usdc"],
+                "unit": "per report",
+                "description": "Generate a compliance report (SOC2, HIPAA, GDPR, ISO 27001, EU AI Act).",
+                "receipt": True,
+                "evidence": True,
+            },
+            "marketplace_acquire": {
+                "path": "/api/v1/marketplace/acquire",
+                "method": "POST",
+                "price_usdc": VEKLOM_PRICING["marketplace_acquire"]["price_usdc"],
+                "unit": "per acquire",
+                "description": "Acquire a sovereign AI model or governance pack from the marketplace.",
+                "receipt": True,
+                "evidence": False,
+            },
+        },
+        "budget_controls": {
+            "budget_caps": True,
+            "kill_switch": True,
+            "wallet_isolation": True,
+            "operating_reserve": True,
+            "daily_soft_limit": "configurable per workspace",
+            "hard_stop": "configurable per workspace",
+        },
+        "receipt_format": {
+            "request_id": "req_...",
+            "cost_usdc": "decimal string",
+            "route": "provider:model",
+            "policy_result": "passed | failed | blocked",
+            "evidence_id": "ev_...",
+            "receipt_url": f"{VEKLOM_AGENT_BASE}/api/v1/evidence/ev_...",
+            "timestamp": "ISO 8601",
+        },
+        "free_routes": [
+            f"{VEKLOM_AGENT_BASE}/health",
+            f"{VEKLOM_AGENT_BASE}/status",
+            f"{VEKLOM_AGENT_BASE}/openapi.json",
+            f"{VEKLOM_AGENT_BASE}/.well-known/*",
+            f"{VEKLOM_AGENT_BASE}/llms.txt",
+            f"{VEKLOM_AGENT_BASE}/pricing",
+            f"{VEKLOM_AGENT_BASE}/mcp/sse",
+            f"{VEKLOM_AGENT_BASE}/agent-use-cases",
+            f"{VEKLOM_AGENT_BASE}/sdk/examples",
+        ],
+    }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=300"})
+
+
+# ---------------------------------------------------------------------------
+# /agent-use-cases  — structured affordances for agent systems
+# ---------------------------------------------------------------------------
+@router.get("/agent-use-cases")
+@router.get("/api/v1/agent-use-cases")
+async def agent_use_cases():
+    """
+    Structured list of what Veklom can do for agents.
+    Agents read this to understand affordances before planning workflows.
+    """
+    return JSONResponse({
+        "platform": "Veklom Sovereign AI Hub",
+        "tagline": "Governed execution + machine-readable infrastructure + evidence + pricing + routing + policy + runtime observability",
+        "use_cases": [
+            {
+                "id": "governed_plan_compilation",
+                "title": "Compile agent intent into governed plans",
+                "description": (
+                    "Send high-level agent intent to GPC. Receive a deterministic, "
+                    "policy-checked execution plan with step-by-step actions, budget constraints, "
+                    "and pre-execution risk assessment."
+                ),
+                "endpoint": "/api/v1/gpc/compile",
+                "example_input": {"intent": "Review repo for security issues and generate report", "budget_usdc": 0.10},
+                "example_output": {"plan_id": "plan_...", "steps": [], "policy_result": "passed", "estimated_cost_usdc": 0.065},
+            },
+            {
+                "id": "budget_constrained_inference",
+                "title": "Run AI inference under budget caps",
+                "description": (
+                    "Route AI inference through sovereign infrastructure (Ollama-first). "
+                    "Automatic provider escalation: local→Groq→Gemini→OpenAI based on task complexity. "
+                    "Budget caps enforced before execution."
+                ),
+                "endpoint": "/api/v1/ai/inference",
+                "example_input": {"messages": [{"role": "user", "content": "..."}], "max_budget_usdc": 0.05},
+                "example_output": {"response_text": "...", "provider": "ollama", "tier": "local", "cost_usd": 0.0, "policy_result": "passed"},
+            },
+            {
+                "id": "persistent_conversation",
+                "title": "Persistent 20-message conversation memory",
+                "description": (
+                    "Multi-turn conversation with 24h Redis memory (max 20 messages). "
+                    "Hot/warm cache — identical requests served from cache at $0 cost. "
+                    "Session isolated per workspace."
+                ),
+                "endpoint": "/api/v1/ai/chat",
+                "example_input": {"messages": [{"role": "user", "content": "..."}], "session_id": "my-session"},
+                "example_output": {"response_text": "...", "memory": {"message_count": 3, "max": 20, "ttl_hours": 24}},
+            },
+            {
+                "id": "replayable_audit_evidence",
+                "title": "Generate SHA-256 sealed audit evidence",
+                "description": (
+                    "Every governed execution produces a tamper-evident evidence block. "
+                    "SHA-256 hash chain ensures immutability. Export as JSON package "
+                    "for SOC2, HIPAA, GDPR, or EU AI Act compliance."
+                ),
+                "endpoint": "/api/v1/evidence/export",
+                "example_output": {"evidence_id": "ev_...", "sha256": "...", "timestamp": "...", "policy_result": "passed"},
+            },
+            {
+                "id": "compliance_reporting",
+                "title": "Automated compliance reports",
+                "description": (
+                    "Generate compliance packages for SOC2, HIPAA, GDPR, ISO 27001, EU AI Act, FedRAMP. "
+                    "Backed by real execution evidence from the audit trail."
+                ),
+                "endpoint": "/api/v1/compliance/report",
+                "example_input": {"framework": "hipaa", "period_days": 30},
+                "example_output": {"framework": "hipaa", "status": "compliant", "controls_passed": 47, "evidence_package_url": "..."},
+            },
+            {
+                "id": "pipeline_orchestration",
+                "title": "Trigger governed multi-step pipelines",
+                "description": (
+                    "Trigger pipelines where each node has its own policy check, spend limit, "
+                    "and automated audit entry. Kill switches halt execution at any level."
+                ),
+                "endpoint": "/api/v1/pipelines/trigger",
+            },
+            {
+                "id": "kill_switch",
+                "title": "Kill switch — halt agent at any level",
+                "description": (
+                    "Activate a kill switch at agent, tenant, or system level. "
+                    "Immediately halts all governed execution for the target scope. "
+                    "Critical for agent safety and incident response."
+                ),
+                "endpoint": "/api/v1/kill-switch/activate",
+                "example_input": {"level": "agent", "reason": "Unexpected behavior detected"},
+            },
+            {
+                "id": "openai_compatible_endpoint",
+                "title": "OpenAI-compatible drop-in endpoint",
+                "description": (
+                    "Use Veklom as a drop-in OpenAI replacement. Same request/response format. "
+                    "Adds governance, policy gates, evidence, and cost tracking transparently."
+                ),
+                "endpoint": "/v1/chat/completions",
+                "example": {
+                    "python": "client = OpenAI(base_url='https://api.veklom.com/v1', api_key='your_token')",
+                    "note": "Requests route through Veklom governance layer before reaching the model.",
+                },
+            },
+        ],
+        "agent_infrastructure": {
+            "what_makes_veklom_different": [
+                "Every execution produces tamper-evident evidence — not just a result",
+                "Budget caps and kill switches are enforced BEFORE execution, not after",
+                "Provider routing is intelligent: local Ollama first, escalate only when needed",
+                "x402 micropayments — agents pay per call, no account required",
+                "Operating reserve model — predictable spend, no surprise invoices",
+                "Multi-tenant isolation — each workspace is fully separated",
+            ],
+            "what_most_apis_lack": [
+                "Evidence and audit trails",
+                "Pre-execution governance and policy checks",
+                "Cost-aware routing intelligence",
+                "Kill switches and circuit breakers",
+                "Machine-readable receipts on every call",
+            ],
+        },
+        "discovery_urls": {
+            "openapi":      f"{VEKLOM_AGENT_BASE}/openapi.json",
+            "agent_json":   f"{VEKLOM_AGENT_BASE}/.well-known/agent.json",
+            "x402_config":  f"{VEKLOM_AGENT_BASE}/.well-known/x402.json",
+            "mcp_sse":      f"{VEKLOM_AGENT_BASE}/mcp/sse",
+            "llms_txt":     f"{VEKLOM_AGENT_BASE}/llms.txt",
+            "pricing":      f"{VEKLOM_AGENT_BASE}/pricing",
+            "sdk_examples": f"{VEKLOM_AGENT_BASE}/api/v1/sdk/examples",
+        },
+    }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=300"})
+
+
+# ---------------------------------------------------------------------------
+# /api/v1/sdk/examples  — copy-paste SDK examples for agents and developers
+# ---------------------------------------------------------------------------
+@router.get("/api/v1/sdk/examples")
+async def sdk_examples():
+    """
+    Copy-paste SDK examples for agents, developers, and agent frameworks.
+    Shows how to call Veklom from Python, JavaScript, curl, and as an OpenAI drop-in.
+    """
+    base = VEKLOM_AGENT_BASE
+    api  = VEKLOM_API_BASE
+    return JSONResponse({
+        "note": "Replace YOUR_TOKEN with a Bearer JWT from https://veklom.com/workspace/login or use x402 for per-call payments.",
+        "examples": {
+            "curl_inference": {
+                "description": "Run AI inference (Ollama daily driver, auto-escalates if needed)",
+                "command": f"""curl -X POST {api}/ai/inference \\
+  -H "Authorization: Bearer YOUR_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"messages": [{{"role": "user", "content": "Analyze this for security issues: ..."}}]}}'""",
+                "response_fields": ["response_text", "provider", "tier", "cost_usd", "policy", "audit_id"],
+            },
+            "curl_gpc_compile": {
+                "description": "Compile agent intent into a governed plan",
+                "command": f"""curl -X POST {api}/gpc/compile \\
+  -H "Authorization: Bearer YOUR_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"intent": "Review repository for HIPAA violations", "budget_usdc": 0.10}}'""",
+            },
+            "curl_x402_agent": {
+                "description": "x402 per-call payment — no account required",
+                "command": f"""# Step 1: Get payment requirements
+curl -X POST {api}/ai/inference
+# Returns: HTTP 402 with X-Payment-Price-USDC and X-Payment-Address headers
+
+# Step 2: Send payment proof
+curl -X POST {api}/ai/inference \\
+  -H "X-Payment-Proof: YOUR_USDC_TX_HASH" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"messages": [{{"role": "user", "content": "Hello"}}]}}'""",
+            },
+            "python_openai_compatible": {
+                "description": "Drop-in OpenAI replacement — same SDK, Veklom governance layer underneath",
+                "code": f"""from openai import OpenAI
+
+client = OpenAI(
+    base_url="{base}/v1",
+    api_key="YOUR_VEKLOM_TOKEN"
+)
+
+response = client.chat.completions.create(
+    model="qwen2.5:1.5b",   # or omit for auto-routing
+    messages=[
+        {{"role": "user", "content": "Analyze this code for security issues."}}
+    ]
+)
+print(response.choices[0].message.content)
+# Response includes X-Veklom-Evidence-ID, X-Veklom-Cost-USDC headers""",
+            },
+            "python_native": {
+                "description": "Native Veklom API with receipts and memory",
+                "code": f"""import httpx
+
+TOKEN = "YOUR_VEKLOM_TOKEN"
+API   = "{api}"
+
+# Chat with 24h memory
+r = httpx.post(f"{{API}}/ai/chat", json={{
+    "messages": [{{"role": "user", "content": "Remember: project is called Phoenix"}}],
+    "session_id": "project-phoenix",
+}}, headers={{"Authorization": f"Bearer {{TOKEN}}"}})
+
+data = r.json()
+print(data["response_text"])
+print("Provider:", data["provider"], "| Tier:", data["tier"])
+print("Memory:", data["memory"])  # {{"message_count": 2, "max": 20, "ttl_hours": 24}}
+print("Evidence:", r.headers.get("x-veklom-evidence-id"))""",
+            },
+            "python_agent_budget": {
+                "description": "Agent with budget cap and kill switch",
+                "code": f"""import httpx
+
+TOKEN = "YOUR_VEKLOM_TOKEN"
+API   = "{api}"
+
+# Check pricing first
+pricing = httpx.get(f"{base}/pricing").json()
+print("GPC compile costs:", pricing["routes"]["gpc_compile"]["price_usdc"], "USDC")
+
+# Run with budget constraint
+r = httpx.post(f"{{API}}/gpc/compile", json={{
+    "intent": "Audit repository for PII exposure",
+    "budget_usdc": 0.05,
+    "agent_type": "reasoning",   # → routes to Gemini tier
+}}, headers={{"Authorization": f"Bearer {{TOKEN}}"}})
+
+data = r.json()
+if data.get("policy_result") == "passed":
+    print("Plan:", data.get("plan_id"))
+else:
+    print("Blocked:", data.get("policy_result"))""",
+            },
+            "javascript": {
+                "description": "JavaScript / Node.js native fetch",
+                "code": f"""const API = "{api}";
+const TOKEN = "YOUR_VEKLOM_TOKEN";
+
+const response = await fetch(`${{API}}/ai/inference`, {{
+  method: "POST",
+  headers: {{
+    "Authorization": `Bearer ${{TOKEN}}`,
+    "Content-Type": "application/json",
+  }},
+  body: JSON.stringify({{
+    messages: [{{ role: "user", content: "Summarize this document..." }}],
+  }}),
+}});
+
+const data = await response.json();
+console.log(data.response_text);
+console.log("Provider:", data.provider, "| Cost:", data.cost_usd);
+console.log("Evidence:", response.headers.get("x-veklom-evidence-id"));""",
+            },
+            "mcp_agent": {
+                "description": "Discover Veklom tools via MCP SSE",
+                "code": f"""import httpx
+
+# Discover available tools
+with httpx.stream("GET", "{base}/mcp/sse") as r:
+    for line in r.iter_lines():
+        if line.startswith("data: "):
+            import json
+            event = json.loads(line[6:])
+            if event["type"] == "tool":
+                print(event["tool"]["name"], "-", event["tool"]["price_usdc"], "USDC")""",
+            },
+        },
+        "sdk_links": {
+            "openapi_json":     f"{base}/openapi.json",
+            "postman_import":   f"{base}/openapi.json",
+            "pricing":          f"{base}/pricing",
+            "agent_use_cases":  f"{base}/agent-use-cases",
+            "mcp_sse":          f"{base}/mcp/sse",
+        },
+    }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=3600"})

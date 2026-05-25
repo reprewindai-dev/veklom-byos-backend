@@ -21,8 +21,6 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from sqlalchemy import text
-
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager
@@ -75,6 +73,7 @@ async def lifespan(app: FastAPI):
             # Verify a subset that every endpoint depends on.  If any are
             # missing AFTER create_all, the DB is misconfigured and we want
             # the log to scream.
+            from sqlalchemy import text
             critical = ("users", "exec_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
             check = await conn.execute(text(
                 "SELECT table_name FROM information_schema.tables "
@@ -93,22 +92,93 @@ async def lifespan(app: FastAPI):
         traceback.print_exc()
         # Continue startup — but the operator now sees the error.
 
-    # Idempotent column migrations for the agents table (HRM schema extension).
-    # ALTER TABLE IF NOT EXISTS column pattern — safe to run on every startup.
-    _new_cols = [
-        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS tier VARCHAR(32)",
-        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_number INTEGER UNIQUE",
-        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS hrm_role VARCHAR(64)",
+    # Idempotent column additions for HRM fields on the `agents` table.
+    # `create_all` only creates new tables, not new columns on existing ones.
+    # These ALTER TABLE ... ADD COLUMN IF NOT EXISTS statements are safe to
+    # re-run on every startup.
+    hrm_columns = [
+        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS hrm_tier VARCHAR(32)",
+        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_number INTEGER",
+        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS squad_id VARCHAR(64)",
+        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS capabilities JSONB",
+        "CREATE INDEX IF NOT EXISTS ix_agents_hrm_tier ON agents (hrm_tier)",
+        "CREATE INDEX IF NOT EXISTS ix_agents_agent_number ON agents (agent_number)",
+        "CREATE INDEX IF NOT EXISTS ix_agents_squad_id ON agents (squad_id)",
     ]
     try:
         async with engine.begin() as conn:
-            for ddl in _new_cols:
+            for ddl in hrm_columns:
                 await conn.execute(text(ddl))
-        print("[startup] db: agents HRM columns migrated (idempotent)")
+        print("[startup] db: HRM column migration completed")
     except Exception as e:
-        import traceback
-        print(f"[startup] db: WARNING — agents HRM column migration failed: {type(e).__name__}: {e}")
-        traceback.print_exc()
+        print(f"[startup] db: HRM migration warning: {type(e).__name__}: {e}")
+
+    # Seed first-class skills that should always be present in the registry.
+    # Skills with is_available=False are catalogued but NOT invokable.
+    # Add to this list when a new skill's spec is defined; flip is_available
+    # to True only when the backend implementation exists.
+    from backend.db.models.agent import AgentSkill
+    _SEED_SKILLS = [
+        {
+            "skill_id": "passive-income-engine",
+            "name": "Passive Income Engine",
+            "version": "0.1",
+            "description": (
+                "Finds high-demand, legally usable RAG dataset opportunities and "
+                "creates draft Veklom marketplace listings. Does NOT publish without "
+                "explicit operator approval. Rule: if invoked without implementation, "
+                "returns SKILL_MISSING."
+            ),
+            "is_available": False,
+            "missing_reason": (
+                "SKILL_MISSING — no backend implementation yet. "
+                "The skill is catalogued per spec. "
+                "To implement: create a route that calls a real dataset-discovery "
+                "API, checks license suitability, and POSTs draft listings to "
+                "/api/v1/marketplace/listings with status=draft. "
+                "Do not publish or upload datasets without license verification."
+            ),
+            "input_schema": {
+                "opportunity_types": ["rag_dataset", "workflow_pack", "compliance_pack"],
+                "max_results": 3,
+                "license_filter": ["MIT", "Apache-2.0", "CC-BY-4.0", "Public Domain"],
+                "exclude_types": ["scraped", "restricted", "PHI", "PII", "private"],
+            },
+            "output_schema": {
+                "listings": [
+                    {
+                        "name": "string",
+                        "source_url": "string",
+                        "license": "string",
+                        "why_trending": "string",
+                        "rag_use_case": "string",
+                        "target_buyer": "string",
+                        "veklom_category": "string",
+                        "listing_type": "string",
+                        "ingestion_plan": "string",
+                        "chunking_strategy": "string",
+                        "gpc_template_idea": "string",
+                        "evidence_requirements": "string",
+                        "risks": "string",
+                        "approval_status": "draft",
+                    }
+                ]
+            },
+        },
+    ]
+    try:
+        from backend.core.database.database import async_session
+        async with async_session() as seed_session:
+            for skill_def in _SEED_SKILLS:
+                existing = (await seed_session.execute(
+                    select(AgentSkill).where(AgentSkill.skill_id == skill_def["skill_id"])
+                )).scalar_one_or_none()
+                if not existing:
+                    seed_session.add(AgentSkill(**skill_def))
+            await seed_session.commit()
+        print(f"[startup] skills: seeded {len(_SEED_SKILLS)} first-class skills")
+    except Exception as e:
+        print(f"[startup] skills: seed warning: {type(e).__name__}: {e}")
 
     yield
 
@@ -254,12 +324,11 @@ app.include_router(command_center.router, prefix="/api/v1")
 # Repo Risk Gate — Playground governed-review tool
 app.include_router(repo_risk_gate.router, prefix="/api/v1")
 
-# HRM Agent sub-router — registered BEFORE agents to ensure /agents/hrm/* routes
-# are matched before the /agents/{agent_number} catch-all in agents.py
-app.include_router(hrm.router, prefix="/api/v1")
-
 # Agent Workforce
 app.include_router(agents.router, prefix="/api/v1")
+
+# HRM sub-system — task force management, Zeno interrogation, skill registry
+app.include_router(hrm.router, prefix="/api/v1")
 
 # ChainOps (LangChain governance) — INTENTIONALLY UNREGISTERED.
 # The langchain_ops module currently returns simulated runs; per spec the

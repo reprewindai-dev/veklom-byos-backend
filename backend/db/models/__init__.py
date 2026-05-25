@@ -6,7 +6,7 @@ from backend.db.models.billing import WalletTransaction, Subscription, BudgetRul
 from backend.db.models.billing_ext import BillingUsage, BillingEvent, AnalyticsEvent
 from backend.db.models.security import AuditLog, SecurityEvent, ComplianceCheck, KillSwitchState
 from backend.db.models.marketplace import MarketplaceListing, Pipeline, PipelineRun, Deployment, Vendor
-from backend.db.models.agent import Account, AgentUser, Agent
+from backend.db.models.agent import Account, AgentUser, Agent, AgentSkill
 from backend.db.models.genome import GenomeVersion
 from backend.db.models.ledger import LedgerEvent
 from backend.db.models.lineage import BirthCertificate, LineageEdge
@@ -23,7 +23,7 @@ __all__ = [
     "AuditLog", "SecurityEvent", "ComplianceCheck", "KillSwitchState",
     "MarketplaceListing", "Pipeline", "PipelineRun", "Deployment", "Vendor",
     # UACP V3 institutional ownership
-    "Account", "AgentUser", "Agent",
+    "Account", "AgentUser", "Agent", "AgentSkill",
     "GenomeVersion",
     "LedgerEvent",
     "BirthCertificate", "LineageEdge",

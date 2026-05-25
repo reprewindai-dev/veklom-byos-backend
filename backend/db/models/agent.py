@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database.database import Base
+
+HRM_TIERS = ("prime", "monitor", "sync")
+
 
 
 class Account(Base):
@@ -54,9 +58,16 @@ class Agent(Base):
     declared_purpose: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="registered")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    tier: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
-    agent_number: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True, default=None)
-    hrm_role: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+
+    # HRM fields — nullable so existing rows are unaffected.
+    # tier: one of HRM_TIERS ('prime'|'monitor'|'sync') or null for non-HRM agents.
+    # agent_number: sequential identifier within the account's task force (e.g. 114).
+    # squad_id: optional grouping tag (e.g. 'HQ-Alpha', 'Field-Bravo').
+    # capabilities: JSON list of skill IDs this agent is authorised to invoke.
+    hrm_tier: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    agent_number: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    squad_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    capabilities: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
 
     account: Mapped[Account] = relationship(back_populates="agents")
     genome_versions: Mapped[list["GenomeVersion"]] = relationship(  # noqa: F821
@@ -74,3 +85,29 @@ class Agent(Base):
     child_edges: Mapped[list["LineageEdge"]] = relationship(  # noqa: F821
         back_populates="parent", foreign_keys="LineageEdge.parent_agent_id"
     )
+
+
+class AgentSkill(Base):
+    """Registered agent skill.
+
+    A skill is a named, versioned capability an agent may invoke.
+    `is_available=False` means the skill is catalogued but the backend
+    implementation does not exist yet.  Callers receive SKILL_MISSING if
+    they attempt invocation.
+
+    Seeded at startup (lifespan) for first-class skills like
+    passive-income-engine; never auto-invoked without explicit operator call.
+    """
+
+    __tablename__ = "agent_skills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    skill_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[str] = mapped_column(String(32), default="0.1")
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    is_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    missing_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_schema: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    output_schema: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

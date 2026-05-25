@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
-from backend.db.models.agent import Account, Agent, AgentUser
+from backend.db.models.agent import Account, Agent, AgentUser, AgentSkill
 from backend.db.models.ledger import LedgerEvent
 
 router = APIRouter(prefix="/agents", tags=["Agent Workforce"])
@@ -60,7 +60,7 @@ async def _account_for_user(user, db: AsyncSession) -> Optional[Account]:
 def _serialize_agent(a: Agent) -> dict:
     return {
         "id": a.id,
-        "agent_number": a.agent_number if a.agent_number is not None else a.id,
+        "agent_number": a.id,
         "agent_id": a.agent_id,
         "codename": a.name,
         "name": a.name,
@@ -68,8 +68,6 @@ def _serialize_agent(a: Agent) -> dict:
         "group": a.declared_purpose,
         "jurisdiction": a.jurisdiction,
         "status": a.status,
-        "tier": a.tier,
-        "hrm_role": a.hrm_role,
         "account_id": a.account_id,
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
@@ -531,3 +529,86 @@ async def guardrails(
             },
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Skill registry
+# ---------------------------------------------------------------------------
+
+def _serialize_skill(s: AgentSkill) -> dict:
+    return {
+        "id": s.id,
+        "skill_id": s.skill_id,
+        "name": s.name,
+        "version": s.version,
+        "description": s.description,
+        "is_available": s.is_available,
+        "missing_reason": s.missing_reason,
+        "input_schema": s.input_schema,
+        "output_schema": s.output_schema,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@router.get("/skills")
+async def list_skills(
+    available_only: bool = Query(False),
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all registered agent skills.
+
+    `available_only=true` filters to skills with is_available=True.
+    Skills with is_available=False return SKILL_MISSING if invoked.
+    """
+    q = select(AgentSkill).order_by(AgentSkill.skill_id.asc())
+    if available_only:
+        q = q.where(AgentSkill.is_available.is_(True))
+    rows = (await db.execute(q)).scalars().all()
+    return {
+        "items": [_serialize_skill(s) for s in rows],
+        "count": len(rows),
+        "source": "db",
+    }
+
+
+@router.get("/skills/{skill_id}")
+async def get_skill(
+    skill_id: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    s = (await db.execute(
+        select(AgentSkill).where(AgentSkill.skill_id == skill_id)
+    )).scalar_one_or_none()
+    if not s:
+        raise HTTPException(status_code=404, detail=f"Skill {skill_id!r} not found. SKILL_MISSING.")
+    return _serialize_skill(s)
+
+
+@router.post("/skills/{skill_id}/invoke")
+async def invoke_skill(
+    skill_id: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Attempt skill invocation.
+
+    If is_available=False, returns 503 SKILL_MISSING.
+    Real invocation logic is deferred to skill-specific handlers once
+    implementations exist.
+    """
+    s = (await db.execute(
+        select(AgentSkill).where(AgentSkill.skill_id == skill_id)
+    )).scalar_one_or_none()
+    if not s:
+        raise HTTPException(status_code=404, detail=f"Skill {skill_id!r} not registered. SKILL_MISSING.")
+    if not s.is_available:
+        raise HTTPException(
+            status_code=503,
+            detail=f"SKILL_MISSING: {s.name!r} is registered but has no backend implementation yet. Reason: {s.missing_reason or 'none provided'}",
+        )
+    raise HTTPException(
+        status_code=501,
+        detail=f"Skill {skill_id!r} is available but invocation dispatcher not yet implemented.",
+    )

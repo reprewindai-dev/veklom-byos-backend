@@ -525,68 +525,6 @@ async def create_order(body: dict, user=Depends(get_current_user)):
     return {"order_id": "ord_placeholder", "status": "created", "items": body.get("items", [])}
 
 
-# --- Reserve & Fund action endpoints ---
-# These are called by the "Reserve" and "Fund" buttons in the billing / agents UI.
-# They create a Stripe Checkout session and return a checkout_url for redirect.
-
-@router.get("/billing/reserve")
-async def reserve_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Current reserve balance for this workspace."""
-    txns = (await db.execute(
-        select(WalletTransaction)
-        .where(
-            WalletTransaction.user_id == user.id,
-            WalletTransaction.tx_type == "activation",
-        )
-        .order_by(WalletTransaction.created_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-    balance = float(txns.amount) if txns else 0.0
-    return {
-        "balance_usd": balance,
-        "currency": "USD",
-        "label": "Operating Reserve",
-        "fund_url": "/workspace#/billing",
-        "source": "wallet_transactions",
-    }
-
-
-@router.post("/billing/reserve/checkout")
-async def reserve_checkout(body: dict, user=Depends(get_current_user)):
-    """Create a Stripe Checkout session to fund the operating reserve."""
-    client = _stripe_client()
-    amount = _checkout_amount(body.get("amount", 150))
-    success_url, cancel_url = _success_cancel_urls()
-    session = client.checkout.Session.create(
-        mode="payment",
-        customer_email=user.email,
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={
-            "user_id": user.id,
-            "workspace_id": user.workspace_id or "",
-            "type": "reserve_topup",
-        },
-        line_items=[
-            {
-                "quantity": 1,
-                "price_data": {
-                    "currency": "usd",
-                    "unit_amount": amount,
-                    "product_data": {"name": "Veklom Operating Reserve"},
-                },
-            }
-        ],
-    )
-    return {"checkout_url": session.url, "session_id": session.id, "type": "reserve_topup"}
-
-
-@router.post("/billing/fund")
-async def fund_checkout(body: dict, user=Depends(get_current_user)):
-    """Alias for wallet topup checkout — called by the 'Fund' button."""
-    return await topup_checkout(body, user)
-
-
 # --- Configuration Status ---
 @router.get("/billing/config/status")
 async def billing_config_status():

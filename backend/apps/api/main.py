@@ -21,6 +21,8 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+from sqlalchemy import select
+
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager

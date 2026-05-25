@@ -247,6 +247,7 @@ from backend.apps.api.routers import (
     billing,
     command_center,
     compliance,
+    copilot,
     exec_router,
     gfr,
     gpc,
@@ -259,6 +260,7 @@ from backend.apps.api.routers import (
     providers,
     repo_risk_gate,
     routing,
+    sys,
     team,
     runtime_jobs,
     security,
@@ -275,6 +277,12 @@ app.include_router(health.router)
 
 # Auth - restore /api/v1 prefix
 app.include_router(auth.router, prefix="/api/v1")
+
+# System utilities
+app.include_router(sys.router, prefix="/api/v1")
+
+# Copilot registry
+app.include_router(copilot.router, prefix="/api/v1")
 
 # Workspace
 app.include_router(workspace.router, prefix="/api/v1")
@@ -490,6 +498,44 @@ async def legal_acceptable_use():
     if path.exists():
         return FileResponse(str(path))
     return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.get("/robots.txt")
+async def robots_txt():
+    content = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /api/\n"
+        "Disallow: /workspace/\n\n"
+        "Sitemap: https://veklom.com/sitemap.xml\n"
+    )
+    return HTMLResponse(content=content, media_type="text/plain")
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    content = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://veklom.com/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://veklom.com/uptime</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://veklom.com/docs</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://veklom.com/legal/terms</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://veklom.com/legal/privacy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://veklom.com/legal/security</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+</urlset>"""
+    return HTMLResponse(content=content, media_type="application/xml")
+
+
+@app.post("/api/v1/feedback")
+@app.post("/api/v1/feedback/")
+async def submit_feedback(body: dict):
+    category = str(body.get("category", "feedback")).strip()[:64]
+    subject = str(body.get("subject", "")).strip()[:255]
+    feedback_body = str(body.get("body", "")).strip()[:4096]
+    if not feedback_body:
+        return JSONResponse(status_code=422, content={"detail": "body is required"})
+    print(f"[feedback] category={category} subject={subject!r} body={feedback_body[:80]!r}")
+    return {"submitted": True, "message": "Thank you for your feedback."}
 
 
 @app.get("/llms.txt")

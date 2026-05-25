@@ -360,6 +360,18 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     }
 
 
+@router.post("/signin")
+async def signin(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    """Alias for /login — frontend compatibility."""
+    return await login(body, request, db)
+
+
+@router.post("/signup")
+async def signup(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    """Alias for /register — frontend compatibility."""
+    return await register(body, request, db)
+
+
 @router.post("/logout")
 async def logout(user=Depends(get_current_user)):
     return {"message": "Logged out successfully"}

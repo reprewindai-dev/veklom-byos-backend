@@ -43,5 +43,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "camera=(), microphone=(), geolocation=(), payment=(), "
             "usb=(), magnetometer=(), gyroscope=()"
         )
-        
+
+        # Remove server identification header
+        response.headers.pop("server", None)
+        response.headers.pop("Server", None)
+
         return response

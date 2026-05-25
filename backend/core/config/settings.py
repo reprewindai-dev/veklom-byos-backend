@@ -194,6 +194,11 @@ class Settings(BaseSettings):
     BASE_BUILDER_CODE: str = ""
     BASE_DEV_API_KEY: str = ""
 
+    # x402 paid gateway secret — set this in .env on the server.
+    # The paid-gateway/ Node.js container sends this header on every proxied request.
+    # When set, the x402 middleware can trust that payment was verified by the gateway.
+    UPSTREAM_GATEWAY_SECRET: str = ""
+
     @field_validator("CORS_ORIGINS", "ALLOWED_HOSTS", mode="before")
     @classmethod
     def parse_list(cls, v):

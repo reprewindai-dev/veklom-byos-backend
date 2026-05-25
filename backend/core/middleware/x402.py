@@ -206,6 +206,24 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         if route_cfg is None:
             return await call_next(request)
 
+        # 0. Check if this request came through the paid Node.js gateway.
+        #    The gateway already verified the on-chain USDC payment via CDP facilitator.
+        #    Trust it — don't double-gate. Just add receipt headers and pass through.
+        gateway_secret = request.headers.get("X-Gateway-Secret", "")
+        if gateway_secret:
+            from backend.core.config.settings import settings as _settings
+            configured_secret = _settings.UPSTREAM_GATEWAY_SECRET.strip()
+            if configured_secret and gateway_secret == configured_secret:
+                response = await call_next(request)
+                receipt = _build_receipt(route_cfg, provider="gateway:x402")
+                response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
+                response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_id"]
+                response.headers["X-Veklom-Cost-USDC"] = receipt["cost_usdc"]
+                response.headers["X-Veklom-Policy-Result"] = "passed"
+                response.headers["X-Veklom-Receipt-URL"] = receipt["receipt_url"]
+                response.headers["X-Payment-Verified"] = "gateway"
+                return response
+
         # 1. Check for valid workspace auth (JWT + operating reserve)
         user = await _verify_workspace_auth(request)
         if user:

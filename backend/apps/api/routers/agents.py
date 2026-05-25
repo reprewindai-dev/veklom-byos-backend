@@ -60,7 +60,7 @@ async def _account_for_user(user, db: AsyncSession) -> Optional[Account]:
 def _serialize_agent(a: Agent) -> dict:
     return {
         "id": a.id,
-        "agent_number": a.id,
+        "agent_number": a.agent_number if a.agent_number is not None else a.id,
         "agent_id": a.agent_id,
         "codename": a.name,
         "name": a.name,
@@ -68,6 +68,8 @@ def _serialize_agent(a: Agent) -> dict:
         "group": a.declared_purpose,
         "jurisdiction": a.jurisdiction,
         "status": a.status,
+        "tier": a.tier,
+        "hrm_role": a.hrm_role,
         "account_id": a.account_id,
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }

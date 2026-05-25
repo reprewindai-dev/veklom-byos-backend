@@ -21,6 +21,8 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+from sqlalchemy import text
+
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager
@@ -73,7 +75,6 @@ async def lifespan(app: FastAPI):
             # Verify a subset that every endpoint depends on.  If any are
             # missing AFTER create_all, the DB is misconfigured and we want
             # the log to scream.
-            from sqlalchemy import text
             critical = ("users", "exec_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
             check = await conn.execute(text(
                 "SELECT table_name FROM information_schema.tables "
@@ -91,6 +92,23 @@ async def lifespan(app: FastAPI):
         print(f"[startup] db: FAILED to initialise schema: {type(e).__name__}: {e}")
         traceback.print_exc()
         # Continue startup — but the operator now sees the error.
+
+    # Idempotent column migrations for the agents table (HRM schema extension).
+    # ALTER TABLE IF NOT EXISTS column pattern — safe to run on every startup.
+    _new_cols = [
+        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS tier VARCHAR(32)",
+        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_number INTEGER UNIQUE",
+        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS hrm_role VARCHAR(64)",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in _new_cols:
+                await conn.execute(text(ddl))
+        print("[startup] db: agents HRM columns migrated (idempotent)")
+    except Exception as e:
+        import traceback
+        print(f"[startup] db: WARNING — agents HRM column migration failed: {type(e).__name__}: {e}")
+        traceback.print_exc()
 
     yield
 
@@ -161,6 +179,7 @@ from backend.apps.api.routers import (
     gfr,
     gpc,
     health,
+    hrm,
     # langchain_ops intentionally not imported - kept off the surface until real
     marketplace,
     monitoring,
@@ -234,6 +253,10 @@ app.include_router(command_center.router, prefix="/api/v1")
 
 # Repo Risk Gate — Playground governed-review tool
 app.include_router(repo_risk_gate.router, prefix="/api/v1")
+
+# HRM Agent sub-router — registered BEFORE agents to ensure /agents/hrm/* routes
+# are matched before the /agents/{agent_number} catch-all in agents.py
+app.include_router(hrm.router, prefix="/api/v1")
 
 # Agent Workforce
 app.include_router(agents.router, prefix="/api/v1")

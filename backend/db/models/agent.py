@@ -54,6 +54,9 @@ class Agent(Base):
     declared_purpose: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="registered")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    tier: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
+    agent_number: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True, default=None)
+    hrm_role: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
 
     account: Mapped[Account] = relationship(back_populates="agents")
     genome_versions: Mapped[list["GenomeVersion"]] = relationship(  # noqa: F821

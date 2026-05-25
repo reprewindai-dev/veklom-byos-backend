@@ -1,5 +1,6 @@
 """Billing routes — wallet, subscriptions, budget, cost, payments, payouts."""
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -7,6 +8,8 @@ import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
@@ -600,16 +603,24 @@ async def billing_config_status():
     return {
         "stripe": {
             "configured": stripe_configured,
-            "message": "Stripe is configured" if stripe_configured else "STRIPE_SECRET_KEY environment variable is not set or contains placeholder value",
+            "secret_key_set": stripe_configured,
+            "publishable_key_set": bool(
+                settings.STRIPE_PUBLISHABLE_KEY
+                and settings.STRIPE_PUBLISHABLE_KEY.strip().startswith("pk_")
+            ),
+            "message": "Stripe is configured" if stripe_configured else "STRIPE_SECRET_KEY not set or contains placeholder",
             "required_env": "STRIPE_SECRET_KEY",
         },
         "webhook": {
             "configured": webhook_configured,
-            "message": "Stripe webhook is configured" if webhook_configured else "STRIPE_WEBHOOK_SECRET environment variable is not set",
+            "message": "Stripe webhook is configured" if webhook_configured else "Set STRIPE_WEBHOOK_SECRET (whsec_...) from Stripe Dashboard → Webhooks",
             "required_env": "STRIPE_WEBHOOK_SECRET",
+            "endpoint_url": "https://veklom.com/api/v1/webhooks/stripe",
         },
         "overall": {
-            "ready": stripe_configured and webhook_configured,
-            "message": "Billing is fully configured" if (stripe_configured and webhook_configured) else "Billing requires Stripe configuration",
+            "ready": stripe_configured,
+            "checkout_ready": stripe_configured,
+            "webhook_ready": webhook_configured,
+            "message": "Stripe checkout is live. Add STRIPE_WEBHOOK_SECRET to enable webhook processing." if (stripe_configured and not webhook_configured) else ("Billing fully configured" if (stripe_configured and webhook_configured) else "Billing requires STRIPE_SECRET_KEY"),
         }
     }

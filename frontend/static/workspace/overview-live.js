@@ -210,6 +210,8 @@
     document.body.dataset.veklomOverviewLive = "connected";
     document.body.dataset.veklomOverviewUpdatedAt = data.updated_at || new Date().toISOString();
     window.dispatchEvent(new CustomEvent("veklom:overview-live", { detail: data }));
+
+    updatePulseIndicator("connected", "Runtime operational");
   }
 
   async function refreshOverview() {
@@ -219,10 +221,77 @@
     } catch (error) {
       document.body.dataset.veklomOverviewLive = "error";
       document.body.dataset.veklomOverviewError = error.message || String(error);
+      updatePulseIndicator("error", "Runtime unavailable");
+    }
+  }
+
+  function injectPulseIndicator() {
+    if (document.getElementById("veklom-pulse-indicator")) return;
+
+    const pulse = document.createElement("div");
+    pulse.id = "veklom-pulse-indicator";
+    pulse.style.cssText = `
+      position: fixed; bottom: 16px; right: 16px;
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      background: rgba(18, 18, 22, 0.95);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      border-radius: 8px;
+      color: #fff;
+      font-family: Inter, system-ui, sans-serif;
+      font-size: 11px;
+      z-index: 1000;
+      pointer-events: none;
+    `;
+    pulse.innerHTML = `
+      <span id="veklom-pulse-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: veklom-pulse 2s infinite;"></span>
+      <span id="veklom-pulse-text">System operational</span>
+      <span id="veklom-pulse-time" style="color: #a1a1a6; margin-left: 4px;"></span>
+    `;
+    document.body.appendChild(pulse);
+
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes veklom-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.9); }
+      }
+      #veklom-pulse-dot.connecting { background: #f59e0b; animation: veklom-pulse 0.5s infinite; }
+      #veklom-pulse-dot.error { background: #ef4444; animation: none; }
+      #veklom-pulse-dot.offline { background: #6b7280; animation: none; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function updatePulseIndicator(status, text) {
+    const dot = document.getElementById("veklom-pulse-dot");
+    const textEl = document.getElementById("veklom-pulse-text");
+    const timeEl = document.getElementById("veklom-pulse-time");
+    if (!dot) return;
+
+    dot.className = "";
+    if (status === "connected") {
+      dot.style.background = "#22c55e";
+      textEl.textContent = text || "System operational";
+    } else if (status === "connecting") {
+      dot.classList.add("connecting");
+      textEl.textContent = text || "Connecting...";
+    } else if (status === "error") {
+      dot.classList.add("error");
+      textEl.textContent = text || "Connection error";
+    } else {
+      dot.classList.add("offline");
+      textEl.textContent = text || "Offline";
+    }
+    if (timeEl) {
+      const now = new Date();
+      timeEl.textContent = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     }
   }
 
   function start() {
+    injectPulseIndicator();
+    updatePulseIndicator("connecting", "Connecting to runtime...");
     wireButtons();
     refreshOverview();
     window.addEventListener("hashchange", () => {

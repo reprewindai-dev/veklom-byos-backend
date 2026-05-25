@@ -18,11 +18,12 @@ aiofiles==24.1.0
 boto3==1.34.14
 numpy==1.26.4
 sentry-sdk[fastapi]==2.19.2
-opentelemetry-api==1.28.1
-opentelemetry-sdk==1.28.1
-opentelemetry-exporter-otlp-proto-grpc==1.28.1
-opentelemetry-instrumentation-fastapi==0.49b2
-opentelemetry-instrumentation-httpx==0.49b2
-opentelemetry-instrumentation-asyncpg==0.49b2
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp-proto-grpc>=1.20.0
+opentelemetry-instrumentation-fastapi>=0.45b0
+opentelemetry-instrumentation-httpx>=0.45b0
+opentelemetry-instrumentation-asyncpg>=0.45b0
+
 
 

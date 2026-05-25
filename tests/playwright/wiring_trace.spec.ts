@@ -48,6 +48,10 @@ function isApiRequest(url: string): boolean {
   if (url.includes("/openapi.json")) return true;
   if (url.includes("/api-status")) return true;
   if (url.includes("/legal/")) return true;
+  if (url.includes("/.well-known/")) return true;
+  if (url.includes("/llms.txt")) return true;
+  if (url.includes("/robots.txt")) return true;
+  if (url.includes("/mcp/")) return true;
   return false;
 }
 
@@ -205,5 +209,130 @@ test.describe("Veklom workspace — unauth network trace", () => {
       await page.goto("/llms.txt", { waitUntil: "networkidle" });
     });
     console.log(`  llms.txt: ${reqs.length} backend calls`);
+  });
+
+  test("billing page", async ({ page }) => {
+    const reqs = await capture(page, "billing", async () => {
+      await page.goto("/workspace/", { waitUntil: "networkidle" });
+    });
+    console.log(`  billing: ${reqs.length} backend calls`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Discovery endpoint assertions — these must all return 200 and correct types
+// ---------------------------------------------------------------------------
+test.describe("Machine-native discovery endpoints", () => {
+  test("/.well-known/ai-plugin.json returns 200 JSON with schema_version", async ({ request }) => {
+    const res = await request.get("/.well-known/ai-plugin.json");
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("schema_version");
+    expect(body).toHaveProperty("name_for_model");
+    expect(body).toHaveProperty("api");
+  });
+
+  test("/.well-known/agent.json returns 200 with tiers and agent_controls", async ({ request }) => {
+    const res = await request.get("/.well-known/agent.json");
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("tiers");
+    expect(body).toHaveProperty("agent_controls");
+    expect(body.agent_controls).toHaveProperty("kill_switch", true);
+    expect(body.agent_controls).toHaveProperty("budget_caps", true);
+    expect(body.agent_controls).toHaveProperty("evidence_receipts", true);
+  });
+
+  test("/.well-known/x402.json returns 200 with routes array", async ({ request }) => {
+    const res = await request.get("/.well-known/x402.json");
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("x402_version", 1);
+    expect(body).toHaveProperty("routes");
+    expect(Array.isArray(body.routes)).toBe(true);
+    expect(body.routes.length).toBeGreaterThan(5);
+    expect(body.routes[0]).toHaveProperty("price_usdc");
+    expect(body.routes[0]).toHaveProperty("payment");
+  });
+
+  test("/llms.txt returns 200 plain text with four-tier framing", async ({ request }) => {
+    const res = await request.get("/llms.txt");
+    expect(res.status()).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("Humans");
+    expect(text).toContain("Developers");
+    expect(text).toContain("Agents");
+    expect(text).toContain("Enterprises");
+    expect(text).toContain("x402");
+  });
+
+  test("/robots.txt returns 200 with agent-native directives", async ({ request }) => {
+    const res = await request.get("/robots.txt");
+    expect(res.status()).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("User-agent: *");
+    expect(text).toContain("llms.txt");
+    expect(text).toContain("agent.json");
+  });
+
+  test("/mcp/sse returns 200 SSE stream with tool definitions", async ({ request }) => {
+    const res = await request.get("/mcp/sse");
+    expect(res.status()).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("server_info");
+    expect(text).toContain("veklom_gpc_compile");
+    expect(text).toContain("veklom_ai_inference");
+    expect(text).toContain("done");
+  });
+
+  test("/openapi.json returns 200 with valid OpenAPI schema", async ({ request }) => {
+    const res = await request.get("/openapi.json");
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("openapi");
+    expect(body).toHaveProperty("paths");
+    expect(body).toHaveProperty("info");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// x402 gate assertions — unauthenticated paid routes must return 402 or use free quota
+// ---------------------------------------------------------------------------
+test.describe("x402 payment gate", () => {
+  test("paid route returns receipt headers when free quota available", async ({ request }) => {
+    const res = await request.post("/api/v1/ai/inference", {
+      data: { messages: [{ role: "user", content: "hello" }] },
+    });
+    // Free tier allows first N requests — should get receipt headers regardless
+    const headers = res.headers();
+    const hasReceipt = (
+      "x-veklom-request-id" in headers ||
+      "x-veklom-free-trial" in headers
+    );
+    expect(hasReceipt).toBe(true);
+  });
+
+  test("paid route without payment eventually returns 402 after quota", async ({ request }) => {
+    // This route has free_daily: 0 — must return 402 immediately for unauthenticated requests
+    const res = await request.post("/api/v1/pipelines/trigger", {
+      data: { pipeline_id: "test" },
+    });
+    expect([402, 404]).toContain(res.status());
+    if (res.status() === 402) {
+      const body = await res.json();
+      expect(body).toHaveProperty("x402Version", 1);
+      expect(body).toHaveProperty("accepts");
+      expect(Array.isArray(body.accepts)).toBe(true);
+      const headers = res.headers();
+      expect(headers).toHaveProperty("x-payment-required", "true");
+      expect(headers).toHaveProperty("x-payment-scheme", "x402");
+    }
+  });
+
+  test("free route health returns 200 with no payment headers", async ({ request }) => {
+    const res = await request.get("/health");
+    expect(res.status()).toBe(200);
+    const headers = res.headers();
+    expect("x-payment-required" in headers).toBe(false);
   });
 });

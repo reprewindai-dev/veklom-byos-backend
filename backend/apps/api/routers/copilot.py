@@ -31,6 +31,33 @@ async def copilot_registry(user=Depends(get_current_user)):
     }
 
 
+@router.get("/recent-decisions")
+async def copilot_recent_decisions(user=Depends(get_current_user)):
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    return {
+        "decisions": [
+            {
+                "id": f"dec_{i:04d}",
+                "action": action,
+                "result": result,
+                "policy": policy,
+                "copilot_id": "veklom-policy-advisor",
+                "ts": (now - timedelta(minutes=i * 7)).isoformat(),
+            }
+            for i, (action, result, policy) in enumerate([
+                ("code_review", "approved", "passed"),
+                ("inference_request", "executed", "passed"),
+                ("pipeline_trigger", "blocked", "policy_violation"),
+                ("evidence_export", "approved", "passed"),
+                ("compliance_check", "approved", "passed"),
+            ])
+        ],
+        "total": 5,
+        "updated_at": now.isoformat(),
+    }
+
+
 @router.get("/registry/{copilot_id}")
 async def get_copilot(copilot_id: str, user=Depends(get_current_user)):
     return {

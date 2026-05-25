@@ -125,3 +125,21 @@ async def observability_signals(user=Depends(get_current_user)):
         "active_plans": 2,
         "active_runs": 1,
     }
+
+
+@router.get("/stats")
+async def gpc_stats(user=Depends(get_current_user)):
+    """Aggregate stats for the GPC page.
+
+    Until persistent plan/run counters land in the DB, this endpoint reports
+    zero-state counts and clearly marks itself as derived.  No fabricated
+    decisions are returned.
+    """
+    return {
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "plans_total": 0,
+        "runs_total": 0,
+        "decisions": {"approved": 0, "blocked": 0, "escalated": 0},
+        "source": "derived-counts",
+        "note": "Plan and run counters are zero until the GPC persistence layer is wired.",
+    }

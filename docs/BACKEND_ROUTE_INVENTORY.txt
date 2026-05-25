@@ -1,0 +1,430 @@
+METHOD  PATH                                                                   TAGS                      AUTH   OPERATION_ID
+--------------------------------------------------------------------------------------------------------------------------------------------
+GET     /                                                                                                       root__get
+GET     /api-status                                                            Health                           platform_status_api_status_get
+GET     /api/v1/admin/users                                                    Admin & Internal          auth   admin_users_api_v1_admin_users_get
+DELETE  /api/v1/admin/users/{user_id}                                          Admin & Internal          auth   admin_delete_user_api_v1_admin_users__user_id__delete
+PATCH   /api/v1/admin/users/{user_id}                                          Admin & Internal          auth   admin_update_user_api_v1_admin_users__user_id__patch
+GET     /api/v1/admin/workspaces                                               Admin & Internal          auth   admin_workspaces_api_v1_admin_workspaces_get
+POST    /api/v1/ai/complete                                                    AI                        auth   ai_complete_api_v1_ai_complete_post
+GET     /api/v1/ai/escalation/stats                                            uacp-autonomous           auth   get_escalation_stats_api_v1_ai_escalation_stats_get
+GET     /api/v1/ai/models                                                      AI                        auth   list_models_api_v1_ai_models_get
+POST    /api/v1/ai/predict-cost                                                AI                        auth   predict_cost_api_v1_ai_predict_cost_post
+GET     /api/v1/ai/providers                                                   AI                        auth   list_providers_api_v1_ai_providers_get
+POST    /api/v1/ai/transcribe                                                  AI                        auth   transcribe_api_v1_ai_transcribe_post
+GET     /api/v1/audit/compliance-report                                        Compliance                auth   audit_compliance_report_api_v1_audit_compliance_report_get
+POST    /api/v1/audit/compliance-report                                        Compliance                auth   audit_compliance_report_api_v1_audit_compliance_report_post
+GET     /api/v1/audit/logs                                                     Compliance                auth   audit_logs_api_v1_audit_logs_get
+GET     /api/v1/audit/logs/{log_id}                                            Compliance                auth   get_audit_log_api_v1_audit_logs__log_id__get
+GET     /api/v1/audit/verify/{log_id}                                          Compliance                auth   verify_audit_api_v1_audit_verify__log_id__get
+GET     /api/v1/auth/api-keys                                                  Authentication            auth   list_api_keys_api_v1_auth_api_keys_get
+POST    /api/v1/auth/api-keys                                                  Authentication            auth   create_api_key_api_v1_auth_api_keys_post
+DELETE  /api/v1/auth/api-keys/{key_id}                                         Authentication            auth   revoke_api_key_api_v1_auth_api_keys__key_id__delete
+GET     /api/v1/auth/connected-accounts                                        Authentication            auth   connected_accounts_api_v1_auth_connected_accounts_get
+DELETE  /api/v1/auth/connected-accounts/github                                 Authentication            auth   unlink_github_account_api_v1_auth_connected_accounts_github_delete
+POST    /api/v1/auth/eval-session                                              Authentication                   create_eval_session_api_v1_auth_eval_session_post
+GET     /api/v1/auth/github/callback                                           Authentication                   github_callback_api_v1_auth_github_callback_get
+POST    /api/v1/auth/github/callback                                           Authentication                   github_callback_api_v1_auth_github_callback_post
+GET     /api/v1/auth/github/login                                              Authentication                   github_login_api_v1_auth_github_login_get
+GET     /api/v1/auth/github/repos                                              Authentication            auth   github_repos_api_v1_auth_github_repos_get
+POST    /api/v1/auth/github/repos/select                                       Authentication            auth   select_github_repo_api_v1_auth_github_repos_select_post
+GET     /api/v1/auth/github/status                                             Authentication                   github_status_api_v1_auth_github_status_get
+POST    /api/v1/auth/login                                                     Authentication                   login_api_v1_auth_login_post
+POST    /api/v1/auth/logout                                                    Authentication            auth   logout_api_v1_auth_logout_post
+GET     /api/v1/auth/me                                                        Authentication            auth   me_api_v1_auth_me_get
+PATCH   /api/v1/auth/me                                                        Authentication            auth   update_me_api_v1_auth_me_patch
+DELETE  /api/v1/auth/mfa/disable                                               Authentication            auth   mfa_disable_api_v1_auth_mfa_disable_delete
+POST    /api/v1/auth/mfa/disable                                               Authentication            auth   mfa_disable_api_v1_auth_mfa_disable_post
+POST    /api/v1/auth/mfa/setup                                                 Authentication            auth   mfa_setup_api_v1_auth_mfa_setup_post
+POST    /api/v1/auth/mfa/verify                                                Authentication            auth   mfa_verify_api_v1_auth_mfa_verify_post
+POST    /api/v1/auth/refresh                                                   Authentication                   refresh_api_v1_auth_refresh_post
+POST    /api/v1/auth/register                                                  Authentication                   register_api_v1_auth_register_post
+DELETE  /api/v1/auth/sessions/revoke                                           Authentication            auth   revoke_sessions_api_v1_auth_sessions_revoke_delete
+GET     /api/v1/autonomous/decisions                                           Pipelines                 auth   autonomous_decisions_api_v1_autonomous_decisions_get
+POST    /api/v1/autonomous/execute                                             uacp-autonomous           auth   autonomous_execute_api_v1_autonomous_execute_post
+POST    /api/v1/autonomous/override                                            Pipelines                 auth   autonomous_override_api_v1_autonomous_override_post
+GET     /api/v1/autonomous/status/{run_id}                                     uacp-autonomous           auth   autonomous_status_api_v1_autonomous_status__run_id__get
+POST    /api/v1/billing/allocate                                               Billing                   auth   billing_allocate_api_v1_billing_allocate_post
+GET     /api/v1/billing/breakdown                                              Billing                   auth   billing_breakdown_api_v1_billing_breakdown_get
+GET     /api/v1/billing/config/status                                          Billing                          billing_config_status_api_v1_billing_config_status_get
+GET     /api/v1/billing/invoices                                               Billing                   auth   list_invoices_api_v1_billing_invoices_get
+GET     /api/v1/billing/report                                                 Billing                   auth   billing_report_api_v1_billing_report_get
+GET     /api/v1/billing/usage                                                  Billing                   auth   billing_usage_api_v1_billing_usage_get
+GET     /api/v1/budget                                                         Billing                   auth   list_budget_rules_api_v1_budget_get
+POST    /api/v1/budget                                                         Billing                   auth   create_budget_rule_api_v1_budget_post
+GET     /api/v1/budget/forecast                                                Billing                   auth   budget_forecast_api_v1_budget_forecast_get
+DELETE  /api/v1/budget/{rule_id}                                               Billing                   auth   delete_budget_rule_api_v1_budget__rule_id__delete
+POST    /api/v1/compliance/check                                               Compliance                auth   compliance_check_api_v1_compliance_check_post
+GET     /api/v1/compliance/checks                                              Compliance                auth   list_compliance_checks_api_v1_compliance_checks_get
+GET     /api/v1/compliance/regulations                                         Compliance                auth   list_regulations_api_v1_compliance_regulations_get
+GET     /api/v1/compliance/report                                              Compliance                auth   compliance_report_api_v1_compliance_report_get
+POST    /api/v1/compliance/report                                              Compliance                auth   compliance_report_api_v1_compliance_report_post
+POST    /api/v1/content-safety/check                                           Compliance                auth   content_safety_api_v1_content_safety_check_post
+GET     /api/v1/cost/history                                                   Billing                   auth   cost_history_api_v1_cost_history_get
+POST    /api/v1/cost/kill-switch                                               Billing                   auth   cost_kill_switch_toggle_api_v1_cost_kill_switch_post
+GET     /api/v1/cost/kill-switch/status                                        Billing                   auth   cost_kill_switch_status_api_v1_cost_kill_switch_status_get
+GET     /api/v1/cost/predict                                                   Billing                   auth   cost_predict_api_v1_cost_predict_get
+GET     /api/v1/demo/pipeline/health                                           Pipelines                        demo_pipeline_health_api_v1_demo_pipeline_health_get
+POST    /api/v1/demo/pipeline/run                                              Pipelines                 auth   demo_pipeline_run_api_v1_demo_pipeline_run_post
+GET     /api/v1/demo/pipeline/stream                                           Pipelines                        demo_pipeline_stream_api_v1_demo_pipeline_stream_get
+GET     /api/v1/deployments                                                    Pipelines                 auth   list_deployments_api_v1_deployments_get
+POST    /api/v1/deployments                                                    Pipelines                 auth   create_deployment_api_v1_deployments_post
+DELETE  /api/v1/deployments/{deployment_id}                                    Pipelines                 auth   delete_deployment_api_v1_deployments__deployment_id__delete
+PATCH   /api/v1/deployments/{deployment_id}                                    Pipelines                 auth   update_deployment_api_v1_deployments__deployment_id__patch
+GET     /api/v1/deployments/{deployment_id}/code                               Pipelines                 auth   get_deployment_code_api_v1_deployments__deployment_id__code_get
+POST    /api/v1/deployments/{deployment_id}/pause                              Pipelines                 auth   pause_deployment_api_v1_deployments__deployment_id__pause_post
+POST    /api/v1/deployments/{deployment_id}/resume                             Pipelines                 auth   resume_deployment_api_v1_deployments__deployment_id__resume_post
+GET     /api/v1/deployments/{deployment_id}/webhooks                           Pipelines                 auth   list_deployment_webhooks_api_v1_deployments__deployment_id__webhooks_get
+POST    /api/v1/deployments/{deployment_id}/webhooks                           Pipelines                 auth   create_deployment_webhook_api_v1_deployments__deployment_id__webhooks_post
+POST    /api/v1/edge/canary/promote                                            Pipelines                 auth   canary_promote_api_v1_edge_canary_promote_post
+GET     /api/v1/edge/canary/status                                             Pipelines                 auth   canary_status_api_v1_edge_canary_status_get
+POST    /api/v1/evidence/create                                                Compliance                auth   create_evidence_api_v1_evidence_create_post
+POST    /api/v1/exec                                                           AI Exec SSE               auth   exec_stream_api_v1_exec_post
+GET     /api/v1/explain/cost                                                   Monitoring                auth   explain_cost_api_v1_explain_cost_get
+POST    /api/v1/explain/cost                                                   Monitoring                auth   explain_cost_api_v1_explain_cost_post
+GET     /api/v1/explain/routing                                                Monitoring                auth   explain_routing_api_v1_explain_routing_get
+POST    /api/v1/explain/routing                                                Monitoring                auth   explain_routing_api_v1_explain_routing_post
+GET     /api/v1/explainability/{request_id}                                    Compliance                auth   explain_request_api_v1_explainability__request_id__get
+GET     /api/v1/export                                                         Admin & Internal          auth   export_data_api_v1_export_get
+POST    /api/v1/extract                                                        Admin & Internal          auth   extract_data_api_v1_extract_post
+POST    /api/v1/files/confirm                                                  Admin & Internal          auth   confirm_upload_api_v1_files_confirm_post
+GET     /api/v1/files/upload-url                                               Admin & Internal          auth   get_upload_url_api_v1_files_upload_url_get
+GET     /api/v1/gfr/evidence/tail                                              GFR — Gradient Field Router        evidence_tail_api_v1_gfr_evidence_tail_get
+DELETE  /api/v1/gfr/field/reset                                                GFR — Gradient Field Router        reset_field_api_v1_gfr_field_reset_delete
+GET     /api/v1/gfr/field/snapshot                                             GFR — Gradient Field Router        field_snapshot_api_v1_gfr_field_snapshot_get
+GET     /api/v1/gfr/field/status                                               GFR — Gradient Field Router        field_status_api_v1_gfr_field_status_get
+POST    /api/v1/gfr/route                                                      GFR — Gradient Field Router        route_workload_api_v1_gfr_route_post
+POST    /api/v1/gfr/telemetry                                                  GFR — Gradient Field Router        ingest_telemetry_api_v1_gfr_telemetry_post
+POST    /api/v1/gfr/telemetry/batch                                            GFR — Gradient Field Router        ingest_telemetry_batch_api_v1_gfr_telemetry_batch_post
+GET     /api/v1/gpc/bootstrap                                                  GPC                       auth   bootstrap_api_v1_gpc_bootstrap_get
+GET     /api/v1/gpc/events                                                     GPC                       auth   list_events_api_v1_gpc_events_get
+POST    /api/v1/gpc/intent-to-plan                                             GPC                       auth   intent_to_plan_api_v1_gpc_intent_to_plan_post
+GET     /api/v1/gpc/observability/signals                                      GPC                       auth   observability_signals_api_v1_gpc_observability_signals_get
+GET     /api/v1/gpc/plans                                                      GPC                       auth   list_plans_api_v1_gpc_plans_get
+POST    /api/v1/gpc/plans                                                      GPC                       auth   save_plan_api_v1_gpc_plans_post
+GET     /api/v1/gpc/runs                                                       GPC                       auth   list_runs_api_v1_gpc_runs_get
+POST    /api/v1/gpc/runs                                                       GPC                       auth   start_run_api_v1_gpc_runs_post
+GET     /api/v1/gpc/ssrn-signals                                               GPC                       auth   ssrn_signals_api_v1_gpc_ssrn_signals_get
+GET     /api/v1/insights/savings                                               Monitoring                auth   insights_savings_api_v1_insights_savings_get
+GET     /api/v1/insights/savings/projected                                     Monitoring                auth   insights_savings_projected_api_v1_insights_savings_projected_get
+GET     /api/v1/insights/summary                                               Monitoring                auth   insights_summary_api_v1_insights_summary_get
+GET     /api/v1/installed                                                      Marketplace               auth   list_installed_api_v1_installed_get
+GET     /api/v1/internal/operators                                             Admin & Internal          auth   list_operators_api_v1_internal_operators_get
+POST    /api/v1/internal/operators                                             Admin & Internal          auth   register_operator_api_v1_internal_operators_post
+GET     /api/v1/internal/operators/capabilities                                uacp-operators            auth   get_capabilities_api_v1_internal_operators_capabilities_get
+POST    /api/v1/internal/operators/register                                    uacp-operators            auth   register_operator_api_v1_internal_operators_register_post
+GET     /api/v1/internal/operators/registry                                    uacp-operators            auth   get_worker_registry_api_v1_internal_operators_registry_get
+POST    /api/v1/internal/operators/runs                                        uacp-operators            auth   record_operator_run_api_v1_internal_operators_runs_post
+POST    /api/v1/internal/operators/watch                                       uacp-operators            auth   record_operator_watch_api_v1_internal_operators_watch_post
+POST    /api/v1/internal/operators/workers/{worker_id}/heartbeat               uacp-operators            auth   record_worker_heartbeat_api_v1_internal_operators_workers__worker_id__heartbeat_post
+GET     /api/v1/internal/uacp/billing                                          uacp-internal             auth   get_billing_api_v1_internal_uacp_billing_get
+POST    /api/v1/internal/uacp/command                                          Admin & Internal          auth   uacp_command_api_v1_internal_uacp_command_post
+GET     /api/v1/internal/uacp/deployments                                      uacp-internal             auth   get_deployments_api_v1_internal_uacp_deployments_get
+GET     /api/v1/internal/uacp/evaluation-surgeon                               uacp-internal             auth   get_evaluation_surgeon_api_v1_internal_uacp_evaluation_surgeon_get
+GET     /api/v1/internal/uacp/events                                           uacp-internal             auth   get_events_api_v1_internal_uacp_events_get
+GET     /api/v1/internal/uacp/evidence                                         uacp-internal             auth   get_evidence_api_v1_internal_uacp_evidence_get
+GET     /api/v1/internal/uacp/growth-opportunities                             uacp-internal             auth   get_growth_opportunities_api_v1_internal_uacp_growth_opportunities_get
+GET     /api/v1/internal/uacp/monitoring                                       uacp-internal             auth   get_monitoring_api_v1_internal_uacp_monitoring_get
+GET     /api/v1/internal/uacp/runs                                             uacp-internal             auth   get_runs_api_v1_internal_uacp_runs_get
+GET     /api/v1/internal/uacp/security                                         uacp-internal             auth   get_security_api_v1_internal_uacp_security_get
+GET     /api/v1/internal/uacp/status                                           Admin & Internal          auth   uacp_status_api_v1_internal_uacp_status_get
+GET     /api/v1/internal/uacp/summary                                          uacp-internal             auth   get_summary_api_v1_internal_uacp_summary_get
+POST    /api/v1/internal/uacp/v4/dispatch                                      uacp-internal             auth   dispatch_v4_api_v1_internal_uacp_v4_dispatch_post
+GET     /api/v1/internal/uacp/versions                                         uacp-internal             auth   get_versions_api_v1_internal_uacp_versions_get
+GET     /api/v1/internal/uacp/workspaces                                       uacp-internal             auth   get_workspaces_api_v1_internal_uacp_workspaces_get
+POST    /api/v1/kill-switch/activate                                           Security                  auth   activate_kill_switch_api_v1_kill_switch_activate_post
+POST    /api/v1/kill-switch/deactivate                                         Security                  auth   deactivate_kill_switch_api_v1_kill_switch_deactivate_post
+GET     /api/v1/kill-switch/status                                             Security                  auth   kill_switch_status_api_v1_kill_switch_status_get
+GET     /api/v1/listings                                                       Marketplace               auth   list_listings_api_v1_listings_get
+POST    /api/v1/listings/create                                                Marketplace               auth   create_listing_alt_api_v1_listings_create_post
+POST    /api/v1/listings/review                                                Marketplace               auth   review_listing_api_v1_listings_review_post
+POST    /api/v1/listings/submit                                                Marketplace               auth   submit_listing_api_v1_listings_submit_post
+GET     /api/v1/listings/{listing_id}                                          Marketplace               auth   get_listing_short_api_v1_listings__listing_id__get
+PATCH   /api/v1/listings/{listing_id}                                          Marketplace               auth   update_listing_short_api_v1_listings__listing_id__patch
+GET     /api/v1/listings/{listing_id}/datasheet                                Marketplace               auth   listing_datasheet_api_v1_listings__listing_id__datasheet_get
+POST    /api/v1/listings/{listing_id}/install                                  Marketplace               auth   install_listing_api_v1_listings__listing_id__install_post
+GET     /api/v1/locker/monitoring                                              Security                  auth   locker_monitoring_api_v1_locker_monitoring_get
+GET     /api/v1/locker/monitoring/alerts                                       Security                  auth   locker_alerts_api_v1_locker_monitoring_alerts_get
+GET     /api/v1/locker/monitoring/alerts/summary                               Security                  auth   locker_alerts_summary_api_v1_locker_monitoring_alerts_summary_get
+POST    /api/v1/locker/monitoring/alerts/{alert_id}/resolve                    Security                  auth   resolve_locker_alert_api_v1_locker_monitoring_alerts__alert_id__resolve_post
+GET     /api/v1/locker/monitoring/health/detailed                              Security                  auth   locker_health_detailed_api_v1_locker_monitoring_health_detailed_get
+GET     /api/v1/locker/monitoring/metrics/performance                          Security                  auth   locker_perf_metrics_api_v1_locker_monitoring_metrics_performance_get
+GET     /api/v1/locker/monitoring/status                                       Security                  auth   locker_monitoring_status_api_v1_locker_monitoring_status_get
+GET     /api/v1/locker/security                                                Security                  auth   locker_security_api_v1_locker_security_get
+GET     /api/v1/locker/security/controls                                       Security                  auth   locker_security_controls_api_v1_locker_security_controls_get
+PATCH   /api/v1/locker/security/controls/{control_id}                          Security                  auth   update_security_control_api_v1_locker_security_controls__control_id__patch
+POST    /api/v1/locker/security/controls/{control_id}                          Security                  auth   update_security_control_api_v1_locker_security_controls__control_id__post
+POST    /api/v1/locker/security/controls/{control_id}/disable                  Security                  auth   disable_control_api_v1_locker_security_controls__control_id__disable_post
+POST    /api/v1/locker/security/controls/{control_id}/enable                   Security                  auth   enable_control_api_v1_locker_security_controls__control_id__enable_post
+GET     /api/v1/locker/security/dashboard                                      Security                  auth   locker_security_dashboard_api_v1_locker_security_dashboard_get
+GET     /api/v1/locker/security/events                                         Security                  auth   locker_security_events_api_v1_locker_security_events_get
+GET     /api/v1/locker/security/threats/stats                                  Security                  auth   locker_threat_stats_api_v1_locker_security_threats_stats_get
+GET     /api/v1/locker/users                                                   Security                  auth   locker_users_api_v1_locker_users_get
+POST    /api/v1/locker/users                                                   Security                  auth   create_locker_user_api_v1_locker_users_post
+POST    /api/v1/locker/users/                                                  Security                  auth   create_locker_user_api_v1_locker_users__post
+DELETE  /api/v1/locker/users/{user_id}                                         Security                  auth   delete_locker_user_api_v1_locker_users__user_id__delete
+GET     /api/v1/locker/users/{user_id}                                         Security                  auth   get_locker_user_api_v1_locker_users__user_id__get
+PUT     /api/v1/locker/users/{user_id}                                         Security                  auth   update_locker_user_api_v1_locker_users__user_id__put
+GET     /api/v1/locker/users/{user_id}/activity                                Security                  auth   get_user_activity_api_v1_locker_users__user_id__activity_get
+POST    /api/v1/locker/users/{user_id}/sessions/revoke                         Security                  auth   revoke_user_sessions_api_v1_locker_users__user_id__sessions_revoke_post
+GET     /api/v1/marketplace/automation                                         Marketplace               auth   list_automations_api_v1_marketplace_automation_get
+POST    /api/v1/marketplace/automation                                         Marketplace               auth   create_automation_api_v1_marketplace_automation_post
+GET     /api/v1/marketplace/installed                                          Marketplace               auth   list_installed_api_v1_marketplace_installed_get
+GET     /api/v1/marketplace/listings                                           Marketplace               auth   list_marketplace_api_v1_marketplace_listings_get
+POST    /api/v1/marketplace/listings                                           Marketplace               auth   create_listing_api_v1_marketplace_listings_post
+DELETE  /api/v1/marketplace/listings/{listing_id}                              Marketplace               auth   delete_listing_api_v1_marketplace_listings__listing_id__delete
+GET     /api/v1/marketplace/listings/{listing_id}                              Marketplace               auth   get_listing_api_v1_marketplace_listings__listing_id__get
+PATCH   /api/v1/marketplace/listings/{listing_id}                              Marketplace               auth   update_listing_api_v1_marketplace_listings__listing_id__patch
+GET     /api/v1/marketplace/listings/{listing_id}/datasheet                    Marketplace               auth   listing_datasheet_api_v1_marketplace_listings__listing_id__datasheet_get
+POST    /api/v1/marketplace/listings/{listing_id}/install                      Marketplace               auth   install_listing_api_v1_marketplace_listings__listing_id__install_post
+GET     /api/v1/marketplace/tools                                              Marketplace               auth   list_marketplace_tools_api_v1_marketplace_tools_get
+POST    /api/v1/marketplace/webhook                                            Marketplace                      marketplace_webhook_api_v1_marketplace_webhook_post
+GET     /api/v1/metrics                                                        Monitoring                auth   prometheus_metrics_api_v1_metrics_get
+GET     /api/v1/metrics/performance                                            Monitoring                auth   performance_metrics_api_v1_metrics_performance_get
+GET     /api/v1/models                                                         AI                        auth   list_models_api_v1_models_get
+GET     /api/v1/monitoring/dashboard                                           Monitoring                auth   monitoring_dashboard_api_v1_monitoring_dashboard_get
+GET     /api/v1/monitoring/events                                              Monitoring                auth   monitoring_events_api_v1_monitoring_events_get
+GET     /api/v1/monitoring/health                                              Monitoring                auth   monitoring_health_api_v1_monitoring_health_get
+GET     /api/v1/monitoring/metrics                                             Monitoring                auth   monitoring_metrics_api_v1_monitoring_metrics_get
+GET     /api/v1/monitoring/metrics/history                                     Monitoring                auth   monitoring_metrics_history_api_v1_monitoring_metrics_history_get
+POST    /api/v1/monitoring/metrics/record                                      Monitoring                auth   record_metric_api_v1_monitoring_metrics_record_post
+GET     /api/v1/onboarding                                                     Admin & Internal          auth   onboarding_status_api_v1_onboarding_get
+POST    /api/v1/onboarding/complete                                            Admin & Internal          auth   complete_onboarding_api_v1_onboarding_complete_post
+POST    /api/v1/orders/create                                                  Billing                   auth   create_order_api_v1_orders_create_post
+GET     /api/v1/orders/{order_id}                                              Marketplace               auth   get_order_api_v1_orders__order_id__get
+POST    /api/v1/payments/create-checkout                                       Billing                   auth   create_checkout_api_v1_payments_create_checkout_post
+POST    /api/v1/payments/create-intent                                         Billing                   auth   create_payment_intent_api_v1_payments_create_intent_post
+POST    /api/v1/payouts/create                                                 Billing                   auth   create_payout_api_v1_payouts_create_post
+GET     /api/v1/payouts/vendor/{vendor_id}                                     Billing                   auth   vendor_payouts_api_v1_payouts_vendor__vendor_id__get
+GET     /api/v1/pipeline/interactive/session                                   Pipelines                 auth   interactive_session_api_v1_pipeline_interactive_session_get
+GET     /api/v1/pipelines                                                      Pipelines                 auth   list_pipelines_api_v1_pipelines_get
+POST    /api/v1/pipelines                                                      Pipelines                 auth   create_pipeline_api_v1_pipelines_post
+GET     /api/v1/pipelines/nodes                                                Pipelines                 auth   list_pipeline_nodes_api_v1_pipelines_nodes_get
+GET     /api/v1/pipelines/templates                                            Pipelines                 auth   list_pipeline_templates_api_v1_pipelines_templates_get
+DELETE  /api/v1/pipelines/{pipeline_id}                                        Pipelines                 auth   delete_pipeline_api_v1_pipelines__pipeline_id__delete
+GET     /api/v1/pipelines/{pipeline_id}                                        Pipelines                 auth   get_pipeline_api_v1_pipelines__pipeline_id__get
+PATCH   /api/v1/pipelines/{pipeline_id}                                        Pipelines                 auth   update_pipeline_api_v1_pipelines__pipeline_id__patch
+GET     /api/v1/pipelines/{pipeline_id}/graph                                  Pipelines                 auth   get_pipeline_graph_api_v1_pipelines__pipeline_id__graph_get
+POST    /api/v1/pipelines/{pipeline_id}/graph                                  Pipelines                 auth   save_pipeline_graph_api_v1_pipelines__pipeline_id__graph_post
+PUT     /api/v1/pipelines/{pipeline_id}/graph                                  Pipelines                 auth   save_pipeline_graph_api_v1_pipelines__pipeline_id__graph_put
+POST    /api/v1/pipelines/{pipeline_id}/run                                    Pipelines                 auth   run_pipeline_api_v1_pipelines__pipeline_id__run_post
+GET     /api/v1/platform/pulse                                                 Monitoring                       platform_pulse_api_v1_platform_pulse_get
+GET     /api/v1/platform/pulse/stream                                          Monitoring                auth   pulse_stream_api_v1_platform_pulse_stream_get
+POST    /api/v1/platform/status-updates                                        Monitoring                       subscribe_status_updates_api_v1_platform_status_updates_post
+GET     /api/v1/platform/uptime                                                Monitoring                       platform_uptime_api_v1_platform_uptime_get
+POST    /api/v1/playground/inference                                           Playground                auth   run_inference_api_v1_playground_inference_post
+GET     /api/v1/playground/prompts                                             Playground                auth   list_prompts_api_v1_playground_prompts_get
+POST    /api/v1/playground/prompts                                             Playground                auth   create_prompt_api_v1_playground_prompts_post
+DELETE  /api/v1/playground/prompts/{prompt_id}                                 Playground                auth   delete_prompt_api_v1_playground_prompts__prompt_id__delete
+GET     /api/v1/playground/prompts/{prompt_id}                                 Playground                auth   get_prompt_api_v1_playground_prompts__prompt_id__get
+PATCH   /api/v1/playground/prompts/{prompt_id}                                 Playground                auth   update_prompt_api_v1_playground_prompts__prompt_id__patch
+GET     /api/v1/playground/sessions                                            Playground                auth   list_sessions_api_v1_playground_sessions_get
+POST    /api/v1/playground/sessions                                            Playground                auth   create_session_api_v1_playground_sessions_post
+DELETE  /api/v1/playground/sessions/{session_id}                               Playground                auth   delete_session_api_v1_playground_sessions__session_id__delete
+GET     /api/v1/playground/sessions/{session_id}                               Playground                auth   get_session_api_v1_playground_sessions__session_id__get
+PATCH   /api/v1/playground/sessions/{session_id}                               Playground                auth   update_session_api_v1_playground_sessions__session_id__patch
+POST    /api/v1/playground/sessions/{session_id}/branch                        Playground                auth   branch_session_api_v1_playground_sessions__session_id__branch_post
+PATCH   /api/v1/playground/sessions/{session_id}/response-format               Playground                auth   update_response_format_api_v1_playground_sessions__session_id__response_format_patch
+PATCH   /api/v1/playground/sessions/{session_id}/tools                         Playground                auth   update_session_tools_api_v1_playground_sessions__session_id__tools_patch
+GET     /api/v1/playground/tools                                               Playground                auth   list_tools_api_v1_playground_tools_get
+GET     /api/v1/plugins                                                        Plugins                   auth   list_plugins_api_v1_plugins_get
+POST    /api/v1/plugins/{plugin_id}/config                                     Plugins                   auth   configure_plugin_api_v1_plugins__plugin_id__config_post
+POST    /api/v1/plugins/{plugin_id}/disable                                    Plugins                   auth   disable_plugin_api_v1_plugins__plugin_id__disable_post
+GET     /api/v1/plugins/{plugin_id}/docs                                       Marketplace               auth   plugin_docs_api_v1_plugins__plugin_id__docs_get
+POST    /api/v1/plugins/{plugin_id}/enable                                     Plugins                   auth   enable_plugin_api_v1_plugins__plugin_id__enable_post
+GET     /api/v1/plugins/{plugin_id}/health                                     Plugins                   auth   plugin_health_api_v1_plugins__plugin_id__health_get
+POST    /api/v1/privacy/delete                                                 Compliance                auth   privacy_delete_api_v1_privacy_delete_post
+POST    /api/v1/privacy/detect-pii                                             Compliance                auth   detect_pii_api_v1_privacy_detect_pii_post
+POST    /api/v1/privacy/export                                                 Compliance                auth   privacy_export_api_v1_privacy_export_post
+POST    /api/v1/privacy/mask-pii                                               Compliance                auth   mask_pii_api_v1_privacy_mask_pii_post
+GET     /api/v1/privacy/status                                                 Compliance                auth   privacy_status_api_v1_privacy_status_get
+GET     /api/v1/providers/available                                            Providers                 auth   list_available_providers_api_v1_providers_available_get
+GET     /api/v1/providers/keys                                                 Providers                 auth   list_provider_keys_api_v1_providers_keys_get
+POST    /api/v1/providers/keys                                                 Providers                 auth   add_provider_key_api_v1_providers_keys_post
+DELETE  /api/v1/providers/keys/{key_id}                                        Providers                 auth   delete_provider_key_api_v1_providers_keys__key_id__delete
+PATCH   /api/v1/providers/keys/{key_id}                                        Providers                 auth   update_provider_key_api_v1_providers_keys__key_id__patch
+GET     /api/v1/providers/routing/logs                                         Providers                 auth   get_routing_logs_api_v1_providers_routing_logs_get
+GET     /api/v1/providers/routing/rules                                        Providers                 auth   routing_rules_api_v1_providers_routing_rules_get
+GET     /api/v1/providers/routing/status                                       Providers                 auth   routing_status_api_v1_providers_routing_status_get
+POST    /api/v1/providers/routing/test                                         Providers                 auth   test_provider_key_api_v1_providers_routing_test_post
+GET     /api/v1/referrals                                                      Admin & Internal          auth   referrals_api_v1_referrals_get
+POST    /api/v1/referrals/invite                                               Admin & Internal          auth   invite_referral_api_v1_referrals_invite_post
+GET     /api/v1/routing                                                        Routing                   auth   routing_contract_api_v1_routing_get
+POST    /api/v1/routing                                                        Pipelines                 auth   create_routing_rule_api_v1_routing_post
+POST    /api/v1/routing/decision                                               Routing                   auth   routing_decision_api_v1_routing_decision_post
+GET     /api/v1/routing/economics                                              Routing                   auth   routing_economics_api_v1_routing_economics_get
+GET     /api/v1/routing/operational-runtime                                    Routing                   auth   operational_runtime_api_v1_routing_operational_runtime_get
+GET     /api/v1/routing/policy                                                 Pipelines                 auth   routing_policy_api_v1_routing_policy_get
+POST    /api/v1/routing/policy                                                 Pipelines                 auth   set_routing_policy_api_v1_routing_policy_post
+GET     /api/v1/routing/stack                                                  Routing                   auth   stack_contract_api_v1_routing_stack_get
+POST    /api/v1/routing/test                                                   Pipelines                 auth   test_routing_api_v1_routing_test_post
+GET     /api/v1/routing/topology                                               Routing                   auth   routing_topology_api_v1_routing_topology_get
+PATCH   /api/v1/routing/{rule_id}                                              Pipelines                 auth   update_routing_rule_api_v1_routing__rule_id__patch
+GET     /api/v1/runtime/jobs/{transaction_id}/status                           Runtime Jobs                     get_job_status_api_v1_runtime_jobs__transaction_id__status_get
+GET     /api/v1/search                                                         Admin & Internal          auth   search_api_v1_search_get
+GET     /api/v1/security/alerts                                                Security                  auth   security_alerts_api_v1_security_alerts_get
+PATCH   /api/v1/security/alerts/{alert_id}                                     Security                  auth   update_alert_api_v1_security_alerts__alert_id__patch
+POST    /api/v1/security/alerts/{alert_id}/acknowledge                         Security                  auth   acknowledge_alert_api_v1_security_alerts__alert_id__acknowledge_post
+PUT     /api/v1/security/alerts/{alert_id}/acknowledge                         Security                  auth   acknowledge_alert_api_v1_security_alerts__alert_id__acknowledge_put
+GET     /api/v1/security/dashboard                                             Security                  auth   security_dashboard_api_v1_security_dashboard_get
+GET     /api/v1/security/events                                                Security                  auth   list_security_events_api_v1_security_events_get
+POST    /api/v1/security/events                                                Security                  auth   create_security_event_api_v1_security_events_post
+GET     /api/v1/security/events/{event_id}                                     Security                  auth   get_security_event_api_v1_security_events__event_id__get
+POST    /api/v1/security/events/{event_id}/acknowledge                         Security                  auth   acknowledge_event_api_v1_security_events__event_id__acknowledge_post
+POST    /api/v1/security/events/{event_id}/assign                              Security                  auth   assign_event_api_v1_security_events__event_id__assign_post
+PUT     /api/v1/security/events/{event_id}/assign                              Security                  auth   assign_event_api_v1_security_events__event_id__assign_put
+POST    /api/v1/security/events/{event_id}/resolve                             Security                  auth   resolve_event_api_v1_security_events__event_id__resolve_post
+PUT     /api/v1/security/events/{event_id}/resolve                             Security                  auth   resolve_event_api_v1_security_events__event_id__resolve_put
+GET     /api/v1/security/stats                                                 Security                  auth   security_stats_api_v1_security_stats_get
+GET     /api/v1/security/vault                                                 Security                  auth   vault_list_api_v1_security_vault_get
+POST    /api/v1/security/vault                                                 Security                  auth   vault_add_api_v1_security_vault_post
+POST    /api/v1/security/vault/rotate-all                                      Security                  auth   vault_rotate_all_api_v1_security_vault_rotate_all_post
+DELETE  /api/v1/security/vault/{secret_id}                                     Security                  auth   vault_delete_api_v1_security_vault__secret_id__delete
+GET     /api/v1/security/vault/{secret_id}/reveal                              Security                  auth   vault_reveal_api_v1_security_vault__secret_id__reveal_get
+POST    /api/v1/security/vault/{secret_id}/rotate                              Security                  auth   vault_rotate_one_api_v1_security_vault__secret_id__rotate_post
+GET     /api/v1/source-of-truth/snapshot                                       Admin & Internal          auth   sot_snapshot_api_v1_source_of_truth_snapshot_get
+POST    /api/v1/source-of-truth/sync                                           Admin & Internal          auth   sot_sync_api_v1_source_of_truth_sync_post
+GET     /api/v1/status                                                         Monitoring                       platform_status_api_v1_status_get
+GET     /api/v1/stripe/connect/onboard                                         Admin & Internal          auth   stripe_onboard_api_v1_stripe_connect_onboard_get
+GET     /api/v1/stripe/connect/status                                          Admin & Internal          auth   stripe_status_api_v1_stripe_connect_status_get
+POST    /api/v1/subscriptions/checkout                                         Billing                   auth   subscription_checkout_api_v1_subscriptions_checkout_post
+GET     /api/v1/subscriptions/current                                          Billing                   auth   current_subscription_api_v1_subscriptions_current_get
+GET     /api/v1/subscriptions/plans                                            Billing                          subscription_plans_api_v1_subscriptions_plans_get
+GET     /api/v1/subscriptions/portal                                           Billing                   auth   subscription_portal_api_v1_subscriptions_portal_get
+POST    /api/v1/subscriptions/portal                                           Billing                   auth   subscription_portal_api_v1_subscriptions_portal_post
+GET     /api/v1/suggestions                                                    Monitoring                auth   list_suggestions_api_v1_suggestions_get
+GET     /api/v1/suggestions/summary                                            Monitoring                auth   suggestions_summary_api_v1_suggestions_summary_get
+POST    /api/v1/support                                                        Admin & Internal          auth   support_message_api_v1_support_post
+GET     /api/v1/team/activity                                                  Team                      auth   team_activity_api_v1_team_activity_get
+GET     /api/v1/team/invitations                                               Team                      auth   list_invitations_api_v1_team_invitations_get
+POST    /api/v1/team/invitations                                               Team                      auth   send_invitation_api_v1_team_invitations_post
+DELETE  /api/v1/team/invitations/{invitation_id}                               Team                      auth   revoke_invitation_api_v1_team_invitations__invitation_id__delete
+GET     /api/v1/team/members                                                   Team                      auth   list_team_members_api_v1_team_members_get
+DELETE  /api/v1/team/members/{member_id}                                       Team                      auth   remove_team_member_api_v1_team_members__member_id__delete
+GET     /api/v1/team/members/{member_id}                                       Team                      auth   get_team_member_api_v1_team_members__member_id__get
+PATCH   /api/v1/team/members/{member_id}/role                                  Team                      auth   update_member_role_api_v1_team_members__member_id__role_patch
+GET     /api/v1/team/mfa/status                                                Team                      auth   team_mfa_status_api_v1_team_mfa_status_get
+GET     /api/v1/team/roles                                                     Team                      auth   list_roles_api_v1_team_roles_get
+POST    /api/v1/team/scim/configure                                            Team                      auth   configure_scim_api_v1_team_scim_configure_post
+GET     /api/v1/team/scim/status                                               Team                      auth   scim_status_api_v1_team_scim_status_get
+POST    /api/v1/team/sessions/revoke                                           Team                      auth   revoke_all_sessions_api_v1_team_sessions_revoke_post
+POST    /api/v1/team/sso/configure                                             Team                      auth   configure_sso_api_v1_team_sso_configure_post
+GET     /api/v1/team/sso/status                                                Team                      auth   sso_status_api_v1_team_sso_status_get
+POST    /api/v1/telemetry                                                      Monitoring                auth   ingest_telemetry_api_v1_telemetry_post
+GET     /api/v1/threats/stats                                                  Security                  auth   threat_stats_api_v1_threats_stats_get
+POST    /api/v1/upload                                                         Upload                    auth   upload_file_api_v1_upload_post
+POST    /api/v1/v1/exec                                                        AI Exec SSE               auth   exec_stream_api_v1_v1_exec_post
+GET     /api/v1/v1/plugins                                                     Plugins                   auth   list_plugins_api_v1_v1_plugins_get
+POST    /api/v1/v1/plugins/{plugin_id}/config                                  Plugins                   auth   configure_plugin_api_v1_v1_plugins__plugin_id__config_post
+POST    /api/v1/v1/plugins/{plugin_id}/disable                                 Plugins                   auth   disable_plugin_api_v1_v1_plugins__plugin_id__disable_post
+POST    /api/v1/v1/plugins/{plugin_id}/enable                                  Plugins                   auth   enable_plugin_api_v1_v1_plugins__plugin_id__enable_post
+GET     /api/v1/v1/plugins/{plugin_id}/health                                  Plugins                   auth   plugin_health_api_v1_v1_plugins__plugin_id__health_get
+POST    /api/v1/v1/v1/exec                                                     AI Exec SSE               auth   exec_stream_api_v1_v1_v1_exec_post
+POST    /api/v1/vendors/create                                                 Marketplace               auth   create_vendor_api_v1_vendors_create_post
+GET     /api/v1/vendors/me/listings                                            Marketplace               auth   my_listings_api_v1_vendors_me_listings_get
+POST    /api/v1/vendors/onboard                                                Marketplace               auth   onboard_vendor_api_v1_vendors_onboard_post
+GET     /api/v1/vendors/{vendor_id}                                            Marketplace               auth   get_vendor_api_v1_vendors__vendor_id__get
+GET     /api/v1/wallet/balance                                                 Billing                   auth   wallet_balance_api_v1_wallet_balance_get
+GET     /api/v1/wallet/stats/usage                                             Billing                   auth   wallet_usage_stats_api_v1_wallet_stats_usage_get
+POST    /api/v1/wallet/topup/checkout                                          Billing                   auth   topup_checkout_api_v1_wallet_topup_checkout_post
+GET     /api/v1/wallet/topup/options                                           Billing                   auth   topup_options_api_v1_wallet_topup_options_get
+GET     /api/v1/wallet/transactions                                            Billing                   auth   wallet_transactions_api_v1_wallet_transactions_get
+POST    /api/v1/webhooks/resend                                                Billing                          resend_webhook_api_v1_webhooks_resend_post
+POST    /api/v1/webhooks/stripe                                                Billing                          stripe_webhook_api_v1_webhooks_stripe_post
+GET     /api/v1/workspace                                                      Workspace                 auth   get_workspace_api_v1_workspace_get
+GET     /api/v1/workspace/api-keys                                             Workspace                 auth   ws_api_keys_api_v1_workspace_api_keys_get
+POST    /api/v1/workspace/api-keys                                             Workspace                 auth   create_ws_key_api_v1_workspace_api_keys_post
+DELETE  /api/v1/workspace/api-keys/{key_id}                                    Workspace                 auth   delete_ws_key_api_v1_workspace_api_keys__key_id__delete
+GET     /api/v1/workspace/audit-export                                         Workspace                 auth   export_audit_log_api_v1_workspace_audit_export_get
+GET     /api/v1/workspace/audit/logs                                           Workspace                 auth   audit_logs_api_v1_workspace_audit_logs_get
+GET     /api/v1/workspace/autonomous/decisions                                 Workspace                 auth   autonomous_decisions_api_v1_workspace_autonomous_decisions_get
+GET     /api/v1/workspace/billing/breakdown                                    Workspace                 auth   billing_breakdown_api_v1_workspace_billing_breakdown_get
+GET     /api/v1/workspace/budget                                               Workspace                 auth   workspace_budget_api_v1_workspace_budget_get
+POST    /api/v1/workspace/budget                                               Workspace                 auth   set_workspace_budget_api_v1_workspace_budget_post
+GET     /api/v1/workspace/cost-budget                                          Workspace                 auth   cost_budget_api_v1_workspace_cost_budget_get
+GET     /api/v1/workspace/cost-budget.csv                                      Workspace                 auth   cost_budget_csv_api_v1_workspace_cost_budget_csv_get
+POST    /api/v1/workspace/deployments/pause-all                                Workspace                 auth   pause_all_deployments_api_v1_workspace_deployments_pause_all_post
+GET     /api/v1/workspace/members                                              Workspace                 auth   list_members_api_v1_workspace_members_get
+POST    /api/v1/workspace/members/invite                                       Workspace                 auth   invite_member_api_v1_workspace_members_invite_post
+GET     /api/v1/workspace/models                                               Workspace                 auth   list_models_api_v1_workspace_models_get
+POST    /api/v1/workspace/models/upload                                        Workspace                 auth   upload_model_api_v1_workspace_models_upload_post
+PATCH   /api/v1/workspace/models/{model_id}                                    Workspace                 auth   toggle_model_api_v1_workspace_models__model_id__patch
+POST    /api/v1/workspace/models/{model_id}/deploy                             Workspace                 auth   deploy_model_api_v1_workspace_models__model_id__deploy_post
+GET     /api/v1/workspace/models/{model_id}/versions                           Workspace                 auth   model_versions_api_v1_workspace_models__model_id__versions_get
+GET     /api/v1/workspace/monitoring/health                                    Workspace                 auth   monitoring_health_api_v1_workspace_monitoring_health_get
+GET     /api/v1/workspace/monitoring/metrics                                   Workspace                 auth   monitoring_metrics_api_v1_workspace_monitoring_metrics_get
+GET     /api/v1/workspace/observability                                        Workspace                 auth   workspace_observability_api_v1_workspace_observability_get
+PATCH   /api/v1/workspace/observability                                        Workspace                 auth   update_observability_api_v1_workspace_observability_patch
+GET     /api/v1/workspace/overview                                             Workspace                 auth   workspace_overview_api_v1_workspace_overview_get
+GET     /api/v1/workspace/overview/live                                        Workspace                        workspace_overview_live_api_v1_workspace_overview_live_get
+GET     /api/v1/workspace/providers                                            Workspace                 auth   list_providers_api_v1_workspace_providers_get
+POST    /api/v1/workspace/providers                                            Workspace                 auth   add_provider_api_v1_workspace_providers_post
+GET     /api/v1/workspace/search                                               Workspace                 auth   workspace_search_api_v1_workspace_search_get
+POST    /api/v1/workspace/secrets/rotate                                       Workspace                 auth   rotate_workspace_secrets_api_v1_workspace_secrets_rotate_post
+GET     /api/v1/workspace/security/alerts                                      Workspace                 auth   security_alerts_api_v1_workspace_security_alerts_get
+GET     /api/v1/workspace/settings                                             Workspace                 auth   get_workspace_settings_api_v1_workspace_settings_get
+PATCH   /api/v1/workspace/settings                                             Workspace                 auth   update_workspace_settings_api_v1_workspace_settings_patch
+GET     /api/v1/workspace/wallet/stats/usage                                   Workspace                 auth   wallet_stats_usage_api_v1_workspace_wallet_stats_usage_get
+DELETE  /api/v1/workspace/workspace                                            Workspace                 auth   delete_workspace_api_v1_workspace_workspace_delete
+GET     /apple-touch-icon.png                                                                                   apple_touch_icon_apple_touch_icon_png_get
+GET     /autonomous/decisions                                                  Pipelines                 auth   autonomous_decisions_autonomous_decisions_get
+POST    /autonomous/override                                                   Pipelines                 auth   autonomous_override_autonomous_override_post
+GET     /config.js                                                                                              config_js_config_js_get
+GET     /demo/pipeline/health                                                  Pipelines                        demo_pipeline_health_demo_pipeline_health_get
+POST    /demo/pipeline/run                                                     Pipelines                 auth   demo_pipeline_run_demo_pipeline_run_post
+GET     /demo/pipeline/stream                                                  Pipelines                        demo_pipeline_stream_demo_pipeline_stream_get
+GET     /deployments                                                           Pipelines                 auth   list_deployments_deployments_get
+POST    /deployments                                                           Pipelines                 auth   create_deployment_deployments_post
+DELETE  /deployments/{deployment_id}                                           Pipelines                 auth   delete_deployment_deployments__deployment_id__delete
+PATCH   /deployments/{deployment_id}                                           Pipelines                 auth   update_deployment_deployments__deployment_id__patch
+GET     /deployments/{deployment_id}/code                                      Pipelines                 auth   get_deployment_code_deployments__deployment_id__code_get
+POST    /deployments/{deployment_id}/pause                                     Pipelines                 auth   pause_deployment_deployments__deployment_id__pause_post
+POST    /deployments/{deployment_id}/resume                                    Pipelines                 auth   resume_deployment_deployments__deployment_id__resume_post
+GET     /deployments/{deployment_id}/webhooks                                  Pipelines                 auth   list_deployment_webhooks_deployments__deployment_id__webhooks_get
+POST    /deployments/{deployment_id}/webhooks                                  Pipelines                 auth   create_deployment_webhook_deployments__deployment_id__webhooks_post
+POST    /edge/canary/promote                                                   Pipelines                 auth   canary_promote_edge_canary_promote_post
+GET     /edge/canary/status                                                    Pipelines                 auth   canary_status_edge_canary_status_get
+GET     /favicon.ico                                                                                            favicon_ico_favicon_ico_get
+GET     /favicon.svg                                                                                            favicon_svg_favicon_svg_get
+GET     /feedback                                                                                               feedback_page_feedback_get
+GET     /gpc                                                                                                    gpc_page_gpc_get
+GET     /health                                                                Health                           health_check_health_get
+GET     /health/detailed                                                       Health                           detailed_health_health_detailed_get
+GET     /icon.png                                                                                               icon_png_icon_png_get
+GET     /legal/acceptable-use                                                                                   legal_acceptable_use_legal_acceptable_use_get
+GET     /legal/privacy                                                                                          legal_privacy_legal_privacy_get
+GET     /legal/security                                                                                         legal_security_legal_security_get
+GET     /legal/terms                                                                                            legal_terms_legal_terms_get
+GET     /llms.txt                                                                                               llms_txt_llms_txt_get
+GET     /lockerphycer                                                                                           lockerphycer_page_lockerphycer_get
+GET     /lockerphycer/{path}                                                                                    lockerphycer_assets_lockerphycer__path__get
+GET     /logo.png                                                                                               logo_png_logo_png_get
+GET     /marketplace                                                                                            marketplace_info_marketplace_get
+GET     /marketplace/lockerphycer                                                                               marketplace_lockerphycer_marketplace_lockerphycer_get
+GET     /marketplace/py03-irongrid                                                                              marketplace_py03_marketplace_py03_irongrid_get
+GET     /og-image.png                                                                                           og_image_og_image_png_get
+GET     /pipeline/interactive/session                                          Pipelines                 auth   interactive_session_pipeline_interactive_session_get
+GET     /pipelines                                                             Pipelines                 auth   list_pipelines_pipelines_get
+POST    /pipelines                                                             Pipelines                 auth   create_pipeline_pipelines_post
+GET     /pipelines/nodes                                                       Pipelines                 auth   list_pipeline_nodes_pipelines_nodes_get
+GET     /pipelines/templates                                                   Pipelines                 auth   list_pipeline_templates_pipelines_templates_get
+DELETE  /pipelines/{pipeline_id}                                               Pipelines                 auth   delete_pipeline_pipelines__pipeline_id__delete
+GET     /pipelines/{pipeline_id}                                               Pipelines                 auth   get_pipeline_pipelines__pipeline_id__get
+PATCH   /pipelines/{pipeline_id}                                               Pipelines                 auth   update_pipeline_pipelines__pipeline_id__patch
+GET     /pipelines/{pipeline_id}/graph                                         Pipelines                 auth   get_pipeline_graph_pipelines__pipeline_id__graph_get
+POST    /pipelines/{pipeline_id}/graph                                         Pipelines                 auth   save_pipeline_graph_pipelines__pipeline_id__graph_post
+PUT     /pipelines/{pipeline_id}/graph                                         Pipelines                 auth   save_pipeline_graph_pipelines__pipeline_id__graph_put
+POST    /pipelines/{pipeline_id}/run                                           Pipelines                 auth   run_pipeline_pipelines__pipeline_id__run_post
+GET     /routing                                                               Pipelines                 auth   list_routing_rules_routing_get
+POST    /routing                                                               Pipelines                 auth   create_routing_rule_routing_post
+GET     /routing/policy                                                        Pipelines                 auth   routing_policy_routing_policy_get
+POST    /routing/policy                                                        Pipelines                 auth   set_routing_policy_routing_policy_post
+POST    /routing/test                                                          Pipelines                 auth   test_routing_routing_test_post
+PATCH   /routing/{rule_id}                                                     Pipelines                 auth   update_routing_rule_routing__rule_id__patch
+GET     /status                                                                                                 status_page_status_get
+GET     /terminal                                                                                               terminal_page_terminal_get
+POST    /test-post                                                             Health                           test_post_test_post_post
+GET     /twitter-card.png                                                                                       twitter_card_twitter_card_png_get
+GET     /uptime                                                                                                 uptime_page_uptime_get
+
+TOTAL ROUTES: 426

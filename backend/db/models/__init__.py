@@ -12,6 +12,7 @@ from backend.db.models.ledger import LedgerEvent
 from backend.db.models.lineage import BirthCertificate, LineageEdge
 from backend.db.models.provider import ProviderKey, ProviderRoutingLog
 from backend.db.models.playground import PlaygroundSession, PlaygroundPrompt
+from backend.db.models.repo_risk_gate import RepoRiskGateRun, RepoRiskGateEvent
 
 __all__ = [
     # existing
@@ -32,4 +33,6 @@ __all__ = [
     "ProviderKey", "ProviderRoutingLog",
     # playground
     "PlaygroundSession", "PlaygroundPrompt",
+    # repo risk gate (Playground tool)
+    "RepoRiskGateRun", "RepoRiskGateEvent",
 ]

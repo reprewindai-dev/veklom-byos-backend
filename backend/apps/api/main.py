@@ -128,18 +128,22 @@ async def internal_error(request: Request, exc):
 # --- Import and register all routers ---
 from backend.apps.api.routers import (
     admin,
+    agents,
     ai,
     auth,
     billing,
+    command_center,
     compliance,
     exec_router,
     gfr,
     gpc,
     health,
+    # langchain_ops intentionally not imported - kept off the surface until real
     marketplace,
     monitoring,
     pipelines,
     providers,
+    repo_risk_gate,
     routing,
     team,
     runtime_jobs,
@@ -201,6 +205,20 @@ app.include_router(gpc.router, prefix="/api/v1")
 
 # GFR (Gradient Field Router) — Scientist & Special Agent load balancing skill
 app.include_router(gfr.router, prefix="/api/v1")
+
+# Command Center — /api/v1/command-center/* (aliases + new routes per WIRING_MATRIX)
+app.include_router(command_center.router, prefix="/api/v1")
+
+# Repo Risk Gate — Playground governed-review tool
+app.include_router(repo_risk_gate.router, prefix="/api/v1")
+
+# Agent Workforce
+app.include_router(agents.router, prefix="/api/v1")
+
+# ChainOps (LangChain governance) — INTENTIONALLY UNREGISTERED.
+# The langchain_ops module currently returns simulated runs; per spec the
+# ChainOps page must show "Backend routes not wired yet" until a real
+# LangChain integration lands.  Do not enable without removing simulated data.
 
 # UACP Internal
 app.include_router(internal_uacp.router, prefix="/api/v1")

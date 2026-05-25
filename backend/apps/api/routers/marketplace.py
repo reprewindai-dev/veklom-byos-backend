@@ -223,6 +223,50 @@ async def listing_datasheet(listing_id: str, user=Depends(get_current_user), db:
     }
 
 
+# --- Marketplace Categories ---
+@router.get("/marketplace/categories")
+async def list_categories(user=Depends(get_current_user)):
+    """Static category taxonomy used by the marketplace UI.
+
+    Categories are not stored in the DB (every listing carries its own
+    category string) so the canonical list lives here.  When a listing
+    persists with a new category not in this taxonomy it is still surfaced
+    by /listings; this endpoint just gives the UI the navigation tree.
+    """
+    return [
+        {
+            "slug": "governance",
+            "name": "Governance / DevSecOps",
+            "description": "Policy gates, repo review, audit, kill switches.",
+            "products": ["repo-risk-gate"],
+        },
+        {
+            "slug": "runtime",
+            "name": "Runtime Modules",
+            "description": "Compute routers, gradient field, IronGrid runtime.",
+            "products": ["py03-irongrid"],
+        },
+        {
+            "slug": "products",
+            "name": "Products",
+            "description": "First-party Veklom products and demos.",
+            "products": ["lockerphycer"],
+        },
+        {
+            "slug": "compliance",
+            "name": "Compliance Packs",
+            "description": "HIPAA, SOC2, PCI-DSS, GDPR pre-built bundles.",
+            "products": [],
+        },
+        {
+            "slug": "connectors",
+            "name": "Connectors",
+            "description": "Identity, SSO, observability, billing integrations.",
+            "products": [],
+        },
+    ]
+
+
 # --- Marketplace Automation ---
 @router.get("/marketplace/automation")
 async def list_automations(user=Depends(get_current_user)):

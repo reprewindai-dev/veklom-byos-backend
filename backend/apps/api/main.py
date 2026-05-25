@@ -59,18 +59,41 @@ if OTEL_ENDPOINT and OTEL_HEADERS:
 async def lifespan(app: FastAPI):
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
-    
-    # Initialize database schema
+
+    # Initialize database schema.  We log loud + structured because a silent
+    # success here used to mask cases where the metadata object had zero
+    # tables registered (because of import order) or the connection pointed
+    # at the wrong DB.  Now we always count what was registered and verify
+    # at least the critical tables landed.
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            print("Database schema initialized successfully")
+            registered = sorted(Base.metadata.tables.keys())
+            print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")
+            # Verify a subset that every endpoint depends on.  If any are
+            # missing AFTER create_all, the DB is misconfigured and we want
+            # the log to scream.
+            from sqlalchemy import text
+            critical = ("users", "exec_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
+            check = await conn.execute(text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema='public' AND table_name = ANY(:names)"
+            ), {"names": list(critical)})
+            present = {r[0] for r in check}
+            missing = [t for t in critical if t not in present]
+            if missing:
+                print(f"[startup] db: WARNING — critical tables missing after create_all: {missing}")
+            else:
+                print(f"[startup] db: critical tables verified ({len(critical)} present)")
     except Exception as e:
-        print(f"Database initialization error: {e}")
-        # Continue anyway - tables might already exist
-    
+        # Loud error so it shows up in container logs and Sentry.
+        import traceback
+        print(f"[startup] db: FAILED to initialise schema: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        # Continue startup — but the operator now sees the error.
+
     yield
-    
+
     # Graceful shutdown of plugins
     await plugin_manager.shutdown_all()
 

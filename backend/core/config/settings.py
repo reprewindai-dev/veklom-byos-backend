@@ -190,6 +190,9 @@ class Settings(BaseSettings):
     # Search (SerpAPI)
     SERPAPI_KEY: str = ""
 
+    # Base Builder Code (ERC-8021 onchain attribution)
+    BASE_BUILDER_CODE: str = ""
+
     @field_validator("CORS_ORIGINS", "ALLOWED_HOSTS", mode="before")
     @classmethod
     def parse_list(cls, v):

@@ -407,6 +407,42 @@ async def config_js():
     return HTMLResponse(content=content, media_type="application/javascript")
 
 
+@app.get("/base-attribution.js")
+async def base_attribution_js():
+    code = settings.BASE_BUILDER_CODE.strip()
+    if code:
+        code_hex = code.encode("utf-8").hex()
+        data_suffix = f"0xef{code_hex}"
+    else:
+        data_suffix = ""
+    content = (
+        f"(function(){{"
+        f"var code={repr(code)};"
+        f"var suffix={repr(data_suffix)};"
+        f"window.__BASE_BUILDER_CODE__=code;"
+        f"window.__BASE_DATA_SUFFIX__=suffix;"
+        f"}})();"
+    )
+    return HTMLResponse(content=content, media_type="application/javascript")
+
+
+@app.get("/api/v1/attribution/builder-code")
+async def attribution_builder_code():
+    code = settings.BASE_BUILDER_CODE.strip()
+    if not code:
+        return {"configured": False, "builder_code": None, "data_suffix": None}
+    code_hex = code.encode("utf-8").hex()
+    data_suffix = f"0xef{code_hex}"
+    return {
+        "configured": True,
+        "builder_code": code,
+        "data_suffix": data_suffix,
+        "chain": "base",
+        "standard": "ERC-8021",
+        "note": "Append data_suffix to transaction calldata for onchain attribution.",
+    }
+
+
 def _branding_response(filename: str, media_type: str):
     asset_path = FRONTEND_DIR / "branding" / filename
     if asset_path.exists():

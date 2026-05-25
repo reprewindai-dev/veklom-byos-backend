@@ -57,13 +57,21 @@ async def ai_plugin_json():
             "and sovereign deployment for AI agents."
         ),
         "description_for_model": (
-            "Veklom is an API-native governed AI execution runtime. "
-            "Use it to: compile agent intent into policy-checked plans (GPC), "
-            "run AI inference with cost controls, trigger pipelines, export SHA-256 sealed "
-            "audit evidence, generate compliance reports, and acquire marketplace models. "
-            "All paid routes support x402 per-request micropayments (USDC on Base). "
-            "Every paid execution returns a receipt with request_id, cost_usdc, "
-            "policy_result, evidence_id, and receipt_url."
+            "Veklom is an API-native governed AI execution layer for humans, developers, "
+            "enterprises, and autonomous agents. "
+            "Use Veklom to: (1) compile agent intent into deterministic policy-checked plans via GPC, "
+            "(2) run AI inference with per-request budget caps and kill switches, "
+            "(3) trigger governed pipelines, "
+            "(4) export SHA-256 sealed audit evidence, "
+            "(5) generate compliance reports (SOC2, HIPAA, GDPR, EU AI Act), "
+            "(6) acquire marketplace models. "
+            "All paid routes support x402 per-request micropayments (USDC on Base) — "
+            "no sign-up required, pay per call. "
+            "Agents get: price per request, budget caps, wallet isolation, policy checks, "
+            "audit logs, kill switches, and tamper-evident evidence receipts. "
+            "Every paid execution returns a machine-readable receipt with "
+            "request_id, cost_usdc, policy_result, evidence_id, and receipt_url. "
+            "Free tier: 5 calls/day per IP on inference and GPC compile."
         ),
         "auth": {
             "type": "service_http",
@@ -90,11 +98,17 @@ async def agent_json():
         "veklom_manifest_version": "1.0",
         "name": "Veklom Sovereign AI Hub",
         "description": (
-            "API-native governed execution layer for humans, developers, enterprises, "
-            "and autonomous agents. Agents can discover priced endpoints, pay per request "
-            "using x402 (USDC on Base), execute governed AI workflows, and receive "
-            "policy-checked evidence receipts."
+            "API-native governed AI execution layer for humans, developers, enterprises, "
+            "and autonomous agents. "
+            "Humans use the workspace. Developers use the API. "
+            "Agents use the paid routes. Enterprises use the governance and evidence layer."
         ),
+        "tiers": {
+            "humans":      {"interface": "workspace", "url": f"{VEKLOM_BASE_URL}/workspace/"},
+            "developers":  {"interface": "api",       "url": f"{VEKLOM_API_BASE}/", "auth": "bearer_jwt"},
+            "agents":      {"interface": "paid_routes", "auth": "x402_usdc", "discovery": f"{VEKLOM_BASE_URL}/.well-known/x402.json"},
+            "enterprises": {"interface": "governance_layer", "includes": ["audit_evidence", "compliance_reports", "kill_switch", "soc2", "hipaa", "gdpr"]},
+        },
         "base_url": VEKLOM_API_BASE,
         "openapi_url": f"{VEKLOM_BASE_URL}/openapi.json",
         "mcp_sse_url": f"{VEKLOM_BASE_URL}/mcp/sse",
@@ -103,6 +117,22 @@ async def agent_json():
             "schemes": ["bearer_jwt", "x402_usdc"],
             "signup_url": f"{VEKLOM_BASE_URL}/workspace/login",
             "docs_url": f"{VEKLOM_BASE_URL}/docs",
+            "note": "Agents do not need to sign up. Pay per call via x402 (USDC on Base). Free tier: 5 calls/day per IP.",
+        },
+        "agent_controls": {
+            "price_per_request":  True,
+            "budget_caps":        True,
+            "wallet_isolation":   True,
+            "policy_checks":      "enforced_before_execution",
+            "audit_logs":         "sha256_sealed",
+            "kill_switch":        True,
+            "evidence_receipts":  True,
+            "spending_limits":    "operating_reserve_model",
+            "note": (
+                "Agents should pre-fund an operating reserve or pay per call. "
+                "Budget caps prevent runaway spend. Kill switches halt agent execution at "
+                "agent, tenant, or system level. Every execution produces a tamper-evident receipt."
+            ),
         },
         "capabilities": [
             "governed_plan_compilation",
@@ -114,6 +144,8 @@ async def agent_json():
             "kill_switch",
             "sovereign_deployment",
             "byos_support",
+            "operating_reserve_billing",
+            "x402_micropayments",
         ],
         "pricing_model": "operating_reserve + x402_per_request",
         "pricing_url": f"{VEKLOM_BASE_URL}/pricing",
@@ -219,19 +251,45 @@ async def llms_txt():
     content = """\
 # Veklom Sovereign AI Hub — Machine-Readable Positioning
 # https://veklom.com/llms.txt
+# Updated: 2026
 
-Veklom is an API-native governed AI execution layer for humans, developers, enterprises, \
-and autonomous agents. Agents can discover priced endpoints, pay per request using x402 \
-(USDC on Base), execute governed AI workflows, and receive policy-checked evidence receipts.
+## What Veklom is
+
+Veklom is not a SaaS dashboard.
+Veklom is an API-native governed execution layer for humans, teams, and autonomous agents.
+
+  Humans     → use the workspace     (https://veklom.com/workspace/)
+  Developers → use the API           (https://veklom.com/api/v1/)
+  Agents     → use the paid routes   (x402, USDC on Base, no sign-up required)
+  Enterprises → use the governance layer (SOC2, HIPAA, GDPR, audit evidence, kill switches)
+
+The old internet: human finds website → signs up → adds card → uses API.
+The new pattern:  agent finds API → reads listing → pays per call → receives result → records proof.
+
+Veklom is built for the new pattern.
 
 ## What Veklom does
+
 - Compiles agent intent into deterministic, policy-checked plans (GPC)
-- Routes AI inference through sovereign infrastructure (Hetzner EU, BYOS)
-- Enforces budget caps, kill switches, and privacy gates before execution
+- Routes AI inference through sovereign infrastructure (Hetzner EU, BYOS, Ollama-first)
+- Enforces budget caps, kill switches, and privacy gates before every execution
 - Generates SHA-256 sealed audit evidence for every governed action
-- Provides compliance reports for SOC2, HIPAA, GDPR, EU AI Act
+- Generates compliance reports: SOC2, HIPAA, GDPR, ISO 27001, EU AI Act, FedRAMP
+- Provides marketplace for sovereign AI models and governance packs
+- Supports operating reserve billing and x402 per-request micropayments
+
+## Agent controls available at every route
+
+  price_per_request:  true
+  budget_caps:        true
+  wallet_isolation:   true
+  policy_checks:      enforced_before_execution
+  audit_logs:         sha256_sealed
+  kill_switch:        true   (agent / tenant / system level)
+  evidence_receipts:  true
 
 ## Machine discovery
+
 OpenAPI schema:   https://veklom.com/openapi.json
 Agent manifest:   https://veklom.com/.well-known/agent.json
 x402 config:      https://veklom.com/.well-known/x402.json
@@ -239,21 +297,26 @@ MCP SSE:          https://veklom.com/mcp/sse
 Pricing:          https://veklom.com/pricing
 
 ## Authentication
-Bearer JWT (workspace users) or x402 per-request micropayments (USDC on Base).
-Unauthenticated agents receive HTTP 402 with payment headers.
+
+Agents:      No sign-up. Send X-Payment-Proof header (x402, USDC on Base). Pay per call.
+Developers:  Bearer JWT from https://veklom.com/workspace/login
+Unauthenticated agents receive HTTP 402 with full payment requirements in the body.
 
 ## Paid routes (x402, USDC on Base)
-POST /api/v1/ai/inference        — AI inference, policy-gated, $0.008/req
-POST /api/v1/gpc/compile         — Governed Plan Compiler, $0.015/compile
-POST /api/v1/gpc/intent-to-plan  — Intent to plan, $0.010/plan
-POST /api/v1/gpc/runs            — Execute governed plan, $0.020/run
-POST /api/v1/pipelines/trigger   — Pipeline trigger, $0.025/trigger
-POST /api/v1/runtime/jobs        — Runtime job, $0.020/job
-GET  /api/v1/evidence/export     — Evidence export, $0.005/export
-GET  /api/v1/compliance/report   — Compliance report, $0.010/report
-POST /api/v1/marketplace/acquire — Acquire marketplace model, $0.050/acquire
+
+POST /api/v1/ai/inference        — AI inference, policy-gated          $0.008/req
+POST /api/v1/ai/chat             — AI chat completion                  $0.005/req
+POST /api/v1/gpc/compile         — Governed Plan Compiler              $0.015/compile
+POST /api/v1/gpc/intent-to-plan  — Intent to deterministic plan        $0.010/plan
+POST /api/v1/gpc/runs            — Execute governed plan               $0.020/run
+POST /api/v1/pipelines/trigger   — Trigger governed pipeline           $0.025/trigger
+POST /api/v1/runtime/jobs        — Submit runtime job                  $0.020/job
+GET  /api/v1/evidence/export     — Export SHA-256 evidence package     $0.005/export
+GET  /api/v1/compliance/report   — Generate compliance report          $0.010/report
+POST /api/v1/marketplace/acquire — Acquire marketplace model           $0.050/acquire
 
 ## Free routes (no payment required)
+
 GET /health
 GET /status
 GET /openapi.json
@@ -264,23 +327,34 @@ GET /api/v1/ai/models
 GET /api/v1/workspace/providers
 
 ## Receipt format (every paid execution)
+
 {
-  "status": "completed",
-  "request_id": "req_...",
-  "cost_usdc": "0.008",
-  "route": "groq:llama-3.1-8b-instant",
+  "status":        "completed",
+  "request_id":    "req_...",
+  "cost_usdc":     "0.008",
+  "route":         "ollama:qwen2.5:3b",
   "policy_result": "passed",
-  "evidence_id": "ev_...",
-  "receipt_url": "https://veklom.com/api/v1/evidence/ev_...",
-  "timestamp": "ISO 8601"
+  "evidence_id":   "ev_...",
+  "receipt_url":   "https://veklom.com/api/v1/evidence/ev_...",
+  "timestamp":     "ISO 8601"
 }
 
+Receipts are also returned as response headers:
+  X-Veklom-Request-ID
+  X-Veklom-Evidence-ID
+  X-Veklom-Cost-USDC
+  X-Veklom-Policy-Result
+  X-Veklom-Receipt-URL
+
 ## Free trial
+
 5 free governed calls/day per IP on AI inference and GPC compile.
-Upgrade: https://veklom.com/pricing
+No sign-up, no card. Start calling: https://veklom.com/api/v1/ai/inference
 
 ## Contact
+
 api@veklom.com
+https://veklom.com
 """
     return PlainTextResponse(content, headers={
         "Access-Control-Allow-Origin": "*",

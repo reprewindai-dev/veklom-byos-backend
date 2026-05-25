@@ -500,15 +500,6 @@ async def enforce_route_access(request, call_next):
     """Enforce access control on protected static routes."""
     path = request.url.path
 
-    # Command Center — OWNER / SUPER_ADMIN only
-    if path.startswith("/command-center"):
-        user = await _get_user_from_request(request)
-        if not user or user.get("role") not in _OWNER_ROLES:
-            html = '<html><head><meta http-equiv="refresh" content="0;url=/workspace/"></head>'\
-                   '<body>Access denied. <a href="/workspace/">Return to workspace</a></body></html>'
-            from starlette.responses import HTMLResponse
-            return HTMLResponse(html, status_code=403)
-
     # GPC — paid plan required (sovereign / pro / founding / admin)
     if path.startswith("/gpc") or path.startswith("/gpc-engine"):
         user = await _get_user_from_request(request)

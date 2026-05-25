@@ -104,7 +104,9 @@ app.options("*", (_req, res) => {
 // ---------------------------------------------------------------------------
 // x402 payment middleware — gates every paid route
 // ---------------------------------------------------------------------------
-app.use(paymentMiddleware(paidRoutes, resourceServer));
+// syncFacilitatorOnStart=false: gateway starts even without valid CDP keys.
+// 402 challenges work immediately. Payment settlement works once real keys are set.
+app.use(paymentMiddleware(paidRoutes, resourceServer, undefined, undefined, false));
 
 // ---------------------------------------------------------------------------
 // Deny-by-default: every unlisted route returns 404 — nothing is free by accident

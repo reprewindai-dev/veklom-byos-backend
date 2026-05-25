@@ -92,6 +92,39 @@
     if (location.hash !== hash) location.hash = hash;
   }
 
+  async function signOut() {
+    await api("POST", "/auth/logout").catch(() => {});
+    const keys = ["access_token","accessToken","token","authToken","veklom_token","veklom-auth-token","auth_token","veklom.access_token","auth","user","session","veklom_session"];
+    keys.forEach(k => { try { localStorage.removeItem(k); } catch(_){} try { sessionStorage.removeItem(k); } catch(_){} });
+    window.location.href = "/";
+  }
+
+  function wireHeaderIcons() {
+    const containers = document.querySelectorAll("header, [class*='header'], [class*='topbar'], [class*='navbar'], [class*='Header']");
+    const scanned = new WeakSet();
+    containers.forEach(container => {
+      const iconBtns = [...container.querySelectorAll("button, [role='button']")].filter(b => {
+        if (scanned.has(b)) return false;
+        const hasSvg = !!b.querySelector("svg");
+        const text = b.textContent.trim();
+        return hasSvg && text.length < 4;
+      });
+      iconBtns.forEach(btn => {
+        if (scanned.has(btn)) return;
+        scanned.add(btn);
+        const al = (btn.getAttribute("aria-label") || btn.getAttribute("title") || "").toLowerCase();
+        const svgPaths = [...btn.querySelectorAll("path")].map(p => p.getAttribute("d") || "").join(" ");
+        if (al.includes("notif") || al.includes("bell") || al.includes("alert") || /M15.*bell|bell.*M15/i.test(svgPaths)) {
+          btn.addEventListener("click", (e) => { e.stopPropagation(); navigate("#/monitoring"); });
+        } else if (al.includes("key") || al.includes("api") || /M21.*M3.*M10|key.*circle/i.test(svgPaths)) {
+          btn.addEventListener("click", (e) => { e.stopPropagation(); navigate("#/vault"); });
+        } else if (al.includes("doc") || al.includes("help") || al.includes("book")) {
+          btn.addEventListener("click", (e) => { e.stopPropagation(); window.open("https://docs.veklom.com", "_blank"); });
+        }
+      });
+    });
+  }
+
   function currentPage() {
     return (location.hash || "#/").replace(/^#/, "").toLowerCase();
   }
@@ -151,6 +184,33 @@
     const text = btn.textContent.trim();
     const label = text.toLowerCase();
     const page = currentPage();
+
+    // ------ USER DROPDOWN ------
+    if (label === "security") {
+      e.preventDefault(); e.stopPropagation();
+      navigate("#/settings");
+      return;
+    }
+    if (label === "api keys") {
+      e.preventDefault(); e.stopPropagation();
+      navigate("#/settings");
+      return;
+    }
+    if (label === "support") {
+      e.preventDefault(); e.stopPropagation();
+      window.open("mailto:support@veklom.com", "_blank");
+      return;
+    }
+    if (label === "sign out" || label === "signout" || label === "log out" || label === "logout") {
+      e.preventDefault(); e.stopPropagation();
+      await signOut();
+      return;
+    }
+    if (label === "docs" || label === "documentation") {
+      e.preventDefault(); e.stopPropagation();
+      window.open("https://docs.veklom.com", "_blank");
+      return;
+    }
 
     // ------ OVERVIEW ------
     if (label === "open playground" || (label.includes("playground") && label.length < 25)) {
@@ -455,52 +515,65 @@
   window.__VEKLOM_ENHANCE_LOADED__ = true;
 
   // ------ TENANT NAME INJECTION ------
-  // Fetch real user info and replace any hardcoded "Elliot J" / placeholder names
   async function injectTenantUser() {
-    // Try cached user first, then API
     let res = window.__VEKLOM_USER__ || window.__VEKLOM_AUTH__?.getUser?.() || null;
-    if (!res) {
-      res = await api("GET", "/auth/me").catch(() => null);
-    }
+    if (!res) res = await api("GET", "/auth/me").catch(() => null);
     if (!res) return;
     const fullName = res.full_name || res.name || res.email?.split("@")[0] || "";
     const email = res.email || "";
-    const initials = fullName ? fullName.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2) : email.slice(0, 2).toUpperCase();
+    const initials = fullName
+      ? fullName.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2)
+      : email.slice(0, 2).toUpperCase();
     if (!fullName && !email) return;
+    window._veklomUser = res;
 
-    // Scan text nodes and replace known placeholder names
-    const PLACEHOLDERS = ["Elliot J", "Elliot", "elliot j", "elliot"];
-    function replaceInNode(node) {
-      if (node.nodeType === 3) { // text node
+    const NAME_PLACEHOLDERS = ["Elliot Juni", "Elliot J", "Elliott Juni", "Elliott J", "Elliot", "Elliott", "elliot juni", "elliot j", "elliot"];
+    const EMAIL_PLACEHOLDERS = ["elliot@veklom.io", "elliot@veklom.com", "demo@veklom.io", "demo@veklom.com"];
+
+    function patchNode(node) {
+      if (node.nodeType === 3) {
         let val = node.nodeValue;
-        PLACEHOLDERS.forEach(p => { val = val.replaceAll(p, fullName || initials); });
+        NAME_PLACEHOLDERS.forEach(p => { if (val.includes(p)) val = val.replaceAll(p, fullName || initials); });
+        EMAIL_PLACEHOLDERS.forEach(p => { if (val.includes(p)) val = val.replaceAll(p, email); });
         if (val !== node.nodeValue) node.nodeValue = val;
       } else if (node.nodeType === 1 && !["SCRIPT","STYLE","IFRAME"].includes(node.tagName)) {
-        node.childNodes.forEach(replaceInNode);
+        node.childNodes.forEach(patchNode);
       }
     }
 
-    // Run once on load, then watch for re-renders
-    const runReplace = () => replaceInNode(document.body);
-    setTimeout(runReplace, 800);
-    setTimeout(runReplace, 2500);
-    setTimeout(runReplace, 5000);
-
-    // Also patch avatar initials
-    const patchAvatars = () => {
-      document.querySelectorAll("[class*='avatar'] span, [class*='Avatar'] span, [class*='user-initial'], [class*='userInitial']").forEach(el => {
-        if (PLACEHOLDERS.some(p => el.textContent.includes(p)) || (el.textContent.trim().length <= 3 && el.textContent.trim().match(/^[A-Z]{1,2}$/))) {
-          if (initials) el.textContent = initials;
+    function patchAvatars() {
+      document.querySelectorAll("[class*='avatar'] span,[class*='Avatar'] span,[class*='user-initial'],[class*='userInitial'],[class*='initials']").forEach(el => {
+        const t = el.textContent.trim();
+        if (NAME_PLACEHOLDERS.some(p => t.toLowerCase().includes(p.toLowerCase())) || (t.length <= 2 && /^[A-Z]{1,2}$/.test(t))) {
+          el.textContent = initials;
         }
       });
-    };
-    setTimeout(patchAvatars, 1000);
-    setTimeout(patchAvatars, 3000);
+    }
 
-    // Store user globally for other handlers
-    window._veklomUser = res;
+    const runPatch = () => { patchNode(document.body); patchAvatars(); };
+    setTimeout(runPatch, 400);
+    setTimeout(runPatch, 1500);
+    setTimeout(runPatch, 4000);
+
+    // MutationObserver: patch any new DOM that contains placeholder data (e.g. dropdown re-render)
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType === 1) {
+            const txt = node.textContent || "";
+            const needsPatch = NAME_PLACEHOLDERS.some(p => txt.includes(p)) || EMAIL_PLACEHOLDERS.some(p => txt.includes(p));
+            if (needsPatch) { patchNode(node); patchAvatars(); }
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   injectTenantUser();
+
+  // Wire header icon buttons after React finishes first paint
+  setTimeout(wireHeaderIcons, 1200);
+  setTimeout(wireHeaderIcons, 3500);
 
 })();

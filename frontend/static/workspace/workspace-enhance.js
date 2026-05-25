@@ -414,27 +414,77 @@
       e.preventDefault(); e.stopPropagation();
       const hash = location.hash || "";
       const listingId = hash.split("/").pop() || "unknown";
-      const target = user?.workspace_id || "acme-prod";
-      const res = await api("POST", `/marketplace/listings/${listingId}/install`, { target });
-      if (res?.status === "installing") {
-        toast(`Installing ${listingId} on ${target} — ETA ${res.estimated_minutes || 3} min`, "ok");
-      } else {
-        toast("Install request submitted. Check deployments for status.", "ok");
-      }
+      const target = window._veklomUser?.workspace_id || "default";
+      const listing = await api("GET", `/marketplace/listings/${listingId}`);
+      if (!listing) { toast("Listing not found", "error"); return; }
+      const price = listing.price || 0;
+      const pricing = listing.pricing_model || "monthly";
+      const priceLabel = price === 0 ? "Free" : `$${price.toLocaleString()}/${pricing}`;
+      document.getElementById("veklom-install-modal")?.remove();
+      const modal = document.createElement("div");
+      modal.id = "veklom-install-modal";
+      modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      const instrHtml = (listing.install_instructions || "Click Confirm to install.").replace(/\n/g, "<br>");
+      modal.innerHTML = `<div style="background:#111;border:1px solid rgba(249,115,22,.4);border-radius:12px;width:480px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:6px;color:#f97316;">${listing.name}</div>
+        <div style="font-size:12px;color:#888;margin-bottom:16px;">${listing.description}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:12px;">
+          <div><span style="color:#666;">Pricing</span><br><b>${priceLabel}</b></div>
+          <div><span style="color:#666;">Install</span><br>${listing.install_method || "container"}</div>
+          <div><span style="color:#666;">Target</span><br>${listing.deploy_target || "hetzner"}</div>
+          <div><span style="color:#666;">License</span><br>${listing.license_type || "workspace-bound"}</div>
+        </div>
+        <div style="font-size:12px;color:#aaa;margin-bottom:20px;padding:12px;background:#1a1a1a;border-radius:6px;line-height:1.6;">${instrHtml}</div>
+        <div style="display:flex;gap:10px;">
+          <button id="vim-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="vim-confirm" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">${price === 0 ? "Install Free" : "Proceed to Checkout · " + priceLabel}</button>
+        </div>
+      </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector("#vim-cancel").onclick = () => modal.remove();
+      modal.onclick = (ev) => { if (ev.target === modal) modal.remove(); };
+      modal.querySelector("#vim-confirm").onclick = async () => {
+        modal.remove();
+        if (price > 0) {
+          const checkout = await api("POST", "/subscriptions/checkout", { plan: "founding", listing_id: listingId, amount: price });
+          if (checkout?.checkout_url) { window.open(checkout.checkout_url, "_blank"); return; }
+          toast("Stripe not yet configured — contact support@veklom.com to complete purchase", "warn");
+          return;
+        }
+        const res = await api("POST", `/marketplace/listings/${listingId}/install`, { target });
+        if (res?.status === "already_installed") { toast(`${listing.name} is already installed`, "warn"); return; }
+        toast(res?.message || `${listing.name} installed`, "ok");
+      };
       return;
     }
     if (label === "download datasheet" || label.includes("datasheet")) {
       e.preventDefault(); e.stopPropagation();
       const hash = location.hash || "";
       const listingId = hash.split("/").pop() || "unknown";
-      const res = await api("GET", `/marketplace/listings/${listingId}/datasheet`);
-      if (res) {
-        const content = `# ${res.title}\nProvider: ${res.provider}\nCategory: ${res.category}\nPrice: ${res.price}\n\n${res.positioning}\n\nCompliance: ${(res.compliance || []).join(", ")}\nBadges: ${(res.badges || []).join(", ")}`;
-        downloadBlob(content, `${listingId}-datasheet.txt`, "text/plain");
-        toast("Datasheet downloaded", "ok");
-      } else {
-        toast("Datasheet not available", "warn");
+      try {
+        const res = await fetch(`${base}/marketplace/listings/${listingId}/datasheet`, {
+          headers: authHeaders(), credentials: "include",
+        });
+        if (res.ok) {
+          const text = await res.text();
+          downloadBlob(text, `${listingId}-datasheet.md`, "text/markdown");
+          toast("Datasheet downloaded", "ok");
+        } else {
+          toast("Datasheet not available for this listing", "warn");
+        }
+      } catch (err) {
+        toast("Datasheet download failed", "error");
       }
+      return;
+    }
+    if (label === "provider profile" || label.includes("provider profile")) {
+      e.preventDefault(); e.stopPropagation();
+      const hash = location.hash || "";
+      const listingId = hash.split("/").pop() || "";
+      // Try to get provider slug from listing data
+      const listingData = await api("GET", `/marketplace/listings/${listingId}`);
+      const slug = listingData?.vendor_slug || "veklom_native";
+      navigate(`#/marketplace/provider/${slug}`);
       return;
     }
 

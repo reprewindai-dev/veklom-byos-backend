@@ -635,6 +635,9 @@ async def icon_png():
 @app.get("/")
 async def root(request: Request):
     host = request.headers.get("host", "")
+    if "co2router.com" in host:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/workspace#/marketplace/ls_co2router", status_code=301)
     if "lockerphycer.veklom.com" in host:
         lockerphycer_index = FRONTEND_DIR / "lockerphycer" / "index.html"
         if lockerphycer_index.exists():

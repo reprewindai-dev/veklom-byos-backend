@@ -6,6 +6,18 @@ GET     /api/v1/admin/users                                                    A
 DELETE  /api/v1/admin/users/{user_id}                                          Admin & Internal          auth   admin_delete_user_api_v1_admin_users__user_id__delete
 PATCH   /api/v1/admin/users/{user_id}                                          Admin & Internal          auth   admin_update_user_api_v1_admin_users__user_id__patch
 GET     /api/v1/admin/workspaces                                               Admin & Internal          auth   admin_workspaces_api_v1_admin_workspaces_get
+GET     /api/v1/agents/decision-frames                                         Agent Workforce           auth   decision_frames_api_v1_agents_decision_frames_get
+GET     /api/v1/agents/evidence                                                Agent Workforce           auth   evidence_api_v1_agents_evidence_get
+GET     /api/v1/agents/fleet                                                   Agent Workforce           auth   fleet_api_v1_agents_fleet_get
+GET     /api/v1/agents/guardrails                                              Agent Workforce           auth   guardrails_api_v1_agents_guardrails_get
+GET     /api/v1/agents/monthly-report                                          Agent Workforce           auth   monthly_report_api_v1_agents_monthly_report_get
+GET     /api/v1/agents/registry                                                Agent Workforce           auth   registry_api_v1_agents_registry_get
+GET     /api/v1/agents/registry/{agent_number}                                 Agent Workforce           auth   registry_detail_api_v1_agents_registry__agent_number__get
+GET     /api/v1/agents/runs                                                    Agent Workforce           auth   list_runs_api_v1_agents_runs_get
+POST    /api/v1/agents/runs                                                    Agent Workforce           auth   start_run_api_v1_agents_runs_post
+PATCH   /api/v1/agents/runs/{run_id}/complete                                  Agent Workforce           auth   complete_run_api_v1_agents_runs__run_id__complete_patch
+GET     /api/v1/agents/signals                                                 Agent Workforce           auth   signals_api_v1_agents_signals_get
+GET     /api/v1/agents/violations                                              Agent Workforce           auth   violations_api_v1_agents_violations_get
 POST    /api/v1/ai/complete                                                    AI                        auth   ai_complete_api_v1_ai_complete_post
 GET     /api/v1/ai/escalation/stats                                            uacp-autonomous           auth   get_escalation_stats_api_v1_ai_escalation_stats_get
 GET     /api/v1/ai/models                                                      AI                        auth   list_models_api_v1_ai_models_get
@@ -54,6 +66,25 @@ GET     /api/v1/budget                                                         B
 POST    /api/v1/budget                                                         Billing                   auth   create_budget_rule_api_v1_budget_post
 GET     /api/v1/budget/forecast                                                Billing                   auth   budget_forecast_api_v1_budget_forecast_get
 DELETE  /api/v1/budget/{rule_id}                                               Billing                   auth   delete_budget_rule_api_v1_budget__rule_id__delete
+GET     /api/v1/command-center/activity-feed                                   Command Center            auth   activity_feed_api_v1_command_center_activity_feed_get
+GET     /api/v1/command-center/audit-log                                       Command Center            auth   audit_log_api_v1_command_center_audit_log_get
+GET     /api/v1/command-center/business/billing                                Command Center            auth   business_billing_api_v1_command_center_business_billing_get
+GET     /api/v1/command-center/funnels                                         Command Center            auth   funnels_api_v1_command_center_funnels_get
+GET     /api/v1/command-center/live-users                                      Command Center            auth   live_users_api_v1_command_center_live_users_get
+GET     /api/v1/command-center/operations/alerts                               Command Center            auth   operations_alerts_api_v1_command_center_operations_alerts_get
+GET     /api/v1/command-center/operations/errors                               Command Center                   operations_errors_api_v1_command_center_operations_errors_get
+GET     /api/v1/command-center/operations/health                               Command Center            auth   operations_health_api_v1_command_center_operations_health_get
+GET     /api/v1/command-center/overview                                        Command Center            auth   overview_api_v1_command_center_overview_get
+GET     /api/v1/command-center/sessions                                        Command Center            auth   sessions_list_api_v1_command_center_sessions_get
+GET     /api/v1/command-center/terminals/quantum                               Command Center            auth   terminals_quantum_api_v1_command_center_terminals_quantum_get
+GET     /api/v1/command-center/terminals/veklom                                Command Center            auth   terminals_veklom_api_v1_command_center_terminals_veklom_get
+GET     /api/v1/command-center/users                                           Command Center            auth   users_list_api_v1_command_center_users_get
+GET     /api/v1/command-center/users/online                                    Command Center            auth   users_online_api_v1_command_center_users_online_get
+GET     /api/v1/command-center/users/recent                                    Command Center            auth   users_recent_api_v1_command_center_users_recent_get
+GET     /api/v1/command-center/users/summary                                   Command Center            auth   users_summary_api_v1_command_center_users_summary_get
+GET     /api/v1/command-center/users/{user_id}                                 Command Center            auth   user_detail_api_v1_command_center_users__user_id__get
+GET     /api/v1/command-center/users/{user_id}/activity                        Command Center            auth   user_activity_api_v1_command_center_users__user_id__activity_get
+GET     /api/v1/command-center/users/{user_id}/sessions                        Command Center            auth   user_sessions_api_v1_command_center_users__user_id__sessions_get
 POST    /api/v1/compliance/check                                               Compliance                auth   compliance_check_api_v1_compliance_check_post
 GET     /api/v1/compliance/checks                                              Compliance                auth   list_compliance_checks_api_v1_compliance_checks_get
 GET     /api/v1/compliance/regulations                                         Compliance                auth   list_regulations_api_v1_compliance_regulations_get
@@ -105,6 +136,7 @@ POST    /api/v1/gpc/plans                                                      G
 GET     /api/v1/gpc/runs                                                       GPC                       auth   list_runs_api_v1_gpc_runs_get
 POST    /api/v1/gpc/runs                                                       GPC                       auth   start_run_api_v1_gpc_runs_post
 GET     /api/v1/gpc/ssrn-signals                                               GPC                       auth   ssrn_signals_api_v1_gpc_ssrn_signals_get
+GET     /api/v1/gpc/stats                                                      GPC                       auth   gpc_stats_api_v1_gpc_stats_get
 GET     /api/v1/insights/savings                                               Monitoring                auth   insights_savings_api_v1_insights_savings_get
 GET     /api/v1/insights/savings/projected                                     Monitoring                auth   insights_savings_projected_api_v1_insights_savings_projected_get
 GET     /api/v1/insights/summary                                               Monitoring                auth   insights_summary_api_v1_insights_summary_get
@@ -169,6 +201,7 @@ GET     /api/v1/locker/users/{user_id}/activity                                S
 POST    /api/v1/locker/users/{user_id}/sessions/revoke                         Security                  auth   revoke_user_sessions_api_v1_locker_users__user_id__sessions_revoke_post
 GET     /api/v1/marketplace/automation                                         Marketplace               auth   list_automations_api_v1_marketplace_automation_get
 POST    /api/v1/marketplace/automation                                         Marketplace               auth   create_automation_api_v1_marketplace_automation_post
+GET     /api/v1/marketplace/categories                                         Marketplace               auth   list_categories_api_v1_marketplace_categories_get
 GET     /api/v1/marketplace/installed                                          Marketplace               auth   list_installed_api_v1_marketplace_installed_get
 GET     /api/v1/marketplace/listings                                           Marketplace               auth   list_marketplace_api_v1_marketplace_listings_get
 POST    /api/v1/marketplace/listings                                           Marketplace               auth   create_listing_api_v1_marketplace_listings_post
@@ -249,6 +282,12 @@ GET     /api/v1/providers/routing/status                                       P
 POST    /api/v1/providers/routing/test                                         Providers                 auth   test_provider_key_api_v1_providers_routing_test_post
 GET     /api/v1/referrals                                                      Admin & Internal          auth   referrals_api_v1_referrals_get
 POST    /api/v1/referrals/invite                                               Admin & Internal          auth   invite_referral_api_v1_referrals_invite_post
+GET     /api/v1/repo-risk-gate/runs                                            Repo Risk Gate            auth   list_runs_api_v1_repo_risk_gate_runs_get
+POST    /api/v1/repo-risk-gate/runs                                            Repo Risk Gate            auth   start_run_api_v1_repo_risk_gate_runs_post
+GET     /api/v1/repo-risk-gate/runs/{run_id}                                   Repo Risk Gate            auth   get_run_api_v1_repo_risk_gate_runs__run_id__get
+POST    /api/v1/repo-risk-gate/runs/{run_id}/decision                          Repo Risk Gate            auth   post_decision_api_v1_repo_risk_gate_runs__run_id__decision_post
+GET     /api/v1/repo-risk-gate/runs/{run_id}/events                            Repo Risk Gate            auth   list_events_api_v1_repo_risk_gate_runs__run_id__events_get
+GET     /api/v1/repo-risk-gate/runs/{run_id}/ledger                            Repo Risk Gate            auth   get_ledger_api_v1_repo_risk_gate_runs__run_id__ledger_get
 GET     /api/v1/routing                                                        Routing                   auth   routing_contract_api_v1_routing_get
 POST    /api/v1/routing                                                        Pipelines                 auth   create_routing_rule_api_v1_routing_post
 POST    /api/v1/routing/decision                                               Routing                   auth   routing_decision_api_v1_routing_decision_post
@@ -366,7 +405,7 @@ GET     /api/v1/workspace/settings                                             W
 PATCH   /api/v1/workspace/settings                                             Workspace                 auth   update_workspace_settings_api_v1_workspace_settings_patch
 GET     /api/v1/workspace/wallet/stats/usage                                   Workspace                 auth   wallet_stats_usage_api_v1_workspace_wallet_stats_usage_get
 DELETE  /api/v1/workspace/workspace                                            Workspace                 auth   delete_workspace_api_v1_workspace_workspace_delete
-GET     /apple-touch-icon.png                                                                                   apple_touch_icon_apple_touch_icon_png_get
+GET     /apple-touch-icon.png                                                                                   apple_touch_icon_apple_touch_icon_png_head
 GET     /autonomous/decisions                                                  Pipelines                 auth   autonomous_decisions_autonomous_decisions_get
 POST    /autonomous/override                                                   Pipelines                 auth   autonomous_override_autonomous_override_post
 GET     /config.js                                                                                              config_js_config_js_get
@@ -384,13 +423,13 @@ GET     /deployments/{deployment_id}/webhooks                                  P
 POST    /deployments/{deployment_id}/webhooks                                  Pipelines                 auth   create_deployment_webhook_deployments__deployment_id__webhooks_post
 POST    /edge/canary/promote                                                   Pipelines                 auth   canary_promote_edge_canary_promote_post
 GET     /edge/canary/status                                                    Pipelines                 auth   canary_status_edge_canary_status_get
-GET     /favicon.ico                                                                                            favicon_ico_favicon_ico_get
-GET     /favicon.svg                                                                                            favicon_svg_favicon_svg_get
+GET     /favicon.ico                                                                                            favicon_ico_favicon_ico_head
+GET     /favicon.svg                                                                                            favicon_svg_favicon_svg_head
 GET     /feedback                                                                                               feedback_page_feedback_get
 GET     /gpc                                                                                                    gpc_page_gpc_get
 GET     /health                                                                Health                           health_check_health_get
 GET     /health/detailed                                                       Health                           detailed_health_health_detailed_get
-GET     /icon.png                                                                                               icon_png_icon_png_get
+GET     /icon.png                                                                                               icon_png_icon_png_head
 GET     /legal/acceptable-use                                                                                   legal_acceptable_use_legal_acceptable_use_get
 GET     /legal/privacy                                                                                          legal_privacy_legal_privacy_get
 GET     /legal/security                                                                                         legal_security_legal_security_get
@@ -398,11 +437,11 @@ GET     /legal/terms                                                            
 GET     /llms.txt                                                                                               llms_txt_llms_txt_get
 GET     /lockerphycer                                                                                           lockerphycer_page_lockerphycer_get
 GET     /lockerphycer/{path}                                                                                    lockerphycer_assets_lockerphycer__path__get
-GET     /logo.png                                                                                               logo_png_logo_png_get
+GET     /logo.png                                                                                               logo_png_logo_png_head
 GET     /marketplace                                                                                            marketplace_info_marketplace_get
 GET     /marketplace/lockerphycer                                                                               marketplace_lockerphycer_marketplace_lockerphycer_get
 GET     /marketplace/py03-irongrid                                                                              marketplace_py03_marketplace_py03_irongrid_get
-GET     /og-image.png                                                                                           og_image_og_image_png_get
+GET     /og-image.png                                                                                           og_image_og_image_png_head
 GET     /pipeline/interactive/session                                          Pipelines                 auth   interactive_session_pipeline_interactive_session_get
 GET     /pipelines                                                             Pipelines                 auth   list_pipelines_pipelines_get
 POST    /pipelines                                                             Pipelines                 auth   create_pipeline_pipelines_post
@@ -424,7 +463,7 @@ PATCH   /routing/{rule_id}                                                     P
 GET     /status                                                                                                 status_page_status_get
 GET     /terminal                                                                                               terminal_page_terminal_get
 POST    /test-post                                                             Health                           test_post_test_post_post
-GET     /twitter-card.png                                                                                       twitter_card_twitter_card_png_get
+GET     /twitter-card.png                                                                                       twitter_card_twitter_card_png_head
 GET     /uptime                                                                                                 uptime_page_uptime_get
 
-TOTAL ROUTES: 426
+TOTAL ROUTES: 465

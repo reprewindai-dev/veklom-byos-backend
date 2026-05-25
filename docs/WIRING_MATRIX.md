@@ -317,6 +317,67 @@ Until Group C lands, the corresponding pages MUST display "not wired / coming so
 
 ---
 
+## Phase-1 rollout — what shipped (commit `9b837ab`)
+
+This commit closed Group A, Group B, Repo Risk Gate, and Agent Workforce.
+
+**Routes added (39 net, 426 → 465 total):**
+
+- **Command Center (20):** `GET /api/v1/command-center/{overview, audit-log, users,
+  users/{id}, users/{id}/activity, users/{id}/sessions, users/summary, users/online,
+  users/recent, live-users, sessions, operations/health, operations/alerts,
+  operations/errors, business/billing, activity-feed, funnels, terminals/quantum,
+  terminals/veklom}` and the supporting models. Admin routes enforce `OWNER`/`ADMIN`/
+  `is_superuser` guard. User responses strip `hashed_password`,
+  `github_access_token`, `mfa_secret`, `mfa_recovery_codes_json`, refresh tokens.
+- **Marketplace (1):** `GET /api/v1/marketplace/categories` — static taxonomy.
+- **GPC (1):** `GET /api/v1/gpc/stats` — derived counters with explicit
+  zero-state note.
+- **Repo Risk Gate (5):** `POST /api/v1/repo-risk-gate/runs`,
+  `GET /runs`, `GET /runs/{id}`, `GET /runs/{id}/events`,
+  `POST /runs/{id}/decision`, `GET /runs/{id}/ledger`.
+  Backed by new tables `repo_risk_gate_runs` and `repo_risk_gate_events`
+  with SHA-256 hash-chained events and a verification step in the ledger
+  endpoint. Real GitHub metadata fetch (no fake findings).
+- **Agent Workforce (12):** `GET /api/v1/agents/{registry, registry/{n},
+  fleet, runs, decision-frames, signals, violations, evidence,
+  monthly-report, guardrails}`, `POST /agents/runs`, `PATCH /agents/runs/{id}/complete`.
+  Empty-state responses carry `{"items": [], "source": "empty", "reason": "..."}`
+  so the UI shows real empty state instead of fake records. Run records
+  appended to the existing `ledger_events` SHA-256 hash chain.
+- **ChainOps:** intentionally NOT registered. `langchain_ops.py` returns
+  simulated/in-memory data and would violate "no fake LangChain traces"
+  if surfaced. The ChainOps page must show "Backend routes not wired yet"
+  per spec.
+
+**Status table updates after Phase 1:**
+
+| Page | Before | After |
+|---|---|---|
+| Command Center | 0/9 BACKEND-OK, 9 BACKEND-MISSING | **9/9 BACKEND-OK** (aliases live) |
+| Users & Identity | 3/10 BACKEND-ALIAS via locker, 7 MISSING | **10/10 BACKEND-OK** under `/command-center/users/*` |
+| Playground / Repo Risk Gate | 0/4 BACKEND-OK | **5/5 BACKEND-OK** with hash-chain ledger |
+| GPC | 5/8, `stats` missing | **6/8 BACKEND-OK**, `stats` now exists |
+| Marketplace | 1 missing (categories) | **categories now exists** |
+| Agent Workforce | 0/12 BACKEND-OK | **12/12 BACKEND-OK** (empty-state honest) |
+| Terminals | endpoint maps missing | **2/2 BACKEND-OK** |
+| ChainOps | NOT-WIRED | unchanged — by design |
+
+**Smoke-test evidence (commit `9b837ab`, 2026-05-25 10:32 UTC):**
+
+```
+=== Summary ===
+Total: 41   PASS: 41 (auth-gated 37)   FAIL: 0
+```
+
+`scripts/smoke_test_wiring.sh` confirmed every new auth-gated route returns 401
+(not 404) when called without a JWT — proving the route is mounted and the
+auth middleware is enforced. Public routes (`operations/errors`,
+`subscriptions/plans`, `health`, `openapi.json`) returned 200. Run on the live
+container at `localhost:8088` directly.
+
+---
+
 ## Phase-2 verification plan (Playwright network trace)
 
 Required to mark any frontend row "WIRED":

@@ -431,9 +431,19 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
     is_founder = bool(user.is_superuser) or role in ("SUPER_ADMIN",)
     plan = user_data.get("plan", "free")
     
+    # Platform superuser check for Command Center access
+    # Only platform superusers can access Command Center, not tenant owners
+    from backend.core.config.settings import settings
+    is_platform_superuser = (
+        bool(user.is_superuser)
+        or role == "SUPER_ADMIN"
+        or user.email == settings.ADMIN_EMAIL
+        or user.workspace_id == settings.FOUNDER_WORKSPACE_ID
+    )
+    
     capabilities = {
-        "command_center": is_founder,
-        "owner_provider_keys": is_founder,
+        "command_center": is_platform_superuser,
+        "owner_provider_keys": is_platform_superuser,
         "premium_marketplace": plan in ("pro", "sovereign"),
         "pipeline_deploy": plan != "free",
         "vault_secrets": is_admin,

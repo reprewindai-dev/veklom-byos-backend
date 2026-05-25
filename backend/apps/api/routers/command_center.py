@@ -38,10 +38,34 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _require_admin(user) -> None:
+def _require_platform_superuser(user) -> None:
+    """Require platform superuser access - NOT tenant owner access.
+    
+    Platform superuser is defined as:
+    - user.is_superuser is true
+    - OR user.role == SUPER_ADMIN
+    - OR user.email == settings.ADMIN_EMAIL
+    - OR user.workspace_id == settings.FOUNDER_WORKSPACE_ID
+    
+    Tenant OWNER role does NOT grant platform superuser access.
+    """
+    from backend.core.config.settings import settings
+    
+    is_superuser = bool(getattr(user, "is_superuser", False))
     role = (getattr(user, "role", "") or "").upper()
-    if role not in ("OWNER", "ADMIN") and not getattr(user, "is_superuser", False):
-        raise HTTPException(status_code=403, detail="Admin role required")
+    email = getattr(user, "email", "")
+    workspace_id = getattr(user, "workspace_id", "")
+    
+    # Check if user is platform superuser
+    is_platform_superuser = (
+        is_superuser
+        or role == "SUPER_ADMIN"
+        or email == settings.ADMIN_EMAIL
+        or workspace_id == settings.FOUNDER_WORKSPACE_ID
+    )
+    
+    if not is_platform_superuser:
+        raise HTTPException(status_code=403, detail="Command Center is platform-superuser only")
 
 
 def _safe_user(u: User) -> dict:
@@ -140,7 +164,7 @@ async def users_list(
     db: AsyncSession = Depends(get_db),
 ):
     """Workspace-scoped user list. Admin-only."""
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     rows = (await db.execute(
         select(User).where(User.workspace_id == ws).limit(limit)
@@ -154,7 +178,7 @@ async def user_detail(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     u = (await db.execute(
         select(User).where(User.id == user_id, User.workspace_id == ws)
@@ -171,7 +195,7 @@ async def user_activity(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     rows = (await db.execute(
         select(AuditLog)
@@ -198,7 +222,7 @@ async def user_sessions(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     target = (await db.execute(
         select(User).where(User.id == user_id, User.workspace_id == ws)
@@ -333,7 +357,7 @@ async def users_summary(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     total = (await db.execute(
         select(func.count(User.id)).where(User.workspace_id == ws)
@@ -368,7 +392,7 @@ async def users_online(
     db: AsyncSession = Depends(get_db),
 ):
     """Online = has an active session whose expiry is in the future."""
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     now = _utcnow()
     rows = (await db.execute(
@@ -399,7 +423,7 @@ async def users_recent(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     cutoff = _utcnow() - timedelta(days=days)
     rows = (await db.execute(
@@ -427,7 +451,7 @@ async def sessions_list(
     db: AsyncSession = Depends(get_db),
 ):
     """Active sessions across the workspace.  Admin-only. Tokens stripped."""
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     now = _utcnow()
     rows = (await db.execute(
@@ -463,7 +487,7 @@ async def funnels(
     db: AsyncSession = Depends(get_db),
 ):
     """Signup → activation → first-key → first-install funnel for the workspace."""
-    _require_admin(user)
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     cutoff = _utcnow() - timedelta(days=days)
     signups = (await db.execute(

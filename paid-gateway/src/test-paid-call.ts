@@ -44,9 +44,9 @@ if (unpaidRes.status === 402) {
 // Step 2: Paid call using @coinbase/x402 or @x402/fetch
 console.log("\n=== Step 2: Paid call ===");
 try {
-  const { wrapFetchWithPayment } = await import("@x402/fetch").catch(() => import("@coinbase/x402/fetch"));
-  const { x402Client } = await import("@x402/core/client").catch(() => ({ x402Client: null }));
-  const { ExactEvmScheme } = await import("@x402/evm/exact/client").catch(() => ({ ExactEvmScheme: null }));
+  const { wrapFetchWithPayment } = await import("@x402/fetch");
+  const { x402Client } = await import("@x402/core/client");
+  const { ExactEvmScheme } = await import("@x402/evm/exact/client");
   const { privateKeyToAccount } = await import("viem/accounts");
 
   if (!x402Client || !ExactEvmScheme) {

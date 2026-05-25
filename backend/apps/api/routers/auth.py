@@ -105,10 +105,32 @@ def _external_origin(request: Request) -> str:
 
 
 def _is_real_config_value(value: str) -> bool:
-    candidate = (value or "").strip()
+    """Check if a config value is a real value, not a placeholder.
+    
+    Returns False for:
+    - None or empty strings
+    - Strings that are only whitespace
+    - Placeholder patterns: NEED_, YOUR_, CHANGE_, REPLACE_, TODO
+    - Example/demo values: example, placeholder, changeme, test
+    """
+    if not value:
+        return False
+    candidate = value.strip()
     if not candidate:
         return False
-    return not candidate.upper().startswith(("NEED_", "YOUR_", "CHANGE_", "REPLACE_", "TODO"))
+    upper = candidate.upper()
+    # Check for placeholder prefixes
+    placeholder_prefixes = ("NEED_", "YOUR_", "CHANGE_", "REPLACE_", "TODO")
+    if upper.startswith(placeholder_prefixes):
+        return False
+    # Check for common placeholder/demo values
+    placeholder_values = ("EXAMPLE", "PLACEHOLDER", "CHANGEME", "TEST", "DEMO", "XXX")
+    if upper in placeholder_values:
+        return False
+    # Check for very short values (likely invalid)
+    if len(candidate) < 8:
+        return False
+    return True
 
 
 def _github_oauth_configured() -> bool:

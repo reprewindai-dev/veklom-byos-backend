@@ -751,8 +751,20 @@ async def agent_use_cases():
                 ),
                 "endpoint": "/v1/chat/completions",
                 "example": {
-                    "python": "client = OpenAI(base_url='https://api.veklom.com/v1', api_key='your_token')",
-                    "note": "Requests route through Veklom governance layer before reaching the model.",
+                    "python": (
+                        "import os\n"
+                        "from openai import OpenAI\n\n"
+                        "client = OpenAI(\n"
+                        "    base_url='https://api.veklom.com/v1',\n"
+                        "    api_key=os.environ['VEKLOM_API_KEY'],\n"
+                        ")\n\n"
+                        "response = client.chat.completions.create(\n"
+                        "    model='veklom-llama3-70b',\n"
+                        "    messages=[{'role': 'user', 'content': 'hi'}],\n"
+                        ")\n\n"
+                        "print(response.choices[0].message.content)"
+                    ),
+                    "note": "Drop-in OpenAI replacement. Swap base_url/api_key/model — no stack rewrite needed.",
                 },
             },
         ],
@@ -828,15 +840,16 @@ curl -X POST {api}/ai/inference \\
             },
             "python_openai_compatible": {
                 "description": "Drop-in OpenAI replacement — same SDK, Veklom governance layer underneath",
-                "code": f"""from openai import OpenAI
+                "code": f"""import os
+from openai import OpenAI
 
 client = OpenAI(
     base_url="{base}/v1",
-    api_key="YOUR_VEKLOM_TOKEN"
+    api_key=os.environ["VEKLOM_API_KEY"]
 )
 
 response = client.chat.completions.create(
-    model="qwen2.5:1.5b",   # or omit for auto-routing
+    model="veklom-llama3-70b",   # or omit for auto-routing
     messages=[
         {{"role": "user", "content": "Analyze this code for security issues."}}
     ]

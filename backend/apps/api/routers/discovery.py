@@ -39,8 +39,9 @@ VEKLOM_PRICING = {
 VEKLOM_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
 VEKLOM_TREASURY    = "0x0000000000000000000000000000000000000001"  # replace with real treasury
 VEKLOM_NETWORK     = "base"
-VEKLOM_BASE_URL    = "https://veklom.com"
-VEKLOM_API_BASE    = "https://veklom.com/api/v1"
+VEKLOM_BASE_URL    = "https://veklom.com"       # main site (workspace, landing, pricing)
+VEKLOM_API_BASE    = "https://api.veklom.com/api/v1"  # machine-facing API surface
+VEKLOM_AGENT_BASE  = "https://api.veklom.com"   # where .well-known, mcp/sse, openapi.json live
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +81,7 @@ async def ai_plugin_json():
         },
         "api": {
             "type": "openapi",
-            "url": f"{VEKLOM_API_BASE.replace('/api/v1', '')}/openapi.json",
+            "url": f"{VEKLOM_AGENT_BASE}/openapi.json",
             "is_user_authenticated": False
         },
         "logo_url": f"{VEKLOM_BASE_URL}/static/branding/veklom-wordmark.png",
@@ -106,13 +107,13 @@ async def agent_json():
         "tiers": {
             "humans":      {"interface": "workspace", "url": f"{VEKLOM_BASE_URL}/workspace/"},
             "developers":  {"interface": "api",       "url": f"{VEKLOM_API_BASE}/", "auth": "bearer_jwt"},
-            "agents":      {"interface": "paid_routes", "auth": "x402_usdc", "discovery": f"{VEKLOM_BASE_URL}/.well-known/x402.json"},
+            "agents":      {"interface": "paid_routes", "auth": "x402_usdc", "discovery": f"{VEKLOM_AGENT_BASE}/.well-known/x402.json"},
             "enterprises": {"interface": "governance_layer", "includes": ["audit_evidence", "compliance_reports", "kill_switch", "soc2", "hipaa", "gdpr"]},
         },
         "base_url": VEKLOM_API_BASE,
-        "openapi_url": f"{VEKLOM_BASE_URL}/openapi.json",
-        "mcp_sse_url": f"{VEKLOM_BASE_URL}/mcp/sse",
-        "x402_config_url": f"{VEKLOM_BASE_URL}/.well-known/x402.json",
+        "openapi_url": f"{VEKLOM_AGENT_BASE}/openapi.json",
+        "mcp_sse_url": f"{VEKLOM_AGENT_BASE}/mcp/sse",
+        "x402_config_url": f"{VEKLOM_AGENT_BASE}/.well-known/x402.json",
         "auth": {
             "schemes": ["bearer_jwt", "x402_usdc"],
             "signup_url": f"{VEKLOM_BASE_URL}/workspace/login",
@@ -151,9 +152,14 @@ async def agent_json():
         "pricing_url": f"{VEKLOM_BASE_URL}/pricing",
         "pricing": VEKLOM_PRICING,
         "free_routes": [
-            "/health", "/status", "/openapi.json",
-            "/.well-known/*", "/llms.txt", "/pricing",
-            "/api/v1/ai/models", "/api/v1/workspace/providers",
+            f"{VEKLOM_AGENT_BASE}/health",
+            f"{VEKLOM_AGENT_BASE}/status",
+            f"{VEKLOM_AGENT_BASE}/openapi.json",
+            f"{VEKLOM_AGENT_BASE}/.well-known/*",
+            f"{VEKLOM_AGENT_BASE}/llms.txt",
+            f"{VEKLOM_BASE_URL}/pricing",
+            f"{VEKLOM_API_BASE}/ai/models",
+            f"{VEKLOM_API_BASE}/workspace/providers",
         ],
         "paid_routes": [
             {"path": "/api/v1/ai/inference",        "key": "ai_inference"},
@@ -238,7 +244,7 @@ async def x402_json():
             "routes": ["/api/v1/ai/inference", "/api/v1/gpc/compile"],
             "note": "5 free governed calls/day per IP. Upgrade for unlimited access.",
         },
-        "docs": f"{VEKLOM_BASE_URL}/docs",
+        "docs": f"{VEKLOM_AGENT_BASE}/docs",
         "contact": "api@veklom.com",
     }, headers={"Access-Control-Allow-Origin": "*"})
 
@@ -290,17 +296,18 @@ Veklom is built for the new pattern.
 
 ## Machine discovery
 
-OpenAPI schema:   https://veklom.com/openapi.json
-Agent manifest:   https://veklom.com/.well-known/agent.json
-x402 config:      https://veklom.com/.well-known/x402.json
-MCP SSE:          https://veklom.com/mcp/sse
+OpenAPI schema:   https://api.veklom.com/openapi.json
+Agent manifest:   https://api.veklom.com/.well-known/agent.json
+x402 config:      https://api.veklom.com/.well-known/x402.json
+MCP SSE:          https://api.veklom.com/mcp/sse
 Pricing:          https://veklom.com/pricing
 
 ## Authentication
 
 Agents:      No sign-up. Send X-Payment-Proof header (x402, USDC on Base). Pay per call.
 Developers:  Bearer JWT from https://veklom.com/workspace/login
-Unauthenticated agents receive HTTP 402 with full payment requirements in the body.
+Unauthenticated agents calling api.veklom.com receive HTTP 402 with full x402 payment
+requirements in the body and response headers.
 
 ## Paid routes (x402, USDC on Base)
 
@@ -349,7 +356,7 @@ Receipts are also returned as response headers:
 ## Free trial
 
 5 free governed calls/day per IP on AI inference and GPC compile.
-No sign-up, no card. Start calling: https://veklom.com/api/v1/ai/inference
+No sign-up, no card. Start calling: https://api.veklom.com/api/v1/ai/inference
 
 ## Contact
 

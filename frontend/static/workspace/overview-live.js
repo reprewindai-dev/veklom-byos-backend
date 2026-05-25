@@ -152,6 +152,12 @@
           window.location.hash = "#/playground";
         });
       }
+      if (label === "Reserve" || label === "Fund") {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          window.location.hash = "#/billing";
+        });
+      }
     }
   }
 

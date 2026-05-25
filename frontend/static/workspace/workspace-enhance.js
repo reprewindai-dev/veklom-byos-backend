@@ -352,7 +352,8 @@
     }
 
     // ------ DEPLOYMENTS ------
-    if (label === "new endpoint" || label === "new deployment" || label === "+ new endpoint") {
+    if (label === "new endpoint" || label === "new deployment" || label === "+ new endpoint"
+        || (label === "new" && page.includes("deployment")) || label === "+new endpoint") {
       e.preventDefault(); e.stopPropagation();
       // Fetch available models for the selector
       const modelsRes = await api("GET", "/workspace/models");
@@ -399,16 +400,49 @@
       };
       return;
     }
-    if (label === "webhooks" || label === "add webhook" || label === "+ webhook") {
+    if (label === "webhooks" || label === "add webhook" || label === "+ webhook" || label === "+ add webhook") {
       e.preventDefault(); e.stopPropagation();
       const hash = location.hash || "";
       const depId = hash.includes("/deployments/") ? hash.split("/").pop() : null;
-      const url = window.prompt("Webhook URL (receives POST on events):");
-      if (!url) return;
-      const events = window.prompt("Events (comma-separated: deploy, health, alert):", "deploy,health") || "deploy";
-      const endpoint = depId ? `/deployments/${depId}/webhooks` : "/marketplace/webhook";
-      const res = await api("POST", endpoint, { url, events: events.split(",").map(s => s.trim()) });
-      toast(res ? `Webhook registered for: ${events}` : "Webhook saved", "ok");
+      // Fetch existing webhooks if on a detail page
+      const existing = depId ? await api("GET", `/deployments/${depId}/webhooks`) : null;
+      const existingList = existing?.webhooks || [];
+      document.getElementById("veklom-wh-modal")?.remove();
+      const whm = document.createElement("div");
+      whm.id = "veklom-wh-modal";
+      whm.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      const existingRows = existingList.length ? existingList.map(w => `<div style="font-family:monospace;font-size:11px;color:#555;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">${w.url || w} <span style="color:#22c55e">${(w.events||[]).join(", ") || "all"}</span></div>`).join("") : '<div style="font-size:11px;color:#444;margin-bottom:4px;">No webhooks configured yet.</div>';
+      whm.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:500px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:6px;">Webhook Management</div>
+        <div style="font-size:12px;color:#555;margin-bottom:16px;">Receive POST events when deployments change state, health fails, or alerts fire.</div>
+        <div style="margin-bottom:16px;padding:12px;background:#0a0a14;border-radius:8px;">${existingRows}</div>
+        <div style="display:grid;gap:10px;margin-bottom:20px;">
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Webhook URL</label><input id="wh-url" placeholder="https://your-server.com/hooks/veklom" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:12px;box-sizing:border-box;"></div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Events</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              ${["deploy","health","alert","scale","rotate"].map(ev => `<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" class="wh-event" value="${ev}" checked style="accent-color:#f97316;"> ${ev}</label>`).join("")}
+            </div>
+          </div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Secret header value <span style="color:#444">(optional, sent as X-Veklom-Signature)</span></label><input id="wh-secret" placeholder="whsec_..." style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:12px;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="wh-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="wh-save" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Register Webhook</button>
+        </div>
+      </div>`;
+      document.body.appendChild(whm);
+      whm.querySelector("#wh-cancel").onclick = () => whm.remove();
+      whm.onclick = ev => { if (ev.target === whm) whm.remove(); };
+      whm.querySelector("#wh-save").onclick = async () => {
+        const url = whm.querySelector("#wh-url").value.trim();
+        if (!url) { toast("Webhook URL is required", "warn"); return; }
+        const events = [...whm.querySelectorAll(".wh-event:checked")].map(el => el.value);
+        const secret = whm.querySelector("#wh-secret").value.trim();
+        whm.remove();
+        const endpoint = depId ? `/deployments/${depId}/webhooks` : "/marketplace/webhook";
+        const res = await api("POST", endpoint, { url, events, secret });
+        toast(res ? `Webhook registered → ${url.slice(0, 40)}... for: ${events.join(", ")}` : "Webhook saved", "ok");
+      };
       return;
     }
 
@@ -817,6 +851,24 @@
       window.open("https://veklom.com/docs/openai-compatible", "_blank");
       return;
     }
+    if (label === "vercel guide" || label.includes("vercl") || label.includes("vercel")) {
+      e.preventDefault(); e.stopPropagation();
+      showVercelGuide();
+      return;
+    }
+    // </> code snippet buttons on each deployment row
+    if (label === "</>" || label === "< />" || label === "{}" || label === "{ }" ||
+        (label === "" && btn.closest("tr, [class*='row']") && btn.querySelector("svg"))) {
+      e.preventDefault(); e.stopPropagation();
+      const row = btn.closest("tr, [class*='row'], [class*='endpoint']");
+      showEndpointCode(row);
+      return;
+    }
+    // Expand / arrow icon on deployment rows  
+    if (page.includes("deployment") && label === "" && btn.querySelector("svg")) {
+      const row = btn.closest("tr, [class*='row']");
+      if (row) { showEndpointCode(row); return; }
+    }
 
     // ------ SETTINGS — DANGER ZONE ------
     if (label === "pause") {
@@ -941,5 +993,153 @@
   // Wire header icon buttons after React finishes first paint
   setTimeout(wireHeaderIcons, 1200);
   setTimeout(wireHeaderIcons, 3500);
+
+  // ------ DEPLOYMENTS HELPERS ------
+  function showVercelGuide() {
+    document.getElementById("veklom-vercel-guide")?.remove();
+    const m = document.createElement("div");
+    m.id = "veklom-vercel-guide";
+    m.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px;";
+    m.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:640px;max-width:96vw;max-height:88vh;overflow-y:auto;padding:28px;color:#e2e8f0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:15px;font-weight:700;">Vercel + Veklom Integration</span>
+        <button id="vg-x" style="background:none;border:none;color:#666;cursor:pointer;font-size:20px;">×</button>
+      </div>
+      <div style="font-size:12px;color:#555;margin-bottom:20px;">Deploy AI-powered apps on Vercel backed by Veklom sovereign inference.</div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:700;color:#f97316;margin-bottom:8px;">1 · Add env vars to your Vercel project</div>
+        <div style="background:#0a0a14;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:#9ca3af;">VEKLOM_API_KEY=<span style="color:#22c55e">vk_live_YOUR_KEY</span><br>VEKLOM_BASE_URL=<span style="color:#3b82f6">https://api.veklom.com/v1</span></div>
+        <div style="font-size:11px;color:#555;margin-top:6px;">Settings → Environment Variables in your Vercel dashboard. Get your key from <a href="#/settings" style="color:#f97316;">Settings → API Keys</a>.</div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:700;color:#f97316;margin-bottom:8px;">2 · Install SDK</div>
+        <div style="background:#0a0a14;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:#22c55e;">npm install openai</div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:700;color:#f97316;margin-bottom:8px;">3 · Next.js App Router (streaming)</div>
+        <div style="background:#0a0a14;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:12px;font-family:monospace;font-size:11px;color:#9ca3af;white-space:pre-wrap;">// app/api/chat/route.ts
+import OpenAI from 'openai';
+
+const veklom = new OpenAI({
+  baseURL: process.env.VEKLOM_BASE_URL,
+  apiKey: process.env.VEKLOM_API_KEY,
+});
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+  const stream = veklom.beta.chat.completions.stream({
+    model: 'veklom-llama3-70b',
+    messages,
+  });
+  return stream.toReadableStream();
+}</div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;color:#f97316;margin-bottom:8px;">4 · Pages Router API route</div>
+        <div style="background:#0a0a14;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:12px;font-family:monospace;font-size:11px;color:#9ca3af;white-space:pre-wrap;">// pages/api/chat.js
+import OpenAI from 'openai';
+
+const veklom = new OpenAI({
+  baseURL: process.env.VEKLOM_BASE_URL,
+  apiKey: process.env.VEKLOM_API_KEY,
+});
+
+export default async function handler(req, res) {
+  const reply = await veklom.chat.completions.create({
+    model: 'veklom-llama3-70b',
+    messages: req.body.messages,
+  });
+  res.json(reply.choices[0].message);
+}</div>
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button id="vg-copy" style="flex:1;padding:9px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);color:#e2e8f0;cursor:pointer;font-size:12px;">Copy env vars</button>
+        <button id="vg-keys" style="flex:1;padding:9px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);color:#e2e8f0;cursor:pointer;font-size:12px;">My API Keys</button>
+        <button id="vg-done" style="flex:2;padding:9px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Got it</button>
+      </div>
+    </div>`;
+    document.body.appendChild(m);
+    m.querySelector("#vg-x").onclick = () => m.remove();
+    m.querySelector("#vg-done").onclick = () => m.remove();
+    m.querySelector("#vg-keys").onclick = () => { m.remove(); navigate("#/settings"); };
+    m.querySelector("#vg-copy").onclick = () => {
+      navigator.clipboard?.writeText("VEKLOM_API_KEY=vk_live_\nVEKLOM_BASE_URL=https://api.veklom.com/v1");
+      toast("Env vars copied to clipboard", "ok");
+    };
+    m.onclick = ev => { if (ev.target === m) m.remove(); };
+  }
+
+  function showEndpointCode(row) {
+    // Extract endpoint info from the row or the detail panel
+    const cells = row ? [...row.querySelectorAll("td, [class*='cell'], [class*='value']")] : [];
+    let endpointName = cells[0]?.textContent?.trim() || "";
+    let endpointType = cells[1]?.textContent?.trim()?.toLowerCase() || "chat";
+    let endpointModel = cells[2]?.textContent?.trim() || "veklom-llama3-70b";
+    // Also try to extract from the detail panel visible on the page
+    const detailPanel = document.querySelector("[class*='detail'], [class*='endpoint-detail']");
+    const urlEl = detailPanel?.querySelector("a, [class*='url']") || row?.querySelector("a");
+    const urlText = urlEl?.textContent?.trim() || urlEl?.href || `https://api.veklom.com/v1/chat/completions`;
+    const cleanUrl = urlText.startsWith("http") ? urlText : `https://api.veklom.com/v1/chat/completions`;
+
+    let pythonCode, nodeCode, curlCode;
+
+    if (endpointType.includes("embed")) {
+      pythonCode = `from openai import OpenAI\nimport os\n\nclient = OpenAI(\n    base_url="${cleanUrl.replace("/embeddings","")}/",\n    api_key=os.environ["VEKLOM_API_KEY"],\n)\n\nresponse = client.embeddings.create(\n    model="${endpointModel || "veklom-bge-large"}",\n    input="Your text to embed",\n)\nembedding = response.data[0].embedding`;
+      nodeCode = `import OpenAI from 'openai';\n\nconst client = new OpenAI({\n  baseURL: '${cleanUrl.replace("/embeddings","")}/api/v1',\n  apiKey: process.env.VEKLOM_API_KEY,\n});\n\nconst res = await client.embeddings.create({\n  model: '${endpointModel || "veklom-bge-large"}',\n  input: 'Your text here',\n});\nconsole.log(res.data[0].embedding);`;
+      curlCode = `curl ${cleanUrl} \\\n  -H "Authorization: Bearer $VEKLOM_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${endpointModel}","input":"Hello"}'`;
+    } else {
+      pythonCode = `from openai import OpenAI\nimport os\n\nclient = OpenAI(\n    base_url="https://api.veklom.com/v1",\n    api_key=os.environ["VEKLOM_API_KEY"],\n)\n\nresponse = client.chat.completions.create(\n    model="${endpointModel || "veklom-llama3-70b"}",\n    messages=[{"role": "user", "content": "Hello"}],\n    stream=True,\n)\nfor chunk in response:\n    print(chunk.choices[0].delta.content or "", end="")`;
+      nodeCode = `import OpenAI from 'openai';\n\nconst client = new OpenAI({\n  baseURL: 'https://api.veklom.com/v1',\n  apiKey: process.env.VEKLOM_API_KEY,\n});\n\nconst stream = client.beta.chat.completions.stream({\n  model: '${endpointModel || "veklom-llama3-70b"}',\n  messages: [{ role: 'user', content: 'Hello' }],\n});\nfor await (const chunk of stream) {\n  process.stdout.write(chunk.choices[0]?.delta?.content || '');\n}`;
+      curlCode = `curl https://api.veklom.com/v1/chat/completions \\\n  -H "Authorization: Bearer $VEKLOM_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${endpointModel || "veklom-llama3-70b"}","messages":[{"role":"user","content":"Hello"}],"stream":true}'`;
+    }
+
+    document.getElementById("veklom-code-modal")?.remove();
+    const cm = document.createElement("div");
+    cm.id = "veklom-code-modal";
+    cm.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:16px;";
+    cm.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:640px;max-width:96vw;max-height:88vh;overflow-y:auto;padding:28px;color:#e2e8f0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;">${endpointName || "Endpoint"} · Code Snippet</div>
+          <div style="font-size:11px;color:#555;margin-top:3px;">${cleanUrl}</div>
+        </div>
+        <button id="cm-x" style="background:none;border:none;color:#666;cursor:pointer;font-size:20px;">×</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:14px;">
+        <button class="cm-tab active" data-lang="python" style="padding:5px 12px;border-radius:5px;border:1px solid rgba(249,115,22,.5);background:rgba(249,115,22,.15);color:#f97316;cursor:pointer;font-size:11px;font-weight:600;">Python</button>
+        <button class="cm-tab" data-lang="node" style="padding:5px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#888;cursor:pointer;font-size:11px;">Node.js</button>
+        <button class="cm-tab" data-lang="curl" style="padding:5px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#888;cursor:pointer;font-size:11px;">cURL</button>
+      </div>
+      <div style="position:relative;">
+        <pre id="cm-code" style="background:#0a0a14;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:16px;font-family:Geist Mono,monospace;font-size:12px;color:#9ca3af;overflow-x:auto;white-space:pre-wrap;margin:0;">${pythonCode}</pre>
+        <button id="cm-copy" style="position:absolute;top:10px;right:10px;padding:4px 10px;border-radius:4px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);color:#888;cursor:pointer;font-size:10px;">Copy</button>
+      </div>
+      <div style="margin-top:14px;padding:12px;background:#0a0a14;border-radius:6px;font-size:11px;color:#555;">
+        <strong style="color:#888;">Auth:</strong> Add your API key as env var <code style="color:#f97316;">VEKLOM_API_KEY</code> — get it from <a href="#/settings" id="cm-keys" style="color:#f97316;cursor:pointer;">Settings → API Keys</a>.
+        ${endpointType.includes("chat") ? "<br><strong style='color:#888;margin-top:4px;display:block;'>Model IDs:</strong> <code style='color:#9ca3af;'>veklom-llama3-70b</code>, <code style='color:#9ca3af;'>veklom-mixtral-8x22</code>, <code style='color:#9ca3af;'>veklom-qwen2-72b</code>" : ""}
+      </div>
+    </div>`;
+    document.body.appendChild(cm);
+    cm.querySelector("#cm-x").onclick = () => cm.remove();
+    cm.onclick = ev => { if (ev.target === cm) cm.remove(); };
+    cm.querySelector("#cm-keys").onclick = () => { cm.remove(); navigate("#/settings"); };
+    const codeEl = cm.querySelector("#cm-code");
+    cm.querySelector("#cm-copy").onclick = () => { navigator.clipboard?.writeText(codeEl.textContent); toast("Code copied", "ok"); };
+    cm.querySelectorAll(".cm-tab").forEach(tab => {
+      tab.onclick = () => {
+        cm.querySelectorAll(".cm-tab").forEach(t => {
+          t.style.background = "transparent"; t.style.color = "#888"; t.style.borderColor = "rgba(255,255,255,.1)";
+        });
+        tab.style.background = "rgba(249,115,22,.15)"; tab.style.color = "#f97316"; tab.style.borderColor = "rgba(249,115,22,.5)";
+        const lang = tab.dataset.lang;
+        codeEl.textContent = lang === "python" ? pythonCode : lang === "node" ? nodeCode : curlCode;
+      };
+    });
+  }
 
 })();

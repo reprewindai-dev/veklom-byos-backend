@@ -45,7 +45,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
 
         # Remove server identification header
-        response.headers.pop("server", None)
-        response.headers.pop("Server", None)
+        try:
+            del response.headers["server"]
+        except (KeyError, AttributeError):
+            pass
+        try:
+            del response.headers["Server"]
+        except (KeyError, AttributeError):
+            pass
 
         return response

@@ -187,6 +187,9 @@ class Settings(BaseSettings):
     # Notifications
     SLACK_WEBHOOK_URL: str = ""
 
+    # Search (SerpAPI)
+    SERPAPI_KEY: str = ""
+
     @field_validator("CORS_ORIGINS", "ALLOWED_HOSTS", mode="before")
     @classmethod
     def parse_list(cls, v):

@@ -489,12 +489,23 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     workspace_id=metadata.get("workspace_id") or "",
                     amount=amount_total / 100,
                     tx_type="topup" if metadata.get("type") == "wallet_topup" else "activation",
-                    description=f"Stripe {metadata.get('type', 'checkout')} {session.get('id')}",
                 )
             )
             await db.commit()
+    return {"status": "ok"}
 
-    return {"received": True}
+
+@router.post("/webhooks/resend")
+async def resend_webhook(request: Request):
+    """Handle Resend webhook events for email delivery tracking."""
+    try:
+        payload = await request.json()
+        # Log the webhook event for tracking
+        logger.info(f"Resend webhook received: {payload.get('type', 'unknown')}")
+        return {"status": "ok", "message": "Resend webhook received successfully"}
+    except Exception as exc:
+        logger.error(f"Error processing Resend webhook: {exc}")
+        raise HTTPException(status_code=400, detail="Invalid Resend webhook payload") from exc
 
 
 # --- Payouts ---

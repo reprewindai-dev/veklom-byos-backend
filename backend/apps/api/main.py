@@ -8,11 +8,18 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
@@ -21,6 +28,31 @@ from backend.core.security.middleware import SecurityHeadersMiddleware
 
 # Import model package to ensure tables are registered with Base.metadata.
 import backend.db.models  # noqa: F401
+
+# Configure Sentry
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        send_default_pii=True,
+        traces_sample_rate=0.1,
+        environment=os.getenv("ENVIRONMENT", "production"),
+        release=os.getenv("APP_VERSION", "1.0.0"),
+    )
+
+# Configure OpenTelemetry for Grafana Cloud
+OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+OTEL_HEADERS = os.getenv("OTEL_EXPORTER_OTLP_HEADERS")
+if OTEL_ENDPOINT and OTEL_HEADERS:
+    provider = TracerProvider()
+    processor = BatchSpanProcessor(
+        OTLPSpanExporter(
+            endpoint=OTEL_ENDPOINT,
+            headers=OTEL_HEADERS,
+        )
+    )
+    provider.add_span_processor(processor)
+    trace.set_tracer_provider(provider)
 
 
 @asynccontextmanager
@@ -48,6 +80,11 @@ app = FastAPI(
     version=settings.VERSION,
     lifespan=lifespan,
 )
+
+# Instrument FastAPI with OpenTelemetry if configured
+if OTEL_ENDPOINT and OTEL_HEADERS:
+    FastAPIInstrumentor.instrument_app(app)
+    HTTPXClientInstrumentor().instrument()
 
 # --- Middleware ---
 app.add_middleware(

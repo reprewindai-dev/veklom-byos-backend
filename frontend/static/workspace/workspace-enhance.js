@@ -1806,4 +1806,151 @@ export default async function handler(req, res) {
     });
   }
 
+  // ------ PIPELINE SELECTION STATE FIX ------
+  // Fix pipeline selection state to ensure activePipelineId is set when clicking pipeline rows
+  function wirePipelineSelection() {
+    document.addEventListener("click", function (e) {
+      const hash = location.hash || "";
+      if (!hash.includes("pipelines")) return;
+
+      const row = e.target.closest("tr, [class*='row'], [class*='item'], [class*='pipeline']");
+      if (!row) return;
+
+      // Extract pipeline ID from the row
+      const pipelineId = row.dataset.id || row.dataset.pipelineId || row.getAttribute("data-pipeline-id");
+      const pipelineName = row.querySelector("[class*='name'], td:first-child, [class*='title']")?.textContent?.trim() || "";
+
+      if (pipelineId) {
+        // Set active pipeline state globally
+        window._veklomActivePipelineId = pipelineId;
+        window._veklomActivePipeline = window._veklomActivePipeline || {};
+        window._veklomActivePipeline.id = pipelineId;
+        window._veklomActivePipeline.name = pipelineName;
+
+        // Store in localStorage for persistence
+        try {
+          localStorage.setItem("veklom_active_pipeline_id", pipelineId);
+          localStorage.setItem("veklom_active_pipeline_name", pipelineName);
+        } catch (_) {}
+
+        // Visual feedback - highlight selected row
+        document.querySelectorAll("tr, [class*='row'], [class*='item']").forEach(r => {
+          r.style.background = "";
+          r.style.borderColor = "";
+        });
+        row.style.background = "rgba(249, 115, 22, 0.1)";
+        row.style.borderColor = "rgba(249, 115, 22, 0.5)";
+      }
+    });
+
+    // Restore active pipeline from localStorage on page load
+    try {
+      const savedId = localStorage.getItem("veklom_active_pipeline_id");
+      const savedName = localStorage.getItem("veklom_active_pipeline_name");
+      if (savedId) {
+        window._veklomActivePipelineId = savedId;
+        window._veklomActivePipeline = { id: savedId, name: savedName || "" };
+      }
+    } catch (_) {}
+  }
+
+  // ------ PIPELINE TEST RUN FIX ------
+  // Fix Test button to use activePipelineId and show proper terminal states
+  function wirePipelineTestRun() {
+    document.addEventListener("click", async function (e) {
+      const hash = location.hash || "";
+      if (!hash.includes("pipelines")) return;
+
+      const btn = e.target.closest("button");
+      if (!btn) return;
+
+      const label = (btn.textContent || "").toLowerCase().trim();
+      if (label !== "test" && label !== "run test" && label !== "run") return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const pipelineId = window._veklomActivePipelineId;
+      if (!pipelineId) {
+        toast("No active pipeline selected — click a pipeline row first", "warn");
+        return;
+      }
+
+      // Disable button during run
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = "Running...";
+
+      try {
+        // Start the pipeline run
+        const res = await api("POST", `/pipelines/${pipelineId}/run`);
+        if (!res || !res.run_id) {
+          toast("Failed to start pipeline run", "error");
+          btn.disabled = false;
+          btn.textContent = originalText;
+          return;
+        }
+
+        toast(`Pipeline test started (run_id: ${res.run_id.slice(0, 8)}...)`, "ok");
+
+        // Stream the run events
+        const eventSource = new EventSource(`${base}/pipelines/${pipelineId}/runs/${res.run_id}/stream`);
+        
+        eventSource.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            
+            if (data.type === "run.queued") {
+              console.log("[Pipeline] Queued:", data);
+            } else if (data.type === "run.running") {
+              console.log("[Pipeline] Running:", data);
+            } else if (data.type === "step.running") {
+              console.log("[Pipeline] Step running:", data.stage);
+            } else if (data.type === "step.completed") {
+              console.log("[Pipeline] Step completed:", data.stage);
+            } else if (data.type === "run.completed") {
+              console.log("[Pipeline] Completed:", data);
+              eventSource.close();
+              toast(`Pipeline completed: ${data.output}`, "ok");
+              
+              // Show final output summary if available
+              if (data.evidence_id || data.proof_hash) {
+                const summary = `Evidence ID: ${data.evidence_id}\nProof Hash: ${data.proof_hash}`;
+                console.log("[Pipeline] Final summary:", summary);
+              }
+            } else if (data.type === "run.failed") {
+              console.log("[Pipeline] Failed:", data);
+              eventSource.close();
+              toast(`Pipeline failed: ${data.message || "Unknown error"}`, "error");
+            }
+          } catch (err) {
+            console.error("[Pipeline] Failed to parse event:", err);
+          }
+        };
+
+        eventSource.onerror = () => {
+          console.error("[Pipeline] Stream error");
+          eventSource.close();
+          toast("Pipeline stream connection lost", "warn");
+        };
+
+        // Re-enable button after timeout
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }, 30000);
+
+      } catch (err) {
+        console.error("[Pipeline] Test run error:", err);
+        toast("Pipeline test failed", "error");
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    });
+  }
+
+  // Initialize pipeline fixes
+  wirePipelineSelection();
+  wirePipelineTestRun();
+
 })();

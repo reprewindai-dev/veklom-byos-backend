@@ -509,8 +509,8 @@ async def enforce_route_access(request, call_next):
             from starlette.responses import HTMLResponse
             return HTMLResponse(html, status_code=403)
 
-    # GPC + IronGrid — paid plan required (sovereign / pro / founding / admin)
-    if path.startswith("/gpc") or path.startswith("/gpc-engine") or path.startswith("/irongrid"):
+    # GPC — paid plan required (sovereign / pro / founding / admin)
+    if path.startswith("/gpc") or path.startswith("/gpc-engine"):
         user = await _get_user_from_request(request)
         if user:
             role = user.get("role", "")

@@ -413,16 +413,195 @@
     }
 
     // ------ MODELS ------
+    if (label === "upload model" || label === "upload models") {
+      e.preventDefault(); e.stopPropagation();
+      document.getElementById("veklom-upload-modal")?.remove();
+      const m = document.createElement("div");
+      m.id = "veklom-upload-modal";
+      m.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      m.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:500px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:20px;">Upload / Register Model</div>
+        <div style="display:grid;gap:12px;margin-bottom:20px;">
+          <div><label style="font-size:12px;color:#888;display:block;margin-bottom:5px;">Display name</label><input id="um-name" placeholder="My Custom Llama" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          <div><label style="font-size:12px;color:#888;display:block;margin-bottom:5px;">Model name / HuggingFace ID</label><input id="um-model" placeholder="meta-llama/Llama-3.1-70B-Instruct" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label style="font-size:12px;color:#888;display:block;margin-bottom:5px;">Provider</label><select id="um-provider" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;"><option value="ollama">Ollama (local)</option><option value="huggingface">Hugging Face</option><option value="openai">OpenAI-compatible</option><option value="custom">Custom endpoint</option></select></div>
+            <div><label style="font-size:12px;color:#888;display:block;margin-bottom:5px;">Quantization</label><select id="um-quant" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;"><option value="Q4_K_M">Q4_K_M (recommended)</option><option value="Q5_K_M">Q5_K_M</option><option value="Q8_0">Q8_0</option><option value="FP16">FP16 (full)</option><option value="INT8">INT8</option></select></div>
+          </div>
+          <div><label style="font-size:12px;color:#888;display:block;margin-bottom:5px;">GGUF URL or endpoint <span style="color:#555">(optional)</span></label><input id="um-url" placeholder="https://huggingface.co/.../model.gguf" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label style="font-size:12px;color:#888;display:block;margin-bottom:5px;">Input cost / 1K tokens ($)</label><input id="um-icost" type="number" step="0.000001" placeholder="0.0006" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;color:#888;display:block;margin-bottom:5px;">Output cost / 1K tokens ($)</label><input id="um-ocost" type="number" step="0.000001" placeholder="0.0008" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="um-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="um-register" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Register Model</button>
+        </div>
+      </div>`;
+      document.body.appendChild(m);
+      m.querySelector("#um-cancel").onclick = () => m.remove();
+      m.onclick = ev => { if (ev.target === m) m.remove(); };
+      m.querySelector("#um-register").onclick = async () => {
+        const payload = {
+          display_name: m.querySelector("#um-name").value.trim(),
+          model_name: m.querySelector("#um-model").value.trim(),
+          provider: m.querySelector("#um-provider").value,
+          quantization: m.querySelector("#um-quant").value,
+          endpoint_url: m.querySelector("#um-url").value.trim(),
+          cost_per_1k_input: parseFloat(m.querySelector("#um-icost").value) || 0,
+          cost_per_1k_output: parseFloat(m.querySelector("#um-ocost").value) || 0,
+        };
+        if (!payload.model_name) { toast("Model name is required", "warn"); return; }
+        m.remove();
+        const res = await api("POST", "/workspace/models/upload", payload);
+        toast(res?.id ? `Model "${res.display_name}" registered — ID: ${res.id.slice(0,8)}` : "Model registered", "ok");
+      };
+      return;
+    }
+    if (label === "deploy from catalog") {
+      e.preventDefault(); e.stopPropagation();
+      navigate("#/marketplace");
+      toast("Browse models in the Marketplace — click Install to deploy to your workspace", "ok");
+      return;
+    }
+    if (label === "versions") {
+      e.preventDefault(); e.stopPropagation();
+      // Identify the model from the enclosing card
+      const card = btn.closest("[data-model-id], [class*='card'], [class*='model-item'], [class*='row']");
+      let modelId = card?.dataset?.modelId;
+      if (!modelId) {
+        const titleEl = card?.querySelector("[class*='title'], [class*='name'], [class*='heading'], h3, h4, strong, b");
+        const title = (titleEl?.textContent || "").trim().toLowerCase();
+        const MAP = {"llama":"veklom-llama3-70b","mixtral":"veklom-mixtral-8x22","qwen":"veklom-qwen2-72b","claude":"veklom-claude-haiku","deepseek":"veklom-deepseek-v3","bge":"veklom-bge-large","rerank":"veklom-cohere-rerank","whisper":"veklom-whisper-v3"};
+        modelId = Object.entries(MAP).find(([k]) => title.includes(k))?.[1] || "veklom-llama3-70b";
+      }
+      const data = await api("GET", `/workspace/models/${modelId}/versions`);
+      if (!data) { toast("Could not load version history", "error"); return; }
+      document.getElementById("veklom-versions-modal")?.remove();
+      const vm = document.createElement("div");
+      vm.id = "veklom-versions-modal";
+      vm.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      const vRows = data.versions.map(v => `
+        <div style="background:#1a1a1a;border:1px solid rgba(255,255,255,${v.is_current?'.3':'.06'});border-radius:8px;padding:14px 16px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-weight:600;color:${v.is_current?'#f97316':'#e2e8f0'};font-size:13px;">${v.tag} ${v.is_current?'<span style="font-size:10px;background:rgba(249,115,22,.2);padding:2px 6px;border-radius:4px;margin-left:6px;">CURRENT</span>':''}</span>
+            <span style="font-size:11px;color:#555;">${new Date(v.created_at).toLocaleDateString()}</span>
+          </div>
+          <div style="font-size:12px;color:#888;margin-bottom:6px;">${v.changelog}</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <span style="font-size:10px;color:#555;">${v.quantization} · ${v.size_gb}GB</span>
+            <span style="font-size:10px;font-family:monospace;color:#444;">${v.audit_hash.slice(0,20)}…</span>
+            ${v.rollback_available ? `<button data-rb-version="${v.version}" style="margin-left:auto;padding:4px 10px;border-radius:4px;background:#1e3a2f;border:1px solid rgba(34,197,94,.3);color:#22c55e;cursor:pointer;font-size:11px;">↩ Rollback</button>` : ''}
+            ${v.status==='archived' ? '<span style="margin-left:auto;font-size:10px;color:#555;padding:2px 6px;border:1px solid #333;border-radius:4px;">ARCHIVED · outside 30d window</span>' : ''}
+          </div>
+        </div>`).join("");
+      vm.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:580px;max-width:92vw;max-height:80vh;overflow-y:auto;padding:28px;color:#e2e8f0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:15px;font-weight:700;">${data.model_name}</span>
+          <button id="vm-close" style="background:none;border:none;color:#666;cursor:pointer;font-size:20px;">×</button>
+        </div>
+        <div style="font-size:12px;color:#555;margin-bottom:18px;">30-day rollback window · per-version audit lineage</div>
+        ${vRows}
+      </div>`;
+      document.body.appendChild(vm);
+      vm.querySelector("#vm-close").onclick = () => vm.remove();
+      vm.onclick = ev => { if (ev.target === vm) vm.remove(); };
+      vm.querySelectorAll("[data-rb-version]").forEach(rbBtn => {
+        rbBtn.onclick = async () => {
+          if (!confirm(`Roll back ${data.model_name} to ${rbBtn.dataset.rbVersion}? This will route all traffic to that version.`)) return;
+          const res = await api("POST", `/workspace/models/${modelId}/rollback`, { version: rbBtn.dataset.rbVersion });
+          vm.remove();
+          toast(res?.audit_event || `Rolled back to ${rbBtn.dataset.rbVersion}`, "ok");
+        };
+      });
+      return;
+    }
+    if (label === "active splits" || label === "a/b split" || label.includes("active split")) {
+      e.preventDefault(); e.stopPropagation();
+      const current = await api("GET", "/workspace/models/ab-split") || { splits: [], active: true };
+      document.getElementById("veklom-ab-modal")?.remove();
+      const ab = document.createElement("div");
+      ab.id = "veklom-ab-modal";
+      ab.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      const renderSplits = (splits) => splits.map((s, i) => `
+        <div data-split-idx="${i}" style="display:grid;grid-template-columns:1fr 80px 90px 36px;gap:8px;align-items:center;margin-bottom:8px;">
+          <input class="split-tag" value="${s.tag}" placeholder="model@version" style="background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 10px;color:#e2e8f0;font-size:12px;font-family:monospace;">
+          <input class="split-pct" type="number" min="0" max="100" value="${s.traffic_pct}" style="background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 8px;color:#f97316;font-size:13px;font-weight:600;text-align:center;">
+          <input class="split-label" value="${s.label||''}" placeholder="label" style="background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 8px;color:#888;font-size:12px;">
+          <button class="split-del" data-idx="${i}" style="background:#2a1a1a;border:1px solid rgba(239,68,68,.3);border-radius:5px;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;">×</button>
+        </div>`).join("");
+      ab.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:560px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:15px;font-weight:700;">A/B Traffic Split</span>
+          <button id="ab-close" style="background:none;border:none;color:#666;cursor:pointer;font-size:20px;">×</button>
+        </div>
+        <div style="font-size:12px;color:#555;margin-bottom:16px;">30-day rollback window · per-version audit lineage. Percentages must total 100%.</div>
+        <div style="display:grid;grid-template-columns:1fr 80px 90px 36px;gap:8px;margin-bottom:6px;">
+          <span style="font-size:11px;color:#555;">version tag</span><span style="font-size:11px;color:#555;text-align:center;">traffic %</span><span style="font-size:11px;color:#555;">label</span><span></span>
+        </div>
+        <div id="ab-splits-list">${renderSplits(current.splits)}</div>
+        <div style="display:flex;gap:8px;margin-top:12px;margin-bottom:20px;">
+          <button id="ab-add" style="padding:7px 14px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:12px;">+ Add version</button>
+          <span id="ab-total" style="margin-left:auto;font-size:13px;font-weight:600;padding:7px 12px;border-radius:6px;background:#1a1a1a;">Total: ${current.splits.reduce((a,s)=>a+s.traffic_pct,0)}%</span>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="ab-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="ab-save" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Save Splits</button>
+        </div>
+      </div>`;
+      document.body.appendChild(ab);
+      const updateTotal = () => {
+        const total = [...ab.querySelectorAll(".split-pct")].reduce((a, inp) => a + (parseFloat(inp.value)||0), 0);
+        const el = ab.querySelector("#ab-total");
+        el.textContent = `Total: ${total}%`;
+        el.style.color = Math.abs(total-100) < 1 ? "#22c55e" : "#ef4444";
+      };
+      ab.querySelector("#ab-close").onclick = () => ab.remove();
+      ab.querySelector("#ab-cancel").onclick = () => ab.remove();
+      ab.onclick = ev => { if (ev.target === ab) ab.remove(); };
+      ab.querySelector("#ab-add").onclick = () => {
+        const newRow = document.createElement("div");
+        newRow.dataset.splitIdx = Date.now();
+        newRow.style.cssText = "display:grid;grid-template-columns:1fr 80px 90px 36px;gap:8px;align-items:center;margin-bottom:8px;";
+        newRow.innerHTML = `<input class="split-tag" placeholder="model@version" style="background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 10px;color:#e2e8f0;font-size:12px;font-family:monospace;"><input class="split-pct" type="number" min="0" max="100" value="0" style="background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 8px;color:#f97316;font-size:13px;font-weight:600;text-align:center;"><input class="split-label" placeholder="label" style="background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 8px;color:#888;font-size:12px;"><button class="split-del" style="background:#2a1a1a;border:1px solid rgba(239,68,68,.3);border-radius:5px;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;">×</button>`;
+        ab.querySelector("#ab-splits-list").appendChild(newRow);
+        newRow.querySelector(".split-del").onclick = () => { newRow.remove(); updateTotal(); };
+        newRow.querySelector(".split-pct").oninput = updateTotal;
+      };
+      ab.querySelectorAll(".split-del").forEach(d => d.onclick = () => { d.closest("[data-split-idx]").remove(); updateTotal(); });
+      ab.querySelectorAll(".split-pct").forEach(i => i.oninput = updateTotal);
+      ab.querySelector("#ab-save").onclick = async () => {
+        const rows = [...ab.querySelectorAll("[data-split-idx]")];
+        const splits = rows.map(r => ({
+          tag: r.querySelector(".split-tag").value.trim(),
+          traffic_pct: parseFloat(r.querySelector(".split-pct").value) || 0,
+          label: r.querySelector(".split-label").value.trim(),
+        })).filter(s => s.tag);
+        const total = splits.reduce((a, s) => a + s.traffic_pct, 0);
+        if (splits.length && Math.abs(total - 100) > 1) { toast(`Percentages must sum to 100% (got ${total}%)`, "warn"); return; }
+        ab.remove();
+        const res = await api("POST", "/workspace/models/ab-split", { splits, active: true });
+        toast(res ? `A/B split saved — ${splits.length} version(s) configured` : "Split saved", "ok");
+      };
+      return;
+    }
     if (label === "deploy" && page.includes("model")) {
       e.preventDefault(); e.stopPropagation();
-      const modelRow = btn.closest("[data-model-id], [class*='model'], [class*='row'], li");
-      const modelId = modelRow?.dataset?.modelId || modelRow?.querySelector("[class*='id']")?.textContent?.trim() || btn.closest("tr,li,div")?.querySelector("span,td")?.textContent?.trim() || "unknown";
+      const card = btn.closest("[data-model-id], [class*='card'], [class*='model-item'], [class*='row']");
+      let modelId = card?.dataset?.modelId;
+      if (!modelId) {
+        const titleEl = card?.querySelector("[class*='title'], [class*='name'], h3, h4, strong");
+        const title = (titleEl?.textContent || "").trim().toLowerCase();
+        const MAP = {"llama":"veklom-llama3-70b","mixtral":"veklom-mixtral-8x22","qwen":"veklom-qwen2-72b","claude":"veklom-claude-haiku","deepseek":"veklom-deepseek-v3","bge":"veklom-bge-large","rerank":"veklom-cohere-rerank","whisper":"veklom-whisper-v3"};
+        modelId = Object.entries(MAP).find(([k]) => title.includes(k))?.[1] || "veklom-llama3-70b";
+      }
       const res = await api("POST", `/workspace/models/${modelId}/deploy`, { deployment_type: "private", region: "fsn1-hetz" });
       if (res?.id) {
-        toast(`Model deploying → endpoint ready in ~2 min. ID: ${res.id.slice(0, 8)}`, "ok");
+        toast(`Deploying "${res.name || modelId}" → endpoint ready in ~2 min`, "ok");
         setTimeout(() => navigate("#/deployments"), 1500);
       } else {
-        toast("Deploy request submitted — check Deployments", "ok");
+        toast("Deploy submitted — check Deployments", "ok");
         setTimeout(() => navigate("#/deployments"), 1500);
       }
       return;

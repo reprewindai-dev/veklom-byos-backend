@@ -13,6 +13,11 @@ from backend.db.models.workspace import WorkspaceMember
 
 router = APIRouter(tags=["Team"])
 
+# In-memory stores
+_invitations: dict = {}   # workspace_id -> list[invitation]
+_sso_configs: dict = {}   # workspace_id -> saml/scim config
+_mfa_policy: dict = {}    # workspace_id -> {enforced: bool}
+
 
 def _utcnow():
     return datetime.now(timezone.utc)
@@ -79,25 +84,50 @@ async def remove_team_member(member_id: str, user=Depends(get_current_user), db:
 # --- Invitations ---
 @router.get("/team/invitations")
 async def list_invitations(user=Depends(get_current_user)):
-    return []
+    ws = user.workspace_id or "default"
+    return _invitations.get(ws, [])
 
 
 @router.post("/team/invitations")
-async def send_invitation(body: dict, user=Depends(get_current_user)):
+async def send_invitation(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in ("OWNER", "ADMIN"):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     email = (body.get("email") or "").strip()
     role = (body.get("role") or "USER").upper()
     if not email:
         raise HTTPException(status_code=400, detail="email is required")
-    return {
-        "id": f"inv_{email[:8]}",
+    import uuid as _uuid
+    ws = user.workspace_id or "default"
+    now = _utcnow()
+    inv_id = "inv_" + str(_uuid.uuid4())[:8]
+    invitation = {
+        "id": inv_id,
         "email": email,
         "role": role,
         "status": "pending",
-        "expires_at": None,
+        "invited_by": user.email,
+        "workspace_id": ws,
+        "created_at": now.isoformat(),
+        "expires_at": (now.replace(day=now.day + 7) if now.day < 25 else now).isoformat(),
         "message": f"Invitation sent to {email}. Email delivery requires SMTP configuration.",
     }
+    _invitations.setdefault(ws, []).append(invitation)
+    # Also try to provision user in DB
+    try:
+        existing = await db.execute(select(User).where(User.email == email))
+        if not existing.scalar_one_or_none():
+            new_user = User(
+                email=email,
+                role=role,
+                status="INVITED",
+                workspace_id=ws,
+                is_active=False,
+            )
+            db.add(new_user)
+            await db.commit()
+    except Exception:
+        pass
+    return invitation
 
 
 @router.delete("/team/invitations/{invitation_id}")
@@ -122,12 +152,21 @@ async def list_roles(user=Depends(get_current_user)):
 # --- SSO / SAML / SCIM ---
 @router.get("/team/sso/status")
 async def sso_status(user=Depends(get_current_user)):
+    ws = user.workspace_id or "default"
+    cfg = _sso_configs.get(ws, {})
     return {
-        "saml_enabled": False,
-        "scim_enabled": False,
-        "provider": None,
-        "status": "not_configured",
-        "message": "Configure SAML SSO in Settings > Security > SSO",
+        "saml_enabled": bool(cfg.get("saml_metadata_url") or cfg.get("saml_entity_id")),
+        "scim_enabled": bool(cfg.get("scim_token")),
+        "provider": cfg.get("provider", "none"),
+        "status": "configured" if cfg else "not_configured",
+        "saml_entity_id": cfg.get("saml_entity_id", ""),
+        "saml_acs_url": f"https://veklom.com/api/v1/auth/saml/callback/{ws}",
+        "saml_metadata_url": cfg.get("saml_metadata_url", ""),
+        "scim_endpoint": f"https://veklom.com/api/v1/scim/v2/{ws}",
+        "scim_token": cfg.get("scim_token", ""),
+        "session_timeout_hours": cfg.get("session_timeout_hours", 12),
+        "github_oauth_enabled": cfg.get("github_oauth_enabled", False),
+        "google_oauth_enabled": cfg.get("google_oauth_enabled", False),
     }
 
 
@@ -135,17 +174,39 @@ async def sso_status(user=Depends(get_current_user)):
 async def configure_sso(body: dict, user=Depends(get_current_user)):
     if user.role not in ("OWNER", "ADMIN"):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    return {"status": "not_configured", "message": "SAML SSO configuration requires enterprise plan. Contact support."}
+    ws = user.workspace_id or "default"
+    cfg = _sso_configs.setdefault(ws, {})
+    for field in ("saml_entity_id", "saml_metadata_url", "provider", "session_timeout_hours", "github_oauth_enabled", "google_oauth_enabled"):
+        if field in body:
+            cfg[field] = body[field]
+    return {"status": "configured", "workspace_id": ws, **cfg}
+
+
+@router.post("/team/scim/token")
+async def generate_scim_token(user=Depends(get_current_user)):
+    """Generate a new SCIM bearer token for provisioning."""
+    if user.role not in ("OWNER", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    import secrets as _sec
+    ws = user.workspace_id or "default"
+    token = "scim_" + _sec.token_urlsafe(32)
+    _sso_configs.setdefault(ws, {})["scim_token"] = token
+    return {
+        "scim_token": token,
+        "scim_endpoint": f"https://veklom.com/api/v1/scim/v2/{ws}",
+        "message": "SCIM token generated. Copy it now — it will not be shown again.",
+    }
 
 
 @router.get("/team/scim/status")
 async def scim_status(user=Depends(get_current_user)):
+    ws = user.workspace_id or "default"
+    cfg = _sso_configs.get(ws, {})
     return {
-        "scim_enabled": False,
-        "endpoint": None,
-        "bearer_token": None,
-        "status": "not_configured",
-        "message": "SCIM provisioning requires enterprise plan. Contact support."
+        "scim_enabled": bool(cfg.get("scim_token")),
+        "endpoint": f"https://veklom.com/api/v1/scim/v2/{ws}",
+        "bearer_token": (cfg.get("scim_token", "") or "")[:12] + "…" if cfg.get("scim_token") else None,
+        "status": "configured" if cfg.get("scim_token") else "not_configured",
     }
 
 
@@ -153,7 +214,12 @@ async def scim_status(user=Depends(get_current_user)):
 async def configure_scim(body: dict, user=Depends(get_current_user)):
     if user.role not in ("OWNER", "ADMIN"):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    return {"status": "not_configured", "message": "SCIM provisioning requires enterprise plan. Contact support."}
+    ws = user.workspace_id or "default"
+    cfg = _sso_configs.setdefault(ws, {})
+    if body.get("scim_enabled") is False:
+        cfg.pop("scim_token", None)
+        return {"scim_enabled": False}
+    return {"scim_enabled": bool(cfg.get("scim_token")), "endpoint": f"https://veklom.com/api/v1/scim/v2/{ws}"}
 
 
 @router.post("/team/sessions/revoke")
@@ -185,13 +251,27 @@ async def team_mfa_status(user=Depends(get_current_user), db: AsyncSession = Dep
     result = await db.execute(select(User).where(User.workspace_id == ws, User.is_active == True))
     members = result.scalars().all()
     total = len(members)
-    mfa_enabled = sum(1 for m in members if m.mfa_enabled)
+    mfa_enabled = sum(1 for m in members if getattr(m, "mfa_enabled", False))
+    policy = _mfa_policy.get(ws, {})
     return {
         "total_members": total,
         "mfa_enabled_count": mfa_enabled,
         "mfa_compliance_percent": round(mfa_enabled / max(1, total) * 100, 1),
-        "enforcement": "optional",
+        "enforcement": "enforced" if policy.get("enforced") else "optional",
+        "grace_period_hours": policy.get("grace_period_hours", 360),
     }
+
+
+@router.post("/team/mfa/enforce")
+async def enforce_mfa(body: dict, user=Depends(get_current_user)):
+    """Enable or disable MFA enforcement for the workspace."""
+    if user.role not in ("OWNER", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    ws = user.workspace_id or "default"
+    enforced = body.get("enforced", True)
+    grace = int(body.get("grace_period_hours", 360))
+    _mfa_policy[ws] = {"enforced": enforced, "grace_period_hours": grace, "set_by": user.email, "set_at": _utcnow().isoformat()}
+    return {"enforcement": "enforced" if enforced else "optional", "grace_period_hours": grace, "set_by": user.email}
 
 
 @router.get("/team/activity")

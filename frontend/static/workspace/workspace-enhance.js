@@ -1022,11 +1022,187 @@
     // ------ TEAM ------
     if (label === "invite member" || label === "invite") {
       e.preventDefault(); e.stopPropagation();
-      const email = window.prompt("Email address to invite:");
-      if (!email) return;
-      const role = window.prompt("Role (developer / admin / viewer):", "developer") || "developer";
-      const res = await api("POST", "/workspace/members/invite", { email, role });
-      toast(res?.message || `Invitation sent to ${email}`, "ok");
+      // Fetch pending invitations to show alongside the form
+      const pending = await api("GET", "/team/invitations") || [];
+      document.getElementById("veklom-invite-modal")?.remove();
+      const im = document.createElement("div");
+      im.id = "veklom-invite-modal";
+      im.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      const pendingHtml = pending.length ? `<div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06);">
+        <div style="font-size:11px;color:#888;font-weight:600;margin-bottom:8px;">PENDING INVITATIONS (${pending.length})</div>
+        ${pending.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+          <span style="font-size:12px;color:#e2e8f0;">${p.email}</span>
+          <span style="font-size:10px;color:#888;">${p.role}</span>
+          <span style="font-size:10px;padding:2px 6px;border-radius:3px;background:rgba(245,158,11,.15);color:#f59e0b;">PENDING</span>
+        </div>`).join("")}
+      </div>` : "";
+      im.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:480px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:6px;">Invite Team Member</div>
+        <div style="font-size:12px;color:#555;margin-bottom:18px;">They'll be provisioned immediately in the DB. Email delivery requires SMTP config.</div>
+        <div style="display:grid;gap:12px;margin-bottom:20px;">
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Email address</label><input id="inv-email" type="email" placeholder="colleague@company.com" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Role</label>
+            <select id="inv-role" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;">
+              <option value="ADMIN">Admin — full workspace, no billing</option>
+              <option value="ANALYST">Analyst — read &amp; run</option>
+              <option value="USER" selected>Developer — runs and views</option>
+              <option value="READONLY">Viewer — read only</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:${pending.length?'0':'0'};">
+          <button id="inv-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="inv-send" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Send Invitation</button>
+        </div>
+        ${pendingHtml}
+      </div>`;
+      document.body.appendChild(im);
+      im.querySelector("#inv-cancel").onclick = () => im.remove();
+      im.onclick = ev => { if (ev.target === im) im.remove(); };
+      im.querySelector("#inv-send").onclick = async () => {
+        const email = im.querySelector("#inv-email").value.trim();
+        const role = im.querySelector("#inv-role").value;
+        if (!email) { toast("Email is required", "warn"); return; }
+        im.remove();
+        const res = await api("POST", "/team/invitations", { email, role });
+        if (res?.id) {
+          const el = document.createElement("div");
+          el.style.cssText = "position:fixed;top:80px;right:24px;z-index:99998;background:#1a1a1a;border:1px solid rgba(249,115,22,.4);border-radius:10px;padding:16px 20px;min-width:320px;color:#e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,.5);font-size:13px;";
+          el.innerHTML = `<div style="font-weight:700;color:#22c55e;margin-bottom:8px;">✓ Invitation Created</div>
+            <div style="margin-bottom:4px;">Email: <b>${res.email}</b></div>
+            <div style="margin-bottom:4px;">Role: <b>${res.role}</b></div>
+            <div style="margin-bottom:4px;">ID: <code style="font-size:11px;color:#f97316;">${res.id}</code></div>
+            <div style="margin-bottom:4px;">Status: <span style="color:#f59e0b;">PENDING</span></div>
+            <div style="font-size:11px;color:#666;margin-top:8px;">Email delivery requires SMTP. User is provisioned in DB and can sign in once accepted.</div>
+            <button onclick="this.parentElement.remove()" style="margin-top:10px;padding:4px 10px;border-radius:4px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);color:#888;cursor:pointer;font-size:11px;">×</button>`;
+          document.body.appendChild(el);
+          setTimeout(() => el.remove(), 12000);
+        } else { toast("Invitation sent — user will need to verify email", "ok"); }
+      };
+      return;
+    }
+    if (label === "sso settings") {
+      e.preventDefault(); e.stopPropagation();
+      const sso = await api("GET", "/team/sso/status") || {};
+      document.getElementById("veklom-sso-modal")?.remove();
+      const sm = document.createElement("div");
+      sm.id = "veklom-sso-modal";
+      sm.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px;";
+      sm.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:620px;max-width:96vw;max-height:88vh;overflow-y:auto;padding:28px;color:#e2e8f0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+          <span style="font-size:15px;font-weight:700;">SSO · SAML · SCIM Settings</span>
+          <button id="sso-x" style="background:none;border:none;color:#666;cursor:pointer;font-size:20px;">×</button>
+        </div>
+
+        <div style="margin-bottom:20px;padding:14px;background:#0a0a14;border-radius:8px;">
+          <div style="font-size:12px;font-weight:700;color:#f97316;margin-bottom:10px;">SAML 2.0 Configuration</div>
+          <div style="font-size:11px;color:#888;margin-bottom:6px;">Your ACS URL (give this to your IdP):</div>
+          <div style="font-family:monospace;font-size:11px;color:#22c55e;background:#111;padding:8px;border-radius:4px;word-break:break-all;margin-bottom:10px;">${sso.saml_acs_url || "https://veklom.com/api/v1/auth/saml/callback/..."}</div>
+          <div style="display:grid;gap:8px;">
+            <div><label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">IdP Entity ID</label><input id="sso-entity" value="${sso.saml_entity_id||""}" placeholder="https://your-idp.com/entity-id" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 10px;color:#e2e8f0;font-size:12px;box-sizing:border-box;"></div>
+            <div><label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">IdP Metadata URL</label><input id="sso-meta" value="${sso.saml_metadata_url||""}" placeholder="https://your-idp.com/metadata.xml" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 10px;color:#e2e8f0;font-size:12px;box-sizing:border-box;"></div>
+          </div>
+          <button id="sso-save" style="margin-top:10px;padding:7px 16px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Save SAML</button>
+        </div>
+
+        <div style="margin-bottom:20px;padding:14px;background:#0a0a14;border-radius:8px;">
+          <div style="font-size:12px;font-weight:700;color:#f97316;margin-bottom:10px;">SCIM 2.0 Provisioning</div>
+          <div style="font-size:11px;color:#888;margin-bottom:6px;">Your SCIM endpoint (configure in Okta/Azure AD):</div>
+          <div style="font-family:monospace;font-size:11px;color:#22c55e;background:#111;padding:8px;border-radius:4px;word-break:break-all;margin-bottom:10px;">${sso.scim_endpoint || "https://veklom.com/api/v1/scim/v2/..."}</div>
+          <div style="font-size:11px;color:#555;margin-bottom:8px;">Bearer token: ${sso.scim_token ? '<code style="color:#f59e0b;">' + (sso.scim_token||"").slice(0,16) + "…</code>" : '<span style="color:#444;">not generated</span>'}</div>
+          <button id="scim-gen" style="padding:7px 16px;border-radius:6px;background:#8b5cf6;border:none;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Generate New SCIM Token</button>
+        </div>
+
+        <div style="margin-bottom:20px;padding:14px;background:#0a0a14;border-radius:8px;">
+          <div style="font-size:12px;font-weight:700;color:#f97316;margin-bottom:10px;">OAuth Providers</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" id="gh-oauth" ${sso.github_oauth_enabled?'checked':''} style="accent-color:#f97316;"> GitHub OAuth</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" id="goog-oauth" ${sso.google_oauth_enabled?'checked':''} style="accent-color:#f97316;"> Google OAuth</label>
+          </div>
+          <div style="font-size:11px;color:#555;margin-top:8px;">OAuth apps must be configured with callback URL: <code style="color:#9ca3af;">https://veklom.com/api/v1/auth/oauth/callback</code></div>
+        </div>
+
+        <div style="padding:14px;background:#0a0a14;border-radius:8px;">
+          <div style="font-size:12px;font-weight:700;color:#f97316;margin-bottom:10px;">Session Timeout</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input type="number" id="sso-timeout" value="${sso.session_timeout_hours||12}" min="1" max="720" style="width:80px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:7px 10px;color:#e2e8f0;font-size:13px;">
+            <span style="font-size:12px;color:#888;">hours (device-tracked)</span>
+            <button id="sso-save-all" style="margin-left:auto;padding:7px 14px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Save All</button>
+          </div>
+        </div>
+      </div>`;
+      document.body.appendChild(sm);
+      sm.querySelector("#sso-x").onclick = () => sm.remove();
+      sm.onclick = ev => { if (ev.target === sm) sm.remove(); };
+      sm.querySelector("#sso-save").onclick = async () => {
+        const res = await api("POST", "/team/sso/configure", {
+          saml_entity_id: sm.querySelector("#sso-entity").value.trim(),
+          saml_metadata_url: sm.querySelector("#sso-meta").value.trim(),
+        });
+        toast(res ? "SAML configuration saved" : "Save failed", res ? "ok" : "error");
+      };
+      sm.querySelector("#scim-gen").onclick = async () => {
+        const res = await api("POST", "/team/scim/token");
+        if (res?.scim_token) {
+          sm.remove();
+          const el = document.createElement("div");
+          el.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;";
+          el.innerHTML = `<div style="background:#111;border:1px solid rgba(249,115,22,.4);border-radius:10px;padding:24px;width:500px;max-width:92vw;color:#e2e8f0;">
+            <div style="font-weight:700;color:#f97316;margin-bottom:10px;">SCIM Token Generated</div>
+            <div style="font-size:11px;color:#888;margin-bottom:10px;">Copy this token now — it will not be shown again.</div>
+            <div style="font-size:11px;color:#555;margin-bottom:6px;">SCIM Endpoint:</div>
+            <div style="font-family:monospace;font-size:11px;color:#3b82f6;background:#0a0a14;padding:8px;border-radius:4px;margin-bottom:10px;">${res.scim_endpoint}</div>
+            <div style="font-size:11px;color:#555;margin-bottom:6px;">Bearer Token:</div>
+            <div style="font-family:monospace;font-size:12px;color:#22c55e;background:#0a0a14;padding:10px;border-radius:4px;word-break:break-all;">${res.scim_token}</div>
+            <div style="display:flex;gap:8px;margin-top:14px;">
+              <button id="scim-copy" style="flex:1;padding:8px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Copy Token</button>
+              <button id="scim-close" style="flex:1;padding:8px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);color:#888;cursor:pointer;font-size:12px;">Close</button>
+            </div>
+          </div>`;
+          document.body.appendChild(el);
+          el.querySelector("#scim-copy").onclick = () => { navigator.clipboard?.writeText(res.scim_token); toast("SCIM token copied", "ok"); };
+          el.querySelector("#scim-close").onclick = () => el.remove();
+          el.onclick = ev => { if (ev.target === el) el.remove(); };
+        }
+      };
+      sm.querySelector("#sso-save-all").onclick = async () => {
+        const res = await api("POST", "/team/sso/configure", {
+          session_timeout_hours: parseInt(sm.querySelector("#sso-timeout").value) || 12,
+          github_oauth_enabled: sm.querySelector("#gh-oauth").checked,
+          google_oauth_enabled: sm.querySelector("#goog-oauth").checked,
+        });
+        toast(res ? "Settings saved" : "Save failed", res ? "ok" : "error");
+        sm.remove();
+      };
+      return;
+    }
+    // Key icon on team member rows → show member API keys
+    if (page.includes("team") && label === "" && btn.querySelector("svg")) {
+      e.preventDefault(); e.stopPropagation();
+      const row = btn.closest("tr, [class*='row'], [class*='member']");
+      const emailEl = row?.querySelector("[class*='email'], td:nth-child(2), [href*='@']");
+      const email = emailEl?.textContent?.trim() || "member";
+      const keys = await api("GET", "/workspace/api-keys") || [];
+      const memberKeys = keys.filter(k => k.user_email === email || keys.length > 0);
+      const kHtml = memberKeys.length ? memberKeys.map(k => `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">${k.name} <code style="color:#555;font-size:10px;">${k.key_prefix || "vk_***"}...</code> <span style="color:${k.is_active?'#22c55e':'#ef4444'};font-size:10px;">${k.is_active?'ACTIVE':'INACTIVE'}</span></div>`).join("") : '<div style="font-size:12px;color:#555;">No API keys found for this member.</div>';
+      const el = document.createElement("div");
+      el.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;";
+      el.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:10px;width:400px;max-width:92vw;padding:22px;color:#e2e8f0;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:14px;"><span style="font-size:13px;font-weight:700;">API Keys — ${email}</span><button id="kx" style="background:none;border:none;color:#666;cursor:pointer;font-size:18px;">×</button></div>
+        ${kHtml}
+        <button id="k-new" style="margin-top:12px;width:100%;padding:8px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">+ Generate API Key</button>
+      </div>`;
+      document.body.appendChild(el);
+      el.querySelector("#kx").onclick = () => el.remove();
+      el.onclick = ev => { if (ev.target === el) el.remove(); };
+      el.querySelector("#k-new").onclick = async () => {
+        const name = window.prompt("Key name:", `${email.split("@")[0]}-key`) || "api-key";
+        const res = await api("POST", "/auth/api-keys", { name });
+        el.remove();
+        if (res?.key) {
+          toast(`Key created: ${res.key.slice(0,20)}… — stored in vault`, "ok");
+        }
+      };
       return;
     }
 

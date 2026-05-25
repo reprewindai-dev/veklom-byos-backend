@@ -34,7 +34,7 @@ async def detailed_health():
     }
 
 
-@router.get("/status")
+@router.get("/api-status")
 async def platform_status():
     return {
         "status": "operational",

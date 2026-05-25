@@ -1,25 +1,8 @@
-Veklom workspace unauth network trace — 2026-05-25T10:40:27.131Z
+Veklom workspace unauth network trace — 2026-05-25T17:15:02.190Z
 Surfaces visited: home, login, register, workspace, command-center, irongrid, terminal, gpc, marketplace, security, acceptable-use, billing, llms.txt
 
 METHOD  STATUS  PATH
 --------------------------------------------------------------------------------
-GET     401    /api/v1/agents/decision-frames    [command-center]
-GET     401    /api/v1/agents/monthly-report    [command-center]
-GET     200    /api/v1/ai/escalation/stats    [terminal]
-POST    500    /api/v1/auth/eval-session    [workspace]
-GET     401    /api/v1/auth/me    [workspace]
-GET     401    /api/v1/command-center/users/summary    [command-center]
-GET     404    /api/v1/copilot/recent-decisions    [command-center]
-GET     404    /api/v1/copilot/registry    [command-center]
-GET     401    /api/v1/gpc/plans    [gpc]
-GET     200    /api/v1/platform/pulse    [home,register]
-GET     404    /api/v1/sys/gpu    [command-center]
-GET     404    /api/v1/sys/health    [command-center]
-GET     401    /api/v1/workspace/overview    [workspace]
-GET     500    /api/v1/workspace/overview/live    [workspace]
-GET     200    /legal/acceptable-use    [acceptable-use]
-GET     200    /legal/privacy    [privacy]
-GET     200    /legal/security    [security]
 
-Total requests captured: 22
-Distinct method×path:    17
+Total requests captured: 0
+Distinct method×path:    0

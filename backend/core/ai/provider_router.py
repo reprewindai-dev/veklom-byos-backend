@@ -254,6 +254,93 @@ def _sse_chunk(provider: str, model: str, content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Smart escalation tier classification
+# ---------------------------------------------------------------------------
+
+TIER_TO_PROVIDERS: dict[str, list[str]] = {
+    # Daily driver — Ollama handles all routine tasks
+    "local":      ["ollama"],
+    # Fast streaming / low latency — Groq first (131k context, ultra fast)
+    "fast":       ["groq", "ollama", "huggingface"],
+    # Complex reasoning / long context — Gemini 2.5 Flash (2M context)
+    "reasoning":  ["gemini", "ollama", "groq", "openai"],
+    # Maximum capability — GPT-4o for tool calls, orchestration, hardest tasks
+    "max":        ["openai", "gemini", "groq", "ollama"],
+    # Specialized / open-weight — HuggingFace for domain models
+    "specialized": ["huggingface", "ollama", "groq"],
+}
+
+
+def task_tier(body: dict) -> str:
+    """Classify a request into an execution tier to pick the optimal provider.
+
+    Tier hierarchy:
+      local      → Ollama qwen2.5:3b  (default, free, sovereign)
+      fast       → Groq               (streaming, low latency, medium tasks)
+      reasoning  → Gemini 2.5 Flash   (complex reasoning, long context ≤2M)
+      max        → OpenAI GPT-4o      (tool calls, orchestration, max quality)
+      specialized → HuggingFace       (domain-specific open-weight models)
+    """
+    model = (body.get("model") or "").lower()
+    explicit = (body.get("provider") or "").lower()
+    messages = body.get("messages") or []
+    context_chars = sum(len(str(m.get("content", ""))) for m in messages)
+
+    # Explicit provider overrides
+    if explicit in ("openai", "gpt-4", "gpt-4o"):
+        return "max"
+    if explicit in ("gemini", "google"):
+        return "reasoning"
+    if explicit in ("groq",):
+        return "fast"
+    if explicit in ("ollama",):
+        return "local"
+    if explicit in ("huggingface", "hf"):
+        return "specialized"
+
+    # Specific model name signals
+    if any(k in model for k in ("gpt-4", "claude-3", "o1", "o3")):
+        return "max"
+    if any(k in model for k in ("gemini-2", "gemini-1.5", "gemini-flash", "gemini-pro")):
+        return "reasoning"
+    if any(k in model for k in ("llama-3.1", "mixtral", "groq")):
+        return "fast"
+    if any(k in model for k in ("llama", "mistral", "phi", "falcon", "bloom")):
+        return "specialized"
+
+    # Tool/function calling requires strong models
+    if body.get("tools") or body.get("functions"):
+        return "max"
+
+    # Context window signals
+    if context_chars > 32_000:
+        return "reasoning"   # Gemini 2M context window handles this best
+    if context_chars > 8_000:
+        return "fast"         # Groq 131k window, fast
+
+    # Agent type hints (for autonomous agent routing)
+    agent_type = (body.get("agent_type") or body.get("agent") or "").lower()
+    if any(k in agent_type for k in ("orchestrat", "plan", "strateg", "architect")):
+        return "max"
+    if any(k in agent_type for k in ("reason", "analyz", "research", "complex")):
+        return "reasoning"
+    if any(k in agent_type for k in ("fast", "stream", "realtime", "light")):
+        return "fast"
+
+    # Streaming without explicit quality flag → Groq (fastest)
+    if body.get("stream") and not body.get("high_quality"):
+        return "fast"
+
+    return "local"   # Default: Ollama daily driver
+
+
+def smart_provider_order(body: dict) -> list[str]:
+    """Return provider priority list based on task tier."""
+    tier = task_tier(body)
+    return TIER_TO_PROVIDERS.get(tier, ["ollama"])
+
+
+# ---------------------------------------------------------------------------
 # Tenant-isolation helpers
 # ---------------------------------------------------------------------------
 

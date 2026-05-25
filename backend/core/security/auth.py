@@ -54,22 +54,6 @@ def verify_token(token: str) -> dict:
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
 ):
-    if credentials is not None and credentials.credentials == "veklom-demo-token-quantum":
-        from types import SimpleNamespace
-        return SimpleNamespace(
-            id="demo-user-id",
-            email="demo@veklom.com",
-            full_name="Veklom Admin",
-            role="super_admin",
-            status="ACTIVE",
-            is_active=True,
-            workspace_id="demo",
-            is_public_demo=True,
-            mfa_enabled=False,
-            github_username="",
-            created_at=None,
-        )
-
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 

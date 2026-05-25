@@ -82,6 +82,7 @@ def _user_dict(user: User) -> dict:
         "role": user.role,
         "status": user.status,
         "is_active": user.is_active,
+        "is_superuser": bool(user.is_superuser),
         "mfa_enabled": user.mfa_enabled,
         "workspace_id": user.workspace_id or "",
         "github_username": user.github_username or "",
@@ -422,16 +423,22 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
                 "is_active": workspace.is_active,
             }
     
-    # Determine capabilities based on role and plan
+    # Determine capabilities based on role, is_superuser, and plan
     role = (user.role or "USER").upper()
     is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
-    is_founder = role in ("SUPER_ADMIN",)
+    is_founder = bool(user.is_superuser) or role in ("SUPER_ADMIN",)
+    plan = user_data.get("plan", "free")
     
     capabilities = {
         "command_center": is_founder,
         "owner_provider_keys": is_founder,
-        "premium_marketplace": user_data.get("plan") in ("pro", "sovereign"),
-        "pipeline_deploy": True,
+        "premium_marketplace": plan in ("pro", "sovereign"),
+        "pipeline_deploy": plan != "free",
+        "vault_secrets": is_admin,
+        "team_management": is_admin,
+        "billing_management": is_admin,
+        "compliance_exports": plan in ("pro", "sovereign", "business"),
+        "custom_models": plan in ("pro", "sovereign"),
     }
     
     return {

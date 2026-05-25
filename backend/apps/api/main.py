@@ -312,6 +312,70 @@ async def legal_security():
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
+@app.get("/legal/acceptable-use")
+async def legal_acceptable_use():
+    path = LANDING_DIR / "acceptable-use.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.get("/llms.txt")
+async def llms_txt():
+    """llms.txt endpoint for AI model discovery and documentation."""
+    llms_content = """# Veklom AI Model Support
+
+Veklom supports multiple AI model providers through its governed execution layer. All models are routed through policy gates before execution.
+
+## Supported Providers
+
+### Ollama (Primary)
+- Base URL: http://127.0.0.1:11434
+- Default Model: qwen2.5:3b
+- Autostart: Enabled
+- Description: Local-first execution for maximum sovereignty
+
+### Groq (Fallback)
+- Base URL: https://api.groq.com/openai/v1
+- Default Model: llama-3.1-8b-instant
+- Description: High-performance hosted inference
+
+### Hugging Face (Fallback)
+- Base URL: https://router.huggingface.co/v1
+- Default Model: meta-llama/Llama-3.1-8B-Instruct:fastest
+- Description: Open-source model hub
+
+## Model Capabilities
+
+- Text generation and completion
+- Code generation and analysis
+- Document processing and extraction
+- Compliance checking and policy evaluation
+- Audit trail generation
+
+## Governance Features
+
+- Policy-before-provider architecture
+- Real-time cost controls and spend caps
+- Signed audit evidence for all executions
+- BYOK (Bring Your Own Key) support
+- Automatic redaction and PII protection
+
+## Documentation
+
+- API Documentation: https://veklom.com/docs
+- Security Policy: https://veklom.com/legal/security
+- Privacy Policy: https://veklom.com/legal/privacy
+- Terms of Service: https://veklom.com/legal/terms
+
+## Contact
+
+- Email: founder@company.com
+- Website: https://veklom.com
+"""
+    return HTMLResponse(content=llms_content, media_type="text/plain")
+
+
 @app.get("/feedback")
 async def feedback_page():
     path = LANDING_DIR / "feedback.html"

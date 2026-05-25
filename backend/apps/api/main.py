@@ -400,6 +400,67 @@ def _mount_static():
 _mount_static()
 
 
+# ---------------------------------------------------------------------------
+# Protected route guards — enforce auth BEFORE serving static pages
+# These run as route handlers registered BEFORE the static mounts
+# ---------------------------------------------------------------------------
+_OWNER_ROLES = {"OWNER", "SUPER_ADMIN", "owner", "super_admin"}
+_PAID_PLANS = {"sovereign", "pro", "founding", "standard", "regulated", "enterprise"}
+_PAID_ROLES = {"OWNER", "SUPER_ADMIN", "ADMIN", "owner", "super_admin", "admin"}
+
+
+async def _get_user_from_request(request):
+    """Extract and verify JWT from Authorization header or cookie."""
+    from backend.core.security.auth import verify_token
+    from backend.core.database.database import get_db
+    token = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.cookies.get("access_token") or request.cookies.get("token")
+    if not token:
+        return None
+    try:
+        payload = verify_token(token)
+        return payload
+    except Exception:
+        return None
+
+
+@app.middleware("http")
+async def enforce_route_access(request, call_next):
+    """Enforce access control on protected static routes."""
+    path = request.url.path
+
+    # Command Center — OWNER / SUPER_ADMIN only
+    if path.startswith("/command-center"):
+        user = await _get_user_from_request(request)
+        if not user or user.get("role") not in _OWNER_ROLES:
+            html = '<html><head><meta http-equiv="refresh" content="0;url=/workspace/"></head>'\
+                   '<body>Access denied. <a href="/workspace/">Return to workspace</a></body></html>'
+            from starlette.responses import HTMLResponse
+            return HTMLResponse(html, status_code=403)
+
+    # GPC + IronGrid — paid plan required (sovereign / pro / founding / admin)
+    if path.startswith("/gpc") or path.startswith("/gpc-engine") or path.startswith("/irongrid"):
+        user = await _get_user_from_request(request)
+        if user:
+            role = user.get("role", "")
+            plan = user.get("plan", "")
+            allowed = role in _PAID_ROLES or plan in _PAID_PLANS
+        else:
+            allowed = False
+        if not allowed:
+            html = '<html><head><meta http-equiv="refresh" content="0;url=/workspace/#/billing"></head>'\
+                   '<body>Paid plan required. <a href="/workspace/#/billing">Upgrade your plan</a></body></html>'
+            from starlette.responses import HTMLResponse
+            return HTMLResponse(html, status_code=403)
+
+    response = await call_next(request)
+    return response
+
+
 @app.get("/config.js")
 async def config_js():
     api_base = os.environ.get("VEKLOM_API_BASE", "/api/v1")

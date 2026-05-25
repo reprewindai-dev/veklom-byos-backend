@@ -11,30 +11,75 @@
 (function () {
   'use strict';
 
+  // Access tier rules:
+  // ownerOnly   → OWNER / SUPER_ADMIN only (the platform super-admin, not regular tenants)
+  // paidOnly    → sovereign / pro plan (paid customers)
+  // adminOnly   → OWNER + ADMIN
+  // (none)      → all authenticated users
   var ALL_ROUTES = {
-    '#/command-center': { url: '/command-center/', label: 'Command Center', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>', adminOnly: true },
-    '#/gpc': { url: 'https://uacpv3.onrender.com', label: 'GPC', icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>', adminOnly: true },
-    '#/irongrid': { url: '/irongrid/', label: 'IronGrid', icon: '<rect x="2" y="2" width="20" height="20" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/><line x1="2" y1="15" x2="22" y2="15"/><line x1="9" y1="2" x2="9" y2="22"/><line x1="15" y1="2" x2="15" y2="22"/>', adminOnly: true },
-    '#/terminal': { url: '/terminal', label: 'Terminal', icon: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>', adminOnly: true }
+    '#/command-center': {
+      url: '/command-center/',
+      label: 'Command Center',
+      icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+      ownerOnly: true  // SUPER ADMIN ONLY — never shown to tenants
+    },
+    '#/gpc': {
+      url: 'https://uacpv3.onrender.com',
+      label: 'GPC',
+      icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>',
+      paidOnly: true   // Paid customers only (sovereign / pro plan)
+    },
+    '#/irongrid': {
+      url: '/irongrid/',
+      label: 'IronGrid',
+      icon: '<rect x="2" y="2" width="20" height="20" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/><line x1="2" y1="15" x2="22" y2="15"/><line x1="9" y1="2" x2="9" y2="22"/><line x1="15" y1="2" x2="15" y2="22"/>',
+      paidOnly: true   // Paid customers only
+    },
+    '#/terminal': {
+      url: '/terminal',
+      label: 'Terminal',
+      icon: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+      ownerOnly: false, paidOnly: false  // Available to all authenticated users
+    }
   };
 
-  function isAdmin() {
-    // Check all possible user storage locations
-    var user = window.__VEKLOM_USER__
-      || window._veklomUser
+  function getUser() {
+    return window.__VEKLOM_USER__ || window._veklomUser
       || (window.__VEKLOM_AUTH__ && window.__VEKLOM_AUTH__.getUser ? window.__VEKLOM_AUTH__.getUser() : null);
+  }
+
+  function isOwner() {
+    var user = getUser();
     if (!user) return false;
-    var role = (user.role || user.userRole || '').toUpperCase();
-    return role === 'OWNER' || role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'FOUNDER';
+    var role = (user.role || '').toUpperCase();
+    return role === 'OWNER' || role === 'SUPER_ADMIN';
+  }
+
+  function isPaid() {
+    var user = getUser();
+    if (!user) return false;
+    var role = (user.role || '').toUpperCase();
+    var plan = (user.plan || '').toLowerCase();
+    // Owner/admin always get paid access; sovereign/pro plan users also qualify
+    return role === 'OWNER' || role === 'SUPER_ADMIN' || role === 'ADMIN'
+      || plan === 'sovereign' || plan === 'pro' || plan === 'founding'
+      || plan === 'standard' || plan === 'regulated';
+  }
+
+  function isAdmin() {
+    var user = getUser();
+    if (!user) return false;
+    var role = (user.role || '').toUpperCase();
+    return role === 'OWNER' || role === 'SUPER_ADMIN' || role === 'ADMIN';
   }
 
   function getVisibleRoutes() {
-    var admin = isAdmin();
     var routes = {};
     Object.keys(ALL_ROUTES).forEach(function (key) {
-      if (!ALL_ROUTES[key].adminOnly || admin) {
-        routes[key] = ALL_ROUTES[key];
-      }
+      var cfg = ALL_ROUTES[key];
+      if (cfg.ownerOnly && !isOwner()) return;
+      if (cfg.paidOnly && !isPaid()) return;
+      routes[key] = cfg;
     });
     return routes;
   }

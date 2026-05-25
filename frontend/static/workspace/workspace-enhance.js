@@ -804,22 +804,32 @@
     }
     if (label === "upgrade") {
       e.preventDefault(); e.stopPropagation();
-      const planCard = btn.closest("[data-plan], .frame, [class*='card']");
-      let plan = "founding";
+      const planCard = btn.closest("[data-plan], [class*='card'], [class*='plan'], [class*='Plan'], [class*='pricing']");
+      let plan = "growth";
       if (planCard) {
-        const heading = planCard.querySelector("h1,h2,h3,[class*='font-display']");
-        const planText = (heading?.textContent || "").toLowerCase();
-        if (planText.includes("growth")) plan = "standard";
-        else if (planText.includes("enterprise") || planText.includes("custom")) plan = "regulated";
-        else if (planText.includes("community") || planText.includes("$0")) {
-          toast("Community plan is free — no payment needed", "warn"); return;
+        const heading = planCard.querySelector("h1,h2,h3,h4,[class*='title'],[class*='name'],[class*='plan-name']");
+        const priceEl = planCard.querySelector("[class*='price'], [class*='amount']");
+        const planText = ((heading?.textContent || "") + " " + (priceEl?.textContent || "")).toLowerCase();
+        if (planText.includes("community") || planText.includes("$0") || planText.includes("free")) {
+          toast("Community plan is free — just sign up!", "ok"); return;
+        } else if (planText.includes("enterprise") || planText.includes("custom")) {
+          window.open("mailto:sales@veklom.com?subject=Enterprise%20Plan%20Inquiry", "_blank");
+          toast("Enterprise pricing is custom — email sent to sales@veklom.com", "ok"); return;
+        } else if (planText.includes("sovereign") || planText.includes("$799") || planText.includes("799")) {
+          plan = "sovereign";
+        } else if (planText.includes("growth") || planText.includes("$299") || planText.includes("299")) {
+          plan = "growth";
         }
       }
       const res = await api("POST", "/subscriptions/checkout", { plan });
+      if (res?.message && !res?.checkout_url) {
+        toast(res.message, "warn"); return;
+      }
       if (res?.checkout_url) {
         window.open(res.checkout_url, "_blank");
+        toast(`Redirecting to Stripe checkout for ${plan} plan…`, "ok");
       } else {
-        toast("Stripe not configured — add STRIPE_SECRET_KEY to env", "warn");
+        toast("Stripe key not configured — add STRIPE_SECRET_KEY to env", "warn");
       }
       return;
     }
@@ -831,9 +841,41 @@
     if (label === "invoices") {
       e.preventDefault(); e.stopPropagation();
       const res = await api("GET", "/billing/invoices");
-      if (res && res.length) {
-        toast(`${res.length} invoice(s) on record`, "ok");
-      }
+      const invoices = Array.isArray(res) ? res : [];
+      document.getElementById("veklom-inv-modal")?.remove();
+      const im = document.createElement("div");
+      im.id = "veklom-inv-modal";
+      im.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      const rows = invoices.length ? invoices.map(inv => {
+        const date = inv.created_at ? new Date(inv.created_at).toLocaleDateString() : "—";
+        const amt = typeof inv.amount === "number" ? `$${inv.amount.toLocaleString()}` : inv.amount;
+        const status = inv.status || "paid";
+        const statusColor = status === "paid" ? "#22c55e" : status === "open" ? "#f59e0b" : "#888";
+        const pdfLink = inv.invoice_pdf ? `<a href="${inv.invoice_pdf}" target="_blank" style="color:#f97316;font-size:11px;text-decoration:none;">PDF ↗</a>` : "";
+        const viewLink = inv.hosted_invoice_url ? `<a href="${inv.hosted_invoice_url}" target="_blank" style="color:#3b82f6;font-size:11px;text-decoration:none;margin-left:8px;">View ↗</a>` : "";
+        return `<div style="display:grid;grid-template-columns:1fr 80px 70px 80px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+          <span style="font-size:12px;color:#e2e8f0;">${inv.description || "Veklom invoice"}</span>
+          <span style="font-size:12px;color:#9ca3af;">${date}</span>
+          <span style="font-size:12px;font-weight:600;color:#e2e8f0;">${amt}</span>
+          <div style="display:flex;gap:4px;align-items:center;"><span style="font-size:10px;color:${statusColor};font-weight:600;">${status.toUpperCase()}</span>${pdfLink}${viewLink}</div>
+        </div>`;
+      }).join("") : '<div style="font-size:12px;color:#555;padding:16px 0;">No invoices yet. They appear here after your first payment.</div>';
+      im.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:640px;max-width:92vw;padding:28px;color:#e2e8f0;max-height:80vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <span style="font-size:15px;font-weight:700;">Invoices</span>
+          <button id="im-x" style="background:none;border:none;color:#666;cursor:pointer;font-size:20px;">×</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 80px 70px 80px;gap:8px;margin-bottom:8px;">
+          <span style="font-size:10px;color:#555;font-weight:600;text-transform:uppercase;">Description</span>
+          <span style="font-size:10px;color:#555;font-weight:600;text-transform:uppercase;">Date</span>
+          <span style="font-size:10px;color:#555;font-weight:600;text-transform:uppercase;">Amount</span>
+          <span style="font-size:10px;color:#555;font-weight:600;text-transform:uppercase;">Status</span>
+        </div>
+        ${rows}
+      </div>`;
+      document.body.appendChild(im);
+      im.querySelector("#im-x").onclick = () => im.remove();
+      im.onclick = ev => { if (ev.target === im) im.remove(); };
       return;
     }
 

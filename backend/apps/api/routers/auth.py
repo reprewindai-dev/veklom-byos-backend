@@ -86,6 +86,8 @@ def _user_dict(user: User) -> dict:
         "mfa_enabled": user.mfa_enabled,
         "workspace_id": user.workspace_id or "",
         "github_username": user.github_username or "",
+        "github_connected": bool(user.github_id and user.github_access_token),
+        "github_account_id": user.github_id or "",
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "plan": plan,
         "is_admin": is_admin,
@@ -167,7 +169,7 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> st
     localStorage.setItem("veklom_token", payload.access_token);
     localStorage.setItem("veklom_refresh_token", payload.refresh_token);
     localStorage.setItem("veklom_user", JSON.stringify(payload.user));
-    window.location.replace("/workspace/overview");
+    window.location.replace("/workspace/#/overview");
   </script>
 </body>
 </html>"""

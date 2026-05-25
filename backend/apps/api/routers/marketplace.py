@@ -688,7 +688,8 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
     from fastapi import HTTPException as _HTTPException
 
     body = body or {}
-    target = body.get("target", user.workspace_id or "default")
+    # Always use the authenticated user's workspace_id - never trust client-supplied workspace_id
+    target = user.workspace_id or "default"
 
     # Verify listing exists
     result = await db.execute(_select(MarketplaceListing).where(MarketplaceListing.id == listing_id))

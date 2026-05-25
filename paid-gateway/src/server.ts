@@ -104,8 +104,16 @@ app.options("*", (_req, res) => {
 // ---------------------------------------------------------------------------
 // x402 payment middleware — gates every paid route
 // ---------------------------------------------------------------------------
-// syncFacilitatorOnStart=false: gateway starts even without valid CDP keys.
-// 402 challenges work immediately. Payment settlement works once real keys are set.
+// Initialize facilitator to fetch supported payment kinds.
+// With placeholder CDP keys this will fail — health + discovery still work.
+// Paid routes return 500 until real CDP_API_KEY_ID / CDP_API_KEY_SECRET are set.
+try {
+  await resourceServer.initialize();
+  console.log("[gateway] Facilitator initialized — payment settlement enabled");
+} catch (err: any) {
+  console.warn("[gateway] Facilitator init failed:", err.message?.split("\n")[0] || err);
+  console.warn("[gateway] Health + discovery endpoints work. Paid routes need real CDP keys.");
+}
 app.use(paymentMiddleware(paidRoutes, resourceServer, undefined, undefined, false));
 
 // ---------------------------------------------------------------------------

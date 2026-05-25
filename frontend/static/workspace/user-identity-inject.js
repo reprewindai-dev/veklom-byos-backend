@@ -21,7 +21,9 @@
         credentials: "include",
       });
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        console.log("User data from /auth/me:", data);
+        return data;
       }
     } catch (e) {
       console.error("Failed to fetch user data:", e);
@@ -41,15 +43,15 @@
   function injectUserIdentity(userData) {
     if (!userData) return;
 
-    const name = userData.name || userData.full_name || userData.email || "User";
+    const name = userData.full_name || userData.name || userData.email || "User";
     const email = userData.email || "";
     const initials = getInitials(name);
 
-    // Find and replace placeholder names in dropdown menus
-    const nameElements = document.querySelectorAll(
-      "[class*='name'], [class*='user'], [class*='profile'], span, div"
-    );
-    nameElements.forEach((el) => {
+    console.log("Injecting user identity:", { name, email, initials });
+
+    // Find and replace ALL placeholder names - be more aggressive
+    const allTextElements = document.querySelectorAll("span, div, p, h1, h2, h3, h4, h5, h6, button, a");
+    allTextElements.forEach((el) => {
       const text = el.textContent.trim();
       // Replace common placeholder patterns
       if (
@@ -59,37 +61,40 @@
         text === "placeholder" ||
         text === "EJ" ||
         text === "JD" ||
-        text === "AB"
+        text === "AB" ||
+        text === "Anthony Milner" ||
+        text === "Acme Corp" ||
+        text === "Demo User" ||
+        text === "Test User"
       ) {
         el.textContent = name;
       }
     });
 
-    // Find and replace placeholder emails
-    const emailElements = document.querySelectorAll(
-      "[class*='email'], [class*='contact']"
-    );
-    emailElements.forEach((el) => {
+    // Find and replace placeholder emails - be more aggressive
+    allTextElements.forEach((el) => {
       const text = el.textContent.trim();
       if (
         text === "user@example.com" ||
         text === "email@example.com" ||
-        text === "your@email.com"
+        text === "your@email.com" ||
+        text === "demo@example.com" ||
+        text === "test@example.com" ||
+        text === "anthony@acme.com" ||
+        text === "anthony.milner@acme.com"
       ) {
         el.textContent = email;
       }
     });
 
-    // Find and replace placeholder initials in avatars/logos
-    const avatarElements = document.querySelectorAll(
-      "[class*='avatar'], [class*='initial'], [class*='logo'], [class*='user-icon'], div[style*='border-radius:50%'], div[style*='border-radius: 50%']"
-    );
-    avatarElements.forEach((el) => {
+    // Find and replace placeholder initials in avatars/logos - be more aggressive
+    allTextElements.forEach((el) => {
       const text = el.textContent.trim();
       if (
         text === "EJ" ||
         text === "JD" ||
         text === "AB" ||
+        text === "AM" ||
         text === "??" ||
         text === "??"
       ) {
@@ -107,6 +112,7 @@
   }
 
   async function initUserIdentityInjection() {
+    console.log("Initializing user identity injection...");
     const userData = await fetchUserData();
     if (userData) {
       injectUserIdentity(userData);
@@ -142,12 +148,20 @@
       }, 500);
     });
 
-    // Also re-inject periodically (every 10 seconds)
+    // Also re-inject periodically (every 5 seconds)
     setInterval(() => {
       fetchUserData().then((data) => {
         if (data) injectUserIdentity(data);
       });
-    }, 10000);
+    }, 5000);
+
+    // Also re-inject when DOM changes (for dynamic content)
+    const observer = new MutationObserver(() => {
+      fetchUserData().then((data) => {
+        if (data) injectUserIdentity(data);
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   if (document.readyState === "loading") {

@@ -445,15 +445,37 @@ async def vault_rotate_all(user=Depends(get_current_user), db: AsyncSession = De
     import secrets as _secrets
     ws = user.workspace_id or ""
     keys = (await db.execute(_select(ProviderKey).where(ProviderKey.workspace_id == ws))).scalars().all()
+    # Only rotate keys we manage — skip external third-party credentials
+    EXTERNAL_PROVIDERS = {"stripe", "aws", "aws_iam", "gcp", "google_cloud", "azure",
+                          "postgres", "postgresql", "mysql", "mongodb", "redis_external",
+                          "github_oauth", "github", "anthropic", "openai_external",
+                          "sendgrid", "twilio", "datadog", "pagerduty"}
+    EXTERNAL_LABEL_HINTS = {"stripe", "aws", "postgres", "github", "google", "azure", "sendgrid"}
     rotated = []
+    skipped = []
     for k in keys:
+        provider_lower = (k.provider or "").lower()
+        label_lower = (k.label or "").lower()
+        is_external = (
+            provider_lower in EXTERNAL_PROVIDERS
+            or any(hint in label_lower for hint in EXTERNAL_LABEL_HINTS)
+            or any(hint in provider_lower for hint in EXTERNAL_LABEL_HINTS)
+        )
+        if is_external:
+            skipped.append(k.label or k.provider)
+            continue
         new_raw = _secrets.token_urlsafe(40)
         k.key_encrypted = encrypt_key(new_raw)
         k.key_prefix = key_prefix(new_raw)
         rotated.append(k.id)
     if rotated:
         await db.commit()
-    return {"rotated": len(rotated), "ids": rotated, "message": f"{len(rotated)} secret(s) rotated"}
+    return {
+        "rotated": len(rotated),
+        "skipped": len(skipped),
+        "ids": rotated,
+        "message": f"{len(rotated)} Veklom-managed secret(s) rotated. {len(skipped)} external secret(s) skipped (Stripe, AWS, etc.).",
+    }
 
 
 @router.delete("/security/vault/{secret_id}")

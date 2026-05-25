@@ -166,10 +166,22 @@
           popup.querySelector("[style*='monospace']").onclick = () => { navigator.clipboard?.writeText(value); toast("Copied to clipboard", "ok"); };
           setTimeout(() => popup.remove(), 15000);
         } else {
-          // Rotate button
-          if (!window.confirm(`Rotate "${secretName}"? A new key will be generated.`)) return;
-          const res = await api("POST", "/security/vault/rotate-all");
-          toast(res?.message || "Secret rotated", "ok");
+          // Rotate button — find secret ID by name, then rotate only that one
+          if (!window.confirm(`Rotate "${secretName}"? A new Veklom-managed key will be generated. External keys (Stripe, AWS etc.) cannot be rotated here.`)) return;
+          // Try to find the specific secret ID
+          const vaultData = await api("GET", "/security/vault");
+          const secrets = vaultData?.secrets || [];
+          const match = secrets.find(s => (s.name || s.label || "").toLowerCase().includes(secretName.toLowerCase().slice(0, 15)));
+          if (match?.id) {
+            const res = await api("POST", `/security/vault/${match.id}/rotate`);
+            if (res?.rotated) {
+              toast(`"${secretName}" rotated → new prefix: ${res.new_prefix || "vk_"}`, "ok");
+            } else {
+              toast(`Cannot rotate "${secretName}" — external key or not found`, "warn");
+            }
+          } else {
+            toast(`"${secretName}" is an external credential — manage it in its source provider`, "warn");
+          }
         }
         return;
       }
@@ -198,7 +210,7 @@
     }
     if (label === "support") {
       e.preventDefault(); e.stopPropagation();
-      window.open("mailto:support@veklom.com", "_blank");
+      showSupportModal();
       return;
     }
     if (label === "sign out" || label === "signout" || label === "log out" || label === "logout") {
@@ -916,14 +928,55 @@
     }
 
     // ------ VAULT ------
-    if (label === "add secret" || label === "new secret") {
+    if (label === "add secret" || label === "new secret" || label === "+ new secret") {
       e.preventDefault(); e.stopPropagation();
-      const name = window.prompt("Secret name:");
-      if (!name) return;
-      const value = window.prompt("Secret value:");
-      if (!value) return;
-      const res = await api("POST", "/security/vault", { name, value, type: "custom" });
-      toast(res ? `Secret "${res.name}" stored in AES-256 vault` : "Failed to store secret", res ? "ok" : "error");
+      document.getElementById("veklom-secret-modal")?.remove();
+      const sm = document.createElement("div");
+      sm.id = "veklom-secret-modal";
+      sm.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      sm.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:480px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:6px;">Add to Sovereign Vault</div>
+        <div style="font-size:12px;color:#555;margin-bottom:18px;">AES-256-GCM encrypted at rest · TLS in transit · runtime injection only</div>
+        <div style="display:grid;gap:12px;margin-bottom:20px;">
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Secret name</label><input id="sm-name" placeholder="MY_API_KEY" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Type</label>
+            <select id="sm-type" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;">
+              <option value="custom">API Key (custom)</option>
+              <option value="vk_api_key">Veklom API Key</option>
+              <option value="database_url">Database URL</option>
+              <option value="oauth_token">OAuth Token</option>
+              <option value="tls_cert">TLS Certificate</option>
+              <option value="webhook_secret">Webhook Secret</option>
+            </select>
+          </div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Value <span style="color:#444">(stored encrypted, never logged)</span></label><input id="sm-value" type="password" placeholder="sk_live_••••••••" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Scope <span style="color:#444">(optional, e.g. pipelines:read)</span></label><input id="sm-scope" placeholder="deployments:all" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="sm-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="sm-save" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Store in Vault</button>
+        </div>
+      </div>`;
+      document.body.appendChild(sm);
+      sm.querySelector("#sm-cancel").onclick = () => sm.remove();
+      sm.onclick = ev => { if (ev.target === sm) sm.remove(); };
+      sm.querySelector("#sm-save").onclick = async () => {
+        const name = sm.querySelector("#sm-name").value.trim();
+        const value = sm.querySelector("#sm-value").value.trim();
+        const type = sm.querySelector("#sm-type").value;
+        const scope = sm.querySelector("#sm-scope").value.trim();
+        if (!name || !value) { toast("Name and value are required", "warn"); return; }
+        sm.remove();
+        const res = await api("POST", "/security/vault", { name, value, type, scope });
+        toast(res ? `"${res.name || name}" stored in AES-256 vault` : "Failed to store secret", res ? "ok" : "error");
+      };
+      return;
+    }
+    if (label === "rotate all" || label === "rotate all secrets") {
+      e.preventDefault(); e.stopPropagation();
+      if (!window.confirm("Rotate all Veklom-managed secrets? External keys (Stripe, AWS, GitHub) will be skipped.")) return;
+      const res = await api("POST", "/security/vault/rotate-all");
+      toast(res?.message || `${res?.rotated || 0} secret(s) rotated`, "ok");
       return;
     }
 
@@ -993,6 +1046,112 @@
   // Wire header icon buttons after React finishes first paint
   setTimeout(wireHeaderIcons, 1200);
   setTimeout(wireHeaderIcons, 3500);
+
+  // ------ GLOBAL SUPPORT / HELP SYSTEM ------
+  const PAGE_HELP = {
+    "/overview": {
+      title: "Overview",
+      tips: ["The Overview shows real-time spend, routing distribution, and policy intercepts for your workspace.", "Click 'Reserve' or 'Fund' to top up your inference wallet.", "The routing chart shows how traffic splits between Hetzner primary and AWS burst.", "Green = policy passed · Yellow = intercepted · Red = blocked. All counts are live from your session."],
+    },
+    "/playground": {
+      title: "Playground",
+      tips: ["Build and test prompts against any model in your workspace.", "Click a prompt in the Prompt Library to load it into the input field.", "Click a session name to activate it — new messages go to that session.", "Branch creates a copy of the current session from this point forward.", "Temperature controls randomness. Max tokens sets the output limit. All sliders update the cost estimate live."],
+    },
+    "/marketplace": {
+      title: "Marketplace",
+      tips: ["Browse sovereign AI packs, compliance bundles, connectors, and models.", "Click 'View listing' to see full details, pricing, and install instructions.", "Free items install immediately. Paid items go to Stripe checkout.", "Download datasheet downloads a .md file with full technical specs.", "Provider profile shows who built and maintains the listing."],
+    },
+    "/models": {
+      title: "Foundation & Deployed Models",
+      tips: ["Toggle models on/off per your workspace. Only enabled models are callable via your endpoints.", "Click 'Versions' on any model to see version history, changelog, and rollback options.", "Click 'Deploy' to create a private OpenAI-compatible endpoint from any model.", "'Upload model' lets you register a custom GGUF or HuggingFace model.", "A/B traffic split lets you route a % of traffic to different model versions simultaneously."],
+    },
+    "/pipelines": {
+      title: "Pipelines",
+      tips: ["Click '◈ Visual Editor' to open the interactive graph builder.", "Drag nodes from the palette to the canvas. Click a port (●) to start connecting, then click the target port.", "Double-click a node to configure its model, prompt, and policy.", "Right-click a node or edge to delete it.", "Save stores the graph to the database. Test runs the pipeline and streams results. Deploy creates an endpoint."],
+    },
+    "/deployments": {
+      title: "OpenAI-Compatible Endpoints",
+      tips: ["Your endpoints are fully compatible with the OpenAI Python/JS SDK. Just change base_url.", "Click the </> button on any row to get ready-to-use code snippets in Python, Node.js, and cURL.", "Click 'Vercel guide' for step-by-step Vercel + Veklom integration.", "Add webhooks to receive POST notifications when endpoint state changes.", "New endpoint lets you publish any model as a private or public endpoint."],
+    },
+    "/vault": {
+      title: "Sovereign Secret Store",
+      tips: ["All secrets are AES-256-GCM encrypted at rest. Values never appear in env vars or logs.", "Click the eye icon on any row to reveal the masked value (admin only).", "Click the rotate icon on a row to rotate just that Veklom-managed key.", "'Rotate all' rotates every Veklom-managed key. External keys (Stripe, AWS, GitHub) are automatically skipped.", "Add a secret to inject it at runtime into pipelines and deployments as an env var."],
+    },
+    "/compliance": {
+      title: "Compliance",
+      tips: ["Run a compliance check to get a live score for HIPAA, SOC2, GDPR, PCI-DSS, or ISO27001.", "Evidence packages can be downloaded and sent directly to auditors.", "Controls show the current state of each governance control in your workspace.", "Gaps shows what needs to be configured to reach full compliance."],
+    },
+    "/monitoring": {
+      title: "Monitoring",
+      tips: ["All metrics update in real-time from your workspace telemetry.", "Export downloads a CSV snapshot of current metrics.", "The RPS chart shows requests per second over the last 24 hours.", "Alerts fire when metrics cross configured thresholds."],
+    },
+    "/billing": {
+      title: "Billing",
+      tips: ["Your wallet balance is the pre-funded amount available for inference.", "Manage Plan opens the Stripe billing portal for subscription changes.", "The cost breakdown shows spend by model and deployment.", "Set a budget cap to prevent unexpected overage."],
+    },
+    "/team": {
+      title: "Team",
+      tips: ["Invite members by email — they get a provisioned account with the role you assign.", "Roles: owner > admin > developer > analyst > viewer.", "MFA can be enforced workspace-wide from Settings.", "SAML/SCIM connectors can be added from the Marketplace (Okta SCIM Connector)."],
+    },
+    "/settings": {
+      title: "Settings",
+      tips: ["Update your display name in Profile and click Save changes.", "Generate API keys from API Keys — each key is shown once. Store it in your vault.", "MFA setup adds TOTP second factor to your account.", "Workspace settings control the default policy engine and cost limits."],
+    },
+  };
+
+  function showSupportModal(prefill) {
+    const page = currentPage();
+    const help = PAGE_HELP[page] || PAGE_HELP[Object.keys(PAGE_HELP).find(k => page.startsWith(k)) || ""] || { title: "Help", tips: ["Visit docs.veklom.com for full documentation.", "Contact support@veklom.com for urgent issues."] };
+    document.getElementById("veklom-support-modal")?.remove();
+    const m = document.createElement("div");
+    m.id = "veklom-support-modal";
+    m.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:flex-end;justify-content:flex-end;padding:80px 24px 24px;";
+    const tipsHtml = help.tips.map(t => `<li style="margin-bottom:8px;color:#9ca3af;font-size:12px;line-height:1.5;">${t}</li>`).join("");
+    m.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:380px;max-width:96vw;max-height:72vh;overflow-y:auto;padding:22px;color:#e2e8f0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;">How to use: ${help.title}</div>
+          <div style="font-size:11px;color:#555;margin-top:2px;">Page guide · Veklom Support</div>
+        </div>
+        <button id="sp-x" style="background:none;border:none;color:#666;cursor:pointer;font-size:18px;">×</button>
+      </div>
+      <ul style="padding-left:16px;margin:0 0 16px;">${tipsHtml}</ul>
+      <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:14px;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;">Contact Support</div>
+        <textarea id="sp-msg" rows="3" placeholder="Describe your issue..." style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:12px;resize:vertical;box-sizing:border-box;margin-bottom:8px;">${prefill || ""}</textarea>
+        <div style="display:flex;gap:8px;">
+          <button id="sp-docs" style="flex:1;padding:8px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);color:#888;cursor:pointer;font-size:12px;">Docs</button>
+          <button id="sp-send" style="flex:2;padding:8px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Send to Support</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(m);
+    m.querySelector("#sp-x").onclick = () => m.remove();
+    m.onclick = ev => { if (ev.target === m) m.remove(); };
+    m.querySelector("#sp-docs").onclick = () => window.open("https://docs.veklom.com", "_blank");
+    m.querySelector("#sp-send").onclick = async () => {
+      const msg = m.querySelector("#sp-msg").value.trim();
+      if (!msg) { toast("Please describe your issue", "warn"); return; }
+      m.remove();
+      const res = await api("POST", "/support", { message: msg, page, user_agent: navigator.userAgent });
+      toast(res?.ticket_id ? `Support ticket ${res.ticket_id} created — we'll reply within 4 hours` : "Support message sent — we'll be in touch", "ok");
+    };
+  }
+
+  function injectHelpButton() {
+    if (document.getElementById("veklom-help-fab")) return;
+    const fab = document.createElement("button");
+    fab.id = "veklom-help-fab";
+    fab.textContent = "?";
+    fab.title = "Help & Support";
+    fab.style.cssText = "position:fixed;bottom:24px;left:24px;z-index:998;width:38px;height:38px;border-radius:50%;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:background .2s,color .2s;";
+    fab.onmouseenter = () => { fab.style.background = "#f97316"; fab.style.color = "#fff"; fab.style.borderColor = "#f97316"; };
+    fab.onmouseleave = () => { fab.style.background = "#1a1a1a"; fab.style.color = "#888"; fab.style.borderColor = "rgba(255,255,255,.15)"; };
+    fab.onclick = () => showSupportModal();
+    document.body.appendChild(fab);
+  }
+
+  setTimeout(injectHelpButton, 1000);
 
   // ------ DEPLOYMENTS HELPERS ------
   function showVercelGuide() {

@@ -92,7 +92,7 @@ async def list_models(user=Depends(get_current_user)):
         {"id": "llama-3.1-8b-instant", "provider": "groq", "name": "Groq Llama 3.1 8B Instant", "context_window": 131072, "cost_per_1k_input": 0.00005},
         {"id": "meta-llama/Llama-3.1-8B-Instruct:fastest", "provider": "huggingface", "name": "Hugging Face Llama 3.1 8B", "context_window": 131072, "cost_per_1k_input": 0.0001},
         {"id": "gemini-2.5-flash", "provider": "gemini", "name": "Gemini 2.5 Flash", "context_window": 1000000, "cost_per_1k_input": 0.0003},
-        {"id": "qwen2.5:3b", "provider": "ollama", "name": "Ollama Qwen 2.5 3B", "context_window": 32768, "cost_per_1k_input": 0.0},
+        {"id": "llama3.2:latest", "provider": "ollama", "name": "Ollama Llama 3.2 3B", "context_window": 32768, "cost_per_1k_input": 0.0},
     ]
 
 
@@ -180,7 +180,7 @@ async def ai_inference(body: dict, user=Depends(get_current_user), db: AsyncSess
     """
     t0 = _time.monotonic()
     messages = normalize_messages(body)
-    model = body.get("model") or "qwen2.5:3b"
+    model = body.get("model") or "llama3.2:latest"
     temperature = float(body.get("temperature", 0.7))
     tier = task_tier(body)
     workspace_id = user.workspace_id or "default"
@@ -285,7 +285,7 @@ async def ai_chat(
     t0 = _time.monotonic()
     workspace_id = user.workspace_id or "default"
     session_id = body.get("session_id") or f"sess_{user.id}"
-    model = body.get("model") or "qwen2.5:3b"
+    model = body.get("model") or "llama3.2:latest"
     temperature = float(body.get("temperature", 0.7))
     tier = task_tier(body)
 

@@ -267,7 +267,13 @@ async def icon_png():
 
 
 @app.get("/")
-async def root():
+async def root(request: Request):
+    host = request.headers.get("host", "")
+    if "lockerphycer.veklom.com" in host:
+        lockerphycer_index = FRONTEND_DIR / "lockerphycer" / "index.html"
+        if lockerphycer_index.exists():
+            return FileResponse(str(lockerphycer_index))
+        return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
     return await _serve_frontend(None)
 
 

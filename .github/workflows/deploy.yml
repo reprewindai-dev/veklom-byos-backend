@@ -16,7 +16,8 @@ jobs:
           key: ${{ secrets.HETZNER_SSH_KEY }}
           script: |
             cd /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             docker build -t veklom-local:latest .
             docker stop n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
             docker rm n13gp1nhrcdp0hvazvbnlxru-213557155694 || true

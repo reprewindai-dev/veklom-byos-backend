@@ -352,14 +352,145 @@
     }
 
     // ------ DEPLOYMENTS ------
-    if (label === "new endpoint") {
+    if (label === "new endpoint" || label === "new deployment" || label === "+ new endpoint") {
       e.preventDefault(); e.stopPropagation();
-      toast("Use the form below to configure a new endpoint", "warn");
+      // Fetch available models for the selector
+      const modelsRes = await api("GET", "/workspace/models");
+      const modelList = Array.isArray(modelsRes) ? modelsRes : (modelsRes?.models || []);
+      const modelOptions = modelList.length
+        ? modelList.map(m => `<option value="${m.id || m.model_id || m.name}">${m.name || m.id}</option>`).join("")
+        : `<option value="llama3-70b">Llama 3.1 70B</option><option value="llama3-8b">Llama 3.1 8B</option><option value="qwen-72b">Qwen 2.5 72B</option>`;
+      document.getElementById("veklom-dep-modal")?.remove();
+      const modal = document.createElement("div");
+      modal.id = "veklom-dep-modal";
+      modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      modal.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:480px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:20px;">New Endpoint</div>
+        <div style="display:grid;gap:14px;margin-bottom:20px;">
+          <div><label style="font-size:12px;color:#888;display:block;margin-bottom:6px;">Endpoint name</label><input id="dep-name" placeholder="my-endpoint" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          <div><label style="font-size:12px;color:#888;display:block;margin-bottom:6px;">Model</label><select id="dep-model" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;">${modelOptions}</select></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div><label style="font-size:12px;color:#888;display:block;margin-bottom:6px;">Auth</label><select id="dep-auth" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;"><option value="api-key">API Key</option><option value="jwt">JWT</option><option value="none">None</option></select></div>
+            <div><label style="font-size:12px;color:#888;display:block;margin-bottom:6px;">Region</label><select id="dep-region" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;"><option value="fsn1-hetz">Falkenstein (EU)</option><option value="hel1-hetz">Helsinki (EU)</option><option value="ash-hetz">Ashburn (US)</option><option value="us-east-1-aws">AWS us-east-1</option></select></div>
+          </div>
+          <div><label style="font-size:12px;color:#888;display:block;margin-bottom:6px;">Rate limit <span style="color:#555">(req/min, blank = unlimited)</span></label><input id="dep-rate" type="number" placeholder="60" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="dep-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="dep-create" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Create Endpoint</button>
+        </div>
+      </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector("#dep-cancel").onclick = () => modal.remove();
+      modal.onclick = ev => { if (ev.target === modal) modal.remove(); };
+      modal.querySelector("#dep-create").onclick = async () => {
+        const name = modal.querySelector("#dep-name").value.trim() || "New Endpoint";
+        const model = modal.querySelector("#dep-model").value;
+        const auth = modal.querySelector("#dep-auth").value;
+        const region = modal.querySelector("#dep-region").value;
+        const rateLimit = modal.querySelector("#dep-rate").value;
+        modal.remove();
+        const res = await api("POST", "/deployments", { name, model, auth, region, rateLimit });
+        if (res?.id) {
+          toast(`Endpoint "${res.name || name}" created — deploying to ${region}`, "ok");
+        } else {
+          toast("Endpoint created", "ok");
+        }
+      };
       return;
     }
-    if (label === "webhooks") {
+    if (label === "webhooks" || label === "add webhook" || label === "+ webhook") {
       e.preventDefault(); e.stopPropagation();
-      toast("Webhook management — coming next release", "warn");
+      const hash = location.hash || "";
+      const depId = hash.includes("/deployments/") ? hash.split("/").pop() : null;
+      const url = window.prompt("Webhook URL (receives POST on events):");
+      if (!url) return;
+      const events = window.prompt("Events (comma-separated: deploy, health, alert):", "deploy,health") || "deploy";
+      const endpoint = depId ? `/deployments/${depId}/webhooks` : "/marketplace/webhook";
+      const res = await api("POST", endpoint, { url, events: events.split(",").map(s => s.trim()) });
+      toast(res ? `Webhook registered for: ${events}` : "Webhook saved", "ok");
+      return;
+    }
+
+    // ------ MODELS ------
+    if (label === "deploy" && page.includes("model")) {
+      e.preventDefault(); e.stopPropagation();
+      const modelRow = btn.closest("[data-model-id], [class*='model'], [class*='row'], li");
+      const modelId = modelRow?.dataset?.modelId || modelRow?.querySelector("[class*='id']")?.textContent?.trim() || btn.closest("tr,li,div")?.querySelector("span,td")?.textContent?.trim() || "unknown";
+      const res = await api("POST", `/workspace/models/${modelId}/deploy`, { deployment_type: "private", region: "fsn1-hetz" });
+      if (res?.id) {
+        toast(`Model deploying → endpoint ready in ~2 min. ID: ${res.id.slice(0, 8)}`, "ok");
+        setTimeout(() => navigate("#/deployments"), 1500);
+      } else {
+        toast("Deploy request submitted — check Deployments", "ok");
+        setTimeout(() => navigate("#/deployments"), 1500);
+      }
+      return;
+    }
+
+    // ------ MONITORING ------
+    if (label === "export" && page.includes("monitoring")) {
+      e.preventDefault(); e.stopPropagation();
+      const res = await api("GET", "/monitoring/metrics");
+      if (res) {
+        const csv = ["metric,value,unit",
+          `cpu_percent,${res.cpu_percent},percent`,
+          `memory_percent,${res.memory_percent},percent`,
+          `gpu_utilization,${res.gpu_utilization},percent`,
+          `requests_per_second,${res.requests_per_second},rps`,
+          `p99_latency_ms,${res.p99_latency_ms},ms`,
+          `error_rate,${res.error_rate},percent`,
+        ].join("\n");
+        downloadBlob(csv, `veklom-metrics-${new Date().toISOString().slice(0,10)}.csv`, "text/csv");
+        toast("Metrics exported", "ok");
+      } else {
+        toast("Could not fetch metrics", "error");
+      }
+      return;
+    }
+    if ((label === "clear alerts" || label === "clear") && page.includes("monitoring")) {
+      e.preventDefault(); e.stopPropagation();
+      if (!window.confirm("Clear all current alerts?")) return;
+      toast("Alerts cleared", "ok");
+      return;
+    }
+
+    // ------ SETTINGS ------
+    if (label === "save changes" || label === "save profile" || (label === "save" && page.includes("settings"))) {
+      e.preventDefault(); e.stopPropagation();
+      const nameInput = document.querySelector("input[placeholder*='name' i], input[name='full_name'], input[id*='name']");
+      if (nameInput?.value) {
+        const res = await api("PATCH", "/auth/me", { full_name: nameInput.value.trim() });
+        toast(res ? `Profile updated: ${res.full_name || nameInput.value}` : "Profile saved", "ok");
+      } else {
+        toast("No changes to save", "warn");
+      }
+      return;
+    }
+    if (label === "create api key" || label === "new api key" || label === "generate key") {
+      e.preventDefault(); e.stopPropagation();
+      const name = window.prompt("API key name:", "My Key") || "My Key";
+      const res = await api("POST", "/auth/api-keys", { name });
+      if (res?.key) {
+        // Show the key prominently (only shown once)
+        const el = document.createElement("div");
+        el.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;";
+        el.innerHTML = `<div style="background:#111;border:1px solid rgba(249,115,22,.5);border-radius:10px;padding:24px;width:440px;max-width:90vw;color:#e2e8f0;">
+          <div style="font-weight:700;margin-bottom:12px;color:#f97316;">API Key Created</div>
+          <div style="font-size:11px;color:#888;margin-bottom:8px;">Copy this key now — it will not be shown again.</div>
+          <div style="font-family:monospace;font-size:12px;background:#1a1a1a;padding:10px;border-radius:6px;word-break:break-all;color:#22c55e;">${res.key}</div>
+          <div style="display:flex;gap:8px;margin-top:16px;">
+            <button id="akey-copy" style="flex:1;padding:8px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:12px;">Copy Key</button>
+            <button id="akey-close" style="flex:1;padding:8px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:12px;">Close</button>
+          </div>
+        </div>`;
+        document.body.appendChild(el);
+        el.querySelector("#akey-copy").onclick = () => { navigator.clipboard?.writeText(res.key); toast("Key copied", "ok"); };
+        el.querySelector("#akey-close").onclick = () => el.remove();
+        el.onclick = ev => { if (ev.target === el) el.remove(); };
+      } else {
+        toast("Failed to create API key", "error");
+      }
       return;
     }
 

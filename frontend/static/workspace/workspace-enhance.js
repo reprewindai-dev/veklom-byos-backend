@@ -996,6 +996,93 @@
       if (row) { showEndpointCode(row); return; }
     }
 
+    // ------ SETTINGS — INTEGRATIONS ------
+    // Integration toggles: detect by finding integration name near the toggle
+    if (page.includes("settings") && (label === "" || label === "on" || label === "off") && btn.closest("[class*='toggle'], [class*='switch'], [role='switch']")) {
+      e.preventDefault(); e.stopPropagation();
+      const row = btn.closest("[class*='row'], [class*='item'], div");
+      const nameEl = row?.querySelector("span, label, [class*='name'], [class*='label']");
+      const name = (nameEl?.textContent || "").trim().toLowerCase().replace(/\s+/g, "_");
+      const INTEGRATIONS = ["slack", "pagerduty", "github", "vercel", "datadog", "jira"];
+      const match = INTEGRATIONS.find(i => name.includes(i));
+      if (match) {
+        const currentlyEnabled = btn.getAttribute("aria-checked") === "true" || btn.classList.contains("active");
+        const newEnabled = !currentlyEnabled;
+        if (newEnabled) {
+          // Show config modal for this integration
+          showIntegrationConfig(match, newEnabled);
+        } else {
+          const res = await api("PATCH", `/workspace/integrations/${match}`, { enabled: false });
+          toast(res ? `${match} integration disabled` : "Updated", "ok");
+        }
+        return;
+      }
+    }
+
+    // ------ SETTINGS — NAV ITEMS ------
+    if (page.includes("settings")) {
+      const NAV_ITEMS = ["workspace", "routing", "security", "data residency", "api & sdk", "api & sdk", "notifications", "appearance", "integrations"];
+      const matched = NAV_ITEMS.find(n => label.includes(n) || n.includes(label));
+      if (matched && btn.closest("[class*='nav'], [class*='sidebar'], [class*='menu'], ul, li")) {
+        e.preventDefault(); e.stopPropagation();
+        const sectionId = matched.toLowerCase().replace(/[^a-z0-9]/g, "-");
+        // Try to scroll to the matching section
+        const sections = document.querySelectorAll("section, [class*='section'], [class*='card'], [id]");
+        for (const sec of sections) {
+          const secText = (sec.textContent || "").toLowerCase().slice(0, 60);
+          if (secText.includes(matched)) {
+            sec.scrollIntoView({ behavior: "smooth", block: "start" });
+            break;
+          }
+        }
+        return;
+      }
+    }
+
+    // ------ SETTINGS — ROUTING CONFIG ------
+    if (page.includes("settings") && (label === "routing" || label.includes("burst") || label.includes("egress"))) {
+      e.preventDefault(); e.stopPropagation();
+      const routing = await api("GET", "/workspace/routing") || {};
+      document.getElementById("veklom-routing-modal")?.remove();
+      const rm = document.createElement("div");
+      rm.id = "veklom-routing-modal";
+      rm.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+      rm.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:520px;max-width:92vw;padding:28px;color:#e2e8f0;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:18px;">Routing Configuration</div>
+        <div style="display:grid;gap:12px;margin-bottom:20px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Primary plane</label><select id="rt-primary" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px;color:#e2e8f0;font-size:12px;"><option value="hetzner" ${routing.primary_plane==='hetzner'?'selected':''}>Hetzner (EU-sovereign)</option><option value="aws" ${routing.primary_plane==='aws'?'selected':''}>AWS</option><option value="gcp" ${routing.primary_plane==='gcp'?'selected':''}>GCP</option></select></div>
+            <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Burst plane</label><select id="rt-burst" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px;color:#e2e8f0;font-size:12px;"><option value="aws" ${routing.burst_plane==='aws'?'selected':''}>AWS</option><option value="hetzner" ${routing.burst_plane==='hetzner'?'selected':''}>Hetzner</option><option value="none" ${routing.burst_plane==='none'?'selected':''}>None (no burst)</option></select></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Burst ceiling (% traffic)</label><input id="rt-ceil" type="number" min="0" max="100" value="${routing.burst_ceiling_pct||30}" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Burst cost cap ($)</label><input id="rt-cap" type="number" min="0" value="${routing.burst_cost_cap_usd||1000}" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"></div>
+          </div>
+          <div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">Routing strategy</label><select id="rt-strategy" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px;color:#e2e8f0;font-size:12px;"><option value="cost_quality_balanced" ${routing.strategy==='cost_quality_balanced'?'selected':''}>Cost-quality balanced</option><option value="lowest_cost" ${routing.strategy==='lowest_cost'?'selected':''}>Lowest cost</option><option value="lowest_latency" ${routing.strategy==='lowest_latency'?'selected':''}>Lowest latency</option><option value="compliance_first" ${routing.strategy==='compliance_first'?'selected':''}>Compliance first</option></select></div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="rt-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="rt-save" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Save Routing</button>
+        </div>
+      </div>`;
+      document.body.appendChild(rm);
+      rm.querySelector("#rt-cancel").onclick = () => rm.remove();
+      rm.onclick = ev => { if (ev.target === rm) rm.remove(); };
+      rm.querySelector("#rt-save").onclick = async () => {
+        const payload = {
+          primary_plane: rm.querySelector("#rt-primary").value,
+          burst_plane: rm.querySelector("#rt-burst").value,
+          burst_ceiling_pct: parseFloat(rm.querySelector("#rt-ceil").value) || 30,
+          burst_cost_cap_usd: parseFloat(rm.querySelector("#rt-cap").value) || 1000,
+          strategy: rm.querySelector("#rt-strategy").value,
+        };
+        rm.remove();
+        const res = await api("PATCH", "/workspace/routing", payload);
+        toast(res ? "Routing configuration saved" : "Save failed", res ? "ok" : "error");
+      };
+      return;
+    }
+
     // ------ SETTINGS — DANGER ZONE ------
     if (label === "pause") {
       e.preventDefault(); e.stopPropagation();
@@ -1527,6 +1614,47 @@
   }
 
   setTimeout(injectHelpButton, 1000);
+
+  // ------ SETTINGS INTEGRATION CONFIG ------
+  function showIntegrationConfig(name, enable) {
+    const CONFIGS = {
+      slack: { label: "Slack", fields: [{ id: "webhook_url", label: "Webhook URL", placeholder: "https://hooks.slack.com/services/...", type: "url" }, { id: "channel", label: "Default channel", placeholder: "#alerts", type: "text" }] },
+      pagerduty: { label: "PagerDuty", fields: [{ id: "integration_key", label: "Integration key (Events API v2)", placeholder: "a1b2c3d4e5f6...", type: "password" }] },
+      github: { label: "GitHub", fields: [{ id: "token", label: "Personal Access Token (repo, workflow)", placeholder: "ghp_...", type: "password" }, { id: "org", label: "Organization (optional)", placeholder: "my-org", type: "text" }] },
+      vercel: { label: "Vercel", fields: [{ id: "token", label: "Vercel API Token", placeholder: "...", type: "password" }, { id: "team_id", label: "Team ID (optional)", placeholder: "team_...", type: "text" }] },
+      datadog: { label: "Datadog", fields: [{ id: "api_key", label: "API Key", placeholder: "...", type: "password" }, { id: "site", label: "Site", placeholder: "datadoghq.com", type: "text" }] },
+      jira: { label: "Jira", fields: [{ id: "base_url", label: "Base URL", placeholder: "https://your-org.atlassian.net", type: "url" }, { id: "email", label: "Account email", placeholder: "user@company.com", type: "email" }, { id: "api_token", label: "API token", placeholder: "...", type: "password" }, { id: "project_key", label: "Project key", placeholder: "DEV", type: "text" }] },
+    };
+    const cfg = CONFIGS[name] || { label: name, fields: [] };
+    document.getElementById("veklom-int-cfg")?.remove();
+    const m = document.createElement("div");
+    m.id = "veklom-int-cfg";
+    m.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;";
+    const fieldHtml = cfg.fields.map(f => `<div><label style="font-size:11px;color:#888;display:block;margin-bottom:5px;">${f.label}</label><input id="icfg-${f.id}" type="${f.type}" placeholder="${f.placeholder}" style="width:100%;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:12px;box-sizing:border-box;"></div>`).join("");
+    m.innerHTML = `<div style="background:#111;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:460px;max-width:92vw;padding:28px;color:#e2e8f0;">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">Configure ${cfg.label}</div>
+      <div style="font-size:12px;color:#555;margin-bottom:18px;">Enter your ${cfg.label} credentials to enable this integration.</div>
+      <div style="display:grid;gap:12px;margin-bottom:20px;">${fieldHtml}</div>
+      <div style="display:flex;gap:10px;">
+        <button id="icfg-cancel" style="flex:1;padding:10px;border-radius:6px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#888;cursor:pointer;font-size:13px;">Cancel</button>
+        <button id="icfg-save" style="flex:2;padding:10px;border-radius:6px;background:#f97316;border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Enable ${cfg.label}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(m);
+    m.querySelector("#icfg-cancel").onclick = () => m.remove();
+    m.onclick = ev => { if (ev.target === m) m.remove(); };
+    m.querySelector("#icfg-save").onclick = async () => {
+      const payload = { enabled: true };
+      cfg.fields.forEach(f => { const v = m.querySelector(`#icfg-${f.id}`)?.value?.trim(); if (v) payload[f.id] = v; });
+      m.remove();
+      const res = await api("PATCH", `/workspace/integrations/${name}`, payload);
+      if (res?.configured) {
+        toast(`${cfg.label} integration enabled and configured`, "ok");
+      } else {
+        toast(`${cfg.label} enabled — add credentials to fully configure`, "warn");
+      }
+    };
+  }
 
   // ------ DEPLOYMENTS HELPERS ------
   function showVercelGuide() {

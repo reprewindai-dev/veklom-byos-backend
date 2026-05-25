@@ -675,9 +675,133 @@ async def workspace_observability(user=Depends(get_current_user), db: AsyncSessi
     }
 
 
+# ---------------------------------------------------------------------------
+# Settings — full workspace administration
+# ---------------------------------------------------------------------------
+_ws_settings: dict = {}   # workspace_id → settings dict
+_ws_integrations: dict = {}  # workspace_id → {integration_name: config}
+_ws_routing: dict = {}    # workspace_id → routing config
+
+_DEFAULT_INTEGRATIONS = {
+    "slack": {"enabled": True, "webhook_url": "", "channel": "#alerts", "configured": False},
+    "pagerduty": {"enabled": True, "integration_key": "", "configured": False},
+    "github": {"enabled": True, "token": "", "org": "", "configured": False},
+    "vercel": {"enabled": True, "token": "", "team_id": "", "configured": False},
+    "datadog": {"enabled": False, "api_key": "", "site": "datadoghq.com", "configured": False},
+    "jira": {"enabled": False, "base_url": "", "api_token": "", "email": "", "project_key": "", "configured": False},
+}
+
+_DEFAULT_ROUTING = {
+    "primary_plane": "hetzner",
+    "primary_regions": ["fsn1-hetz", "hel1-hetz"],
+    "burst_plane": "aws",
+    "burst_regions": ["us-east-1", "eu-west-1"],
+    "burst_ceiling_pct": 30,
+    "burst_cost_cap_usd": 1000,
+    "egress_allowlist": [],
+    "strategy": "cost_quality_balanced",
+}
+
+
+def _get_settings(ws: str) -> dict:
+    if ws not in _ws_settings:
+        _ws_settings[ws] = {
+            "workspace_name": "My Workspace",
+            "slug": f"{ws[:8]}.veklom.app",
+            "default_region": "fsn1-hetz",
+            "residency": "EU-sovereign",
+            "mfa_enforcement": "org-wide · TOTP · WebAuthn",
+            "session_timeout_hours": 12,
+            "tls_version": "1.3 · mTLS External",
+            "vault_seal": "FIPS 140-2 L3 HSM",
+            "notifications_email": True,
+            "notifications_slack": False,
+            "appearance_theme": "dark",
+            "log_retention_days": 90,
+        }
+    return _ws_settings[ws]
+
+
+@router.get("/settings")
+async def get_settings(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    ws = user.workspace_id or "default"
+    settings = _get_settings(ws)
+    # Enrich with real workspace data
+    if user.workspace_id:
+        result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
+        workspace = result.scalar_one_or_none()
+        if workspace:
+            settings["workspace_name"] = workspace.name or settings["workspace_name"]
+            settings["slug"] = workspace.slug or settings["slug"]
+    return {
+        "workspace_id": ws,
+        **settings,
+        "routing": _ws_routing.get(ws, _DEFAULT_ROUTING),
+        "integrations": _ws_integrations.get(ws, {k: dict(v) for k, v in _DEFAULT_INTEGRATIONS.items()}),
+    }
+
+
 @router.patch("/settings")
-async def update_settings(body: dict, user=Depends(get_current_user)):
-    return {"message": "Settings updated", "settings": body}
+async def update_settings(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    ws = user.workspace_id or "default"
+    settings = _get_settings(ws)
+    allowed = {"workspace_name", "slug", "default_region", "residency", "mfa_enforcement",
+               "session_timeout_hours", "tls_version", "notifications_email", "notifications_slack",
+               "appearance_theme", "log_retention_days"}
+    for k, v in body.items():
+        if k in allowed:
+            settings[k] = v
+    # Persist name/slug to DB if workspace exists
+    if user.workspace_id and ("workspace_name" in body or "slug" in body):
+        result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
+        workspace = result.scalar_one_or_none()
+        if workspace:
+            if "workspace_name" in body: workspace.name = body["workspace_name"]
+            if "slug" in body: workspace.slug = body["slug"]
+            await db.commit()
+    return {"message": "Settings updated", "settings": settings}
+
+
+@router.get("/integrations")
+async def get_integrations(user=Depends(get_current_user)):
+    ws = user.workspace_id or "default"
+    return _ws_integrations.get(ws, {k: dict(v) for k, v in _DEFAULT_INTEGRATIONS.items()})
+
+
+@router.patch("/integrations/{integration_name}")
+async def update_integration(integration_name: str, body: dict, user=Depends(get_current_user)):
+    ws = user.workspace_id or "default"
+    if ws not in _ws_integrations:
+        _ws_integrations[ws] = {k: dict(v) for k, v in _DEFAULT_INTEGRATIONS.items()}
+    if integration_name not in _ws_integrations[ws]:
+        _ws_integrations[ws][integration_name] = {"enabled": False, "configured": False}
+    cfg = _ws_integrations[ws][integration_name]
+    for k, v in body.items():
+        cfg[k] = v
+    # Mark as configured if key fields are set
+    key_fields = {"slack": "webhook_url", "pagerduty": "integration_key", "github": "token",
+                  "vercel": "token", "datadog": "api_key", "jira": "api_token"}
+    field = key_fields.get(integration_name)
+    if field and cfg.get(field):
+        cfg["configured"] = True
+    return {"integration": integration_name, "workspace_id": ws, **cfg}
+
+
+@router.get("/routing")
+async def get_routing(user=Depends(get_current_user)):
+    ws = user.workspace_id or "default"
+    return _ws_routing.get(ws, dict(_DEFAULT_ROUTING))
+
+
+@router.patch("/routing")
+async def update_routing(body: dict, user=Depends(get_current_user)):
+    ws = user.workspace_id or "default"
+    if ws not in _ws_routing:
+        _ws_routing[ws] = dict(_DEFAULT_ROUTING)
+    for k, v in body.items():
+        if k in _DEFAULT_ROUTING:
+            _ws_routing[ws][k] = v
+    return {"routing": _ws_routing[ws], "workspace_id": ws}
 
 
 @router.get("/models")

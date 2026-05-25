@@ -734,27 +734,29 @@ async def github_repos(user=Depends(get_current_user)):
 
 class RepoSelectRequest(BaseModel):
     repo_full_name: str
-    workspace_id: str
 
 @router.post("/github/repos/select")
 async def select_github_repo(body: RepoSelectRequest, request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected.")
-    
+
+    # Always use the authenticated user's workspace_id for audit logging
+    audit_workspace_id = user.workspace_id or "default"
+
     # Normally we would save this to the Workspace or a specific Session configuration.
     # For now we just log it in the audit log to prove wiring.
     await log_audit_event(
         db=db,
         user_id=user.id,
         action="repo_connected",
-        workspace_id=body.workspace_id,
+        workspace_id=audit_workspace_id,
         resource_type="github_repo",
         resource_id=body.repo_full_name,
         details={"repo": body.repo_full_name, "provider": "github"},
         ip_address=request.client.host if request.client else "unknown",
         user_agent=request.headers.get("user-agent", "unknown")
     )
-    
+
     return {"message": "Repository selected and authorized", "repo": body.repo_full_name}
 
 

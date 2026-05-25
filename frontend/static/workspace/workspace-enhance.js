@@ -236,15 +236,21 @@
       const prompt = textarea ? textarea.value.trim() : "";
       if (!prompt) { toast("No prompt to save", "warn"); return; }
       const name = window.prompt("Name this prompt:", "My prompt") || "Untitled";
-      const res = await api("POST", "/playground/prompts", { name, prompt, saved_at: new Date().toISOString() });
+      const res = await api("POST", "/playground/prompts", { name, body: prompt, slug: name.toLowerCase().replace(/\s+/g, ".").slice(0, 40) });
+      if (res) { window._veklomPrompts = window._veklomPrompts || []; window._veklomPrompts.unshift(res); }
       toast(res ? `"${res.name || name}" saved to prompt library` : "Prompt saved locally", "ok");
       return;
     }
     if (label === "branch") {
       e.preventDefault(); e.stopPropagation();
-      const sid = window.prompt("Session ID to branch from (leave blank for current):", "") || "current";
-      const res = await api("POST", `/playground/sessions/${sid}/branch`, { label: "Branch " + new Date().toLocaleTimeString() });
-      toast(res ? `Branched → session ${res.id?.slice(0, 8) || "new"}` : "Branch created", "ok");
+      if (window._veklomBranchHandler) {
+        await window._veklomBranchHandler();
+        return;
+      }
+      const sid = window._veklomCurrentSessionId || "";
+      if (!sid) { toast("No active session — click a session first", "warn"); return; }
+      const res = await api("POST", `/playground/sessions/${sid}/branch`, { name: "Branch " + new Date().toLocaleTimeString() });
+      if (res) { window._veklomCurrentSessionId = res.id; toast(`Branched → "${res.name}"`, "ok"); }
       return;
     }
     if (label === "new" || label === "+ new" || (label.startsWith("new") && page.includes("playground"))) {

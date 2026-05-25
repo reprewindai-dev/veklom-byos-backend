@@ -1459,6 +1459,8 @@
       : email.slice(0, 2).toUpperCase();
     if (!fullName && !email) return;
     window._veklomUser = res;
+    window.__VEKLOM_USER__ = res; // for addons-inject.js compatibility
+    window.dispatchEvent(new CustomEvent("veklom:user-loaded", { detail: res }));
 
     const NAME_PLACEHOLDERS = ["Elliot Juni", "Elliot J", "Elliott Juni", "Elliott J", "Elliot", "Elliott", "elliot juni", "elliot j", "elliot"];
     const EMAIL_PLACEHOLDERS = ["elliot@veklom.io", "elliot@veklom.com", "demo@veklom.io", "demo@veklom.com"];

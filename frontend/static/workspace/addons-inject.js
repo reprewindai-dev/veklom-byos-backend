@@ -19,10 +19,13 @@
   };
 
   function isAdmin() {
-    var user = window.__VEKLOM_USER__ || (window.__VEKLOM_AUTH__ && window.__VEKLOM_AUTH__.getUser ? window.__VEKLOM_AUTH__.getUser() : null);
+    // Check all possible user storage locations
+    var user = window.__VEKLOM_USER__
+      || window._veklomUser
+      || (window.__VEKLOM_AUTH__ && window.__VEKLOM_AUTH__.getUser ? window.__VEKLOM_AUTH__.getUser() : null);
     if (!user) return false;
-    var role = (user.role || '').toUpperCase();
-    return role === 'OWNER' || role === 'SUPER_ADMIN' || role === 'ADMIN';
+    var role = (user.role || user.userRole || '').toUpperCase();
+    return role === 'OWNER' || role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'FOUNDER';
   }
 
   function getVisibleRoutes() {
@@ -186,21 +189,31 @@
     setTimeout(handleRoute, 10);
   });
 
-  // Initial injection attempts
+  // Initial injection attempts — longer delays to wait for auth
   injectSidebarLinks();
   setTimeout(injectSidebarLinks, 500);
   setTimeout(injectSidebarLinks, 1500);
   setTimeout(injectSidebarLinks, 3000);
+  setTimeout(injectSidebarLinks, 6000);  // Extra wait for slow auth load
 
   // Persistent MutationObserver — re-inject whenever nav/sidebar DOM changes
   var navObserver = new MutationObserver(function () {
-    // Check if any injected link is missing
-    var missing = Object.keys(ROUTES).some(function (hash) {
+    var missing = Object.keys(ALL_ROUTES).some(function (hash) {
       return !document.querySelector('a[href="' + hash + '"]');
     });
     if (missing) injectSidebarLinks();
   });
   navObserver.observe(document.body, { childList: true, subtree: true });
+
+  // Listen for auth state changes from workspace-enhance.js
+  window.addEventListener('veklom:user-loaded', function () {
+    setTimeout(injectSidebarLinks, 100);
+    setTimeout(handleRoute, 150);
+  });
+
+  // Expose globally so workspace-enhance.js can trigger
+  window._addonHandleRoute = handleRoute;
+  window._addonInjectLinks = injectSidebarLinks;
 
   // Handle route immediately and on short delay
   handleRoute();

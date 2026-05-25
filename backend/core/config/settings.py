@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ORIGINS: Union[str, List[str]] = "*"
-    ALLOWED_HOSTS: Union[str, List[str]] = "*"
+    ALLOWED_HOSTS: Union[str, List[str]] = ["veklom.com", "www.veklom.com", "app.veklom.com", "lockerphycer.veklom.com"]
 
     # GitHub OAuth
     GITHUB_CLIENT_ID: str = ""

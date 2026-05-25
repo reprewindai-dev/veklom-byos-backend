@@ -301,6 +301,30 @@ async def uptime_page():
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
+@app.get("/legal/security")
+async def legal_security():
+    path = LANDING_DIR / "security.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.get("/feedback")
+async def feedback_page():
+    path = LANDING_DIR / "feedback.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.get("/status")
+async def status_page():
+    path = LANDING_DIR / "status.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
 async def _serve_frontend(request):
     landing_index = LANDING_DIR / "index.html"
     static_index = FRONTEND_DIR / "index.html"

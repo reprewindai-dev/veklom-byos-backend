@@ -46,8 +46,10 @@
     const name = userData.full_name || userData.name || userData.email || "User";
     const email = userData.email || "";
     const initials = getInitials(name);
+    const workspaceId = userData.workspace?.id || userData.workspace_id || "";
+    const workspaceName = userData.workspace?.name || "";
 
-    console.log("Injecting user identity:", { name, email, initials });
+    console.log("Injecting user identity:", { name, email, initials, workspaceId, workspaceName });
 
     // Find and replace ALL placeholder names - be more aggressive
     const allTextElements = document.querySelectorAll("span, div, p, h1, h2, h3, h4, h5, h6, button, a");
@@ -63,6 +65,7 @@
         text === "JD" ||
         text === "AB" ||
         text === "Anthony Milner" ||
+        text === "Anthony Millwater" ||
         text === "Acme Corp" ||
         text === "Demo User" ||
         text === "Test User"
@@ -81,7 +84,8 @@
         text === "demo@example.com" ||
         text === "test@example.com" ||
         text === "anthony@acme.com" ||
-        text === "anthony.milner@acme.com"
+        text === "anthony.milner@acme.com" ||
+        text === "anthony.millwater@acme.com"
       ) {
         el.textContent = email;
       }
@@ -102,12 +106,33 @@
       }
     });
 
+    // Inject workspace ID into dropdown if found
+    if (workspaceId) {
+      const dropdownElements = document.querySelectorAll("[class*='dropdown'], [class*='menu'], [class*='profile']");
+      dropdownElements.forEach((el) => {
+        const existingWorkspaceId = el.querySelector("[data-workspace-id]");
+        if (!existingWorkspaceId) {
+          const workspaceIdEl = document.createElement("div");
+          workspaceIdEl.style.cssText = "font-size: 11px; color: #888; margin-top: 4px;";
+          workspaceIdEl.textContent = `Workspace: ${workspaceId}`;
+          workspaceIdEl.dataset.workspaceId = workspaceId;
+          el.appendChild(workspaceIdEl);
+        }
+      });
+    }
+
     // Also update elements with data attributes
     document.querySelectorAll("[data-user-name]").forEach((el) => {
       el.dataset.userName = name;
     });
     document.querySelectorAll("[data-user-initials]").forEach((el) => {
       el.dataset.userInitials = initials;
+    });
+    document.querySelectorAll("[data-user-email]").forEach((el) => {
+      el.dataset.userEmail = email;
+    });
+    document.querySelectorAll("[data-workspace-id]").forEach((el) => {
+      el.dataset.workspaceId = workspaceId;
     });
   }
 

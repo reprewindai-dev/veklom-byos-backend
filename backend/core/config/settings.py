@@ -192,6 +192,7 @@ class Settings(BaseSettings):
 
     # Base Builder Code (ERC-8021 onchain attribution)
     BASE_BUILDER_CODE: str = ""
+    BASE_DEV_API_KEY: str = ""
 
     @field_validator("CORS_ORIGINS", "ALLOWED_HOSTS", mode="before")
     @classmethod

@@ -443,6 +443,25 @@ async def attribution_builder_code():
     }
 
 
+@app.get("/api/v1/attribution/analytics")
+async def attribution_analytics():
+    import httpx
+    api_key = settings.BASE_DEV_API_KEY.strip()
+    if not api_key:
+        return {"configured": False, "error": "BASE_DEV_API_KEY not set"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://api.base.dev/v1/analytics/attribution",
+                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                return {"configured": True, "data": resp.json()}
+            return {"configured": True, "error": resp.text, "status_code": resp.status_code}
+    except Exception as exc:
+        return {"configured": True, "error": str(exc)}
+
+
 def _branding_response(filename: str, media_type: str):
     asset_path = FRONTEND_DIR / "branding" / filename
     if asset_path.exists():

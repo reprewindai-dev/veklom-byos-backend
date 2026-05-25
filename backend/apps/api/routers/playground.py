@@ -350,19 +350,34 @@ async def run_inference(body: dict, user=Depends(get_current_user), db: AsyncSes
                 "response_format": s.response_format,
             }
     
-    # Mock inference response (in production, this would call actual AI provider)
-    # TODO: Integrate with actual AI provider routing
+    # Call real AI completion
+    from backend.apps.api.routers.ai import run_completion
+    
+    t0 = __import__("time").monotonic()
+    result = await run_completion({
+        "model": session_context.get("model", body.get("model", "qwen2.5:3b")),
+        "messages": [{"role": "user", "content": message}],
+        "system": session_context.get("system_prompt", ""),
+    }, stream=False)
+    latency_ms = int((__import__("time").monotonic() - t0) * 1000)
+    
+    data = result.payload
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    usage = data.get("usage", {})
+    
     response = {
         "id": f"msg_{datetime.now(timezone.utc).timestamp()}",
         "role": "assistant",
-        "content": f"This is a mock response to: {message}. In production, this would route through the AI provider configured in the session.",
-        "model": session_context.get("model", "gpt-4"),
+        "content": content,
+        "model": data.get("model", session_context.get("model", "unknown")),
+        "provider": result.provider,
         "usage": {
-            "prompt_tokens": len(message.split()),
-            "completion_tokens": 20,
-            "total_tokens": len(message.split()) + 20,
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
         },
         "finish_reason": "stop",
+        "latency_ms": latency_ms,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     

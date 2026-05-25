@@ -316,3 +316,70 @@ async def delete_prompt(prompt_id: str, user=Depends(get_current_user), db: Asyn
 @router.get("/playground/tools")
 async def list_tools(user=Depends(get_current_user)):
     return {"tools": _available_tools(), "total": len(_available_tools())}
+
+
+# ---------------------------------------------------------------------------
+# Inference
+# ---------------------------------------------------------------------------
+
+@router.post("/playground/inference")
+async def run_inference(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Execute inference using the session configuration."""
+    session_id = body.get("session_id")
+    message = body.get("message", "")
+    
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    
+    # If session_id provided, load session context
+    session_context = {}
+    if session_id:
+        result = await db.execute(
+            select(PlaygroundSession).where(
+                PlaygroundSession.id == session_id,
+                PlaygroundSession.workspace_id == (user.workspace_id or ""),
+            )
+        )
+        s = result.scalar_one_or_none()
+        if s:
+            session_context = {
+                "model": s.model,
+                "system_prompt": s.system_prompt,
+                "messages": s.messages or [],
+                "tools": s.tools or [],
+                "response_format": s.response_format,
+            }
+    
+    # Mock inference response (in production, this would call actual AI provider)
+    # TODO: Integrate with actual AI provider routing
+    response = {
+        "id": f"msg_{datetime.now(timezone.utc).timestamp()}",
+        "role": "assistant",
+        "content": f"This is a mock response to: {message}. In production, this would route through the AI provider configured in the session.",
+        "model": session_context.get("model", "gpt-4"),
+        "usage": {
+            "prompt_tokens": len(message.split()),
+            "completion_tokens": 20,
+            "total_tokens": len(message.split()) + 20,
+        },
+        "finish_reason": "stop",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    
+    # If session provided, append messages to session
+    if session_id and session_context:
+        result = await db.execute(
+            select(PlaygroundSession).where(
+                PlaygroundSession.id == session_id,
+                PlaygroundSession.workspace_id == (user.workspace_id or ""),
+            )
+        )
+        s = result.scalar_one_or_none()
+        if s:
+            s.messages = s.messages or []
+            s.messages.append({"role": "user", "content": message})
+            s.messages.append({"role": "assistant", "content": response["content"]})
+            s.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+    
+    return response

@@ -512,3 +512,28 @@ async def vendor_payouts(vendor_id: str, user=Depends(get_current_user)):
 @router.post("/orders/create")
 async def create_order(body: dict, user=Depends(get_current_user)):
     return {"order_id": "ord_placeholder", "status": "created", "items": body.get("items", [])}
+
+
+# --- Configuration Status ---
+@router.get("/billing/config/status")
+async def billing_config_status():
+    """Check if billing/payment configuration is properly set up."""
+    stripe_configured = _stripe_ready()
+    webhook_configured = settings.STRIPE_WEBHOOK_SECRET.strip().startswith("whsec_") if settings.STRIPE_WEBHOOK_SECRET else False
+    
+    return {
+        "stripe": {
+            "configured": stripe_configured,
+            "message": "Stripe is configured" if stripe_configured else "STRIPE_SECRET_KEY environment variable is not set or contains placeholder value",
+            "required_env": "STRIPE_SECRET_KEY",
+        },
+        "webhook": {
+            "configured": webhook_configured,
+            "message": "Stripe webhook is configured" if webhook_configured else "STRIPE_WEBHOOK_SECRET environment variable is not set",
+            "required_env": "STRIPE_WEBHOOK_SECRET",
+        },
+        "overall": {
+            "ready": stripe_configured and webhook_configured,
+            "message": "Billing is fully configured" if (stripe_configured and webhook_configured) else "Billing requires Stripe configuration",
+        }
+    }

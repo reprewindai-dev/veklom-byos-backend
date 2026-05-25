@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager
+from backend.core.security.middleware import SecurityHeadersMiddleware
 
 # Import model package to ensure tables are registered with Base.metadata.
 import backend.db.models  # noqa: F401
@@ -59,6 +60,8 @@ app.add_middleware(
 
 if settings.APP_ENV == "production":
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # --- Exception handlers ---

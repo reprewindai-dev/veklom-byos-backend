@@ -115,7 +115,7 @@ def _is_real_config_value(value: str) -> bool:
     """
     if not value:
         return False
-    candidate = value.strip()
+    candidate = value.strip(' "\'')
     if not candidate:
         return False
     upper = candidate.upper()

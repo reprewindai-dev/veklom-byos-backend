@@ -35,9 +35,10 @@ VEKLOM_PRICING = {
     "marketplace_acquire": {"price_usdc": 0.050, "unit": "per acquire",  "name": "Marketplace Acquire"},
     "audit_verify":        {"price_usdc": 0.003, "unit": "per verify",   "name": "Audit Verification"},
 }
+import os
 
 VEKLOM_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
-VEKLOM_TREASURY    = "0x0000000000000000000000000000000000000001"  # replace with real treasury
+VEKLOM_TREASURY    = os.environ.get("VEKLOM_TREASURY_ADDRESS", "")  # real treasury address
 VEKLOM_NETWORK     = "base"
 VEKLOM_BASE_URL    = "https://veklom.com"       # main site (workspace, landing, pricing)
 VEKLOM_API_BASE    = "https://api.veklom.com/api/v1"  # machine-facing API surface

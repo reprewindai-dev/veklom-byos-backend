@@ -63,7 +63,7 @@ _FREE_ROUTES_PREFIX = (
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
-VEKLOM_TREASURY   = os.environ.get("VEKLOM_TREASURY_ADDRESS", "0x0000000000000000000000000000000000000001")
+VEKLOM_TREASURY   = os.environ.get("VEKLOM_TREASURY_ADDRESS", "")
 VEKLOM_USDC_ADDR  = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
 
 # In-memory free-trial counter: { ip_day_key → count }
@@ -171,15 +171,18 @@ def _verify_x402_payment(request: Request) -> bool:
     """
     Verify x402 payment header.
     In production this would verify the on-chain USDC transfer.
-    For now, validate the X-Payment-Proof header structure.
+    For now, we strictly require X-Gateway-Secret verification upstream,
+    so we do not accept raw unverified X-Payment-Proof headers here
+    until the coinbase x402 SDK is fully integrated.
     """
     proof = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment")
     if not proof:
         return False
-    # TODO: integrate with Base chain verification (coinbase x402 SDK)
-    # For now: accept any non-empty proof header as valid
-    # Production: verify USDC transfer on Base against VEKLOM_TREASURY
-    return len(proof) > 20
+    
+    # Fake-proof bypass has been removed for production security.
+    # To bypass, requests must go through the Node.js paid gateway 
+    # which injects the trusted X-Gateway-Secret.
+    return False
 
 
 class X402PaymentMiddleware(BaseHTTPMiddleware):
@@ -206,14 +209,21 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         if route_cfg is None:
             return await call_next(request)
 
-        # 0. Check if this request came through the paid Node.js gateway.
-        #    The gateway already verified the on-chain USDC payment via CDP facilitator.
+        # 0. Check if this request came through the paid Node.js gateway or RapidAPI.
+        #    The gateway/RapidAPI already verified the payment.
         #    Trust it — don't double-gate. Just add receipt headers and pass through.
         gateway_secret = request.headers.get("X-Gateway-Secret", "")
-        if gateway_secret:
+        rapidapi_secret = request.headers.get("X-RapidAPI-Proxy-Secret", "")
+        
+        if gateway_secret or rapidapi_secret:
             from backend.core.config.settings import settings as _settings
             configured_secret = _settings.UPSTREAM_GATEWAY_SECRET.strip()
-            if configured_secret and gateway_secret == configured_secret:
+            rapidapi_configured_secret = getattr(_settings, "RAPIDAPI_PROXY_SECRET", "").strip()
+            
+            is_valid_gateway = configured_secret and gateway_secret == configured_secret
+            is_valid_rapidapi = rapidapi_configured_secret and rapidapi_secret == rapidapi_configured_secret
+            
+            if is_valid_gateway or is_valid_rapidapi:
                 response = await call_next(request)
                 receipt = _build_receipt(route_cfg, provider="gateway:x402")
                 response.headers["X-Veklom-Request-ID"] = receipt["request_id"]

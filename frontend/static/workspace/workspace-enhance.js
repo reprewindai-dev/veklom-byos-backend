@@ -883,7 +883,9 @@
     if (label.startsWith("install on") || label === "install") {
       e.preventDefault(); e.stopPropagation();
       const hash = location.hash || "";
-      const listingId = hash.split("/").pop() || "unknown";
+      let listingId = hash.split("/").pop() || "unknown";
+      if (listingId === "irongrid") listingId = "py03-irongrid";
+      if (listingId === "greenvision") listingId = "ls_co2router";
       const target = window._veklomUser?.workspace_id || "default";
       const listing = await api("GET", `/marketplace/listings/${listingId}`);
       if (!listing) { toast("Listing not found", "error"); return; }
@@ -930,7 +932,9 @@
     if (label === "download datasheet" || label.includes("datasheet")) {
       e.preventDefault(); e.stopPropagation();
       const hash = location.hash || "";
-      const listingId = hash.split("/").pop() || "unknown";
+      let listingId = hash.split("/").pop() || "unknown";
+      if (listingId === "irongrid") listingId = "py03-irongrid";
+      if (listingId === "greenvision") listingId = "ls_co2router";
       try {
         const res = await fetch(`${base}/marketplace/listings/${listingId}/datasheet`, {
           headers: authHeaders(), credentials: "include",
@@ -950,7 +954,9 @@
     if (label === "provider profile" || label.includes("provider profile")) {
       e.preventDefault(); e.stopPropagation();
       const hash = location.hash || "";
-      const listingId = hash.split("/").pop() || "";
+      let listingId = hash.split("/").pop() || "";
+      if (listingId === "irongrid") listingId = "py03-irongrid";
+      if (listingId === "greenvision") listingId = "ls_co2router";
       // Try to get provider slug from listing data
       const listingData = await api("GET", `/marketplace/listings/${listingId}`);
       const slug = listingData?.vendor_slug || "veklom_native";
@@ -1952,5 +1958,94 @@ export default async function handler(req, res) {
   // Initialize pipeline fixes
   wirePipelineSelection();
   wirePipelineTestRun();
+
+  // Dynamic Deployments row selection details panel updater
+  document.addEventListener("click", function (e) {
+    const tr = e.target.closest("tr");
+    if (!tr) return;
+    const page = currentPage();
+    if (!page.includes("deployment")) return;
+    
+    // Check if it's a body row (not in the thead)
+    if (tr.closest("thead")) return;
+    
+    // Extract info from the cells
+    const cells = [...tr.querySelectorAll("td")];
+    if (cells.length < 9) return;
+    
+    const name = cells[0].querySelector(".font-mono")?.textContent?.trim() || cells[0].textContent.trim().split("\n")[0].trim();
+    const url = cells[0].querySelector("div:nth-child(2)")?.textContent?.trim() || cells[0].textContent.trim().split("\n").pop()?.trim() || "";
+    const type = cells[1]?.textContent?.trim() || "";
+    const model = cells[2]?.textContent?.trim() || "";
+    const region = cells[3]?.textContent?.trim() || "";
+    const auth = cells[4]?.textContent?.trim() || "";
+    const rateLimit = cells[5]?.textContent?.trim() || "";
+    const rps = cells[6]?.textContent?.trim() || "0.0";
+    const errors = cells[7]?.textContent?.trim() || "0.00%";
+    const statusText = cells[8]?.textContent?.trim() || "";
+    const isLive = statusText.toLowerCase().includes("live");
+    
+    // Find the detail panel in the DOM
+    const eyebrowEls = [...document.querySelectorAll(".text-eyebrow")];
+    const detailEyebrow = eyebrowEls.find(el => el.textContent.includes("Endpoint detail"));
+    if (!detailEyebrow) return;
+    
+    const detailPanel = detailEyebrow.closest(".frame");
+    if (!detailPanel) return;
+    
+    // Update Endpoint detail eyebrow
+    detailEyebrow.textContent = `Endpoint detail · ${name}`;
+    
+    // Update URL
+    const urlEl = detailPanel.querySelector(".font-display");
+    if (urlEl) urlEl.textContent = url;
+    
+    // Update status badge inside detailPanel
+    const headerRow = detailEyebrow.closest("div").parentElement;
+    if (headerRow) {
+      const statusBadge = headerRow.querySelector(".badge, span[class*='badge'], span[class*='tone-']");
+      if (statusBadge) {
+        statusBadge.className = isLive ? "badge badge-success text-[10px]" : "badge badge-warn text-[10px]";
+        statusBadge.textContent = isLive ? "live" : "paused";
+        
+        // Update class list for wouter styling if applicable
+        if (isLive) {
+          statusBadge.classList.remove("bg-warn/10", "text-warn", "border-warn/30");
+          statusBadge.classList.add("bg-success/10", "text-success", "border-success/30");
+        } else {
+          statusBadge.classList.remove("bg-success/10", "text-success", "border-success/30");
+          statusBadge.classList.add("bg-warn/10", "text-warn", "border-warn/30");
+        }
+        
+        const dot = statusBadge.querySelector(".pulse-dot");
+        if (dot) dot.style.backgroundColor = isLive ? "#22c55e" : "#f59e0b";
+      }
+    }
+    
+    // Update the grid items (Auth, Rate, etc.)
+    const gridItems = [...detailPanel.querySelectorAll(".rounded-md.border.bg-background\\/40")];
+    if (gridItems.length >= 4) {
+      // 1. Auth key (Bearer · vk_live_...)
+      const authKeyEl = gridItems[0].querySelector(".font-mono");
+      if (authKeyEl) authKeyEl.textContent = `${auth} · vk_live_${name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8)}`;
+      
+      // 2. Rate limit (e.g. 240 rpm)
+      const rateValEl = gridItems[1].querySelector(".font-mono");
+      if (rateValEl) rateValEl.textContent = rateLimit;
+      
+      // 3. Timeout
+      const timeoutValEl = gridItems[2].querySelector(".font-mono");
+      if (timeoutValEl) timeoutValEl.textContent = "30s · stream OK";
+      
+      // 4. CORS
+      const corsValEl = gridItems[3].querySelector(".font-mono");
+      if (corsValEl) corsValEl.textContent = `https://app.${name.split("-")[0] || "acme"}.io`;
+    }
+    
+    // Make the row visually active / selected!
+    const allRows = tr.parentElement.querySelectorAll("tr");
+    allRows.forEach(r => r.style.background = "");
+    tr.style.background = "rgba(255,184,0,0.06)";
+  });
 
 })();

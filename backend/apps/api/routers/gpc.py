@@ -10,7 +10,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,48 @@ from backend.core.services.autonomous_worker import run_gpc_background
 import asyncio
 
 router = APIRouter(prefix="/gpc", tags=["GPC"])
+
+
+def _can_use_gpc_full(user) -> bool:
+    """Check if user can use full GPC (not just demo).
+    
+    Platform superusers and paid users get full GPC.
+    Free users get limited demo quota only.
+    """
+    from backend.core.config.settings import settings
+    
+    # Platform superuser gets full access
+    is_superuser = bool(getattr(user, "is_superuser", False))
+    role = (getattr(user, "role", "") or "").upper()
+    email = getattr(user, "email", "")
+    workspace_id = getattr(user, "workspace_id", "")
+    
+    is_platform_superuser = (
+        is_superuser
+        or role == "SUPER_ADMIN"
+        or email == settings.ADMIN_EMAIL
+        or workspace_id == settings.FOUNDER_WORKSPACE_ID
+    )
+    
+    if is_platform_superuser:
+        return True
+    
+    # Paid users get full access
+    plan = getattr(user, "plan", "free")
+    if plan in ("pro", "sovereign", "business"):
+        return True
+    
+    return False
+
+
+def _can_use_gpc_demo(user) -> bool:
+    """Check if user can use demo GPC (limited quota).
+    
+    Free users get limited demo quota.
+    """
+    plan = getattr(user, "plan", "free")
+    # Free users get demo access
+    return plan == "free"
 
 
 @router.get("/plans")
@@ -43,12 +85,26 @@ async def save_plan(body: dict, user=Depends(get_current_user)):
 @router.post("/compile")
 async def gpc_compile(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Compile agent intent into a governed plan. Emits a Decision Frame (replayable proof)."""
+    # Check GPC entitlement
+    if not _can_use_gpc_full(user) and not _can_use_gpc_demo(user):
+        raise HTTPException(
+            status_code=403,
+            detail="GPC requires a paid plan. Upgrade to Pro or Sovereign to access full GPC capabilities."
+        )
+    
     return await _build_and_emit_plan(body, user, db)
 
 
 @router.post("/intent-to-plan")
 async def intent_to_plan(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Alias for /compile — converts high-level intent to a governed execution plan."""
+    # Check GPC entitlement
+    if not _can_use_gpc_full(user) and not _can_use_gpc_demo(user):
+        raise HTTPException(
+            status_code=403,
+            detail="GPC requires a paid plan. Upgrade to Pro or Sovereign to access full GPC capabilities."
+        )
+    
     return await _build_and_emit_plan(body, user, db)
 
 
@@ -115,6 +171,13 @@ async def list_runs(user=Depends(get_current_user)):
 
 @router.post("/runs")
 async def start_run(body: dict, user=Depends(get_current_user)):
+    # Check GPC entitlement
+    if not _can_use_gpc_full(user) and not _can_use_gpc_demo(user):
+        raise HTTPException(
+            status_code=403,
+            detail="GPC requires a paid plan. Upgrade to Pro or Sovereign to access full GPC capabilities."
+        )
+    
     run_id = str(uuid.uuid4())
     # Assuming frontend sends the graph in the body, otherwise we use a mock one
     graph = body.get("graph", {

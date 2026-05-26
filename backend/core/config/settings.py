@@ -7,7 +7,7 @@ from pydantic import field_validator
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8-sig", case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8-sig", case_sensitive=False, extra="ignore")
 
     APP_NAME: str = "Veklom Sovereign AI Hub"
     VERSION: str = "1.0.0"
@@ -95,8 +95,8 @@ class Settings(BaseSettings):
     FOUNDER_WORKSPACE_ID: str = ""            # Set this to the founder workspace UUID
     PROVIDER_ENCRYPTION_KEY: str = ""         # Fernet key for encrypting BYOK keys at rest
     OLLAMA_MODEL: str = "llama3.2:latest"
-    OLLAMA_AUTOSTART: bool = False
-    OLLAMA_PULL_ON_BOOT: bool = False
+    OLLAMA_AUTOSTART: bool = True
+    OLLAMA_PULL_ON_BOOT: bool = True
     OLLAMA_STARTUP_TIMEOUT_MS: int = 120000
     VLLM_BASE_URL: str = ""
 
@@ -198,6 +198,7 @@ class Settings(BaseSettings):
     # The paid-gateway/ Node.js container sends this header on every proxied request.
     # When set, the x402 middleware can trust that payment was verified by the gateway.
     UPSTREAM_GATEWAY_SECRET: str = ""
+    RAPIDAPI_PROXY_SECRET: str = ""
 
     @field_validator("CORS_ORIGINS", "ALLOWED_HOSTS", mode="before")
     @classmethod

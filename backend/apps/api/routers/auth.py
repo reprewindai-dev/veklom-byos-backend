@@ -86,6 +86,8 @@ def _user_dict(user: User) -> dict:
         "mfa_enabled": user.mfa_enabled,
         "workspace_id": user.workspace_id or "",
         "github_username": user.github_username or "",
+        "github_connected": bool(user.github_id and user.github_access_token),
+        "github_account_id": user.github_id or "",
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "plan": plan,
         "is_admin": is_admin,
@@ -103,10 +105,32 @@ def _external_origin(request: Request) -> str:
 
 
 def _is_real_config_value(value: str) -> bool:
-    candidate = (value or "").strip()
+    """Check if a config value is a real value, not a placeholder.
+    
+    Returns False for:
+    - None or empty strings
+    - Strings that are only whitespace
+    - Placeholder patterns: NEED_, YOUR_, CHANGE_, REPLACE_, TODO
+    - Example/demo values: example, placeholder, changeme, test
+    """
+    if not value:
+        return False
+    candidate = value.strip(' "\'')
     if not candidate:
         return False
-    return not candidate.upper().startswith(("NEED_", "YOUR_", "CHANGE_", "REPLACE_", "TODO"))
+    upper = candidate.upper()
+    # Check for placeholder prefixes
+    placeholder_prefixes = ("NEED_", "YOUR_", "CHANGE_", "REPLACE_", "TODO")
+    if upper.startswith(placeholder_prefixes):
+        return False
+    # Check for common placeholder/demo values
+    placeholder_values = ("EXAMPLE", "PLACEHOLDER", "CHANGEME", "TEST", "DEMO", "XXX")
+    if upper in placeholder_values:
+        return False
+    # Check for very short values (likely invalid)
+    if len(candidate) < 8:
+        return False
+    return True
 
 
 def _github_oauth_configured() -> bool:
@@ -167,7 +191,7 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> st
     localStorage.setItem("veklom_token", payload.access_token);
     localStorage.setItem("veklom_refresh_token", payload.refresh_token);
     localStorage.setItem("veklom_user", JSON.stringify(payload.user));
-    window.location.replace("/workspace/overview");
+    window.location.replace("/workspace/#/overview");
   </script>
 </body>
 </html>"""
@@ -429,9 +453,19 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
     is_founder = bool(user.is_superuser) or role in ("SUPER_ADMIN",)
     plan = user_data.get("plan", "free")
     
+    # Platform superuser check for Command Center access
+    # Only platform superusers can access Command Center, not tenant owners
+    from backend.core.config.settings import settings
+    is_platform_superuser = (
+        bool(user.is_superuser)
+        or role == "SUPER_ADMIN"
+        or user.email == settings.ADMIN_EMAIL
+        or user.workspace_id == settings.FOUNDER_WORKSPACE_ID
+    )
+    
     capabilities = {
-        "command_center": is_founder,
-        "owner_provider_keys": is_founder,
+        "command_center": is_platform_superuser,
+        "owner_provider_keys": is_platform_superuser,
         "premium_marketplace": plan in ("pro", "sovereign"),
         "pipeline_deploy": plan != "free",
         "vault_secrets": is_admin,
@@ -732,27 +766,29 @@ async def github_repos(user=Depends(get_current_user)):
 
 class RepoSelectRequest(BaseModel):
     repo_full_name: str
-    workspace_id: str
 
 @router.post("/github/repos/select")
 async def select_github_repo(body: RepoSelectRequest, request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected.")
-    
+
+    # Always use the authenticated user's workspace_id for audit logging
+    audit_workspace_id = user.workspace_id or "default"
+
     # Normally we would save this to the Workspace or a specific Session configuration.
     # For now we just log it in the audit log to prove wiring.
     await log_audit_event(
         db=db,
         user_id=user.id,
         action="repo_connected",
-        workspace_id=body.workspace_id,
+        workspace_id=audit_workspace_id,
         resource_type="github_repo",
         resource_id=body.repo_full_name,
         details={"repo": body.repo_full_name, "provider": "github"},
         ip_address=request.client.host if request.client else "unknown",
         user_agent=request.headers.get("user-agent", "unknown")
     )
-    
+
     return {"message": "Repository selected and authorized", "repo": body.repo_full_name}
 
 

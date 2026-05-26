@@ -17,9 +17,12 @@ services:
     environment:
       - APP_ENV=production
       - PORT=8088
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     depends_on:
       - postgres
       - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8088/health')"]
@@ -62,6 +65,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # Ollama Local AI (optional - for local development)
+  # In production, Ollama should run on the host server via systemd
+  ollama:
+    image: ollama/ollama:latest
+    container_name: veklom-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - local  # Only start with --profile local
+
 volumes:
   postgres_data:
   redis_data:
+  ollama_data:
+

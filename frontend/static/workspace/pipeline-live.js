@@ -572,11 +572,13 @@
   async function injectEditorButtons() {
     if (document.getElementById('pl-fab')) return;
 
-    // FAB button
+    // FAB button - more prominent and always visible
     var fab = document.createElement('button');
     fab.id = 'pl-fab';
-    fab.textContent = '◈ Visual Editor';
-    fab.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:1000;padding:12px 22px;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(139,92,246,0.45);letter-spacing:.01em';
+    fab.innerHTML = '◈ <strong>Open Visual Editor</strong>';
+    fab.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:10000;padding:14px 24px;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 6px 24px rgba(139,92,246,0.5);letter-spacing:.01em;transition:transform 0.2s,box-shadow 0.2s';
+    fab.onmouseover = function() { this.style.transform = 'translateY(-2px)'; this.style.boxShadow = '0 8px 32px rgba(139,92,246,0.6)'; };
+    fab.onmouseout = function() { this.style.transform = 'translateY(0)'; this.style.boxShadow = '0 6px 24px rgba(139,92,246,0.5)'; };
     document.body.appendChild(fab);
 
     // FAB click: use first pipeline in list, or create one
@@ -601,23 +603,27 @@
     // Wire pipeline list rows — watch DOM for rows that might appear later
     setTimeout(wirePipelineRows, 800);
     setTimeout(wirePipelineRows, 2000);
+    setTimeout(wirePipelineRows, 4000);
   }
 
   function wirePipelineRows() {
     // Try to find pipeline list rows and add "Edit" button
-    var rows = document.querySelectorAll('tr, [class*="pipeline-row"], [class*="PipelineRow"]');
+    var rows = document.querySelectorAll('tr, [class*="pipeline-row"], [class*="PipelineRow"], [class*="row"], [role="row"]');
     rows.forEach(function(row) {
       if (row.dataset.plWired) return;
-      var cells = row.querySelectorAll('td, [class*="cell"], [class*="name"]');
+      var cells = row.querySelectorAll('td, [class*="cell"], [class*="name"], [class*="Name"], div');
       if (cells.length === 0) return;
       var nameText = (cells[0].textContent || '').trim();
-      if (!nameText || nameText.toLowerCase() === 'name') return; // skip header
+      if (!nameText || nameText.toLowerCase() === 'name' || nameText.length < 3) return; // skip header or empty
       row.dataset.plWired = '1';
       var editBtn = document.createElement('button');
-      editBtn.textContent = '◈ Edit';
-      editBtn.style.cssText = 'margin-left:8px;padding:3px 8px;background:#8b5cf6;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer;vertical-align:middle';
+      editBtn.innerHTML = '◈ <strong>Edit</strong>';
+      editBtn.style.cssText = 'margin-left:8px;padding:4px 10px;background:#8b5cf6;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;vertical-align:middle;box-shadow:0 2px 8px rgba(139,92,246,0.3)';
+      editBtn.onmouseover = function() { this.style.background = '#7c3aed'; };
+      editBtn.onmouseout = function() { this.style.background = '#8b5cf6'; };
       editBtn.onclick = async function(e) {
         e.stopPropagation();
+        e.preventDefault();
         var pid = row.dataset.pipelineId;
         if (!pid) {
           // Try to find ID from API by name
@@ -650,6 +656,9 @@
         // slight delay to let React render
         setTimeout(function() { injectEditorButtons(); }, 500);
       }
+      // Force button injection after longer delay for slow renders
+      setTimeout(function() { injectEditorButtons(); }, 1500);
+      setTimeout(function() { injectEditorButtons(); }, 3000);
     } else {
       removeEditorButton();
       if (editorActive) closeEditor();

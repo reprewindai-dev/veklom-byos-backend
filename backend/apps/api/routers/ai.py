@@ -27,6 +27,7 @@ from backend.core.security.entitlements import require_entitlement
 from backend.db.models.ai import ExecLog
 
 router = APIRouter(
+    prefix="/ai",
     tags=["AI"],
     dependencies=[
         Depends(get_current_user),
@@ -36,7 +37,7 @@ router = APIRouter(
 )
 
 
-@router.post("/ai/complete")
+@router.post("/complete")
 async def ai_complete(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     t0 = _time.monotonic()
     result = await run_completion(body, stream=False)
@@ -84,7 +85,6 @@ async def ai_complete(body: dict, user=Depends(get_current_user), db: AsyncSessi
 
 
 @router.get("/models")
-@router.get("/ai/models")
 async def list_models(user=Depends(get_current_user)):
     return [
         {"id": "gpt-4o", "provider": "openai", "name": "GPT-4o", "context_window": 128000, "cost_per_1k_input": 0.005},
@@ -96,12 +96,12 @@ async def list_models(user=Depends(get_current_user)):
     ]
 
 
-@router.get("/ai/providers")
+@router.get("/providers")
 async def list_providers(user=Depends(get_current_user)):
     return {"default_order": provider_order({}), "providers": ["ollama", "groq", "huggingface", "gemini", "openai"]}
 
 
-@router.post("/ai/predict-cost")
+@router.post("/predict-cost")
 async def predict_cost(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.db.models.workspace import ModelConfig
     from sqlalchemy import select
@@ -152,7 +152,7 @@ async def predict_cost(body: dict, user=Depends(get_current_user), db: AsyncSess
     }
 
 
-@router.post("/ai/transcribe")
+@router.post("/transcribe")
 async def transcribe(user=Depends(get_current_user)):
     return {"text": "Transcription placeholder - upload audio for processing.", "language": "en", "duration_seconds": 0}
 
@@ -161,7 +161,7 @@ async def transcribe(user=Depends(get_current_user)):
 # /ai/inference  — cached smart-tier inference (x402-ready)
 # ---------------------------------------------------------------------------
 
-@router.post("/ai/inference")
+@router.post("/inference")
 async def ai_inference(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Policy-gated AI inference with hot/warm response caching.
@@ -264,7 +264,7 @@ async def ai_inference(body: dict, user=Depends(get_current_user), db: AsyncSess
 # /ai/chat  — persistent 20-message 24h conversation memory
 # ---------------------------------------------------------------------------
 
-@router.post("/ai/chat")
+@router.post("/chat")
 async def ai_chat(
     body: dict,
     user=Depends(get_current_user),
@@ -378,7 +378,7 @@ async def ai_chat(
 # /ai/chat/memory — memory management endpoints
 # ---------------------------------------------------------------------------
 
-@router.get("/ai/chat/memory")
+@router.get("/chat/memory")
 async def get_chat_memory(
     session_id: str = Query(...),
     user=Depends(get_current_user),
@@ -390,7 +390,7 @@ async def get_chat_memory(
     return {**stats, "messages": msgs}
 
 
-@router.delete("/ai/chat/memory")
+@router.delete("/chat/memory")
 async def clear_chat_memory(
     session_id: str = Query(...),
     user=Depends(get_current_user),
@@ -401,7 +401,7 @@ async def clear_chat_memory(
     return {"cleared": True, "session_id": session_id}
 
 
-@router.get("/ai/routing/tier")
+@router.get("/routing/tier")
 async def explain_tier(body: dict = None, user=Depends(get_current_user)):
     """Explain which tier and providers would be selected for a given request."""
     body = body or {}

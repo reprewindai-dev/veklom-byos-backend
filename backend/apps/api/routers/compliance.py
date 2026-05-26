@@ -471,13 +471,10 @@ async def compliance_report(body: dict = None, user=Depends(get_current_user)):
         "compliance_score": reg_data["score"],
         "findings": reg_data["findings"],
         "recommendations": [
-            "Continue regular compliance audits",
-            "Maintain up-to-date documentation",
-            "Conduct annual risk assessments"
->>>>>>> origin/main
-        ],
-        "recommendations": [
-            { "id": "r1", "description": "Enable automated PII scrubbing on high-risk pipelines" }
+            { "id": "r1", "description": "Enable automated PII scrubbing on high-risk pipelines" },
+            { "id": "r2", "description": "Continue regular compliance audits" },
+            { "id": "r3", "description": "Maintain up-to-date documentation" },
+            { "id": "r4", "description": "Conduct annual risk assessments" }
         ],
         "generated_at": datetime.now(timezone.utc).isoformat()
     }

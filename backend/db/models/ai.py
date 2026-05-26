@@ -133,3 +133,7 @@ class IncidentLog(Base):
     message = Column(Text, nullable=True)
     resolved = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+# Alias to support both ExecutionLog (manual alignment) and ExecLog (production/legacy)
+ExecLog = ExecutionLog

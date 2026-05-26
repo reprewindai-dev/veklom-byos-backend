@@ -79,6 +79,7 @@ def _user_dict(user: User) -> dict:
             - is_superuser: Boolean indicating platform superuser flag.
             - mfa_enabled: Boolean indicating whether MFA is enabled.
             - workspace_id: Associated workspace id or empty string.
+            - workspace_name: Associated workspace name or empty string.
             - github_username: Connected GitHub username or empty string.
             - github_connected: `true` if both GitHub id and access token are present, `false` otherwise.
             - github_account_id: GitHub account id or empty string.
@@ -99,6 +100,16 @@ def _user_dict(user: User) -> dict:
 
     is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
 
+    # Try to get workspace name if workspace relationship exists
+    workspace_name = ""
+    if hasattr(user, 'workspace') and user.workspace:
+        workspace_name = user.workspace.name or ""
+    elif user.workspace_id:
+        # Fallback: try to fetch workspace by ID if not already loaded
+        from backend.db.models.workspace import Workspace
+        # Note: This requires a db session, so we'll use a simple fallback for now
+        workspace_name = ""
+
     return {
         "id": user.id,
         "email": user.email,
@@ -109,6 +120,7 @@ def _user_dict(user: User) -> dict:
         "is_superuser": bool(user.is_superuser),
         "mfa_enabled": user.mfa_enabled,
         "workspace_id": user.workspace_id or "",
+        "workspace_name": workspace_name,
         "github_username": user.github_username or "",
         "github_connected": bool(user.github_id and user.github_access_token),
         "github_account_id": user.github_id or "",

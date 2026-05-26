@@ -149,6 +149,15 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
     if plan_id == "enterprise":
         return {"checkout_url": None, "message": "Enterprise pricing is custom — contact sales@veklom.com", "plan": "enterprise"}
 
+    # Check if Stripe is configured
+    if not _stripe_ready():
+        return {
+            "detail": "Stripe not configured. Add STRIPE_SECRET_KEY to .env.",
+            "checkout_url": None,
+            "plan": plan_id,
+            "configured": False
+        }, 503
+
     client = _stripe_client()
     plan = PLAN_AMOUNTS.get(plan_id)
     if not plan:
@@ -453,7 +462,8 @@ async def budget_forecast(user=Depends(get_current_user), db: AsyncSession = Dep
 
 # --- Cost ---
 @router.get("/cost/predict")
-async def cost_predict(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@router.post("/cost/predict")
+async def cost_predict(body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.db.models.ai import ExecLog
     from sqlalchemy import func
     from datetime import datetime, timezone, timedelta

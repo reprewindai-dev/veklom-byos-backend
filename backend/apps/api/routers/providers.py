@@ -32,6 +32,24 @@ from backend.db.models.provider import ProviderKey, ProviderRoutingLog
 
 router = APIRouter(prefix="/providers", tags=["Providers"])
 
+# Alias routes for workspace-enhance.js compatibility
+@router.get("/workspace/providers")
+async def list_workspace_providers(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alias for GET /providers/available for workspace frontend compatibility."""
+    return await list_available_providers(user, db)
+
+@router.post("/workspace/providers")
+async def add_workspace_provider(
+    body: dict,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alias for POST /providers/keys for workspace frontend compatibility."""
+    return await add_provider_key(body, user, db)
+
 SUPPORTED_PROVIDERS = ["ollama", "groq", "openai", "gemini", "huggingface", "anthropic"]
 
 

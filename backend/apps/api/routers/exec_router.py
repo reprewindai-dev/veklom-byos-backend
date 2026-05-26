@@ -20,6 +20,7 @@ router = APIRouter(
 
 @router.post("/v1/exec")
 @router.post("/chat/completions")
+@router.post("/ai/exec")
 async def exec_stream(request: Request, user=Depends(get_current_user)):
     body = await request.json()
     stream = body.get("stream", True)

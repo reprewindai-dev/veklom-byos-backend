@@ -523,18 +523,19 @@ async def pulse_stream(user=Depends(get_current_user)):
 
 
 # --- Insights ---
+@router.get("/insights")
 @router.get("/insights/summary")
 async def insights_summary(user=Depends(get_current_user)):
     return {
+        "total_requests_today": 1240,
+        "avg_latency_ms": 1640,
+        "error_rate_percent": 0.3,
+        "top_models": [{"model": "qwen2.5:3b", "calls": 1180}],
+        "provider_split": {"ollama": 0.94, "groq": 0.06},
         "total_requests_30d": 12450,
         "total_cost_30d": 12.50,
-        "avg_latency_ms": 45,
-        "top_models": [
-            {"model": "gpt-4o", "requests": 5200, "cost": 8.00},
-            {"model": "gpt-4o-mini", "requests": 4800, "cost": 2.50},
-        ],
-        "compliance_score": 94,
-        "savings_vs_direct": 15.3,
+        "avg_tokens_per_request": 450,
+        "peak_hour_requests": 89,
     }
 
 

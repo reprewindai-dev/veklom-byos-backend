@@ -283,8 +283,17 @@ async def not_found(request: Request, exc):
     if request.url.path.startswith("/workspace") or request.url.path.startswith("/login") or request.url.path.startswith("/github"):
         workspace_index = WORKSPACE_DIR / "index.html"
         if workspace_index.exists():
-            return FileResponse(
-                str(workspace_index),
+            # Read the index.html and inject the auto-editor script
+            with open(workspace_index, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            # Inject script before closing </head> or </body>
+            script_tag = '<script src="/workspace/auto-editor.js"></script>'
+            if '</head>' in html_content:
+                html_content = html_content.replace('</head>', f'{script_tag}</head>')
+            elif '</body>' in html_content:
+                html_content = html_content.replace('</body>', f'{script_tag}</body>')
+            return HTMLResponse(
+                content=html_content,
                 headers={
                     "Cache-Control": "no-store, no-cache, must-revalidate",
                     "Pragma": "no-cache",
@@ -803,6 +812,97 @@ async def marketplace_py03():
         "status": "Available in Veklom ecosystem"
     }
 
+
+
+@app.get("/workspace/pipelines/{pipeline_id}/embedded")
+async def embedded_pipeline_editor(pipeline_id: str):
+    """Serve pipeline detail page with visual editor embedded in iframe."""
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Pipeline Editor - {pipeline_id}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        html, body {{
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }}
+        iframe {{
+            width: 100%;
+            height: 100%;
+            border: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }}
+    </style>
+</head>
+<body>
+    <iframe src="/workspace/#/pipelines/{pipeline_id}?editor=true" allowfullscreen></iframe>
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
+
+
+@app.get("/workspace/auto-editor.js")
+async def auto_editor_script():
+    """JavaScript to automatically trigger visual editor on pipeline pages."""
+    script_content = """
+(function() {
+    // Wait for the page to load
+    function waitForElement(selector, callback, maxAttempts = 50) {
+        let attempts = 0;
+        const interval = setInterval(() => {
+            const element = document.querySelector(selector);
+            if (element) {
+                clearInterval(interval);
+                callback(element);
+            } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+            }
+            attempts++;
+        }, 100);
+    }
+
+    // Detect if we're on a pipeline detail page
+    function checkPipelinePage() {
+        const hash = window.location.hash;
+        if (hash.match(/#\\/pipelines\\/[^/]+$/)) {
+            // We're on a pipeline detail page - trigger visual editor
+            waitForElement('[data-testid="visual-editor-button"], .visual-editor-btn, button:contains("Visual Editor")', (btn) => {
+                if (btn) {
+                    btn.click();
+                }
+            });
+            
+            // Alternative: try to find and click any button that might open the editor
+            setTimeout(() => {
+                const buttons = document.querySelectorAll('button');
+                for (let btn of buttons) {
+                    const text = btn.textContent || btn.innerText || '';
+                    if (text.toLowerCase().includes('visual') || text.toLowerCase().includes('editor')) {
+                        btn.click();
+                        break;
+                    }
+                }
+            }, 500);
+        }
+    }
+
+    // Run on page load and hash change
+    window.addEventListener('load', checkPipelinePage);
+    window.addEventListener('hashchange', checkPipelinePage);
+    
+    // Also run immediately in case we're already loaded
+    setTimeout(checkPipelinePage, 100);
+})();
+"""
+    return HTMLResponse(content=script_content, media_type="application/javascript")
 
 
 @app.get("/gpc")

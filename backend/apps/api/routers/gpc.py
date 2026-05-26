@@ -23,10 +23,16 @@ router = APIRouter(prefix="/gpc", tags=["GPC"])
 
 
 def _can_use_gpc_full(user) -> bool:
-    """Check if user can use full GPC (not just demo).
+    """
+    Determine whether a user has full GPC access.
     
-    Platform superusers and paid users get full GPC.
-    Free users get limited demo quota only.
+    Full access is granted when the user is a platform superuser/admin (via is_superuser, role == "SUPER_ADMIN", matching admin email, or matching founder workspace ID) or when the user's plan is one of "pro", "sovereign", or "business".
+    
+    Parameters:
+        user: An object representing the current user. Expected attributes: `is_superuser`, `role`, `email`, `workspace_id`, and `plan`.
+    
+    Returns:
+        `true` if the user has full GPC access, `false` otherwise.
     """
     from backend.core.config.settings import settings
     
@@ -55,9 +61,11 @@ def _can_use_gpc_full(user) -> bool:
 
 
 def _can_use_gpc_demo(user) -> bool:
-    """Check if user can use demo GPC (limited quota).
+    """
+    Determine whether a user is eligible for demo GPC access.
     
-    Free users get limited demo quota.
+    Returns:
+        bool: `True` if the user's plan is "free", `False` otherwise.
     """
     plan = getattr(user, "plan", "free")
     # Free users get demo access
@@ -66,6 +74,12 @@ def _can_use_gpc_demo(user) -> bool:
 
 @router.get("/plans")
 async def list_plans(user=Depends(get_current_user)):
+    """
+    Return an empty list of plans.
+    
+    Returns:
+        list: An empty list.
+    """
     return []
 
 
@@ -84,7 +98,18 @@ async def save_plan(body: dict, user=Depends(get_current_user)):
 
 @router.post("/compile")
 async def gpc_compile(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Compile agent intent into a governed plan. Emits a Decision Frame (replayable proof)."""
+    """
+    Compile an agent intent into a governed plan and attempt to emit a Decision Frame.
+    
+    Parameters:
+        body (dict): Request payload containing at minimum an "intent" string. May include optional keys such as "graph", "compliance", "provider", "model", and "budget_usdc".
+    
+    Returns:
+        dict: A compiled plan payload containing fields like `id`, `name`, `intent`, `graph`, `status`, and `createdAt`. If Decision Frame emission succeeds, the payload will also include `decision_frame_id`, `evidence_id`, and `proof_hash`.
+    
+    Raises:
+        HTTPException: 403 if the current user is not entitled to use GPC (neither full nor demo access).
+    """
     # Check GPC entitlement
     if not _can_use_gpc_full(user) and not _can_use_gpc_demo(user):
         raise HTTPException(
@@ -97,7 +122,23 @@ async def gpc_compile(body: dict, user=Depends(get_current_user), db: AsyncSessi
 
 @router.post("/intent-to-plan")
 async def intent_to_plan(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Alias for /compile — converts high-level intent to a governed execution plan."""
+    """
+    Convert a high-level intent into a governed execution plan.
+    
+    Parameters:
+        body (dict): Input payload containing the plan request. Expected keys include:
+            - `intent` (str): The natural-language objective to compile.
+            - `graph` (dict, optional): Explicit plan graph structure.
+            - `compliance` (list, optional): Compliance constraints or tags.
+            - `provider` (str, optional): Model provider override.
+            - `model` (str, optional): Model identifier override.
+            - `budget_usdc` (number, optional): Cost estimate for Decision Frame emission.
+    
+    Returns:
+        dict: Compiled plan payload with fields such as `id`, `name`, `intent`, `graph`, `status`,
+        `policy_result`, `compliance`, `provider`, `model`, and `createdAt`. When Decision Frame
+        emission succeeds, the result also includes `decision_frame_id`, `evidence_id`, and `proof_hash`.
+    """
     # Check GPC entitlement
     if not _can_use_gpc_full(user) and not _can_use_gpc_demo(user):
         raise HTTPException(
@@ -172,6 +213,28 @@ async def list_runs(user=Depends(get_current_user)):
 @router.post("/runs")
 async def start_run(body: dict, user=Depends(get_current_user)):
     # Check GPC entitlement
+    """
+    Start a background governed-plan run and return its initial run metadata.
+    
+    Parameters:
+        body (dict): Request payload. Supported keys:
+            - graph (dict, optional): Execution graph for the run; a default mock graph is used if absent.
+            - provider (str, optional): Model provider, e.g. "openai"; defaults to "openai".
+            - model (str, optional): Model name, e.g. "gpt-4o-mini"; defaults to "gpt-4o-mini".
+            - planId (str, optional): Associated plan identifier.
+    
+    Returns:
+        dict: Run metadata with keys:
+            - id (str): UUID for the started run.
+            - planId (str): Value from `body["planId"]` or empty string.
+            - status (str): Initial status, `"PENDING"`.
+            - progress (int): Initial progress percentage (0).
+            - currentStep (str): Initial step label, `"Initializing"`.
+            - startTime (str): ISO 8601 UTC timestamp when the run was started.
+    
+    Raises:
+        HTTPException: With status code 403 if the requesting user is not entitled to use GPC.
+    """
     if not _can_use_gpc_full(user) and not _can_use_gpc_demo(user):
         raise HTTPException(
             status_code=403,

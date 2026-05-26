@@ -1,6 +1,7 @@
 """Compliance, privacy, content-safety, explainability, evidence, audit routes."""
 
 from datetime import datetime, timedelta, timezone
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse

@@ -10,7 +10,7 @@ from passlib.context import CryptContext
 from sqlalchemy import select
 
 from backend.core.config.settings import settings
-from backend.core.database.database import get_db_session
+from backend.core.database.database import get_db_session, get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security_scheme = HTTPBearer(auto_error=False)

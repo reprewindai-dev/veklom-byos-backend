@@ -36,13 +36,29 @@ VEKLOM_PRICING = {
     "audit_verify":        {"price_usdc": 0.003, "unit": "per verify",   "name": "Audit Verification"},
 }
 import os
+import logging as _logging
+
+_disc_log = _logging.getLogger(__name__)
 
 VEKLOM_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
-VEKLOM_TREASURY    = os.environ.get("VEKLOM_TREASURY_ADDRESS", "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d")  # real treasury address
 VEKLOM_NETWORK     = "base"
 VEKLOM_BASE_URL    = "https://veklom.com"       # main site (workspace, landing, pricing)
 VEKLOM_API_BASE    = "https://api.veklom.com/api/v1"  # machine-facing API surface
 VEKLOM_AGENT_BASE  = "https://api.veklom.com"   # where .well-known, mcp/sse, openapi.json live
+
+# P0-4: treasury address MUST come from the environment — never fall back to a
+# hardcoded address that could receive real funds unintentionally.
+_raw_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+_ZERO_ADDR = "0x0000000000000000000000000000000000000001"
+if not _raw_treasury or _raw_treasury == _ZERO_ADDR:
+    _disc_log.warning(
+        "[discovery] VEKLOM_TREASURY_ADDRESS is not set or is a placeholder. "
+        "x402 discovery will advertise 'NOT_CONFIGURED' until this env var is set. "
+        "Add VEKLOM_TREASURY_ADDRESS=<your real wallet> to .env and restart."
+    )
+    VEKLOM_TREASURY = "NOT_CONFIGURED"
+else:
+    VEKLOM_TREASURY = _raw_treasury
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +254,17 @@ async def x402_json():
         "asset": VEKLOM_USDC_ADDRESS,
         "treasury": VEKLOM_TREASURY,
         "currency": "USDC",
+        # P0-3: x402 on-chain settlement is not yet wired. Mark as test_mode
+        # so agent clients do not attempt to pay with real USDC yet.
+        # Real payment path: Stripe wallet top-up → JWT Bearer auth.
+        "payment_mode": "test",
+        "payment_mode_note": (
+            "x402 micropayment settlement is in discovery/test mode. "
+            "On-chain USDC verification is not yet active. "
+            "To make paid calls: register at https://veklom.com/workspace, "
+            "top up your operating reserve via Stripe, and authenticate with a "
+            "Bearer JWT. x402 settlement will be enabled in a future release."
+        ),
         "routes": routes,
         "free_trial": {
             "enabled": True,

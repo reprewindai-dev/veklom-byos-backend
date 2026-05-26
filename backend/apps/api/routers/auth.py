@@ -88,14 +88,16 @@ def _user_dict(user: User) -> dict:
             - is_admin: Boolean indicating administrative role (OWNER, SUPER_ADMIN, or ADMIN).
     """
     role = (user.role or "USER").upper()
-    # Derive plan from role
-    if role in ("OWNER", "SUPER_ADMIN"):
+    # Role-based plan fallback — the real plan is read from the Subscription
+    # table in the /auth/me endpoint and overrides this value.
+    # SUPER_ADMIN is the platform role; OWNER is a workspace role that does not
+    # imply a paid subscription.
+    if role == "SUPER_ADMIN":
         plan = "sovereign"
-    elif role in ("ADMIN",):
-        plan = "pro"
-    elif role in ("ANALYST", "USER"):
+    elif role in ("USER", "ANALYST"):
         plan = "starter"
     else:
+        # OWNER, ADMIN, VIEWER → free until a real subscription is active
         plan = "free"
 
     is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
@@ -484,61 +486,86 @@ async def refresh(body: dict, db: AsyncSession = Depends(get_db)):
 @router.get("/me")
 async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
-    Return the authenticated user's profile combined with an optional workspace summary and a computed set of capability flags.
-    
-    The response merges the normalized user object produced by _user_dict(user) with:
-    - "workspace": either null or an object containing workspace metadata:
-      - "id", "name", "slug", "plan", "license_tier", "is_active"
-    - "capabilities": a mapping of feature names to booleans indicating whether the user can use each feature (e.g., "command_center", "owner_provider_keys", "premium_marketplace", "pipeline_deploy", "vault_secrets", "team_management", "billing_management", "compliance_exports", "custom_models").
-    
-    Returns:
-        dict: Combined payload with user profile fields, "workspace" (object or None), and "capabilities" (dict of feature booleans).
+    Return the authenticated user's profile with workspace summary and capability flags.
+
+    Plan is read from the active Subscription row for the user's workspace.
+    Falls back to workspace.license_tier, then to the role-based default (free
+    for OWNER/ADMIN, sovereign for SUPER_ADMIN). The role-based fallback means
+    a self-registered OWNER always sees plan=free until a real Stripe subscription
+    is activated.
     """
+    from backend.db.models.billing import Subscription
+
     user_data = _user_dict(user)
-    
-    # Add workspace data if user has a workspace
+
+    # Resolve real subscription plan from DB
+    real_plan = user_data.get("plan", "free")  # role-based default
+    if user.workspace_id:
+        active_sub = (await db.execute(
+            select(Subscription)
+            .where(
+                Subscription.workspace_id == user.workspace_id,
+                Subscription.status.in_(["active", "trialing"]),
+            )
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if active_sub and active_sub.plan:
+            real_plan = active_sub.plan
+
+    # Add workspace data
     workspace_data = None
     if user.workspace_id:
         result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
         workspace = result.scalar_one_or_none()
         if workspace:
+            # If no active subscription, check workspace.license_tier as secondary source
+            if real_plan == user_data.get("plan", "free") and workspace.license_tier:
+                tier = (workspace.license_tier or "").strip()
+                if tier and tier not in ("standard", "free", ""):
+                    real_plan = tier
             workspace_data = {
                 "id": workspace.id,
                 "name": workspace.name,
                 "slug": workspace.slug,
-                "plan": user_data.get("plan", "free"),
-                "license_tier": workspace.license_tier or "standard",
+                "plan": real_plan,
+                "license_tier": workspace.license_tier or "free",
                 "is_active": workspace.is_active,
             }
-    
-    # Determine capabilities based on role, is_superuser, and plan
+
+    # Override plan in user_data with real subscription plan
+    user_data["plan"] = real_plan
+
+    # Determine capabilities based on role, is_superuser, and real plan
     role = (user.role or "USER").upper()
     is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
-    is_founder = bool(user.is_superuser) or role in ("SUPER_ADMIN",)
-    plan = user_data.get("plan", "free")
-    
-    # Platform superuser check for Command Center access
-    # Only platform superusers can access Command Center, not tenant owners
-    from backend.core.config.settings import settings
+
+    # Platform superuser: must have is_superuser flag AND SUPER_ADMIN role AND
+    # email match AND workspace match (all conditions from _require_platform_superuser)
+    from backend.core.config.settings import settings as _settings
+    _email = (user.email or "").lower()
+    _admin_email = (_settings.ADMIN_EMAIL or "").lower()
+    _founder_ws = (_settings.FOUNDER_WORKSPACE_ID or "").strip()
     is_platform_superuser = (
         bool(user.is_superuser)
-        or role == "SUPER_ADMIN"
-        or user.email == settings.ADMIN_EMAIL
-        or user.workspace_id == settings.FOUNDER_WORKSPACE_ID
+        and role == "SUPER_ADMIN"
+        and (_admin_email == "" or _email == _admin_email)
+        and (_founder_ws == "" or user.workspace_id == _founder_ws)
     )
-    
+
     capabilities = {
         "command_center": is_platform_superuser,
+        "platform_command_center": is_platform_superuser,
         "owner_provider_keys": is_platform_superuser,
-        "premium_marketplace": plan in ("pro", "sovereign"),
-        "pipeline_deploy": plan != "free",
+        "premium_marketplace": real_plan in ("pro", "sovereign"),
+        "pipeline_deploy": real_plan != "free",
         "vault_secrets": is_admin,
         "team_management": is_admin,
         "billing_management": is_admin,
-        "compliance_exports": plan in ("pro", "sovereign", "business"),
-        "custom_models": plan in ("pro", "sovereign"),
+        "compliance_exports": real_plan in ("pro", "sovereign", "business"),
+        "custom_models": real_plan in ("pro", "sovereign"),
     }
-    
+
     return {
         **user_data,
         "workspace": workspace_data,

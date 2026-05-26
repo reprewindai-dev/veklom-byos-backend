@@ -47,33 +47,40 @@ def _utcnow() -> datetime:
 def _require_platform_superuser(user) -> None:
     """
     Require that the current user is a platform superuser; raise 403 if not.
-    
-    This gate grants access only when the user meets at least one of the following:
-    - has attribute `is_superuser` that is truthy,
-    - has `role` equal to `"SUPER_ADMIN"` (case-insensitive),
-    - has `email` equal to `settings.ADMIN_EMAIL`,
-    - has `workspace_id` equal to `settings.FOUNDER_WORKSPACE_ID`.
-    
-    The tenant OWNER role does not satisfy this check.
+
+    ALL of the following must be true simultaneously:
+    - user.is_superuser is True
+    - user.role == "SUPER_ADMIN" (case-insensitive)
+    - user.email == settings.ADMIN_EMAIL
+    - user.workspace_id == settings.FOUNDER_WORKSPACE_ID (when that setting is configured)
+
+    The tenant OWNER role alone does NOT satisfy this check.
     Raises:
-        HTTPException: with status code 403 and detail "Command Center is platform-superuser only" when the user is not a platform superuser.
+        HTTPException 403 when any condition is not met.
     """
     from backend.core.config.settings import settings
-    
+
     is_superuser = bool(getattr(user, "is_superuser", False))
     role = (getattr(user, "role", "") or "").upper()
-    email = getattr(user, "email", "")
+    email = (getattr(user, "email", "") or "").lower()
     workspace_id = getattr(user, "workspace_id", "")
-    
-    # Check if user is platform superuser
-    is_platform_superuser = (
-        is_superuser
-        or role == "SUPER_ADMIN"
-        or email == settings.ADMIN_EMAIL
-        or workspace_id == settings.FOUNDER_WORKSPACE_ID
-    )
-    
-    if not is_platform_superuser:
+
+    # Condition 1: must be flagged as superuser
+    if not is_superuser:
+        raise HTTPException(status_code=403, detail="Command Center is platform-superuser only")
+
+    # Condition 2: must hold the SUPER_ADMIN role specifically
+    if role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Command Center is platform-superuser only")
+
+    # Condition 3: email must match the configured platform admin email
+    admin_email = (settings.ADMIN_EMAIL or "").lower()
+    if admin_email and email != admin_email:
+        raise HTTPException(status_code=403, detail="Command Center is platform-superuser only")
+
+    # Condition 4: workspace must match the founder workspace (when configured)
+    founder_ws = (settings.FOUNDER_WORKSPACE_ID or "").strip()
+    if founder_ws and workspace_id != founder_ws:
         raise HTTPException(status_code=403, detail="Command Center is platform-superuser only")
 
 
@@ -111,11 +118,11 @@ def _safe_user(u: User) -> dict:
 
 @router.get("/overview")
 async def overview(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Workspace-scoped overview: totals, last activity, headline metrics.
+    """Platform-level overview: totals, last activity, headline metrics.
 
-    Aliases /api/v1/workspace/overview semantics but always returns concrete
-    counts pulled from the DB.  No fake fallbacks.
+    Requires platform superuser. Returns concrete counts from DB. No fake fallbacks.
     """
+    _require_platform_superuser(user)
     ws = user.workspace_id or ""
     total_users = (await db.execute(
         select(func.count(User.id)).where(User.workspace_id == ws)

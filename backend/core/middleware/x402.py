@@ -169,20 +169,30 @@ async def _verify_workspace_auth(request: Request) -> Optional[dict]:
 
 def _verify_x402_payment(request: Request) -> bool:
     """
-    Checks for x402 payment headers but does not authorize payment.
-    
-    Looks for `X-Payment-Proof` or `X-Payment` headers on the given request. In the current implementation the function always returns `False` (payment is not accepted based on these headers); production verification of on-chain USDC transfers is expected to replace this behavior.
-    
+    Inspect x402 payment headers but never authorize payment in current build.
+
+    On-chain USDC settlement (Base mainnet) is not yet wired. This function
+    always returns False. Requests that include an X-Payment or X-Payment-Proof
+    header receive a structured log entry so operators can see attempted agent
+    payments in container logs.
+
     Returns:
-        bool: `True` if the request contains a valid x402 payment proof and is authorized (currently never), `False` otherwise.
+        bool: Always False until real Base settlement verification is integrated.
     """
+    import logging as _log
     proof = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment")
     if not proof:
         return False
-    
-    # Fake-proof bypass has been removed for production security.
-    # To bypass, requests must go through the Node.js paid gateway 
-    # which injects the trusted X-Gateway-Secret.
+
+    # Log the attempt — useful for measuring organic agent traffic before
+    # settlement goes live.
+    _log.getLogger(__name__).info(
+        "[x402] Payment proof header received but settlement is in test mode. "
+        "Proof length=%d path=%s — returning 402. "
+        "Real on-chain USDC verification is pending.",
+        len(proof),
+        request.url.path,
+    )
     return False
 
 

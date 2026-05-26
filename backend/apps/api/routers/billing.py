@@ -59,8 +59,31 @@ def _checkout_amount(amount_usd: float | int) -> int:
 
 # --- Wallet ---
 @router.get("/wallet/balance")
-async def wallet_balance(user=Depends(get_current_user)):
-    return {"balance_usd": 147.50, "currency": "USD", "last_topup": "2026-05-15T10:00:00Z"}
+async def wallet_balance(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Return the real wallet balance computed from WalletTransaction rows."""
+    from sqlalchemy import func
+    workspace_id = user.workspace_id or ""
+    topups = await db.scalar(
+        select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+        .where(
+            WalletTransaction.workspace_id == workspace_id,
+            WalletTransaction.tx_type.in_(["topup", "activation"]),
+        )
+    ) or 0.0
+    debits = await db.scalar(
+        select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+        .where(
+            WalletTransaction.workspace_id == workspace_id,
+            WalletTransaction.tx_type == "debit",
+        )
+    ) or 0.0
+    balance = round(float(topups) - abs(float(debits)), 4)
+    return {
+        "balance_usd": max(balance, 0.0),
+        "currency": "USD",
+        "total_topups": round(float(topups), 4),
+        "total_debits": round(abs(float(debits)), 4),
+    }
 
 
 @router.get("/wallet/transactions")
@@ -135,15 +158,29 @@ async def subscription_plans():
 
 
 @router.get("/subscriptions/current")
-async def current_subscription(user=Depends(get_current_user)):
-    return {
-        "plan": "agency",
-        "status": "active",
-        "current_period_end": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
-        "features": {
-            "api_calls_per_month": 500000,
-            "intelligent_routing": True
+async def current_subscription(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Return the real active subscription from the DB, or an honest empty state."""
+    ws_id = user.workspace_id or ""
+    sub = (await db.execute(
+        select(Subscription)
+        .where(
+            Subscription.workspace_id == ws_id,
+            Subscription.status.in_(["active", "trialing"]),
+        )
+        .order_by(Subscription.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if sub:
+        return {
+            "plan": sub.plan,
+            "status": sub.status,
+            "current_period_end": sub.current_period_end.isoformat() if getattr(sub, "current_period_end", None) else None,
+            "stripe_subscription_id": getattr(sub, "stripe_subscription_id", None),
         }
+    return {
+        "plan": "free",
+        "status": "none",
+        "note": "No active subscription. Visit /workspace/#/billing to upgrade.",
     }
 
 
@@ -294,13 +331,8 @@ async def list_invoices(user=Depends(get_current_user), db: AsyncSession = Depen
     invoices = result.scalars().all()
     if invoices:
         return [{"id": inv.id, "amount": inv.amount, "status": inv.status, "description": inv.description, "created_at": inv.created_at.isoformat() if inv.created_at else None} for inv in invoices]
-    # Synthetic sample if no data
-    from datetime import timedelta
-    now = datetime.now(timezone.utc)
-    return [
-        {"id": "inv_sample_1", "amount": 18476.00, "status": "paid", "description": "Veklom Sovereign — May 2026", "created_at": (now - timedelta(days=25)).isoformat()},
-        {"id": "inv_sample_2", "amount": 799.00, "status": "paid", "description": "Veklom Sovereign subscription", "created_at": (now - timedelta(days=55)).isoformat()},
-    ]
+    # Synthetic fallback removed — return honest empty list instead of fake data.
+    return []
 
 
 @router.get("/billing/breakdown")
@@ -505,8 +537,23 @@ async def cost_history(user=Depends(get_current_user), db: AsyncSession = Depend
 
 
 @router.get("/cost/kill-switch/status")
-async def cost_kill_switch_status(user=Depends(get_current_user)):
-    return {"is_active": False, "threshold_usd": 1000, "current_spend": 8.50}
+async def cost_kill_switch_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Return real kill-switch state and current spend from DB."""
+    from backend.db.models.ai import ExecLog
+    from sqlalchemy import func
+    from datetime import datetime, timezone
+    workspace_id = user.workspace_id or ""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    current_spend = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start)
+    ) or 0.0
+    return {
+        "is_active": False,
+        "threshold_usd": 1000,
+        "current_spend": round(float(current_spend), 4),
+    }
 
 
 @router.post("/cost/kill-switch")

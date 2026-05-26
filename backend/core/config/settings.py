@@ -95,8 +95,8 @@ class Settings(BaseSettings):
     FOUNDER_WORKSPACE_ID: str = ""            # Set this to the founder workspace UUID
     PROVIDER_ENCRYPTION_KEY: str = ""         # Fernet key for encrypting BYOK keys at rest
     OLLAMA_MODEL: str = "llama3.2:latest"
-    OLLAMA_AUTOSTART: bool = False
-    OLLAMA_PULL_ON_BOOT: bool = False
+    OLLAMA_AUTOSTART: bool = True
+    OLLAMA_PULL_ON_BOOT: bool = True
     OLLAMA_STARTUP_TIMEOUT_MS: int = 120000
     VLLM_BASE_URL: str = ""
 

@@ -355,6 +355,7 @@ from backend.apps.api.routers import (
     plugins,
     autonomous,
     playground,
+    webhooks,
 )
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
@@ -406,6 +407,9 @@ app.include_router(marketplace.router, prefix="/api/v1")
 app.include_router(pipelines.router, prefix="/api/v1")
 app.include_router(pipelines.router)
 app.include_router(routing.router, prefix="/api/v1")
+
+# Webhooks for external integrations
+app.include_router(webhooks.router, prefix="/api/v1")
 
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")

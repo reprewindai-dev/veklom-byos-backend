@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -102,3 +102,33 @@ async def require_internal_operator(user=Depends(get_current_user)):
             detail="UACP Internal Operator access required"
         )
     return user
+
+
+async def get_current_user_or_api_key(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    if credentials is not None:
+        return await get_current_user(credentials, db)
+
+    api_key_header = request.headers.get("X-API-Key")
+    if api_key_header:
+        if not api_key_header.startswith("byos_"):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key format")
+            
+        prefix = api_key_header[:10]
+        from backend.db.models.user import APIKey, User
+        result = await db.execute(select(APIKey).where(APIKey.key_prefix == prefix, APIKey.is_active == True))
+        keys = result.scalars().all()
+        for key in keys:
+            if verify_password(api_key_header, key.key_hash):
+                user_res = await db.execute(select(User).where(User.id == key.user_id))
+                user = user_res.scalar_one_or_none()
+                if user and user.status == "active":
+                    user.last_activity = datetime.now(timezone.utc)
+                    await db.commit()
+                    return user
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or inactive API Key")
+        
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication credentials missing")

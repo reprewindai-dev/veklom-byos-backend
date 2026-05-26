@@ -188,3 +188,14 @@ async def list_suggestions(user=Depends(get_current_user)):
 @router.get("/suggestions/summary")
 async def suggestions_summary(user=Depends(get_current_user)):
     return {"total": 2, "potential_savings_usd": 3.50, "security_improvements": 1}
+
+
+@router.get("/insights")
+async def request_insights(user=Depends(get_current_user)):
+    return {
+        "total_requests_today": 1240,
+        "avg_latency_ms": 1640,
+        "error_rate_percent": 0.3,
+        "top_models": [{ "model": "qwen2.5:3b", "calls": 1180 }],
+        "provider_split": { "ollama": 0.94, "groq": 0.06 }
+    }

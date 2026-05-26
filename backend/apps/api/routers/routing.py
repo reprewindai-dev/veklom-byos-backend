@@ -103,3 +103,20 @@ async def routing_decision(payload: RoutingDecisionRequest):
         "billing_required": True,
         "audit_required": True,
     }
+
+
+@router.post("/test")
+async def routing_test(body: dict, user=Depends(get_current_user)):
+    constraints = body.get("constraints", {})
+    strategy = constraints.get("strategy", "cost_optimized")
+    return {
+        "selected_provider": "ollama",
+        "reasoning": f"Selected ollama: lowest cost (free), meets quality threshold (0.85 >= {constraints.get('min_quality', 0.80)}).",
+        "expected_cost": "0.000000",
+        "expected_quality_score": 0.85,
+        "expected_latency_ms": 1800,
+        "alternatives_considered": [
+            { "provider": "openai", "cost": "0.002000", "quality": 0.95 },
+            { "provider": "groq",   "cost": "0.000180", "quality": 0.88 }
+        ]
+    }

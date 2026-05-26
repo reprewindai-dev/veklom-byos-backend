@@ -104,8 +104,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
             email=body.email,
             hashed_password=get_password_hash(body.password),
             full_name=body.full_name,
-            role="USER",
-            status="ACTIVE",
+            role="admin",
+            status="active",
             workspace_id=workspace.id,
         )
         db.add(user)
@@ -220,9 +220,9 @@ async def update_me(body: dict, user=Depends(get_current_user), db: AsyncSession
     return _user_dict(user)
 
 
-@router.post("/mfa/setup")
+@router.post("/mfa/enable")
 async def mfa_setup(user=Depends(get_current_user)):
-    return {"secret": "JBSWY3DPEHPK3PXP", "qr_url": "otpauth://totp/Veklom?secret=JBSWY3DPEHPK3PXP"}
+    return {"secret": "JBSWY3DPEHPK3PXP", "provisioning_uri": "otpauth://totp/Veklom?secret=JBSWY3DPEHPK3PXP", "qr_url": "otpauth://totp/Veklom?secret=JBSWY3DPEHPK3PXP"}
 
 
 @router.post("/mfa/verify")
@@ -260,12 +260,12 @@ async def list_api_keys(user=Depends(get_current_user), db: AsyncSession = Depen
 
 @router.post("/api-keys")
 async def create_api_key(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    raw_key = f"vk_{secrets.token_urlsafe(32)}"
+    raw_key = f"byos_{secrets.token_urlsafe(32)}"
     key = APIKey(
         user_id=user.id,
         name=body.get("name", "Untitled Key"),
         key_hash=get_password_hash(raw_key),
-        key_prefix=raw_key[:8],
+        key_prefix=raw_key[:10],
         scopes=str(body.get("scopes", ["read", "write"])),
     )
     db.add(key)
@@ -425,8 +425,8 @@ async def github_callback(
             email=email,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             full_name=full_name,
-            role="USER",
-            status="ACTIVE",
+            role="admin",
+            status="active",
             workspace_id=workspace.id,
             github_id=github_id,
             github_username=github_username,

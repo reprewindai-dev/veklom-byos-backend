@@ -14,6 +14,13 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.core.security.middlewares import (
+    ZeroTrustMiddleware,
+    MetricsMiddleware,
+    IntelligentRoutingMiddleware,
+    BudgetCheckMiddleware
+)
+
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager
@@ -56,6 +63,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(ZeroTrustMiddleware)
+app.add_middleware(MetricsMiddleware)
+app.add_middleware(IntelligentRoutingMiddleware)
+app.add_middleware(BudgetCheckMiddleware)
 
 if settings.APP_ENV == "production":
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
@@ -100,6 +112,7 @@ from backend.apps.api.routers import (
     internal_uacp,
     internal_operators,
     plugins,
+    autonomous,
 )
 
 # Health & status (no prefix)
@@ -114,7 +127,7 @@ app.include_router(workspace.router, prefix="/api/v1")
 # AI execution
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(exec_router.router, prefix="/api")
-app.include_router(exec_router.router, prefix="/api/v1")
+app.include_router(exec_router.router, prefix="")
 
 # Runtime Jobs Status
 app.include_router(runtime_jobs.router, prefix="/api/v1")
@@ -127,6 +140,7 @@ app.include_router(security.router, prefix="/api/v1")
 
 # Compliance, privacy, content-safety, explainability, evidence, audit
 app.include_router(compliance.router, prefix="/api/v1")
+app.include_router(autonomous.router, prefix="/api/v1")
 
 # Monitoring, metrics, insights, telemetry, platform pulse, suggestions
 app.include_router(monitoring.router, prefix="/api/v1")

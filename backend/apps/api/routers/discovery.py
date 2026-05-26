@@ -38,7 +38,7 @@ VEKLOM_PRICING = {
 import os
 
 VEKLOM_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
-VEKLOM_TREASURY    = os.environ.get("VEKLOM_TREASURY_ADDRESS", "")  # real treasury address
+VEKLOM_TREASURY    = os.environ.get("VEKLOM_TREASURY_ADDRESS", "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d")  # real treasury address
 VEKLOM_NETWORK     = "base"
 VEKLOM_BASE_URL    = "https://veklom.com"       # main site (workspace, landing, pricing)
 VEKLOM_API_BASE    = "https://api.veklom.com/api/v1"  # machine-facing API surface

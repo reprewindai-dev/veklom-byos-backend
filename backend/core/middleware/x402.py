@@ -63,7 +63,7 @@ _FREE_ROUTES_PREFIX = (
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
-VEKLOM_TREASURY   = os.environ.get("VEKLOM_TREASURY_ADDRESS", "")
+VEKLOM_TREASURY   = os.environ.get("VEKLOM_TREASURY_ADDRESS", "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d")
 VEKLOM_USDC_ADDR  = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
 
 # In-memory free-trial counter: { ip_day_key → count }

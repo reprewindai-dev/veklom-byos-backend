@@ -2,17 +2,30 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
 from backend.core.config.settings import settings
 
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    future=True,
-)
+db_url = settings.DATABASE_URL
+try:
+    if not db_url or not db_url.strip():
+        print("WARNING: DATABASE_URL not set in environment. Falling back to in-memory SQLite.")
+        db_url = "sqlite+aiosqlite:///:memory:"
+    engine = create_async_engine(
+        db_url,
+        echo=settings.DEBUG,
+        future=True,
+    )
+except Exception as e:
+    print(f"WARNING: Database engine creation failed: {e}. Falling back to in-memory SQLite.")
+    db_url = "sqlite+aiosqlite:///:memory:"
+    engine = create_async_engine(
+        db_url,
+        echo=settings.DEBUG,
+        future=True,
+    )
+
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -21,17 +34,14 @@ class Base(DeclarativeBase):
 
 
 async def get_db():
-    try:
-        async with async_session() as session:
-            try:
-                yield session
-            finally:
-                await session.close()
-    except Exception as e:
-        import traceback
-        error_detail = f"Database connection error: {str(e)}\nTraceback: {traceback.format_exc()}"
-        print(error_detail)
-        raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
+    async with async_session() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 @asynccontextmanager

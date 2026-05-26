@@ -8,10 +8,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
-from backend.core.database.database import get_db
+from backend.core.database.database import get_db_session
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security_scheme = HTTPBearer(auto_error=False)
@@ -54,17 +53,7 @@ def verify_token(token: str) -> dict:
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
-    db: AsyncSession = Depends(get_db),
 ):
-    if credentials is not None and credentials.credentials == "veklom-demo-token-quantum":
-        from types import SimpleNamespace
-        return SimpleNamespace(
-            id="demo-user-id",
-            email="demo@veklom.com",
-            role="super_admin",
-            status="active"
-        )
-
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
@@ -76,27 +65,29 @@ async def get_current_user(
 
     from backend.db.models.user import User
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    if user.status != "active":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
+    async with get_db_session() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        status_value = (user.status or "").upper()
+        if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
 
-    user.last_activity = datetime.now(timezone.utc)
-    await db.commit()
-    return user
+        user.last_activity = datetime.utcnow()
+        await db.commit()
+        return user
 
 
 async def get_current_admin(user=Depends(get_current_user)):
-    if user.role not in ("admin", "super_admin"):
+    if (user.role or "").lower() not in ("admin", "super_admin", "owner"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
 
 
 async def require_internal_operator(user=Depends(get_current_user)):
     """Guard for UACP internal API routes."""
-    if user.role not in ("admin", "super_admin", "operator"):
+    if (user.role or "").lower() not in ("admin", "super_admin", "operator", "owner"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="UACP Internal Operator access required"

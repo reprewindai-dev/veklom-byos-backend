@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timezone
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import select
@@ -13,9 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
-from backend.core.security.auth import get_current_user_or_api_key
-from backend.core.llm.circuit_breaker import CircuitBreaker
-from backend.core.memory.conversation import ConversationMemory
+from backend.core.security.auth import get_current_user, get_current_user_or_api_key
+from backend.core.ai.provider_router import run_completion, stream_completion
 from backend.db.models.ai import ExecutionLog, AIAuditLog
 
 router = APIRouter(tags=["LLM Inference Engine"])
@@ -52,6 +52,9 @@ async def exec_prompt(
     messages.append({"role": "user", "content": body.prompt})
     
     # 4. Circuit Breaker & Fallback
+    from backend.core.llm.circuit_breaker import CircuitBreaker
+    from backend.core.memory.conversation import ConversationMemory
+    
     cb = CircuitBreaker("ollama")
     cb_state = await cb.get_state()
     
@@ -144,11 +147,9 @@ async def exec_prompt(
     # Calculate Cost (Ollama is free, Groq is cheap)
     cost = 0.0
     if provider == "groq":
-        # Let's assume standard pricing, say 0.00005 per 1k input, 0.0001 per 1k output
         cost = (prompt_tokens * 0.00005 + completion_tokens * 0.0001) / 1000
         
     # 6. Immutable Audit & Execution Logging
-    # Cryptographic HMAC signature
     hmac_hash = hmac.new(
         settings.JWT_SECRET_KEY.encode(),
         response_text.encode(),
@@ -166,7 +167,7 @@ async def exec_prompt(
         latency_ms=latency_ms
     )
     db.add(exec_log)
-    await db.flush()  # Get exec_log.id
+    await db.flush()
     
     audit_log = AIAuditLog(
         workspace_id=user.workspace_id,
@@ -194,3 +195,20 @@ async def exec_prompt(
         "total_tokens": total_tokens,
         "latency_ms": latency_ms
     }
+
+# ERC-8021 / Veklom Production Stream Completer compatible endpoints
+@router.post("/chat/completions")
+@router.post("/ai/exec")
+async def exec_stream(request: Request, user=Depends(get_current_user)):
+    body = await request.json()
+    stream = body.get("stream", True)
+
+    if not stream:
+        result = await run_completion(body, stream=False)
+        return result.payload
+
+    async def event_generator():
+        async for line in stream_completion(body):
+            yield line
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api, setToken } from '../api/client';
-import { Shield, Key, AlertCircle, Cpu, Github, User } from 'lucide-react';
+import { Shield, Key, AlertCircle, Cpu } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
@@ -9,16 +9,13 @@ interface LoginProps {
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [isSignup, setIsSignup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password || (isSignup && !username)) {
-      setError('Please fill in all required credentials.');
+    if (!email || !password) {
+      setError('Please fill in all credentials.');
       return;
     }
 
@@ -26,14 +23,9 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError('');
 
     try {
-      const endpoint = isSignup ? '/auth/register' : '/auth/login';
-      const bodyPayload = isSignup 
-        ? { email, password, username, full_name: fullName } 
-        : { email, password };
-
-      const data = await api(endpoint, {
+      const data = await api('/auth/login', {
         method: 'POST',
-        body: JSON.stringify(bodyPayload),
+        body: JSON.stringify({ email, password }),
       });
 
       if (data && data.access_token) {
@@ -43,17 +35,10 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         throw new Error('Authentication returned an invalid response token.');
       }
     } catch (err: any) {
-      setError(err.message || (isSignup ? 'Registration failed.' : 'Invalid email or password. Access Denied.'));
+      setError(err.message || 'Invalid email or password. Access Denied.');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleGithubLogin = () => {
-    // A true GitHub login must use a full window redirect to the backend's OAuth endpoint,
-    // which then 307 redirects to GitHub. We cannot use `fetch()` for this.
-    const apiBase = (window as any).__VEKLOM_API_BASE__ || '/api/v1';
-    window.location.href = `${apiBase}/auth/github/login`;
   };
 
   return (
@@ -63,13 +48,20 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
       <div className="w-full max-w-[420px] glow-card bg-[rgba(10,10,12,0.8)] border border-[rgba(255,255,255,0.06)] rounded-xl p-8 backdrop-blur-md relative z-10">
         
+        {/* Custom Glowing SVG Logo */}
         <div className="flex flex-col items-center mb-8">
-          <img
-            src="/static/branding/veklom-wordmark.png"
-            alt="Veklom"
-            className="veklom-wordmark h-14 mb-4"
-          />
-          <h1 className="text-xl font-bold tracking-[0.05em] text-white">SOVEREIGN AI HUB</h1>
+          <div className="relative mb-3 flex items-center justify-center">
+            {/* Pulsing outer aura */}
+            <div className="absolute w-12 h-12 rounded-full border border-[rgba(255,184,0,0.4)] animate-ping opacity-25"></div>
+            
+            {/* SVG Glowing V Logo */}
+            <svg width="44" height="44" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_8px_rgba(255,184,0,0.5)]">
+              <path d="M15 15 L45 85 C48 91, 52 91, 55 85 L85 15" stroke="#ffb800" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
+              {/* Central Sovereignty Dot */}
+              <circle cx="50" cy="48" r="8" fill="#ffffff" className="animate-pulse" />
+            </svg>
+          </div>
+          <h1 className="text-xl font-bold tracking-[0.05em] text-white">VEKLOM</h1>
           <p className="text-xs text-[var(--text-secondary)] mt-1 tracking-[0.02em]">SOVEREIGN AI CONTROL PLANE</p>
         </div>
 
@@ -81,46 +73,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {isSignup && (
-            <>
-              <div>
-                <label className="form-label" htmlFor="username-input">Operator Alias</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-3.5 text-[var(--text-muted)]">
-                    <User size={14} />
-                  </span>
-                  <input
-                    id="username-input"
-                    type="text"
-                    placeholder="operator_1"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="form-input pl-9"
-                    disabled={isLoading}
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="form-label" htmlFor="fullname-input">Full Designation (Optional)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-3.5 text-[var(--text-muted)]">
-                    <User size={14} />
-                  </span>
-                  <input
-                    id="fullname-input"
-                    type="text"
-                    placeholder="John Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="form-input pl-9"
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
           <div>
             <label className="form-label" htmlFor="email-input">Perimeter Email</label>
             <div className="relative">
@@ -150,7 +102,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               <input
                 id="password-input"
                 type="password"
-                placeholder="••••••••••••"
+                placeholder="ΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇó"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="form-input pl-9"
@@ -164,39 +116,18 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           <div className="pt-2">
             <button
               type="submit"
-              className="btn btn-primary w-full py-3 text-xs tracking-[0.08em] font-bold mb-3"
+              className="btn btn-primary w-full py-3 text-xs tracking-[0.08em] font-bold"
               disabled={isLoading}
             >
               {isLoading ? (
                 <>
                   <Cpu size={14} className="animate-spin" />
-                  {isSignup ? 'PROVISIONING ACCOUNT...' : 'DECRYPTING CONTROL PLANE...'}
+                  DECRYPTING CONTROL PLANE...
                 </>
               ) : (
-                isSignup ? 'INITIALIZE NEW PERIMETER' : 'ESTABLISH SECURE ACCESS'
+                'ESTABLISH SECURE ACCESS'
               )}
             </button>
-
-            <button
-              type="button"
-              onClick={handleGithubLogin}
-              className="w-full py-3 text-xs tracking-[0.08em] font-bold bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.08)] transition-colors rounded-md flex items-center justify-center gap-2 text-white mb-4"
-              disabled={isLoading}
-            >
-              <Github size={16} />
-              AUTHENTICATE WITH GITHUB
-            </button>
-            
-            <div className="text-center mt-2">
-              <button
-                type="button"
-                onClick={() => setIsSignup(!isSignup)}
-                className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--orange)] font-mono tracking-wider transition-colors"
-                disabled={isLoading}
-              >
-                {isSignup ? 'ALREADY HAVE AN ACCOUNT? SIGN IN' : 'NO ACCOUNT YET? CREATE PERIMETER'}
-              </button>
-            </div>
           </div>
         </form>
 

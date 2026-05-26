@@ -143,9 +143,15 @@ autonomous_router = APIRouter(
 async def autonomous_execute(body: dict, user=Depends(get_current_user)):
     intent = body.get("intent", "default review request")
     run_id = body.get("run_id", "run_quantum_default")
+    public_demo = bool(body.get("public_demo")) or bool(getattr(user, "is_public_demo", False))
+    allow_paid_escalation = bool(body.get("allow_paid_escalation")) and not public_demo
     return StreamingResponse(
-        LocalFirstRouter.route_intent(intent, run_id),
-        media_type="text/event-stream"
+        LocalFirstRouter.route_intent(intent, run_id, allow_paid_escalation=allow_paid_escalation),
+        media_type="text/event-stream",
+        headers={
+            "X-Veklom-Provider-Policy": "ollama-only" if public_demo else "workspace-policy",
+            "X-Veklom-Source": "veklom-byos-backend",
+        },
     )
 
 @autonomous_router.get("/ai/escalation/stats")

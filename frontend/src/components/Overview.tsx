@@ -204,7 +204,7 @@ export const Overview: React.FC = () => {
           </div>
           <div className="my-2">
             <span className="text-xl font-bold font-mono text-white">{d.audit_entries}</span>
-            <span className="text-[10px] text-emerald-400 font-mono block">verified ✓</span>
+            <span className="text-[10px] text-emerald-400 font-mono block">verified Γ£ô</span>
           </div>
           <div className="flex gap-0.5 mt-2">
             {[1,2,3,4,5,6,7,8].map((i) => (
@@ -224,7 +224,7 @@ export const Overview: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2"><TrendingUp size={16} className="text-[var(--orange)]" /> Autonomous Load Distribution</h3>
-                <p className="text-[10.5px] text-[var(--text-secondary)] mt-0.5 font-mono uppercase">PERIMETER ROUTING TARGETS — LAST 24 HOURS</p>
+                <p className="text-[10.5px] text-[var(--text-secondary)] mt-0.5 font-mono uppercase">PERIMETER ROUTING TARGETS ΓÇö LAST 24 HOURS</p>
               </div>
               <div className="flex gap-4 font-mono text-[11px]">
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--orange)]"></span> HETZNER {d.routing?.hetzner_percent || 0}%</span>
@@ -329,7 +329,7 @@ export const Overview: React.FC = () => {
           </div>
 
           <div className="text-[10px] font-mono text-[var(--text-muted)] border-t border-[rgba(255,255,255,0.05)] pt-4 mt-4 text-center">
-            SOVEREIGN REGULATION AUDITOR ENFORCED ✓
+            SOVEREIGN REGULATION AUDITOR ENFORCED Γ£ô
           </div>
         </div>
 
@@ -406,7 +406,7 @@ export const Overview: React.FC = () => {
                 d.policy_events.slice(0, 4).map((evt: any, idx: number) => (
                   <div key={idx} className="relative pl-6 border-l border-[rgba(255,184,0,0.15)] flex flex-col gap-0.5">
                     {/* Orange Dot Marker */}
-                    <div className="absolute -left-1.5 top-1 w-3 h-3 rounded-full border border-[var(--orange)] bg-[#0a0a0a] flex items-center justify-center text-[8px] text-[var(--orange)] font-bold">•</div>
+                    <div className="absolute -left-1.5 top-1 w-3 h-3 rounded-full border border-[var(--orange)] bg-[#0a0a0a] flex items-center justify-center text-[8px] text-[var(--orange)] font-bold">ΓÇó</div>
                     <div className="flex justify-between items-center text-xs font-semibold text-white">
                       <span>{evt.title}</span>
                       <span className="text-[10px] text-[var(--text-muted)] font-mono">{evt.t}</span>
@@ -446,7 +446,7 @@ export const Overview: React.FC = () => {
                       <div className="text-xs font-semibold text-white leading-tight">{alert.title}</div>
                       <div className="text-[10px] font-mono text-[var(--text-muted)] mt-0.5 uppercase flex items-center gap-2">
                         <span>{alert.source}</span>
-                        <span>·</span>
+                        <span>┬╖</span>
                         <span>{alert.time}</span>
                       </div>
                     </div>
@@ -480,7 +480,7 @@ export const Overview: React.FC = () => {
                       <span className="text-[9px] text-[var(--text-muted)]">{log.ts?.slice(11,19)} UTC</span>
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-[var(--text-secondary)] mt-0.5">
-                      <span>{log.target} · {log.actor?.split('@')[0]}</span>
+                      <span>{log.target} ┬╖ {log.actor?.split('@')[0]}</span>
                       <span className="text-[var(--orange)] bg-[rgba(255,184,0,0.06)] px-1 rounded border border-[rgba(255,184,0,0.15)]">{log.hash}</span>
                     </div>
                   </div>
@@ -510,7 +510,7 @@ export const Overview: React.FC = () => {
                   <div key={idx} className="flex justify-between items-center p-2 rounded bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.04)] hover:border-[rgba(255,184,0,0.25)] transition-all">
                     <div>
                       <div className="text-xs font-bold text-white">{model.name}</div>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)] mt-0.5">{model.quant} · {model.replicas} replica(s)</div>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)] mt-0.5">{model.quant} ┬╖ {model.replicas} replica(s)</div>
                     </div>
                     <div className="flex items-center gap-1.5 font-mono text-[9px] text-[var(--text-secondary)]">
                       <span className="border border-[rgba(255,255,255,0.05)] px-1.5 py-0.5 rounded bg-[#0a0a0a]">{String(model.route).replace('-', ' ')}</span>

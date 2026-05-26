@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
-from dataclasses import dataclass
-from typing import AsyncIterator
+from dataclasses import dataclass, field
+from typing import AsyncIterator, Optional
 
 import httpx
 from fastapi import HTTPException
 
 from backend.core.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
@@ -127,8 +130,9 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
                 return CompletionResult(provider, await _gemini_completion(body))
             if provider == "ollama":
                 return CompletionResult(provider, await _ollama_completion(body))
-        except HTTPException:
-            raise
+        except HTTPException as he:
+            errors.append(f"{provider}: HTTP {he.status_code} {he.detail}")
+            continue
         except Exception as exc:
             errors.append(f"{provider}: {exc}")
             continue
@@ -247,3 +251,233 @@ def _sse_chunk(provider: str, model: str, content: str) -> str:
         "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}],
     }
     return f"data: {json.dumps(data)}\n\n"
+
+
+# ---------------------------------------------------------------------------
+# Smart escalation tier classification
+# ---------------------------------------------------------------------------
+
+TIER_TO_PROVIDERS: dict[str, list[str]] = {
+    # Daily driver — Ollama handles all routine tasks
+    "local":      ["ollama"],
+    # Fast streaming / low latency — Groq first (131k context, ultra fast)
+    "fast":       ["groq", "ollama", "huggingface"],
+    # Complex reasoning / long context — Gemini 2.5 Flash (2M context)
+    "reasoning":  ["gemini", "ollama", "groq", "openai"],
+    # Maximum capability — GPT-4o for tool calls, orchestration, hardest tasks
+    "max":        ["openai", "gemini", "groq", "ollama"],
+    # Specialized / open-weight — HuggingFace for domain models
+    "specialized": ["huggingface", "ollama", "groq"],
+}
+
+
+def task_tier(body: dict) -> str:
+    """Classify a request into an execution tier to pick the optimal provider.
+
+    Tier hierarchy:
+      local      → Ollama qwen2.5:3b  (default, free, sovereign)
+      fast       → Groq               (streaming, low latency, medium tasks)
+      reasoning  → Gemini 2.5 Flash   (complex reasoning, long context ≤2M)
+      max        → OpenAI GPT-4o      (tool calls, orchestration, max quality)
+      specialized → HuggingFace       (domain-specific open-weight models)
+    """
+    model = (body.get("model") or "").lower()
+    explicit = (body.get("provider") or "").lower()
+    messages = body.get("messages") or []
+    context_chars = sum(len(str(m.get("content", ""))) for m in messages)
+
+    # Explicit provider overrides
+    if explicit in ("openai", "gpt-4", "gpt-4o"):
+        return "max"
+    if explicit in ("gemini", "google"):
+        return "reasoning"
+    if explicit in ("groq",):
+        return "fast"
+    if explicit in ("ollama",):
+        return "local"
+    if explicit in ("huggingface", "hf"):
+        return "specialized"
+
+    # Specific model name signals
+    if any(k in model for k in ("gpt-4", "claude-3", "o1", "o3")):
+        return "max"
+    if any(k in model for k in ("gemini-2", "gemini-1.5", "gemini-flash", "gemini-pro")):
+        return "reasoning"
+    if any(k in model for k in ("llama-3.1", "mixtral", "groq")):
+        return "fast"
+    if any(k in model for k in ("llama", "mistral", "phi", "falcon", "bloom")):
+        return "specialized"
+
+    # Tool/function calling requires strong models
+    if body.get("tools") or body.get("functions"):
+        return "max"
+
+    # Context window signals
+    if context_chars > 32_000:
+        return "reasoning"   # Gemini 2M context window handles this best
+    if context_chars > 8_000:
+        return "fast"         # Groq 131k window, fast
+
+    # Agent type hints (for autonomous agent routing)
+    agent_type = (body.get("agent_type") or body.get("agent") or "").lower()
+    if any(k in agent_type for k in ("orchestrat", "plan", "strateg", "architect")):
+        return "max"
+    if any(k in agent_type for k in ("reason", "analyz", "research", "complex")):
+        return "reasoning"
+    if any(k in agent_type for k in ("fast", "stream", "realtime", "light")):
+        return "fast"
+
+    # Streaming without explicit quality flag → Groq (fastest)
+    if body.get("stream") and not body.get("high_quality"):
+        return "fast"
+
+    return "local"   # Default: Ollama daily driver
+
+
+def smart_provider_order(body: dict) -> list[str]:
+    """Return provider priority list based on task tier."""
+    tier = task_tier(body)
+    return TIER_TO_PROVIDERS.get(tier, ["ollama"])
+
+
+# ---------------------------------------------------------------------------
+# Tenant-isolation helpers
+# ---------------------------------------------------------------------------
+
+def is_founder_tenant(workspace_id: str) -> bool:
+    """True if this workspace is the owner/admin tenant."""
+    fw = (settings.FOUNDER_WORKSPACE_ID or "").strip()
+    return bool(fw and workspace_id and fw == workspace_id)
+
+
+def escalation_reason(body: dict) -> str:
+    """Determine why we'd escalate beyond Ollama."""
+    model = (body.get("model") or "").lower()
+    messages = body.get("messages") or []
+    context_chars = sum(len(str(m.get("content", ""))) for m in messages)
+
+    if body.get("tools") or body.get("functions"):
+        return "tool_support_required"
+    if context_chars > 24000:
+        return "long_context"
+    if any(k in model for k in ("gpt-4", "claude", "gemini", "groq", "mixtral")):
+        return "specific_model_requested"
+    if body.get("stream") and body.get("latency") == "low":
+        return "low_latency_streaming"
+    return ""
+
+
+def provider_order_for_tenant(body: dict, workspace_id: str) -> tuple[list[str], str]:
+    """Return (ordered_providers, escalation_reason) for a given tenant.
+
+    Rules:
+    - ALL tenants: start with Ollama
+    - Founder/admin: full owner key stack (groq, huggingface, gemini, openai)
+    - Customer: Ollama only, then BYOK providers (checked externally)
+    - Escalation happens only if a reason exists AND the tenant is authorized
+    """
+    reason = escalation_reason(body)
+    explicit = (body.get("provider") or "").strip().lower()
+
+    # Always start with Ollama
+    order = ["ollama"]
+
+    if is_founder_tenant(workspace_id):
+        # Founder gets full stack after Ollama
+        full_stack = ["groq", "huggingface", "gemini", "openai"]
+        if explicit and explicit not in order:
+            order.insert(1, explicit)
+        order.extend([p for p in full_stack if p not in order])
+    else:
+        # Customer / eval tenant: Ollama first, then HuggingFace (public fallback),
+        # then any explicit BYOK provider
+        order.append("huggingface")   # free tier public fallback if Ollama fails
+        if explicit and explicit not in order:
+            # Only allow if it will be backed by a BYOK key (caller validates)
+            order.append(explicit)
+
+    return order, reason
+
+
+async def run_completion_for_tenant(
+    body: dict,
+    workspace_id: str,
+    byok_keys: Optional[dict] = None,
+) -> tuple[CompletionResult, str, str]:
+    """Tenant-aware completion.
+
+    Args:
+        body: request payload
+        workspace_id: caller's workspace id
+        byok_keys: dict of {provider: raw_decrypted_key} from ProviderKey table
+
+    Returns:
+        (CompletionResult, provider_selected, escalation_reason)
+    """
+    order, reason = provider_order_for_tenant(body, workspace_id)
+    errors: list[str] = []
+    key_source = "owner" if is_founder_tenant(workspace_id) else "default"
+
+    for provider in order:
+        # Check if this provider is available for this tenant
+        if provider == "ollama":
+            if not _configured_provider("ollama"):
+                errors.append("ollama: not reachable")
+                continue
+            try:
+                result = CompletionResult(provider, await _ollama_completion(body))
+                return result, "default", ""
+            except Exception as exc:
+                errors.append(f"ollama: {exc}")
+                continue
+
+        # For non-Ollama: founder uses owner keys, customer uses BYOK
+        if is_founder_tenant(workspace_id):
+            if not _configured_provider(provider):
+                errors.append(f"{provider}: owner key not configured")
+                continue
+            try:
+                if provider in {"openai", "groq", "huggingface"}:
+                    payload = await _openai_compatible(provider, body, stream=False)
+                elif provider == "gemini":
+                    payload = await _gemini_completion(body)
+                else:
+                    errors.append(f"{provider}: unknown provider")
+                    continue
+                return CompletionResult(provider, payload), "owner", reason
+            except Exception as exc:
+                errors.append(f"{provider}: {exc}")
+                continue
+        else:
+            # Customer: BYOK key required, except HuggingFace which has a
+            # public inference API for basic models (free tier fallback).
+            raw_key = (byok_keys or {}).get(provider)
+            if not raw_key:
+                # Allow HuggingFace as a public fallback using owner's HF token
+                # (rate-limited free tier — not a full key leak, scoped models only)
+                if provider == "huggingface" and _is_configured(settings.HF_TOKEN):
+                    raw_key = settings.HF_TOKEN.strip()
+                else:
+                    errors.append(f"{provider}: no BYOK key for tenant")
+                    continue
+            try:
+                if provider in {"openai", "groq", "huggingface"}:
+                    url, _ = _openai_compatible_config(provider)
+                    headers = {"Authorization": f"Bearer {raw_key}", "Content-Type": "application/json"}
+                    payload_data = _openai_payload(body, provider, False)
+                    async with httpx.AsyncClient(timeout=settings.AI_REQUEST_TIMEOUT_SECONDS) as client:
+                        resp = await client.post(url, headers=headers, json=payload_data)
+                    if resp.status_code >= 400:
+                        raise _provider_error(resp.status_code, resp.text)
+                    return CompletionResult(provider, resp.json()), "byok", reason
+                else:
+                    errors.append(f"{provider}: BYOK not supported for this provider type")
+                    continue
+            except Exception as exc:
+                errors.append(f"{provider}: {exc}")
+                continue
+
+    raise HTTPException(
+        status_code=503,
+        detail={"error": "No provider succeeded", "tried": errors, "workspace": workspace_id}
+    )

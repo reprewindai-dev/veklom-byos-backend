@@ -1,4 +1,4 @@
-/* Veklom Sovereign AI Hub — Design System */
+/* Veklom Sovereign AI Hub ΓÇö Design System */
 :root {
   --bg-primary: #0a0a0a;
   --bg-secondary: #0f0f12;
@@ -10,10 +10,6 @@
   
   /* Veklom Brand Accents */
   --orange: #ffb800;
-  --veklom-amber: #ffb800;
-  --veklom-black: #0a0a0a;
-  --veklom-white: #ffffff;
-  --veklom-gray: #a1a1a6;
   --orange-dim: rgba(255, 184, 0, 0.12);
   --orange-glow: rgba(255, 184, 0, 0.06);
   --orange-glow-heavy: rgba(255, 184, 0, 0.25);
@@ -55,66 +51,6 @@ html, body, #root {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  right: clamp(18px, 4vw, 72px);
-  bottom: clamp(18px, 4vw, 72px);
-  width: min(34vw, 420px);
-  aspect-ratio: 1;
-  background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
-  opacity: 0.035;
-  pointer-events: none;
-  z-index: 0;
-}
-
-#root {
-  position: relative;
-  z-index: 1;
-}
-
-.veklom-watermark {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  width: min(26vw, 320px);
-  aspect-ratio: 1;
-  background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
-  opacity: 0.045;
-  pointer-events: none;
-}
-
-.veklom-wordmark {
-  display: inline-block;
-  width: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 0 14px rgba(255, 184, 0, 0.16));
-}
-
-.glow-card::before,
-.glass-panel::before,
-.marketplace-card::before,
-.brand-watermarked-panel::before {
-  content: "";
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  width: clamp(86px, 22%, 160px);
-  aspect-ratio: 1;
-  background: url("/static/branding/veklom-icon.png") center / contain no-repeat;
-  opacity: 0.035;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.glow-card > *,
-.glass-panel > *,
-.marketplace-card > *,
-.brand-watermarked-panel > * {
-  position: relative;
-  z-index: 1;
 }
 
 /* Custom Scrollbars */

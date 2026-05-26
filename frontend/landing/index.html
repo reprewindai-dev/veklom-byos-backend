@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Veklom Sovereign AI Hub — Turn AI experiments into governed private workflows</title>
-<meta name="description" content="Playground, GPC, Models, Tool Hub, Pipelines, Governance, Vault, Deployments, Monitoring, Billing in one tenant-scoped workspace.">
+<title>Veklom Sovereign AI Hub - Governed execution layer for AI agents</title>
+<meta name="description" content="Veklom governs AI-agent workflows before production by compiling intent into policy-checked plans, routing execution, and sealing replayable audit evidence.">
 <meta name="theme-color" content="#0A0A0A">
+<meta name="base:app_id" content="6a142b35643955c6d859b9ea">
 <link rel="canonical" href="https://veklom.com/">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20260520-veklom">
 <link rel="shortcut icon" href="/favicon.ico?v=20260520-veklom">
@@ -16,7 +17,7 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://veklom.com/">
 <meta property="og:title" content="Veklom Sovereign AI Hub">
-<meta property="og:description" content="Test, plan, govern, deploy, and prove private AI from one tenant-scoped workspace.">
+<meta property="og:description" content="Veklom governs AI-agent workflows before they touch production through policy-checked plans, isolated execution, and replayable audit evidence.">
 <meta property="og:image" content="https://veklom.com/og-image.png">
 <meta property="og:image:secure_url" content="https://veklom.com/og-image.png">
 <meta property="og:image:width" content="1792">
@@ -26,7 +27,7 @@
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Veklom Sovereign AI Hub">
-<meta name="twitter:description" content="Test, plan, govern, deploy, and prove private AI from one tenant-scoped workspace.">
+<meta name="twitter:description" content="Veklom governs AI-agent workflows before they touch production through policy-checked plans, isolated execution, and replayable audit evidence.">
 <meta name="twitter:image" content="https://veklom.com/twitter-card.png">
 <meta name="twitter:image:alt" content="Veklom Sovereign AI Hub brand card">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,6 +35,58 @@
 <link rel="stylesheet" href="/static/css/veklom.css">
 <link rel="stylesheet" href="/static/css/brand.css">
 <script src="/config.js"></script>
+<!-- JSON-LD Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Veklom Sovereign AI Hub",
+  "description": "Veklom is an API-native governed execution layer for humans, developers, enterprises, and autonomous agents. Humans use the workspace. Developers use the API. Agents use paid routes via x402 (USDC on Base). Enterprises use the governance and evidence layer.",
+  "url": "https://veklom.com",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "offers": {
+    "@type": "Offer",
+    "price": "395",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock"
+  },
+  "creator": {
+    "@type": "Organization",
+    "name": "Veklom",
+    "url": "https://veklom.com"
+  },
+  "featureList": [
+    "Policy-checked AI execution",
+    "Signed audit evidence",
+    "SOC2-ready compliance",
+    "HIPAA-aware data handling",
+    "GDPR-compliant",
+    "EU-sovereign deployment",
+    "BYOK credential management",
+    "Real-time cost controls",
+    "x402 agent micropayments (USDC on Base)",
+    "Operating reserve billing",
+    "Machine-readable discovery (.well-known)",
+    "Kill switch at agent/tenant/system level"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Veklom",
+  "url": "https://veklom.com",
+  "logo": "https://veklom.com/static/branding/veklom-wordmark.png",
+  "description": "Veklom is an API-native governed execution layer. Humans use the workspace. Developers use the API. Agents use paid routes via x402. Enterprises use the governance and evidence layer (SOC2, HIPAA, GDPR, audit evidence, kill switches).",
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "email": "founder@company.com",
+    "contactType": "sales"
+  }
+}
+</script>
 </head>
 <body>
 
@@ -48,25 +101,54 @@
       <a href="#compare">Compare</a>
       <a href="#pricing">Pricing</a>
       <a href="/workspace">Workspace</a>
-      <a href="/api/v1/platform/uptime" class="badge badge-green">● Operational</a>
+      <a href="/uptime" class="badge badge-status">◆ Operational</a>
       <a href="/workspace/login" class="btn btn-primary btn-sm">Sign In</a>
     </div>
   </div>
 </nav>
 
+<!-- Compliance Status Strip -->
+<div class="compliance-strip">
+  <div class="container compliance-strip-inner">
+    <span class="compliance-badge">SOC2-Ready</span>
+    <span class="compliance-badge">HIPAA-Aware</span>
+    <span class="compliance-badge">GDPR-Compliant</span>
+    <span class="compliance-badge">EU-Sovereign</span>
+    <span class="compliance-badge">ISO27001-Aligned</span>
+    <span class="compliance-badge">FedRAMP-Ready</span>
+    <a href="/legal/security" class="compliance-link">View security posture →</a>
+  </div>
+</div>
+
 <!-- Hero -->
 <section class="hero" style="padding-bottom: 40px;">
   <div class="container">
     <img src="/static/branding/veklom-wordmark.png" alt="Veklom" class="veklom-wordmark" style="height:84px;margin:0 auto 28px;display:block">
-    <span class="label brand-kicker" style="font-size: 0.8rem;">Governed AI Runtime</span>
-    <h1 style="margin-top: 16px; max-width: 900px; margin-left: auto; margin-right: auto;">Govern AI agents before they reach production.</h1>
+    <span class="label brand-kicker" style="font-size: 0.8rem;">Sovereign AI Operating Infrastructure</span>
+    <h1 style="margin-top: 16px; max-width: 900px; margin-left: auto; margin-right: auto;">The era of &ldquo;trust us&rdquo; AI is over.<br>Veklom is built for &ldquo;show us&rdquo; AI.</h1>
     <p class="subtitle" style="margin: 20px auto 32px; font-size: 1.15rem; line-height: 1.6; max-width: 780px;">
-      Veklom gives engineering teams a controlled workspace to test agents, connect repositories, enforce policy gates, monitor runtime activity, and generate audit-ready evidence.
+      Veklom moves AI from uncoordinated experimentation into governed production.
+      From prompt to plan to proof &mdash; with replayable evidence at every step.
     </p>
+    <div style="display:flex;gap:0;justify-content:center;margin-bottom:32px;flex-wrap:wrap;">
+      <span style="padding:10px 20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.25);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);">Prompt</span>
+      <span style="padding:10px 8px;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;">&rarr;</span>
+      <span style="padding:10px 20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.25);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);">Plan</span>
+      <span style="padding:10px 8px;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;">&rarr;</span>
+      <span style="padding:10px 20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.25);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);">Pipeline</span>
+      <span style="padding:10px 8px;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;">&rarr;</span>
+      <span style="padding:10px 20px;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.4);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);font-weight:600;">Proof</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:32px;">
+      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Humans &rarr; Workspace</span>
+      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Developers &rarr; API</span>
+      <span style="padding:6px 14px;border:1px solid var(--orange-500);border-radius:999px;font-size:0.8rem;color:var(--orange-500);">Agents &rarr; Paid Routes (x402)</span>
+      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Enterprises &rarr; Governance Layer</span>
+    </div>
     <div class="hero-cta">
-      <a href="/workspace/login" class="btn btn-primary" style="padding: 14px 32px;">Start a governed repo review</a>
+      <a href="#terminal-simulation" class="btn btn-primary" style="padding: 14px 32px;">Start a governed repo review</a>
       <a href="#deployment-options" class="btn btn-secondary" style="padding: 14px 32px;">View deployment options</a>
-      <a href="https://lockerphycer-git-main-dksummers-projects.vercel.app/" class="btn btn-secondary" style="padding: 14px 32px;">LockerSphere Security</a>
+      <a href="/workspace" class="btn btn-secondary" style="padding: 14px 32px;">Open Workspace</a>
     </div>
     
     <div class="hero-badges">
@@ -80,7 +162,7 @@
 </section>
 
 <!-- Terminal Simulation -->
-<section class="section" style="padding-top: 0; padding-bottom: 60px;">
+<section class="section" id="terminal-simulation" style="padding-top: 0; padding-bottom: 60px;">
   <div class="container">
     <div style="text-align:center;margin-bottom:16px">
       <span class="label">Interactive Simulation</span>
@@ -88,9 +170,30 @@
       <p style="color:var(--text-secondary);margin-top:8px;font-size:0.95rem;">Watch Veklom test, verify, and gate an agent against a real repository — before it touches production.</p>
     </div>
 
-    <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #080b0f; box-shadow: 0 20px 50px rgba(0,0,0,0.55); height: 620px;">
-      <iframe src="/terminal" style="width: 100%; height: 100%; border: none;" title="UACP Quantum Context Terminal"></iframe>
+    <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #080b0f; box-shadow: 0 20px 50px rgba(0,0,0,0.55); height: 620px; position: relative;">
+      <iframe src="/terminal" style="width: 100%; height: 100%; border: none; display: block;" title="UACP Quantum Context Terminal" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+      <div id="terminal-fallback" style="display:none;position:absolute;inset:0;background:#080b0f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
+        <div style="font-family:monospace;font-size:13px;color:#22c55e;max-width:600px;text-align:left;padding:24px;border:1px solid rgba(34,197,94,.3);border-radius:8px;">
+          <div style="color:#f97316;margin-bottom:12px;">▶ veklom / governed-repo-review</div>
+          <div>$ veklom run --policy outbound.public --repo reprewindai-dev/veklom-byos-backend</div>
+          <div style="color:#9ca3af;margin-top:8px;">→ Compiling intent... ✓ policy gate: PASS</div>
+          <div style="color:#9ca3af;">→ Agent review started — 9 files queued</div>
+          <div style="color:#9ca3af;">→ PHI scan: 0 entities detected</div>
+          <div style="color:#22c55e;margin-top:8px;">✓ Governed review complete · audit sealed · sha256:a3f8b...</div>
+        </div>
+        <a href="/workspace/" class="btn btn-primary" style="padding:12px 28px;">Open Live Terminal →</a>
+      </div>
     </div>
+    <script>
+    (function(){
+      var iframe = document.querySelector('#terminal-simulation iframe');
+      var fallback = document.getElementById('terminal-fallback');
+      if (!iframe) return;
+      var timer = setTimeout(function() { if (fallback) { iframe.style.display='none'; fallback.style.display='flex'; } }, 4000);
+      iframe.onload = function() { clearTimeout(timer); iframe.style.display='block'; if(fallback) fallback.style.display='none'; };
+      iframe.onerror = function() { clearTimeout(timer); iframe.style.display='none'; if(fallback) fallback.style.display='flex'; };
+    })();
+    </script>
   </div>
 </section>
 
@@ -146,14 +249,14 @@
   </div>
 </section>
 
-<!-- The Product Section -->
-<section class="section" id="product">
+<!-- Product & Deployment Section -->
+<section class="section" id="deployment-options">
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
-      <span class="label">The Product</span>
-      <h2>One workspace. Three access models.</h2>
+      <span class="label">Product & Deployment</span>
+      <h2>One governed runtime. Three operating boundaries.</h2>
       <p class="subtitle" style="margin:16px auto 0; max-width: 760px;">
-        Veklom is a governed AI runtime — not a playground, not a marketplace, not a sandbox. Every module connects to a single policy, billing, and audit layer.
+        Start hosted, move to a dedicated sovereign node, or deploy BYOS. The same Veklom core governs playground tests, command-center telemetry, policy gates, and replayable audit evidence.
       </p>
     </div>
     
@@ -161,49 +264,131 @@
       <!-- 01 -->
       <div class="model-card">
         <div class="model-number">01</div>
-        <span class="model-icon">🧪</span>
-        <div class="model-kicker">Playground</div>
-        <h3>Test before you trust.</h3>
-        <p>Connect agents to real repositories, tools, and workflows in a controlled workspace. Every action is observed, gated, and logged before it reaches production.</p>
+        <span class="model-icon">☁️</span>
+        <div class="model-kicker">Hosted Workspace</div>
+        <h3>Start governed immediately.</h3>
+        <p>Use Playground and Command Center on Veklom's managed secure cloud. Test agents, connect repositories, monitor runtime activity, and seal audit logs before production access.</p>
         <div class="model-features">
-          <span class="model-tag">Repo access</span>
-          <span class="model-tag">Tool testing</span>
-          <span class="model-tag">Prompt eval</span>
-          <span class="model-tag">Chain testing</span>
+          <span class="model-tag">Instant setup</span>
+          <span class="model-tag">Playground</span>
+          <span class="model-tag">Command Center</span>
+          <span class="model-tag">Audit logging</span>
         </div>
+        <a href="/workspace/login" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Start Free Eval</a>
       </div>
       <!-- 02 -->
       <div class="model-card">
         <div class="model-number">02</div>
-        <span class="model-icon">📡</span>
-        <div class="model-kicker">Command Center</div>
-        <h3>See everything in real time.</h3>
-        <p>Monitor runtime activity, agent actions, GPC decisions, spend, alerts, and audit evidence. Know exactly what ran, what was blocked, and what it cost.</p>
+        <span class="model-icon">🔒</span>
+        <div class="model-kicker">Sovereign Node</div>
+        <h3>Run on dedicated EU hardware.</h3>
+        <p>Move the same governed runtime onto an isolated Hetzner EU node dedicated to your team. Keep data residency, policy gates, telemetry, and evidence under one boundary.</p>
         <div class="model-features">
-          <span class="model-tag">Live telemetry</span>
-          <span class="model-tag">Spend tracking</span>
+          <span class="model-tag">Dedicated runtime</span>
+          <span class="model-tag">Hetzner EU</span>
           <span class="model-tag">GPC decisions</span>
-          <span class="model-tag">Evidence log</span>
+          <span class="model-tag">Custom policy gates</span>
         </div>
+        <a href="/workspace/login" class="btn btn-primary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Deploy Dedicated Node</a>
       </div>
       <!-- 03 -->
       <div class="model-card">
         <div class="model-number">03</div>
-        <span class="model-icon">🏗</span>
-        <div class="model-kicker">Sovereign Deploy</div>
-        <h3>Run privately when it matters.</h3>
-        <p>Move from hosted evaluation to dedicated or self-hosted BYOS deployment. Same governance. No public cloud dependency. Your data stays in your boundary.</p>
+        <span class="model-icon">🏠</span>
+        <div class="model-kicker">BYOS / Self-Hosted</div>
+        <h3>Own the full execution boundary.</h3>
+        <p>Deploy Veklom inside your private VPC, on-prem environment, or dark-site infrastructure. Same policy-governed runtime, without cloud egress or provider taxes.</p>
         <div class="model-features">
-          <span class="model-tag">BYOS</span>
-          <span class="model-tag">Hetzner EU</span>
+          <span class="model-tag">Your servers</span>
           <span class="model-tag">Air-gap ready</span>
           <span class="model-tag">Zero cloud tax</span>
+          <span class="model-tag">Enterprise SLA</span>
         </div>
+        <a href="mailto:sales@veklom.com" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Talk to Sales</a>
       </div>
     </div>
   </div>
 </section>
 
+
+<!-- Machine Economy Section -->
+<section class="section section-alt" id="machine-economy" style="border-top: 1px solid var(--border);">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:48px">
+      <span class="label">Machine Economy</span>
+      <h2>Agents can discover, call, pay for, and verify APIs.</h2>
+      <p class="subtitle" style="margin:16px auto 0; max-width: 760px;">
+        The old internet required a human to sign up and add a card. The new pattern is different.
+        Agents find APIs, read the listing, pay per call, receive the result, and record proof &mdash; automatically.
+      </p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start;max-width:960px;margin:0 auto;">
+
+      <!-- Old pattern -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;padding:32px;">
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:16px;">Old Pattern</div>
+        <div style="font-family:var(--font-mono);font-size:0.85rem;line-height:2;color:var(--text-secondary);">
+          <div>human finds website</div>
+          <div>&darr;</div>
+          <div>signs up</div>
+          <div>&darr;</div>
+          <div>adds card</div>
+          <div>&darr;</div>
+          <div>uses API</div>
+        </div>
+      </div>
+
+      <!-- New pattern -->
+      <div style="background:rgba(249,115,22,0.05);border:1px solid rgba(249,115,22,0.3);border-radius:12px;padding:32px;">
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--orange-500);margin-bottom:16px;">New Pattern (x402)</div>
+        <div style="font-family:var(--font-mono);font-size:0.85rem;line-height:2;color:var(--text-secondary);">
+          <div style="color:var(--green);">agent finds API</div>
+          <div>&darr;</div>
+          <div style="color:var(--green);">reads /.well-known/x402.json</div>
+          <div>&darr;</div>
+          <div style="color:var(--green);">pays per call (USDC, Base)</div>
+          <div>&darr;</div>
+          <div style="color:var(--green);">receives result + evidence receipt</div>
+          <div>&darr;</div>
+          <div style="color:var(--green);">records proof on-chain</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Four tier cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-top:48px;">
+      <div class="card" style="padding:24px;border-color:rgba(255,255,255,0.1);">
+        <div style="font-size:1.5rem;margin-bottom:12px;">&#128100;</div>
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Humans</div>
+        <h3 style="font-size:1rem;margin-bottom:8px;">Use the workspace</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);">Playground, Command Center, Monitoring, Vault, Compliance &mdash; full governed UI.</p>
+        <a href="/workspace/" style="font-size:0.8rem;color:var(--primary);text-decoration:none;margin-top:12px;display:block;">Open workspace &rarr;</a>
+      </div>
+      <div class="card" style="padding:24px;border-color:rgba(255,255,255,0.1);">
+        <div style="font-size:1.5rem;margin-bottom:12px;">&#128187;</div>
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Developers</div>
+        <h3 style="font-size:1rem;margin-bottom:8px;">Use the API</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);">Bearer JWT. REST + SSE. OpenAPI at <code style="font-size:0.8rem;">/openapi.json</code>. MCP at <code style="font-size:0.8rem;">/mcp/sse</code>.</p>
+        <a href="/openapi.json" style="font-size:0.8rem;color:var(--primary);text-decoration:none;margin-top:12px;display:block;">View OpenAPI &rarr;</a>
+      </div>
+      <div class="card" style="padding:24px;border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.04);">
+        <div style="font-size:1.5rem;margin-bottom:12px;">&#129302;</div>
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--orange-500);margin-bottom:8px;">Agents</div>
+        <h3 style="font-size:1rem;margin-bottom:8px;">Use the paid routes</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);">No sign-up. x402 per-call micropayments (USDC on Base). Budget caps. Kill switches. Evidence receipts.</p>
+        <a href="/.well-known/x402.json" style="font-size:0.8rem;color:var(--orange-500);text-decoration:none;margin-top:12px;display:block;">Read x402 config &rarr;</a>
+      </div>
+      <div class="card" style="padding:24px;border-color:rgba(255,255,255,0.1);">
+        <div style="font-size:1.5rem;margin-bottom:12px;">&#127963;</div>
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Enterprises</div>
+        <h3 style="font-size:1rem;margin-bottom:8px;">Use the governance layer</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);">SOC2, HIPAA, GDPR. SHA-256 audit evidence. Kill switches. BYOS. Sovereign EU nodes.</p>
+        <a href="mailto:sales@veklom.com" style="font-size:0.8rem;color:var(--primary);text-decoration:none;margin-top:12px;display:block;">Talk to sales &rarr;</a>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- Marketplace Products Section -->
 <section class="section section-alt" id="marketplace-products" style="border-top: 1px solid var(--border); padding-bottom: 60px;">
@@ -258,14 +443,16 @@
     <div style="text-align:center;margin-bottom:32px">
       <span class="label">V3 Black Box</span>
       <h2>Messy intent in. Governed execution out.</h2>
-      <p class="subtitle" style="margin:8px auto 0">Interact with the real-time operational coordination core below.</p>
+      <p class="subtitle" style="margin:8px auto 0">Public preview: the top rail and deterministic core are visible while internal operational panes stay masked.</p>
     </div>
     
-    <div class="v3-blackbox-frame" style="margin: 0 auto; position: relative; width: 100%; max-width: 1120px; height: 680px; overflow: hidden; border-radius: 28px; background: #020617; border: 1px solid var(--border);">
-      <div class="v3-side-mask-left" style="position: absolute; top: 0; bottom: 0; width: 140px; pointer-events: none; background: linear-gradient(90deg, #020617, transparent); z-index: 20; left: 0;"></div>
-      <div class="v3-side-mask-right" style="position: absolute; top: 0; bottom: 0; width: 140px; pointer-events: none; background: linear-gradient(-90deg, #020617, transparent); z-index: 20; right: 0;"></div>
-      <div class="v3-blackbox-inner" style="position: absolute; top: 0; left: 50%; width: 1440px; height: 100%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center;">
-        <iframe src="https://uacpv3.onrender.com" style="width: 100%; height: 100%; border: none; background: #0a0a0c;"></iframe>
+    <div class="v3-blackbox-frame" aria-label="Veklom V3 public preview">
+      <div class="v3-public-preview-badge">Public preview</div>
+      <div class="v3-side-mask-left"></div>
+      <div class="v3-side-mask-right"></div>
+      <div class="v3-bottom-mask"></div>
+      <div class="v3-blackbox-inner">
+        <iframe src="https://uacpv3.onrender.com?api_base=https%3A%2F%2Fveklom.com%2Fapi%2Fv1&amp;source=veklom-byos-backend&amp;provider=ollama&amp;public_demo=1" title="Veklom V3 deterministic engine public preview" loading="lazy"></iframe>
       </div>
     </div>
   </div>
@@ -372,7 +559,7 @@
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
       <span class="label">Why Veklom</span>
-      <h2>Most AI tools help you call a model.<br>Veklom helps you <span style="color:var(--orange-500)">govern the workflow</span> around it.</h2>
+      <h2>Sovereign AI should be portable, provable, and economically predictable.<br><span style="color:var(--orange-500)">Veklom is built for that.</span></h2>
     </div>
     <div style="overflow-x:auto">
       <table class="compare-table">
@@ -397,80 +584,9 @@
           <tr><td>Operating Reserve billing</td><td class="check">●</td><td class="cross">Subscription</td><td class="cross">Token-based</td><td class="cross">Subscription</td><td class="cross">Pay-per-use</td></tr>
           <tr><td>Marketplace with vendor payouts</td><td class="check">●</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="check">Partial</td></tr>
           <tr><td>120-agent autonomous workforce</td><td class="check">●</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td></tr>
+          <tr><td>x402 agent micropayments (USDC)</td><td class="check">●</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td></tr>
         </tbody>
       </table>
-    </div>
-  </div>
-</section>
-
-<!-- Deployment Options -->
-<section class="section section-alt" id="deployment-options" style="border-top: 1px solid var(--border);">
-  <div class="container">
-    <div style="text-align:center;margin-bottom:48px">
-      <span class="label">Deployment Tiers</span>
-      <h2>Start hosted. Go sovereign when it matters.</h2>
-      <p class="subtitle" style="margin:12px auto 0; max-width: 720px; margin-left: auto; margin-right: auto;">
-        Three deployment boundaries — running the same policy-governed runtime core.
-      </p>
-    </div>
-    
-    <div class="grid-3">
-      <!-- Tier 1 -->
-      <div class="card" style="padding: 32px; display: flex; flex-direction: column; justify-content: space-between; min-height: 420px;">
-        <div>
-          <div style="font-size: 2.5rem; margin-bottom: 16px;">☁️</div>
-          <h3 style="margin-bottom: 8px;">Hosted Workspace</h3>
-          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">
-            Start immediately on Veklom's managed secure cloud. Full governance, instant setup.
-          </p>
-          <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px; padding: 0;">
-            <li><span style="color: var(--veklom-amber);">✓</span> Instant deployment</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Playground + Command Center</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Immutable audit logging</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Shared secure runtime nodes</li>
-          </ul>
-        </div>
-        <a href="/workspace/login" class="btn btn-secondary" style="justify-content: center; width: 100%;">Start Free Eval</a>
-      </div>
-      
-      <!-- Tier 2 -->
-      <div class="card card-highlight" style="padding: 32px; display: flex; flex-direction: column; justify-content: space-between; min-height: 420px;">
-        <div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <div style="font-size: 2.5rem;">🔒</div>
-            <span class="badge badge-orange">Sovereign Node</span>
-          </div>
-          <h3 style="margin-bottom: 8px;">Dedicated Runtime</h3>
-          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">
-            Isolated Hetzner EU node, dedicated exclusively to your team. Data never leaves your geography.
-          </p>
-          <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px; padding: 0;">
-            <li><span style="color: var(--veklom-amber);">✓</span> Isolated sovereign Hetzner EU hardware</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Absolute data residency compliance</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Custom policy gates pre-configured</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Zero public cloud architecture overhead</li>
-          </ul>
-        </div>
-        <a href="/workspace/login" class="btn btn-primary" style="justify-content: center; width: 100%;">Deploy Dedicated Node</a>
-      </div>
-      
-      <!-- Tier 3 -->
-      <div class="card" style="padding: 32px; display: flex; flex-direction: column; justify-content: space-between; min-height: 420px;">
-        <div>
-          <div style="font-size: 2.5rem; margin-bottom: 16px;">🏠</div>
-          <h3 style="margin-bottom: 8px;">BYOS / Self-Hosted</h3>
-          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">
-            Deploy the full Veklom runtime in your private VPC or on-prem. Air-gap ready.
-          </p>
-          <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px; padding: 0;">
-            <li><span style="color: var(--veklom-amber);">✓</span> Your physical servers, your network boundary</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Air-gap and dark-site capable</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Zero cloud egress or provider taxes</li>
-            <li><span style="color: var(--veklom-amber);">✓</span> Enterprise SLA available</li>
-          </ul>
-        </div>
-        <a href="mailto:sales@veklom.com" class="btn btn-secondary" style="justify-content: center; width: 100%;">Talk to Sales</a>
-      </div>
     </div>
   </div>
 </section>
@@ -569,19 +685,6 @@
   </div>
 </section>
 
-<!-- Uptime Monitor -->
-<section class="section" id="uptime">
-  <div class="container">
-    <div style="text-align:center;margin-bottom:40px">
-      <span class="label">Uptime Monitor</span>
-      <h2>System status</h2>
-    </div>
-    <div id="uptime-dashboard" class="grid-3" style="max-width:800px;margin:0 auto">
-      <!-- populated by JS -->
-    </div>
-  </div>
-</section>
-
 <!-- Vendor / Customer Hook -->
 <section class="section section-alt" style="border-top: 1px solid var(--border);">
   <div class="container" style="text-align:center; max-width: 800px; margin: 0 auto;">
@@ -638,7 +741,7 @@
       </div>
       <div class="footer-col">
         <h4>Resources</h4>
-        <a href="#uptime">Status</a>
+        <a href="/uptime">Status</a>
         <a href="/docs">Docs</a>
         <a href="#feedback">Feedback</a>
       </div>

@@ -1,0 +1,13 @@
+{
+  "name": "veklom-wiring-trace",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "trace:public": "playwright test --reporter=list",
+    "trace:har": "playwright test --reporter=list --output=trace-output"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.0.0"
+  }
+}

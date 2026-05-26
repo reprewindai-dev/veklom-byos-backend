@@ -44,6 +44,63 @@ body > * {
   z-index: 1;
 }
 
+/* Compliance Status Strip */
+.compliance-strip {
+  background: rgba(255, 184, 0, 0.08);
+  border-bottom: 1px solid var(--veklom-border);
+  padding: 12px 0;
+}
+
+.compliance-strip-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.compliance-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--veklom-amber);
+  background: rgba(255, 184, 0, 0.12);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 184, 0, 0.25);
+}
+
+.compliance-link {
+  font-size: 0.75rem;
+  color: var(--veklom-gray);
+  text-decoration: none;
+  margin-left: auto;
+  transition: color 0.2s;
+}
+
+.compliance-link:hover {
+  color: var(--veklom-amber);
+}
+
+/* Focus States for Accessibility */
+a:focus,
+button:focus,
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--veklom-amber);
+  outline-offset: 2px;
+}
+
+a:focus:not(:focus-visible),
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--veklom-amber);
+  outline-offset: 2px;
+}
+
 .brand-watermark {
   position: absolute;
   inset: auto 24px 24px auto;

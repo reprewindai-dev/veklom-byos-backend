@@ -204,7 +204,7 @@ export const Billing: React.FC = () => {
                 </h3>
               </div>
               <span className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 px-2.5 py-1 text-[9px] font-mono rounded-md uppercase tracking-wider">
-                LEDGER VERIFIED ✓
+                LEDGER VERIFIED Γ£ô
               </span>
             </div>
 
@@ -347,7 +347,7 @@ export const Billing: React.FC = () => {
             {/* Spend Breakdown Ledger */}
             {breakdown && (
               <div className="border-t border-[rgba(255,255,255,0.05)] pt-4">
-                <span className="form-label text-[10px] uppercase mb-3">CONSUMPTION PROFILE BREAKDOWN — {breakdown.period}</span>
+                <span className="form-label text-[10px] uppercase mb-3">CONSUMPTION PROFILE BREAKDOWN ΓÇö {breakdown.period}</span>
                 <div className="overflow-x-auto">
                   <table className="data-table">
                     <thead>

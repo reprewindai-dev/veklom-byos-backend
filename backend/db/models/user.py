@@ -1,7 +1,7 @@
 """User and auth models — aligned to the live PostgreSQL schema."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -10,7 +10,7 @@ from backend.core.database.database import Base
 
 
 def _utcnow():
-    return datetime.now(timezone.utc)
+    return datetime.utcnow()
 
 
 def _uuid():

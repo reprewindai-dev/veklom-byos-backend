@@ -1,4 +1,4 @@
-"""AI execution models, aligned to BYOS AI User Manual."""
+"""AI execution models, aligned to BYOS AI User Manual and Production."""
 
 import uuid
 from datetime import datetime, timezone
@@ -22,6 +22,11 @@ class ExecutionLog(Base):
     output_tokens = Column(Integer, default=0)
     cost = Column(Float, default=0.0)
     latency_ms = Column(Integer, default=0)
+    status = Column(String(32), default="completed")
+    content_safety_score = Column(Float, default=1.0)
+    policy_id = Column(String(128), nullable=True, index=True)
+    policy_flags = Column(JSON, default=list)
+    request_hash = Column(String(128), default="")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 class AIAuditLog(Base):

@@ -1,0 +1,8 @@
+Veklom workspace unauth network trace — 2026-05-25T17:15:02.190Z
+Surfaces visited: home, login, register, workspace, command-center, irongrid, terminal, gpc, marketplace, security, acceptable-use, billing, llms.txt
+
+METHOD  STATUS  PATH
+--------------------------------------------------------------------------------
+
+Total requests captured: 0
+Distinct method×path:    0

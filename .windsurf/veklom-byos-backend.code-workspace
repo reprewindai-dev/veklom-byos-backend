@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"name": "veklom-byos-backend",
+			"path": ".."
+		},
+		{
+			"name": "truth command center",
+			"path": "../../../truth command center"
+		}
+	],
+	"settings": {},
+	"workbenchMode": "windsurf-agent-window"
+}

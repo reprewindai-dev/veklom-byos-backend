@@ -34,7 +34,7 @@ async def detailed_health():
     }
 
 
-@router.get("/status")
+@router.get("/api-status")
 async def platform_status():
     from backend.core.database.redis_client import redis_client
     from backend.core.database.database import engine

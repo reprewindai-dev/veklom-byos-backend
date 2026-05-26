@@ -1,0 +1,62 @@
+"""Security middleware for HTTP headers."""
+
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+    
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # Content Security Policy
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self' https://api.stripe.com https://veklom.com https://api.veklom.com; "
+            "frame-src 'self' https://lockerphycer.veklom.com https://uacpv3.onrender.com https://js.stripe.com; "
+            "object-src 'none'; "
+            "base-uri 'self';"
+        )
+        
+        # Strict Transport Security (only in production)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        
+        # X-Frame-Options — SAMEORIGIN allows veklom.com to embed its own pages (terminal, irongrid etc.)
+        # Skip for routes that are meant to be iframed within the landing page
+        path = request.url.path
+        iframe_routes = ("/terminal", "/irongrid", "/command-center", "/gpc", "/gpc-engine", "/workspace")
+        if not any(path.startswith(r) for r in iframe_routes):
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        # else: no X-Frame-Options header — allows veklom.com to iframe these pages
+        
+        # X-Content-Type-Options
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        
+        # X-XSS-Protection
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        
+        # Referrer Policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        
+        # Permissions Policy
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=(), "
+            "usb=(), magnetometer=(), gyroscope=()"
+        )
+
+        # Remove server identification header
+        try:
+            del response.headers["server"]
+        except (KeyError, AttributeError):
+            pass
+        try:
+            del response.headers["Server"]
+        except (KeyError, AttributeError):
+            pass
+
+        return response

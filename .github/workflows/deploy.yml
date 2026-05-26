@@ -1,0 +1,32 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 5.78.135.11
+          username: root
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          script: |
+            cd /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru
+            git fetch origin main
+            git reset --hard origin/main
+            docker build -t veklom-local:latest .
+            docker stop n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
+            docker rm n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
+            docker run -d \
+              --name n13gp1nhrcdp0hvazvbnlxru-213557155694 \
+              --network coolify \
+              --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env \
+              --restart unless-stopped \
+              -p 8088:8088 \
+              veklom-local:latest
+            sleep 5
+            curl -sf http://localhost:8088/health && echo "Deploy successful"

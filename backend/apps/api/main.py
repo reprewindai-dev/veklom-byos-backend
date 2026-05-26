@@ -448,6 +448,7 @@ GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "g
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
 COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
+LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 
 
 def _mount_static():
@@ -467,6 +468,8 @@ def _mount_static():
         app.mount("/gpc", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc")
     if IRONGRID_DIR.exists():
         app.mount("/irongrid", StaticFiles(directory=str(IRONGRID_DIR), html=True), name="irongrid")
+    if LOCKERPHYCER_DIR.exists():
+        app.mount("/lockerphycer", StaticFiles(directory=str(LOCKERPHYCER_DIR), html=True), name="lockerphycer")
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

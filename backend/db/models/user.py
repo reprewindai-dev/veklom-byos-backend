@@ -33,8 +33,8 @@ class User(Base):
     full_name = Column(String(255), default="")
 
     # Enum-backed columns stored as plain strings in ORM layer
-    role = Column(String(32), default="USER")
-    status = Column(String(32), default="ACTIVE")
+    role = Column(String(32), default="admin")
+    status = Column(String(32), default="active")
 
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)

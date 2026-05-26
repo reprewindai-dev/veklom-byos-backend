@@ -89,6 +89,7 @@ async def list_invitations(user=Depends(get_current_user)):
 
 
 @router.post("/team/invitations")
+@router.post("/team/invite")
 async def send_invitation(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in ("OWNER", "ADMIN"):
         raise HTTPException(status_code=403, detail="Insufficient permissions")

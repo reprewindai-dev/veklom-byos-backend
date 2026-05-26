@@ -23,6 +23,13 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from sqlalchemy import select
 
+from backend.core.security.middlewares import (
+    ZeroTrustMiddleware,
+    MetricsMiddleware,
+    IntelligentRoutingMiddleware,
+    BudgetCheckMiddleware
+)
+
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager
@@ -268,6 +275,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(ZeroTrustMiddleware)
+app.add_middleware(MetricsMiddleware)
+app.add_middleware(IntelligentRoutingMiddleware)
+app.add_middleware(BudgetCheckMiddleware)
+
 if settings.APP_ENV == "production":
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
@@ -283,8 +295,17 @@ async def not_found(request: Request, exc):
     if request.url.path.startswith("/workspace") or request.url.path.startswith("/login") or request.url.path.startswith("/github"):
         workspace_index = WORKSPACE_DIR / "index.html"
         if workspace_index.exists():
-            return FileResponse(
-                str(workspace_index),
+            # Read the index.html and inject the auto-editor script
+            with open(workspace_index, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            # Inject script before closing </head> or </body>
+            script_tag = '<script src="/workspace/auto-editor.js"></script>'
+            if '</head>' in html_content:
+                html_content = html_content.replace('</head>', f'{script_tag}</head>')
+            elif '</body>' in html_content:
+                html_content = html_content.replace('</body>', f'{script_tag}</body>')
+            return HTMLResponse(
+                content=html_content,
                 headers={
                     "Cache-Control": "no-store, no-cache, must-revalidate",
                     "Pragma": "no-cache",
@@ -332,6 +353,7 @@ from backend.apps.api.routers import (
     internal_uacp,
     internal_operators,
     plugins,
+    autonomous,
     playground,
 )
 
@@ -356,7 +378,7 @@ app.include_router(workspace.router, prefix="/api/v1")
 # AI execution
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(exec_router.router, prefix="/api")
-app.include_router(exec_router.router, prefix="/api/v1")
+app.include_router(exec_router.router, prefix="")
 
 # Playground — sessions, prompts, tools
 app.include_router(playground.router, prefix="/api/v1")
@@ -372,6 +394,7 @@ app.include_router(security.router, prefix="/api/v1")
 
 # Compliance, privacy, content-safety, explainability, evidence, audit
 app.include_router(compliance.router, prefix="/api/v1")
+app.include_router(autonomous.router, prefix="/api/v1")
 
 # Monitoring, metrics, insights, telemetry, platform pulse, suggestions
 app.include_router(monitoring.router, prefix="/api/v1")
@@ -439,6 +462,7 @@ GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "g
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
 COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
+LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 
 
 def _mount_static():
@@ -458,6 +482,8 @@ def _mount_static():
         app.mount("/gpc", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc")
     if IRONGRID_DIR.exists():
         app.mount("/irongrid", StaticFiles(directory=str(IRONGRID_DIR), html=True), name="irongrid")
+    if LOCKERPHYCER_DIR.exists():
+        app.mount("/lockerphycer", StaticFiles(directory=str(LOCKERPHYCER_DIR), html=True), name="lockerphycer")
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
@@ -803,6 +829,97 @@ async def marketplace_py03():
         "status": "Available in Veklom ecosystem"
     }
 
+
+
+@app.get("/workspace/pipelines/{pipeline_id}/embedded")
+async def embedded_pipeline_editor(pipeline_id: str):
+    """Serve pipeline detail page with visual editor embedded in iframe."""
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Pipeline Editor - {pipeline_id}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        html, body {{
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }}
+        iframe {{
+            width: 100%;
+            height: 100%;
+            border: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }}
+    </style>
+</head>
+<body>
+    <iframe src="/workspace/#/pipelines/{pipeline_id}?editor=true" allowfullscreen></iframe>
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
+
+
+@app.get("/workspace/auto-editor.js")
+async def auto_editor_script():
+    """JavaScript to automatically trigger visual editor on pipeline pages."""
+    script_content = """
+(function() {
+    // Wait for the page to load
+    function waitForElement(selector, callback, maxAttempts = 50) {
+        let attempts = 0;
+        const interval = setInterval(() => {
+            const element = document.querySelector(selector);
+            if (element) {
+                clearInterval(interval);
+                callback(element);
+            } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+            }
+            attempts++;
+        }, 100);
+    }
+
+    // Detect if we're on a pipeline detail page
+    function checkPipelinePage() {
+        const hash = window.location.hash;
+        if (hash.match(/#\\/pipelines\\/[^/]+$/)) {
+            // We're on a pipeline detail page - trigger visual editor
+            waitForElement('[data-testid="visual-editor-button"], .visual-editor-btn, button:contains("Visual Editor")', (btn) => {
+                if (btn) {
+                    btn.click();
+                }
+            });
+            
+            // Alternative: try to find and click any button that might open the editor
+            setTimeout(() => {
+                const buttons = document.querySelectorAll('button');
+                for (let btn of buttons) {
+                    const text = btn.textContent || btn.innerText || '';
+                    if (text.toLowerCase().includes('visual') || text.toLowerCase().includes('editor')) {
+                        btn.click();
+                        break;
+                    }
+                }
+            }, 500);
+        }
+    }
+
+    // Run on page load and hash change
+    window.addEventListener('load', checkPipelinePage);
+    window.addEventListener('hashchange', checkPipelinePage);
+    
+    // Also run immediately in case we're already loaded
+    setTimeout(checkPipelinePage, 100);
+})();
+"""
+    return HTMLResponse(content=script_content, media_type="application/javascript")
 
 
 @app.get("/gpc")

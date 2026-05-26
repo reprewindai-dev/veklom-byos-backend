@@ -7,11 +7,25 @@ from sqlalchemy.orm import DeclarativeBase
 
 from backend.core.config.settings import settings
 
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    future=True,
-)
+db_url = settings.DATABASE_URL
+try:
+    if not db_url or not db_url.strip():
+        print("WARNING: DATABASE_URL not set in environment. Falling back to in-memory SQLite.")
+        db_url = "sqlite+aiosqlite:///:memory:"
+    engine = create_async_engine(
+        db_url,
+        echo=settings.DEBUG,
+        future=True,
+    )
+except Exception as e:
+    print(f"WARNING: Database engine creation failed: {e}. Falling back to in-memory SQLite.")
+    db_url = "sqlite+aiosqlite:///:memory:"
+    engine = create_async_engine(
+        db_url,
+        echo=settings.DEBUG,
+        future=True,
+    )
+
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

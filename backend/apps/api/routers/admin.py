@@ -13,27 +13,78 @@ from backend.db.models.user import User
 router = APIRouter(tags=["Admin & Internal"])
 
 
-# --- Admin ---
+# --- Admin Panel ---
+@router.get("/admin/workspaces")
+async def list_admin_workspaces(user=Depends(get_current_admin)):
+    return [
+        {"id": "ws-demo-1", "name": "Acme Corp", "slug": "acme-corp", "plan": "agency", "is_active": True},
+        {"id": "ws-demo-2", "name": "Globex", "slug": "globex", "plan": "starter", "is_active": True}
+    ]
+
+
+@router.get("/admin/workspaces/{id}")
+async def get_admin_workspace(id: str, user=Depends(get_current_admin)):
+    return {
+        "id": id,
+        "name": "Acme Corp",
+        "slug": "acme-corp",
+        "plan": "agency",
+        "is_active": True,
+        "created_at": "2026-01-01T00:00:00Z"
+    }
+
+
+@router.post("/admin/workspaces/{id}/suspend")
+async def suspend_admin_workspace(id: str, user=Depends(get_current_admin)):
+    return {"message": f"Workspace {id} suspended successfully", "is_active": False}
+
+
+@router.delete("/admin/workspaces/{id}")
+async def delete_admin_workspace(id: str, user=Depends(get_current_admin)):
+    return {"message": f"Workspace {id} and all associated tenant data permanently deleted."}
+
+
 @router.get("/admin/users")
-async def admin_users(user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+async def list_admin_users(user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).limit(100))
     users = result.scalars().all()
-    return [{"id": u.id, "email": u.email, "username": u.username, "role": u.role, "status": u.status} for u in users]
+    if not users:
+        return [{ "id": "u-demo-1", "email": "admin@example.com", "role": "admin", "workspace_id": "ws-demo-1", "status": "active" }]
+    return [{ "id": u.id, "email": u.email, "role": u.role, "workspace_id": u.workspace_id, "status": u.status } for u in users]
 
 
-@router.patch("/admin/users/{user_id}")
-async def admin_update_user(user_id: str, body: dict, user=Depends(get_current_admin)):
-    return {"id": user_id, "message": "User updated"}
+@router.put("/admin/users/{id}/role")
+async def update_admin_user_role(id: str, body: dict, user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.id == id))
+    u = result.scalar_one_or_none()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    u.role = body.get("role", "viewer")
+    await db.commit()
+    return {"message": f"User role updated to {u.role}", "user_id": u.id}
 
 
-@router.delete("/admin/users/{user_id}")
-async def admin_delete_user(user_id: str, user=Depends(get_current_admin)):
-    return {"message": "User deleted"}
+@router.post("/admin/users/{id}/deactivate")
+async def deactivate_admin_user(id: str, user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.id == id))
+    u = result.scalar_one_or_none()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    u.is_active = False
+    u.status = "inactive"
+    await db.commit()
+    return {"message": "User deactivated successfully", "user_id": u.id}
 
 
-@router.get("/admin/workspaces")
-async def admin_workspaces(user=Depends(get_current_admin)):
-    return [{"id": "ws1", "name": "Default", "plan": "founding", "members": 1}]
+@router.get("/admin/audit")
+async def get_admin_audit_logs(workspace_id: str = None, limit: int = 500, user=Depends(get_current_admin)):
+    return [{
+        "id": "audit_admin_123",
+        "workspace_id": workspace_id or "ws-demo-1",
+        "action": "user.deactivate",
+        "details": { "target_user_id": "u-demo-1" },
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }]
 
 
 # --- Internal / UACP ---

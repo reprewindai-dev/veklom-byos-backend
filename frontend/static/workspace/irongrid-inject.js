@@ -58,9 +58,23 @@
 
   function getMain() { return document.querySelector('main'); }
 
-  function showIronGrid() {
+  async function showIronGrid() {
     var main = getMain();
     if (!main || document.getElementById('irongrid-page')) return;
+
+    var isSuper = false;
+    try {
+      const base = (window.__VEKLOM_API_BASE__ || "/api/v1").replace(/\/+$/, "");
+      const token = localStorage.getItem("veklom-auth-token") || localStorage.getItem("auth_token") || localStorage.getItem("token") || sessionStorage.getItem("veklom-auth-token") || "";
+      const res = await fetch(base + "/auth/me", {
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        isSuper = !!(data.capabilities && data.capabilities.platform_superuser);
+      }
+    } catch(e) {}
+
     for (var i = 0; i < main.children.length; i++) {
       main.children[i].setAttribute('data-ig-hidden', '');
       main.children[i].style.display = 'none';
@@ -68,7 +82,13 @@
     var div = document.createElement('div');
     div.id = 'irongrid-page';
     div.style.cssText = 'flex:1;height:100%;min-height:0;position:relative;background:#050505;overflow:hidden;';
-    div.innerHTML = '<iframe src="' + IRONGRID_URL + '" style="width:100%;height:100%;border:none;background:#050505;" allow="clipboard-read;clipboard-write"></iframe>';
+
+    if (!isSuper) {
+      div.innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444;font-family:monospace;font-size:16px;margin-top:40px;">403 Forbidden<br/><br/>Access Denied. Platform superuser privileges required.</div>';
+    } else {
+      div.innerHTML = '<iframe src="' + IRONGRID_URL + '" style="width:100%;height:100%;border:none;background:#050505;" allow="clipboard-read;clipboard-write"></iframe>';
+    }
+
     main.appendChild(div);
     main.style.flex = '1';
     main.style.display = 'flex';

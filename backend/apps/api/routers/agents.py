@@ -178,6 +178,7 @@ def _empty(reason: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.get("/registry")
+@router.get("/")
 async def registry(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -197,6 +198,7 @@ async def registry(
 
 
 @router.get("/registry/{agent_number}")
+@router.get("/{agent_number}")
 async def registry_detail(
     agent_number: int,
     user=Depends(get_current_user),

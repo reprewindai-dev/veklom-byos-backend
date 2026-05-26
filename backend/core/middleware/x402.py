@@ -169,11 +169,12 @@ async def _verify_workspace_auth(request: Request) -> Optional[dict]:
 
 def _verify_x402_payment(request: Request) -> bool:
     """
-    Verify x402 payment header.
-    In production this would verify the on-chain USDC transfer.
-    For now, we strictly require X-Gateway-Secret verification upstream,
-    so we do not accept raw unverified X-Payment-Proof headers here
-    until the coinbase x402 SDK is fully integrated.
+    Checks for x402 payment headers but does not authorize payment.
+    
+    Looks for `X-Payment-Proof` or `X-Payment` headers on the given request. In the current implementation the function always returns `False` (payment is not accepted based on these headers); production verification of on-chain USDC transfers is expected to replace this behavior.
+    
+    Returns:
+        bool: `True` if the request contains a valid x402 payment proof and is authorized (currently never), `False` otherwise.
     """
     proof = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment")
     if not proof:
@@ -197,6 +198,18 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        """
+        Enforces x402 payment and access rules for incoming requests on configured paid routes.
+        
+        Processes the request by skipping CORS and unconditional free routes, gating access for configured paid paths and applying the following authorization paths in order: trusted upstream gateway/RapidAPI verification (adds gateway receipt headers), workspace JWT authentication (adds receipt headers), x402 payment proof verification (currently never authorizes), and an unauthenticated per-IP daily free quota (adds free-trial headers). If none authorize, returns a 402 Payment Required JSON response with x402-compatible headers describing payment requirements.
+        
+        Parameters:
+        	request (Request): The incoming Starlette/FastAPI request to evaluate.
+        	call_next (Callable): The downstream request handler to invoke when the request is allowed; should be awaited to obtain the Response.
+        
+        Returns:
+        	Response: The downstream response with added x402/receipt headers when access is granted, or a 402 JSONResponse describing required payment when access is denied.
+        """
         path = request.url.path
         method = request.method
 

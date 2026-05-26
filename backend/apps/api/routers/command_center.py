@@ -35,19 +35,28 @@ router = APIRouter(prefix="/command-center", tags=["Command Center"])
 
 
 def _utcnow() -> datetime:
+    """
+    Return the current timezone-aware UTC datetime.
+    
+    Returns:
+        datetime: Current datetime with UTC timezone information.
+    """
     return datetime.now(timezone.utc)
 
 
 def _require_platform_superuser(user) -> None:
-    """Require platform superuser access - NOT tenant owner access.
+    """
+    Require that the current user is a platform superuser; raise 403 if not.
     
-    Platform superuser is defined as:
-    - user.is_superuser is true
-    - OR user.role == SUPER_ADMIN
-    - OR user.email == settings.ADMIN_EMAIL
-    - OR user.workspace_id == settings.FOUNDER_WORKSPACE_ID
+    This gate grants access only when the user meets at least one of the following:
+    - has attribute `is_superuser` that is truthy,
+    - has `role` equal to `"SUPER_ADMIN"` (case-insensitive),
+    - has `email` equal to `settings.ADMIN_EMAIL`,
+    - has `workspace_id` equal to `settings.FOUNDER_WORKSPACE_ID`.
     
-    Tenant OWNER role does NOT grant platform superuser access.
+    The tenant OWNER role does not satisfy this check.
+    Raises:
+        HTTPException: with status code 403 and detail "Command Center is platform-superuser only" when the user is not a platform superuser.
     """
     from backend.core.config.settings import settings
     
@@ -69,7 +78,17 @@ def _require_platform_superuser(user) -> None:
 
 
 def _safe_user(u: User) -> dict:
-    """Strip every secret-bearing field before returning a user."""
+    """
+    Return a dictionary representing a user with secret fields removed.
+    
+    Parameters:
+        u (User): User model instance to sanitize.
+    
+    Returns:
+        dict: Public user attributes including `id`, `email`, `full_name`, `role`, `status`, `is_active`,
+        `workspace_id`, `github_username`, `mfa_enabled`, and timestamp fields `last_login`, `last_activity`,
+        and `created_at` formatted as ISO 8601 strings or `None`.
+    """
     return {
         "id": u.id,
         "email": u.email,
@@ -163,7 +182,15 @@ async def users_list(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Workspace-scoped user list. Admin-only."""
+    """
+    Return a workspace-scoped list of users; access is restricted to platform superusers.
+    
+    Parameters:
+    	limit (int): Maximum number of users to return (1–500).
+    
+    Returns:
+    	A list of user dictionaries with secret-bearing fields removed and datetimes ISO-formatted (or `None`), limited to `limit` and scoped to the current user's workspace.
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     rows = (await db.execute(
@@ -178,6 +205,18 @@ async def user_detail(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Retrieve the safe (non-secret) profile for a user in the caller's workspace; access is restricted to platform superusers.
+    
+    Parameters:
+        user_id (str): The ID of the user to retrieve.
+    
+    Returns:
+        dict: A user dictionary with secret fields removed and datetime fields formatted as ISO strings (or `None`).
+    
+    Raises:
+        HTTPException: 404 if the user does not exist in the caller's workspace.
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     u = (await db.execute(
@@ -195,6 +234,22 @@ async def user_activity(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Return the audit-log entries for a specific user within the caller's workspace.
+    
+    Parameters:
+        user_id (str): ID of the target user to retrieve activity for.
+        limit (int): Maximum number of audit entries to return (1–500).
+    
+    Returns:
+        list[dict]: List of audit entries sorted by newest first. Each entry contains:
+            - id (str): Audit log record identifier.
+            - action (str): Action name recorded.
+            - resource_type (str|None): Type of resource affected, if any.
+            - resource_id (str|None): Identifier of the affected resource, if any.
+            - details (dict|None): Additional structured details from the audit record.
+            - created_at (str|None): ISO 8601 timestamp when the event occurred, or `None`.
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     rows = (await db.execute(
@@ -222,6 +277,28 @@ async def user_sessions(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Retrieve all sessions for a specific user within the caller's workspace.
+    
+    Requires a platform-superuser caller. Raises 404 if the target user does not exist in the caller's workspace.
+    
+    Parameters:
+        user_id (str): Identifier of the user whose sessions should be returned.
+    
+    Returns:
+        list[dict]: A list of session objects with keys:
+            - id: session identifier
+            - user_id: associated user identifier
+            - ip_address: IP address for the session
+            - user_agent: user agent string for the session
+            - is_active: boolean indicating if the session is active
+            - expires_at: ISO 8601 timestamp string or `None`
+            - last_accessed: ISO 8601 timestamp string or `None`
+            - created_at: ISO 8601 timestamp string or `None`
+    
+    Raises:
+        HTTPException: 404 if the specified user is not found in the caller's workspace.
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     target = (await db.execute(
@@ -357,6 +434,19 @@ async def users_summary(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Provide summary counts of users in the caller's workspace.
+    
+    Requires platform-superuser access; raises HTTPException(403) if the caller is not a platform superuser.
+    
+    Returns:
+        dict: A mapping with the following keys:
+            - `workspace_id` (str): Workspace identifier (empty string for global).
+            - `total` (int): Total number of users in the workspace.
+            - `active` (int): Number of users with `is_active` == True.
+            - `locked` (int): Number of users whose `status` == "LOCKED".
+            - `mfa_enabled` (int): Number of users with `mfa_enabled` == True.
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     total = (await db.execute(
@@ -391,7 +481,19 @@ async def users_online(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Online = has an active session whose expiry is in the future."""
+    """
+    Return a list of users in the caller's workspace who currently have an active, non-expired session.
+    
+    The caller must be a platform superuser; results include at most one entry per user (the most recently accessed active session). Each item contains the safe user fields plus `session_id` and `session_last_accessed` as an ISO-formatted string or `None`.
+    
+    Returns:
+        list[dict]: A list of user objects with safe fields and the following additional keys:
+            - `session_id` (str): ID of the active session.
+            - `session_last_accessed` (str | None): ISO-formatted last accessed time for the session, or `None`.
+    
+    Raises:
+        HTTPException: 403 if the caller is not a platform superuser.
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     now = _utcnow()
@@ -423,6 +525,17 @@ async def users_recent(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Return a list of users created within the past `days` days for the current workspace.
+    
+    Requires platform-superuser privileges; results are scoped to the caller's workspace. Each returned item is a safe user representation with secret-bearing fields removed and datetime fields formatted as ISO strings (or `None`).
+    
+    Parameters:
+    	days (int): Number of days in the lookback window (1–90). Defaults to 7.
+    
+    Returns:
+    	list[dict]: List of safe user dictionaries for users created since the cutoff, ordered by creation time descending (up to 200 items).
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     cutoff = _utcnow() - timedelta(days=days)
@@ -450,7 +563,22 @@ async def sessions_list(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Active sessions across the workspace.  Admin-only. Tokens stripped."""
+    """
+    Return active, non-expired sessions for the current workspace (platform-superuser only).
+    
+    Requires a platform superuser. Retrieves up to 500 active sessions that have not yet expired, ordered by most recent access. Each item omits secret/session token values.
+    
+    Returns:
+        list[dict]: A list of session objects containing:
+            - id: Session identifier.
+            - user_id: Associated user's id.
+            - user_email: Associated user's email.
+            - ip_address: IP address recorded for the session.
+            - user_agent: User agent string for the session.
+            - expires_at: ISO-8601 timestamp string when the session expires, or None.
+            - last_accessed: ISO-8601 timestamp string of last access, or None.
+            - created_at: ISO-8601 timestamp string when the session was created, or None.
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     now = _utcnow()
@@ -486,7 +614,19 @@ async def funnels(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Signup → activation → first-key → first-install funnel for the workspace."""
+    """
+    Compute signup → activation → first-install funnel metrics for the current workspace over a rolling time window.
+    
+    Returns:
+        dict: A mapping containing:
+            - window_days (int): Number of days in the funnel window.
+            - as_of (str): ISO-8601 timestamp when metrics were computed.
+            - signups (int): Number of users created in the workspace during the window.
+            - activated (int): Number of those users who have logged in at least once.
+            - installs (int): Number of marketplace/install audit events in the workspace during the window (approximate "first-install" measure).
+            - activation_rate (float): `activated / signups` if `signups > 0`, otherwise `0.0`.
+            - install_rate (float): `installs / activated` if `activated > 0`, otherwise `0.0`.
+    """
     _require_platform_superuser(user)
     ws = user.workspace_id or ""
     cutoff = _utcnow() - timedelta(days=days)

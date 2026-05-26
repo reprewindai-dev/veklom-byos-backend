@@ -62,6 +62,30 @@ def _slug_from_email(email: str) -> str:
 
 
 def _user_dict(user: User) -> dict:
+    """
+    Builds a normalized dictionary representation of a User for API responses.
+    
+    Parameters:
+        user (User): The user ORM/model instance to serialize.
+    
+    Returns:
+        dict: A mapping with the following keys:
+            - id: User identifier.
+            - email: User email address.
+            - full_name: User full name or empty string.
+            - role: User role string (as stored).
+            - status: User account status.
+            - is_active: Boolean indicating active account state.
+            - is_superuser: Boolean indicating platform superuser flag.
+            - mfa_enabled: Boolean indicating whether MFA is enabled.
+            - workspace_id: Associated workspace id or empty string.
+            - github_username: Connected GitHub username or empty string.
+            - github_connected: `true` if both GitHub id and access token are present, `false` otherwise.
+            - github_account_id: GitHub account id or empty string.
+            - created_at: ISO 8601 timestamp string of creation or `None` if unavailable.
+            - plan: Derived plan string based on role ("sovereign", "pro", "starter", or "free").
+            - is_admin: Boolean indicating administrative role (OWNER, SUPER_ADMIN, or ADMIN).
+    """
     role = (user.role or "USER").upper()
     # Derive plan from role
     if role in ("OWNER", "SUPER_ADMIN"):
@@ -105,13 +129,13 @@ def _external_origin(request: Request) -> str:
 
 
 def _is_real_config_value(value: str) -> bool:
-    """Check if a config value is a real value, not a placeholder.
+    """
+    Determine whether a configuration string appears to be a real, non-placeholder value.
     
-    Returns False for:
-    - None or empty strings
-    - Strings that are only whitespace
-    - Placeholder patterns: NEED_, YOUR_, CHANGE_, REPLACE_, TODO
-    - Example/demo values: example, placeholder, changeme, test
+    Strips surrounding quotes and whitespace. Returns `False` for `None`, empty or whitespace-only strings, values that start with common placeholder prefixes (`NEED_`, `YOUR_`, `CHANGE_`, `REPLACE_`, `TODO`), well-known demo/placeholder tokens (`EXAMPLE`, `PLACEHOLDER`, `CHANGEME`, `TEST`, `DEMO`, `XXX`), or strings shorter than 8 characters.
+    
+    Returns:
+        bool: `True` if the input looks like a valid configuration value, `False` otherwise.
     """
     if not value:
         return False
@@ -134,10 +158,27 @@ def _is_real_config_value(value: str) -> bool:
 
 
 def _github_oauth_configured() -> bool:
+    """
+    Determine whether GitHub OAuth is enabled by checking that both client ID and client secret are set to non-placeholder configuration values.
+    
+    Returns:
+        True if both GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET contain real (non-placeholder) values, False otherwise.
+    """
     return _is_real_config_value(settings.GITHUB_CLIENT_ID) and _is_real_config_value(settings.GITHUB_CLIENT_SECRET)
 
 
 def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> str:
+    """
+    Render an HTML document that stores the provided access token, refresh token, and user payload into localStorage and then redirects the browser to the workspace overview.
+    
+    Parameters:
+        access_token (str): JWT or access token to persist to localStorage as "veklom_token".
+        refresh_token (str): Refresh token to persist to localStorage as "veklom_refresh_token".
+        user (User): User model instance serialized into localStorage as "veklom_user".
+    
+    Returns:
+        str: Complete HTML page as a string containing a script that writes the tokens and user to localStorage and performs a client-side redirect to "/workspace/#/overview".
+    """
     payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -430,6 +471,17 @@ async def refresh(body: dict, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me")
 async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """
+    Return the authenticated user's profile combined with an optional workspace summary and a computed set of capability flags.
+    
+    The response merges the normalized user object produced by _user_dict(user) with:
+    - "workspace": either null or an object containing workspace metadata:
+      - "id", "name", "slug", "plan", "license_tier", "is_active"
+    - "capabilities": a mapping of feature names to booleans indicating whether the user can use each feature (e.g., "command_center", "owner_provider_keys", "premium_marketplace", "pipeline_deploy", "vault_secrets", "team_management", "billing_management", "compliance_exports", "custom_models").
+    
+    Returns:
+        dict: Combined payload with user profile fields, "workspace" (object or None), and "capabilities" (dict of feature booleans).
+    """
     user_data = _user_dict(user)
     
     # Add workspace data if user has a workspace
@@ -769,6 +821,22 @@ class RepoSelectRequest(BaseModel):
 
 @router.post("/github/repos/select")
 async def select_github_repo(body: RepoSelectRequest, request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """
+    Record the user's selection of a GitHub repository and create an audit log entry.
+    
+    Parameters:
+        body (RepoSelectRequest): Request body containing `repo_full_name` of the repository to select.
+        request (Request): HTTP request used to extract client IP and user-agent for the audit entry.
+    
+    Raises:
+        HTTPException: If the current user has no GitHub access token (status 400).
+    
+    Returns:
+        dict: {"message": "Repository selected and authorized", "repo": <repo_full_name>} indicating the selected repository.
+    
+    Side effects:
+        Persists an audit event in the database tying the authenticated user's workspace to the selected GitHub repository.
+    """
     if not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected.")
 

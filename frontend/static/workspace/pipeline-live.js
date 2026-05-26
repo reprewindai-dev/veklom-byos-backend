@@ -568,7 +568,11 @@
     if (el) el.remove();
   }
 
-  // --- Inject Visual Editor buttons (list rows + FAB) ---
+  /**
+   * Adds a persistent "Open Visual Editor" floating action button and begins wiring pipeline list rows for edit buttons.
+   *
+   * Creates a prominent FAB appended to document.body that opens the visual editor for the first available pipeline (or creates one if none exist). Also schedules multiple calls to wirePipelineRows to attach "Edit" buttons to pipeline list rows that may appear later in the DOM.
+   */
   async function injectEditorButtons() {
     if (document.getElementById('pl-fab')) return;
 
@@ -606,6 +610,11 @@
     setTimeout(wirePipelineRows, 4000);
   }
 
+  /**
+   * Finds pipeline list rows in the DOM and injects a styled "Edit" button into the first cell of each unwired row.
+   *
+   * The injected button opens the visual editor for the pipeline: it uses the row's `data-pipeline-id` when present; otherwise it attempts to resolve an ID by fetching the pipelines list and matching by name, and if still unresolved passes the displayed name as the id to `openEditor`.
+   */
   function wirePipelineRows() {
     // Try to find pipeline list rows and add "Edit" button
     var rows = document.querySelectorAll('tr, [class*="pipeline-row"], [class*="PipelineRow"], [class*="row"], [role="row"]');
@@ -645,7 +654,14 @@
     if (fab) fab.remove();
   }
 
-  // --- Route change handler ---
+  /**
+   * Update editor UI and wiring when the URL hash changes.
+   *
+   * Checks the current location.hash and, when on a pipelines route, ensures the editor's
+   * floating action button and row wiring are injected (immediately and again after short
+   * delays to accommodate slow or React-driven renders); when leaving pipelines routes it
+   * removes the FAB and closes the editor if open.
+   */
   function onRouteChange() {
     var hash = (location.hash || '').replace(/^#/, '');
     if (hash.startsWith('/pipelines')) {

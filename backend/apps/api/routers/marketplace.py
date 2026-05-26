@@ -681,7 +681,28 @@ async def delete_listing(listing_id: str, user=Depends(get_current_user)):
 @router.post("/marketplace/listings/{listing_id}/install")
 @router.post("/listings/{listing_id}/install")
 async def install_listing(listing_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Install a marketplace listing into the current workspace."""
+    """
+    Install a marketplace listing into the authenticated user's workspace.
+    
+    Creates an InstalledAsset record for the listing (if not already installed) and increments the listing's download count. Installation always targets the authenticated user's workspace (user.workspace_id or "default"); any workspace identifier in the request body is ignored.
+    
+    Parameters:
+        body (dict, optional): Optional request payload; any workspace selection in this payload is ignored.
+    
+    Returns:
+        dict: Installed asset metadata with keys:
+            - `id`: installed asset id
+            - `listing_id`: marketplace listing id
+            - `workspace_id`: workspace where the asset was installed
+            - `asset_type`: asset category/type
+            - `name`: asset display name
+            - `status`: installation status (e.g., "active")
+            - `installed_at`: ISO 8601 timestamp of installation or `None`
+            - `message`: human-readable installation message
+    
+    Raises:
+        HTTPException: 404 if the specified listing does not exist.
+    """
     import uuid as _uuid
     from backend.db.models.marketplace import MarketplaceListing, InstalledAsset
     from sqlalchemy import select as _select

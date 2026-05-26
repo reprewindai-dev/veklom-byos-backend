@@ -230,7 +230,19 @@ async def delete_pipeline(pipeline_id: str, user=Depends(get_current_user), db: 
 
 @router.post("/pipelines/{pipeline_id}/run")
 async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Run a pipeline test with proper workspace isolation and terminal states."""
+    """
+    Queue a pipeline run for execution with workspace isolation and persistent tracking.
+    
+    Creates a `PipelineRun` record in a queued state, schedules background execution, and returns identifiers and initial status.
+    
+    Returns:
+        dict: Response containing:
+            - `run_id` (str): Generated run identifier.
+            - `pipeline_id` (str): The pipeline identifier.
+            - `status` (str): Initial run status, `"queued"`.
+            - `progress` (int): Initial progress value, `0`.
+            - `message` (str): Human-readable status message.
+    """
     from fastapi import HTTPException
     
     # Verify pipeline belongs to user's workspace (multi-tenant safety)
@@ -270,7 +282,26 @@ async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: Asy
 
 @router.get("/pipelines/{pipeline_id}/runs")
 async def list_pipeline_runs(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """List run history for a specific pipeline with workspace isolation."""
+    """
+    Return the recent run history for the specified pipeline, scoped to the caller's workspace.
+    
+    Returns:
+        dict: {
+            "pipeline_id": str,
+            "runs": [
+                {
+                    "id": str,
+                    "status": str,
+                    "created_at": str | None,  # ISO 8601 timestamp or None
+                    "updated_at": str | None,  # ISO 8601 timestamp or None
+                },
+                ...
+            ]
+        }
+    
+    Raises:
+        HTTPException: 404 if the pipeline does not exist or is not accessible in the caller's workspace.
+    """
     from fastapi import HTTPException
     from backend.db.models.marketplace import PipelineRun
     
@@ -306,7 +337,22 @@ async def list_pipeline_runs(pipeline_id: str, user=Depends(get_current_user), d
 
 @router.get("/pipelines/{pipeline_id}/runs/{run_id}")
 async def get_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get details of a specific pipeline run with workspace isolation."""
+    """
+    Return detailed information for a pipeline run that belongs to the caller's workspace.
+    
+    Returns:
+        dict: Run details containing keys:
+          - `id`: run identifier
+          - `pipeline_id`: associated pipeline identifier
+          - `status`: run status
+          - `steps`: saved steps payload for the run
+          - `result`: run result payload (if any)
+          - `created_at`: ISO 8601 timestamp string or `None`
+          - `updated_at`: ISO 8601 timestamp string or `None`
+    
+    Raises:
+        HTTPException: 404 if the pipeline or the run is not found or access is denied.
+    """
     from fastapi import HTTPException
     from backend.db.models.marketplace import PipelineRun
     
@@ -344,7 +390,17 @@ async def get_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_curre
 
 @router.get("/pipelines/{pipeline_id}/runs/{run_id}/stream")
 async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Stream pipeline run events with terminal states (queued/running/completed/failed)."""
+    """
+    Stream server-sent events for a pipeline run's lifecycle and step progress.
+    
+    Streams JSON-formatted SSE messages that report run-level states and per-stage progress until a terminal state is emitted. Event payloads are JSON objects containing at minimum a `type` (e.g., `run.queued`, `run.running`, `step.running`, `step.completed`, `run.completed`), `run_id`, and `status`; completed events may include `progress`, `output`, `evidence_id`, and `proof_hash`.
+    
+    Returns:
+        StreamingResponse: An HTTP streaming response that yields server-sent event data strings containing the JSON payloads described above.
+    
+    Raises:
+        HTTPException: If the pipeline or the specified run does not exist in the caller's workspace or access is denied.
+    """
     from fastapi import HTTPException
     from backend.db.models.marketplace import PipelineRun
     
@@ -371,6 +427,14 @@ async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_cu
     
     async def generate():
         # Send initial queued state
+        """
+        Stream server-sent events that represent a mock pipeline run and its step-by-step progression.
+        
+        Each yielded string is a complete SSE `data:` event (terminated by two newlines) whose JSON payload reports run-level and step-level status updates, progress, and final evidence/proof fields.
+        
+        Returns:
+            An async generator that yields `str` values: SSE-formatted `data:` events containing JSON objects with keys such as `type` (one of `run.queued`, `run.running`, `step.running`, `step.completed`, `run.completed`), `run_id`, `status`, `stage` (for step events), `progress`, and final `output`, `evidence_id`, and `proof_hash`.
+        """
         yield f"data: {json.dumps({'type': 'run.queued', 'run_id': run_id, 'status': 'queued', 'message': 'Pipeline run queued'})}\n\n"
         
         # Simulate run progression (in real implementation, this would poll the background task)

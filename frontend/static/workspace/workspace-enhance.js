@@ -1738,6 +1738,15 @@ export default async function handler(req, res) {
     m.onclick = ev => { if (ev.target === m) m.remove(); };
   }
 
+  /**
+   * Show a modal containing example Python, Node.js, and cURL snippets for the given API endpoint row.
+   *
+   * Builds language-specific code samples (chat or embeddings) using endpoint name, type, model, and URL
+   * inferred from the provided row or a visible detail panel, injects a centered modal with tabs and a copy button,
+   * and wires interactions for closing, copying, and navigating to the API Keys settings.
+   *
+   * @param {Element|null} row - The table/row element (or similar container) representing an endpoint; may be null to fall back to detail-panel data or defaults.
+   */
   function showEndpointCode(row) {
     // Extract endpoint info from the row or the detail panel
     const cells = row ? [...row.querySelectorAll("td, [class*='cell'], [class*='value']")] : [];
@@ -1807,7 +1816,14 @@ export default async function handler(req, res) {
   }
 
   // ------ PIPELINE SELECTION STATE FIX ------
-  // Fix pipeline selection state to ensure activePipelineId is set when clicking pipeline rows
+  /**
+   * Track and persist the currently selected pipeline when clicking pipeline rows.
+   *
+   * Adds a click listener active on pages whose URL hash includes "pipelines". When a pipeline row is clicked,
+   * the function records the pipeline id and name on window._veklomActivePipelineId and window._veklomActivePipeline,
+   * persists those values to localStorage, and applies a visual highlight to the clicked row. On initialization,
+   * it attempts to restore a previously saved active pipeline from localStorage.
+   */
   function wirePipelineSelection() {
     document.addEventListener("click", function (e) {
       const hash = location.hash || "";
@@ -1855,7 +1871,14 @@ export default async function handler(req, res) {
   }
 
   // ------ PIPELINE TEST RUN FIX ------
-  // Fix Test button to use activePipelineId and show proper terminal states
+  /**
+   * Installs a click handler on the pipelines page to start and monitor test runs for the currently selected pipeline.
+   *
+   * When a "test", "run test", or "run" button is clicked while the URL hash includes "pipelines", this handler requires
+   * an active pipeline id stored on window._veklomActivePipelineId, disables the clicked button, starts a run via the API,
+   * opens an EventSource to stream run events, shows progress and terminal toasts for queued/running/completed/failed states,
+   * and restores the button state after completion or a fixed timeout.
+   */
   function wirePipelineTestRun() {
     document.addEventListener("click", async function (e) {
       const hash = location.hash || "";

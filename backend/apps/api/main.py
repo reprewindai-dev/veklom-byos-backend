@@ -930,6 +930,28 @@ async def gpc_page():
     return HTMLResponse(content=_gpc_html(), status_code=200)
 
 
+# Command Center config endpoint for frontend
+@app.get("/api/v1/config")
+async def command_center_config():
+    """Return configuration for Command Center frontend."""
+    return {
+        "VEKLOM_BYOS_BACKEND_URL": settings.API_URL,
+        "OLLAMA_BASE_URL": settings.OLLAMA_BASE_URL
+    }
+
+
+@app.post("/api/v1/config")
+async def update_command_center_config(request: Request):
+    """Update configuration for Command Center frontend."""
+    body = await request.json()
+    # Configuration is stored in settings, not dynamically updated
+    # This endpoint exists for compatibility with Command Center frontend
+    return {"success": True, "config": {
+        "VEKLOM_BYOS_BACKEND_URL": settings.API_URL,
+        "OLLAMA_BASE_URL": settings.OLLAMA_BASE_URL
+    }}
+
+
 def _fallback_html():
     return """<!DOCTYPE html>
 <html lang="en">

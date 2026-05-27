@@ -684,11 +684,10 @@ async def rank_memory_sphere(body: dict, user=Depends(get_current_user)):
 async def fetch_agent_trust_scores(user=Depends(get_current_user)):
     """Fetch structured Agent Trust Scores (ATS) mapped to tiers (T1 -> T5)."""
     from backend.core.security.governance import AgentTrustScoreEngine
-    
-    # Generate representative trust score metrics based on active workspace performance
+
     ats_platinum = AgentTrustScoreEngine.calculate_ats(95, 92, 90, 96, 94)
     ats_silver = AgentTrustScoreEngine.calculate_ats(65, 72, 60, 68, 70)
-    
+
     return {
         "status": "healthy",
         "evaluations": [
@@ -703,5 +702,308 @@ async def fetch_agent_trust_scores(user=Depends(get_current_user)):
                 "ats": ats_silver
             }
         ]
+    }
+
+
+# =============================================================================
+# Agent-120 — ZENO ENFORCER endpoints
+# =============================================================================
+
+@router.post("/governance/zeno/freeze")
+async def zeno_freeze(body: dict, user=Depends(get_current_user)):
+    """Freeze an agent under Zeno observation. All state mutations are blocked while frozen."""
+    from agents.governance.zeno import zeno
+    agent_id = body.get("agent_id", "")
+    reason = body.get("reason", "operator_freeze")
+    if not agent_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="agent_id is required")
+    result = await zeno.freeze(agent_id, reason=reason)
+    return result
+
+
+@router.post("/governance/zeno/unfreeze")
+async def zeno_unfreeze(body: dict, user=Depends(get_current_user)):
+    """Unfreeze an agent — requires explicit approval."""
+    from agents.governance.zeno import zeno
+    agent_id = body.get("agent_id", "")
+    approved_by = body.get("approved_by", user.email)
+    if not agent_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="agent_id is required")
+    result = await zeno.unfreeze(agent_id, approved_by=approved_by)
+    return result
+
+
+@router.get("/governance/zeno/status/{agent_id}")
+async def zeno_status(agent_id: str, user=Depends(get_current_user)):
+    """Check whether an agent is currently frozen under Zeno observation."""
+    from agents.governance.zeno import zeno
+    frozen = await zeno.is_frozen(agent_id)
+    evidence = await zeno.get_evidence(agent_id)
+    pinned = await zeno.get_pinned_state(agent_id)
+    return {
+        "agent_id": agent_id,
+        "frozen": frozen,
+        "evidence_count": len(evidence),
+        "last_evidence": evidence[-1] if evidence else None,
+        "pinned_state": pinned,
+    }
+
+
+@router.post("/governance/zeno/pin-state")
+async def zeno_pin_state(body: dict, user=Depends(get_current_user)):
+    """Pin a known-good state for an agent. Future coherence checks compare against this."""
+    from agents.governance.zeno import zeno
+    agent_id = body.get("agent_id", "")
+    state = body.get("state", {})
+    if not agent_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="agent_id is required")
+    result = await zeno.pin_state(agent_id, state)
+    return result
+
+
+@router.post("/governance/zeno/coherence")
+async def zeno_coherence_check(body: dict, user=Depends(get_current_user)):
+    """
+    Compare observed_state for an agent against its pinned baseline.
+    If coherence falls below threshold the agent is auto-frozen.
+    """
+    from agents.governance.zeno import zeno
+    agent_id = body.get("agent_id", "")
+    observed = body.get("observed_state", {})
+    if not agent_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="agent_id is required")
+    result = await zeno.check_coherence(agent_id, observed)
+    return result
+
+
+@router.post("/governance/zeno/mutation-gate")
+async def zeno_mutation_gate(body: dict, user=Depends(get_current_user)):
+    """
+    Gate for any write operation on a governed agent.
+    Returns allowed=True or allowed=False with a signed evidence bundle.
+    Wire this before every state-mutating operation.
+    """
+    from agents.governance.zeno import zeno
+    agent_id = body.get("agent_id", "")
+    operation = body.get("operation", "write")
+    payload = body.get("payload", {})
+    if not agent_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="agent_id is required")
+    result = await zeno.mutation_gate(agent_id, operation, payload)
+    return result
+
+
+@router.post("/governance/zeno/cascade")
+async def zeno_register_cascade(body: dict, user=Depends(get_current_user)):
+    """Register cascade dependencies: when parent_id is frozen, dependent_ids are also frozen."""
+    from agents.governance.zeno import zeno
+    parent_id = body.get("parent_id", "")
+    dependent_ids = body.get("dependent_ids", [])
+    if not parent_id or not dependent_ids:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="parent_id and dependent_ids are required")
+    await zeno.register_cascade(parent_id, dependent_ids)
+    return {"registered": True, "parent_id": parent_id, "dependents": dependent_ids}
+
+
+@router.post("/governance/zeno/observe")
+async def zeno_observation_cycle(body: dict, user=Depends(get_current_user)):
+    """
+    Run a full Zeno observation cycle across the specified agent_ids.
+    Checks coherence for each, freezes on failure, returns summary report.
+    """
+    from agents.governance.zeno import zeno
+    agent_ids = body.get("agent_ids", [])
+    states = body.get("states", {})
+    if not agent_ids:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="agent_ids list is required")
+    result = await zeno.run_observation_cycle(agent_ids, states)
+    return result
+
+
+@router.get("/governance/zeno/evidence/{agent_id}")
+async def zeno_evidence(agent_id: str, user=Depends(get_current_user)):
+    """Retrieve all signed evidence bundles for an agent's Zeno interventions."""
+    from agents.governance.zeno import zeno
+    evidence = await zeno.get_evidence(agent_id)
+    return {"agent_id": agent_id, "count": len(evidence), "evidence": evidence}
+
+
+# =============================================================================
+# Agent-121 — GLADIATOR ENGINE endpoints
+# =============================================================================
+
+@router.get("/governance/gladiator/routes")
+async def gladiator_routes(user=Depends(get_current_user)):
+    """List all registered execution routes with their current Gladiator scores."""
+    from agents.governance.gladiator import gladiator
+    routes = gladiator.get_all_routes()
+    return {
+        "routes": routes,
+        "total": len(routes),
+        "active": sum(1 for r in routes if not r["demoted"]),
+        "demoted": sum(1 for r in routes if r["demoted"]),
+    }
+
+
+@router.get("/governance/gladiator/circuit-breaker")
+async def gladiator_circuit_breaker(user=Depends(get_current_user)):
+    """Return the circuit-breaker (valve) status for all routes — health at a glance."""
+    from agents.governance.gladiator import gladiator
+    return gladiator.circuit_breaker_status()
+
+
+@router.post("/governance/gladiator/select")
+async def gladiator_select_route(body: dict, user=Depends(get_current_user)):
+    """Contest all active routes and return the winner for a given task type."""
+    from agents.governance.gladiator import gladiator
+    task_type = body.get("task_type", "general")
+    prefer_sovereign = body.get("prefer_sovereign", True)
+    winner = gladiator.select_best_route(prefer_sovereign=prefer_sovereign, task_type=task_type)
+    winner.compute_gladiator_score()
+    return {
+        "winner": winner.route_id,
+        "provider": winner.provider,
+        "gladiator_score": winner.gladiator_score,
+        "is_sovereign": winner.is_sovereign,
+        "estimated_latency_ms": winner.estimated_latency_ms,
+        "task_type": task_type,
+    }
+
+
+@router.post("/governance/gladiator/benchmark")
+async def gladiator_benchmark(body: dict, user=Depends(get_current_user)):
+    """Benchmark a specific route and update its Gladiator score. May trigger demotion."""
+    from agents.governance.gladiator import gladiator
+    route_id = body.get("route_id", "")
+    iterations = min(int(body.get("iterations", 3)), 10)  # cap at 10 iterations
+    if not route_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="route_id is required")
+    result = await gladiator.benchmark_route(route_id, iterations=iterations)
+    return result
+
+
+@router.post("/governance/gladiator/optimize")
+async def gladiator_optimize(user=Depends(get_current_user)):
+    """
+    Run the full Gladiator optimization cycle:
+    benchmarks all routes, demotes underperformers, recovers healed routes,
+    and returns a comprehensive before/after evidence report.
+    """
+    from agents.governance.gladiator import gladiator
+    result = await gladiator.run_optimization_cycle()
+    return result
+
+
+@router.post("/governance/gladiator/assign-load")
+async def gladiator_assign_load(body: dict, user=Depends(get_current_user)):
+    """
+    Distribute N agents across active routes using Gladiator score weighting.
+    Returns allocation map {route_id: agent_count}.
+    """
+    from agents.governance.gladiator import gladiator
+    agent_count = int(body.get("agent_count", 10))
+    task_mix = body.get("task_mix", None)
+    allocation = gladiator.assign_load(agent_count, task_mix)
+    return allocation
+
+
+@router.post("/governance/gladiator/routes/restore")
+async def gladiator_restore_route(body: dict, user=Depends(get_current_user)):
+    """Manually restore a demoted route back into the active arena."""
+    from agents.governance.gladiator import gladiator
+    route_id = body.get("route_id", "")
+    if not route_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="route_id is required")
+    restored = gladiator.restore_route(route_id)
+    return {"restored": restored, "route_id": route_id}
+
+
+@router.post("/governance/gladiator/routes/forge")
+async def gladiator_forge_route(body: dict, user=Depends(get_current_user)):
+    """
+    Register a new candidate route into the Gladiator arena.
+    The route will be benchmarked on the next optimization cycle.
+    """
+    from agents.governance.gladiator import gladiator, Route
+    route_id = body.get("route_id", "")
+    provider = body.get("provider", "")
+    if not route_id or not provider:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="route_id and provider are required")
+    route = Route(
+        route_id=route_id,
+        provider=provider,
+        estimated_latency_ms=float(body.get("estimated_latency_ms", 200.0)),
+        estimated_cost_per_call=float(body.get("estimated_cost_per_call", 0.001)),
+        reliability_score=float(body.get("reliability_score", 0.95)),
+        is_sovereign=bool(body.get("is_sovereign", False)),
+    )
+    gladiator.add_route(route)
+    route.compute_gladiator_score()
+    return {
+        "forged": True,
+        "route_id": route_id,
+        "provider": provider,
+        "gladiator_score": route.gladiator_score,
+    }
+
+
+@router.get("/governance/gladiator/benchmarks")
+async def gladiator_benchmarks(limit: int = 50, user=Depends(get_current_user)):
+    """Retrieve recent benchmark history for all routes."""
+    from agents.governance.gladiator import gladiator
+    return {
+        "benchmarks": gladiator.get_benchmarks(limit=limit),
+        "total": len(gladiator.get_benchmarks(limit=limit)),
+    }
+
+
+@router.get("/governance/gladiator/optimizations")
+async def gladiator_optimizations(limit: int = 10, user=Depends(get_current_user)):
+    """Retrieve recent optimization cycle reports."""
+    from agents.governance.gladiator import gladiator
+    return {
+        "optimizations": gladiator.get_optimizations(limit=limit),
+        "total": len(gladiator.get_optimizations(limit=limit)),
+    }
+
+
+# =============================================================================
+# Combined Governance Health — single endpoint for the workspace dashboard
+# =============================================================================
+
+@router.get("/governance/health")
+async def governance_health(user=Depends(get_current_user)):
+    """
+    Unified governance health snapshot:
+      - Zeno freeze count
+      - Gladiator circuit-breaker status
+      - RARA / ATS summary
+    """
+    from agents.governance.zeno import _mem_freeze
+    from agents.governance.gladiator import gladiator
+
+    cb = gladiator.circuit_breaker_status()
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "zeno": {
+            "frozen_agents": len(_mem_freeze),
+            "frozen_ids": list(_mem_freeze.keys()),
+        },
+        "gladiator": {
+            "active_routes": cb["active_routes"],
+            "demoted_routes": cb["demoted_routes"],
+            "top_route": gladiator.select_best_route().route_id,
+        },
+        "overall_status": "healthy" if len(_mem_freeze) == 0 and cb["demoted_routes"] == 0 else "degraded",
     }
 

@@ -195,33 +195,154 @@ class SwarmCoordinator:
 # ---------------------------------------------------------------------------
 # Swarm Job Schedule Processor (aligned to QStash cron schedules)
 # ---------------------------------------------------------------------------
-async def run_scheduler_tick():
-    """Daily operations agent loop running every hour or cron trigger."""
-    coordinator = SwarmCoordinator()
-    logger.info("Initializing Swarm Scheduler Tick...")
 
-    # Job 1: General Platform Health Check (Agent-061 - Operations Monitoring)
-    logger.info("Syncing Agent-061 (Operations Monitoring)...")
+# Canonical list of all 130 agents (IDs used for observation/tracking)
+SWARM_AGENT_IDS = [
+    f"agent-{str(i).zfill(3)}" for i in range(130)
+]
+
+
+async def run_scheduler_tick():
+    """
+    Hardened scheduler tick — runs every hour via cron or on-demand.
+    Executes:
+      1. Platform health check          (Agent-061)
+      2. Compliance/RARA review         (Agent-079)
+      3. Zeno Enforcer observation cycle (Agent-120) — real ZenoEnforcer
+      4. Gladiator optimization cycle   (Agent-121) — real GladiatorEngine
+    """
+    coordinator = SwarmCoordinator()
+    logger.info("═══ Swarm Scheduler Tick: START ═══")
+
+    # ── Job 1: General Platform Health Check (Agent-061) ──────────────────
+    logger.info("[Tick] Agent-061 — Operations Monitoring...")
     await coordinator.dispatch_agent(
         agent_id="agent-061-monitoring",
-        goal="Check backend health, verify IronGrid node status, and fetch platform revenue summary."
+        goal=(
+            "Check backend health, verify IronGrid node status, "
+            "and fetch platform revenue summary."
+        ),
     )
 
-    # Job 2: Compliance Review (Agent-079 - Compliance Officer)
-    logger.info("Syncing Agent-079 (Compliance Officer)...")
+    # ── Job 2: Compliance Review (Agent-079) ──────────────────────────────
+    logger.info("[Tick] Agent-079 — Compliance Officer...")
     await coordinator.dispatch_agent(
         agent_id="agent-079-compliance-officer",
-        goal="Evaluate RARA structural, semantic, and temporal invariants across recent active executions."
+        goal=(
+            "Evaluate RARA structural, semantic, and temporal invariants "
+            "across recent active executions."
+        ),
     )
 
-    # Job 3: Zeno Enforcer Verification (Agent-120 - Supreme Governance)
-    logger.info("Syncing Agent-120 (Zeno Enforcer)...")
-    await coordinator.dispatch_agent(
-        agent_id="agent-120-zeno-enforcer",
-        goal="Run Zeno interrogator validation test cycle (512 Hz measurement phase check) and check for hallucination cascades."
-    )
+    # ── Job 3: Zeno Enforcer — real observation cycle (Agent-120) ─────────
+    logger.info("[Tick] Agent-120 — Zeno Enforcer (real observation cycle)...")
+    try:
+        from agents.governance.zeno import zeno
 
-    logger.info("Swarm Scheduler Tick finalized successfully!")
+        # Build synthetic state snapshots for each active agent
+        # (In production these come from Redis/DB agent status records)
+        now_ts = datetime.now(timezone.utc).isoformat()
+        states = {
+            agent_id: {
+                "status": "active",
+                "last_heartbeat": now_ts,
+                "provider": "ollama",
+                "task_count": 0,
+                "error_rate": 0.0,
+            }
+            for agent_id in SWARM_AGENT_IDS
+        }
+
+        # Register cascade groups: freezing the commander cascades to delegates
+        await zeno.register_cascade(
+            "agent-000",  # Commander
+            ["agent-073", "agent-074", "agent-075", "agent-076", "agent-077"],
+        )
+        await zeno.register_cascade(
+            "agent-102",  # Security Commander
+            ["agent-104", "agent-105", "agent-106", "agent-107"],
+        )
+
+        # Run full observation cycle across the entire swarm
+        cycle_result = await zeno.run_observation_cycle(SWARM_AGENT_IDS, states)
+        logger.info(
+            f"[Zeno] Cycle complete — "
+            f"coherent={cycle_result['coherent']}/"
+            f"{cycle_result['agents_observed']}  "
+            f"frozen={cycle_result['frozen_on_failure']}  "
+            f"elapsed={cycle_result['elapsed_ms']}ms"
+        )
+
+        # Post result to agent runs log
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"{VEKLOM_API_URL}/agents/runs",
+                    headers={"Authorization": f"Bearer {VEKLOM_API_KEY}"} if VEKLOM_API_KEY else {},
+                    json={
+                        "agent_id": "agent-120-zeno-enforcer",
+                        "summary": (
+                            f"Zeno observation cycle: {cycle_result['coherent']}/"
+                            f"{cycle_result['agents_observed']} coherent, "
+                            f"{cycle_result['frozen_on_failure']} frozen"
+                        ),
+                        "details": {
+                            "coherent": cycle_result["coherent"],
+                            "frozen": cycle_result["frozen_on_failure"],
+                            "elapsed_ms": cycle_result["elapsed_ms"],
+                        },
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"Could not log Zeno run: {e}")
+
+    except Exception as exc:
+        logger.error(f"[Tick] Zeno Enforcer cycle FAILED: {exc}")
+
+    # ── Job 4: Gladiator Engine — optimization cycle (Agent-121) ──────────
+    logger.info("[Tick] Agent-121 — Gladiator Engine (optimization cycle)...")
+    try:
+        from agents.governance.gladiator import gladiator
+
+        opt_result = await gladiator.run_optimization_cycle()
+
+        logger.info(
+            f"[Gladiator] Optimization complete — "
+            f"demoted={opt_result['routes_demoted']}  "
+            f"recovered={opt_result['routes_recovered']}  "
+            f"top_route={opt_result['top_route']}  "
+            f"elapsed={opt_result['elapsed_ms']}ms"
+        )
+
+        # Post result to agent runs log
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"{VEKLOM_API_URL}/agents/runs",
+                    headers={"Authorization": f"Bearer {VEKLOM_API_KEY}"} if VEKLOM_API_KEY else {},
+                    json={
+                        "agent_id": "agent-121-gladiator-optimizer",
+                        "summary": (
+                            f"Gladiator cycle: top={opt_result['top_route']}  "
+                            f"demoted={opt_result['routes_demoted']}  "
+                            f"recovered={opt_result['routes_recovered']}"
+                        ),
+                        "details": {
+                            "top_route": opt_result["top_route"],
+                            "routes_demoted": opt_result["routes_demoted"],
+                            "routes_recovered": opt_result["routes_recovered"],
+                            "elapsed_ms": opt_result["elapsed_ms"],
+                        },
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"Could not log Gladiator run: {e}")
+
+    except Exception as exc:
+        logger.error(f"[Tick] Gladiator Engine cycle FAILED: {exc}")
+
+    logger.info("═══ Swarm Scheduler Tick: COMPLETE ═══")
+
 
 if __name__ == "__main__":
     asyncio.run(run_scheduler_tick())

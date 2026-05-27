@@ -42,12 +42,14 @@ async def main():
         from agents.agent_groq import run_agent
     elif PROVIDER == "openai":
         from agents.agent_loop import run_agent
+    elif PROVIDER == "gemini":
+        from agents.agent_gemini import run_agent
     elif PROVIDER in ("huggingface", "hf"):
         from agents.agent_huggingface import run_agent
     else:
         raise ValueError(
             f"Unknown provider '{PROVIDER}'. "
-            "Choose: ollama (default) | groq | openai | huggingface"
+            "Choose: ollama (default) | groq | openai | gemini | huggingface"
         )
 
     result = await run_agent(GOAL)

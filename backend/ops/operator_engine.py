@@ -25,9 +25,10 @@ import asyncio
 import os
 import time
 import traceback
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 import httpx
+from sqlalchemy import select
 
 from backend.core.config.settings import settings
 
@@ -162,8 +163,20 @@ async def _call_openai(prompt: str) -> tuple[str, float]:
 
 
 async def call_llm(provider: str, prompt: str) -> tuple[str, float]:
-    """Dispatch to the correct provider. Falls back to Ollama on failure."""
+    """Dispatch to the correct provider.
+    Fallback chain: primary → groq → gemini → ollama (local).
+    Ollama is tried last since it may not be reachable in cloud deployments.
+    """
+    # --- Primary provider ---
     try:
+        if provider == "ollama":
+            text, cost = await _call_ollama(prompt)
+            if text:
+                return text, cost
+            # Ollama unreachable (cloud env) — escalate to Groq
+            print(f"[engine] ollama unavailable, escalating to groq")
+            provider = "groq"
+
         if provider == "groq":
             text, cost = await _call_groq(prompt)
             if text:
@@ -177,15 +190,23 @@ async def call_llm(provider: str, prompt: str) -> tuple[str, float]:
             if text:
                 return text, cost
         elif provider == "huggingface":
-            # HF via Groq-compat router
-            text, cost = await _call_groq(prompt)
+            text, cost = await _call_groq(prompt)  # HF via Groq-compat
             if text:
                 return text, cost
-        # Default / fallback
-        return await _call_ollama(prompt)
     except Exception as e:
-        print(f"[engine] call_llm({provider}) exception: {e}")
-        return await _call_ollama(prompt)
+        print(f"[engine] call_llm({provider}) primary error: {e}")
+
+    # --- Fallback chain: groq → gemini ---
+    for fallback_fn, name in [(_call_groq, "groq"), (_call_gemini, "gemini")]:
+        try:
+            text, cost = await fallback_fn(prompt)
+            if text:
+                print(f"[engine] used fallback provider: {name}")
+                return text, cost
+        except Exception as e:
+            print(f"[engine] fallback {name} error: {e}")
+
+    return "", 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +285,7 @@ OPERATOR_TASK_LIBRARY: Dict[str, Dict[str, Any]] = {
             "1. Repeated 500/4xx error patterns\n"
             "2. Authentication or permission rejections\n"
             "3. Database timeout or connection failures\n"
-            "Return JSON: {{\"top_issues\": [{\"issue\": \"str\", \"frequency\": \"str\", \"priority\": \"high|med|low\"}]}}"
+            "Return JSON with key top_issues: a list of objects each with issue, frequency, priority (high/med/low)."
         ),
     },
     "pulse": {
@@ -319,7 +340,7 @@ OPERATOR_TASK_LIBRARY: Dict[str, Dict[str, Any]] = {
             "1. Which pages are likely to have broken states or missing content\n"
             "2. What copy or labels could be improved for clarity\n"
             "3. What micro-interactions are missing that would improve engagement\n"
-            "Return JSON: {{\"priority_improvements\": [{\"page\": \"str\", \"issue\": \"str\", \"suggestion\": \"str\"}]}}"
+            "Return JSON with key priority_improvements: a list of objects each with page, issue, suggestion."
         ),
     },
     # Extended set
@@ -394,8 +415,7 @@ OPERATOR_TASK_LIBRARY: Dict[str, Dict[str, Any]] = {
             "1. 3 trending open datasets suitable for RAG use cases\n"
             "2. Their license types\n"
             "3. Why enterprise AI teams would pay for them pre-packaged\n"
-            "Return JSON: {{\"opportunities\": [{\"name\": \"str\", \"source\": \"str\", "
-            "\"license\": \"str\", \"use_case\": \"str\", \"buyer\": \"str\"}]}}"
+            "Return JSON with key opportunities: a list of objects each with name, source, license, use_case, buyer."
         ),
     },
     "scout": {
@@ -414,8 +434,7 @@ OPERATOR_TASK_LIBRARY: Dict[str, Dict[str, Any]] = {
             "1. Industries with highest AI governance pressure (compliance, healthcare, finance, legal)\n"
             "2. What pain points Veklom solves for each\n"
             "3. Outreach angle that aligns with their regulatory reality\n"
-            "Return JSON: {{\"segments\": [{\"industry\": \"str\", \"pain\": \"str\", "
-            "\"pitch\": \"str\", \"priority\": \"str\"}]}}"
+            "Return JSON with key segments: a list of objects each with industry, pain, pitch, priority."
         ),
     },
 }
@@ -550,9 +569,10 @@ class OperatorEngine:
         prompt = spec["prompt_template"].format(date=date_str)
         
         # Budget hard-stop check
+        budget_row = None
         async with async_session() as db:
             budget_row = (await db.execute(
-                __import__("sqlalchemy", fromlist=["select"]).select(InternalOperatorBudget)
+                select(InternalOperatorBudget)
                 .where(InternalOperatorBudget.worker_id == worker_id)
             )).scalar_one_or_none()
             
@@ -600,9 +620,9 @@ class OperatorEngine:
             db.add(usage)
             
             # Store last result in memory
-            mem_key = f"last_tick_result"
+            mem_key = "last_tick_result"
             mem_row = (await db.execute(
-                __import__("sqlalchemy", fromlist=["select"]).select(InternalOperatorMemory)
+                select(InternalOperatorMemory)
                 .where(
                     InternalOperatorMemory.worker_id == worker_id,
                     InternalOperatorMemory.key == mem_key

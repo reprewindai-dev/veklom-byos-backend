@@ -51,9 +51,13 @@ if SENTRY_DSN:
     )
 
 # Configure OpenTelemetry for Grafana Cloud
-OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-OTEL_HEADERS = os.getenv("OTEL_EXPORTER_OTLP_HEADERS")
-if OTEL_ENDPOINT and OTEL_HEADERS:
+OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+OTEL_HEADERS = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "").strip()
+
+has_valid_endpoint = OTEL_ENDPOINT and "NEED_FROM" not in OTEL_ENDPOINT
+has_valid_headers = OTEL_HEADERS and "NEED_FROM" not in OTEL_HEADERS and "=" in OTEL_HEADERS
+
+if has_valid_endpoint and has_valid_headers:
     provider = TracerProvider()
     processor = BatchSpanProcessor(
         OTLPSpanExporter(
@@ -292,7 +296,7 @@ Drop-in replacement: `base_url=https://api.veklom.com/v1`
 )
 
 # Instrument FastAPI with OpenTelemetry if configured
-if OTEL_ENDPOINT and OTEL_HEADERS:
+if has_valid_endpoint and has_valid_headers:
     FastAPIInstrumentor.instrument_app(app)
     HTTPXClientInstrumentor().instrument()
 

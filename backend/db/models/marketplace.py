@@ -49,9 +49,12 @@ class PipelineRun(Base):
 
     id = Column(String(36), primary_key=True, default=_uuid)
     pipeline_id = Column(String(36), nullable=False, index=True)
+    workspace_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(String(36), nullable=True, index=True)
     status = Column(String(32), default="running")
     progress = Column(Float, default=0.0)
     current_step = Column(String(128), default="")
+    steps = Column(JSON, default=list)
     output = Column(JSON, default=dict)
     error = Column(Text, default="")
     started_at = Column(DateTime(timezone=True), default=_utcnow)

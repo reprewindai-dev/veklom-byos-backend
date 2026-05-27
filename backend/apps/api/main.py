@@ -123,6 +123,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] db: HRM migration warning: {type(e).__name__}: {e}")
 
+    # Idempotent column additions for workspaces (GitHub selection fields)
+    workspace_github_columns = [
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS selected_repo VARCHAR(255)",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS selected_repo_branch VARCHAR(128)",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_provider VARCHAR(64)",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_selected_by VARCHAR(36)",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_selected_at TIMESTAMP",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in workspace_github_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: Workspace GitHub column migration completed")
+    except Exception as e:
+        print(f"[startup] db: Workspace GitHub migration warning: {type(e).__name__}: {e}")
+
+    # Idempotent column additions for pipeline_runs
+    pipeline_run_columns = [
+        "ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(36)",
+        "ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)",
+        "ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS steps JSONB",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in pipeline_run_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: PipelineRun column migration completed")
+    except Exception as e:
+        print(f"[startup] db: PipelineRun migration warning: {type(e).__name__}: {e}")
+
     # Seed first-class skills that should always be present in the registry.
     # Skills with is_available=False are catalogued but NOT invokable.
     # Add to this list when a new skill's spec is defined; flip is_available
@@ -344,7 +374,7 @@ from backend.apps.api.routers import (
     providers,
     repo_risk_gate,
     routing,
-    sys,
+    system,
     team,
     runtime_jobs,
     security,
@@ -368,7 +398,7 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 
 # System utilities
-app.include_router(sys.router, prefix="/api/v1")
+app.include_router(system.router, prefix="/api/v1")
 
 # Copilot registry
 app.include_router(copilot.router, prefix="/api/v1")

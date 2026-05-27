@@ -882,8 +882,17 @@ async def select_github_repo(body: RepoSelectRequest, request: Request, user=Dep
     # Always use the authenticated user's workspace_id for audit logging
     audit_workspace_id = user.workspace_id or "default"
 
-    # Normally we would save this to the Workspace or a specific Session configuration.
-    # For now we just log it in the audit log to prove wiring.
+    # Fetch and update workspace with the selected repository details
+    if user.workspace_id:
+        result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
+        workspace = result.scalar_one_or_none()
+        if workspace:
+            workspace.selected_repo = body.repo_full_name
+            workspace.selected_repo_branch = "main"  # default
+            workspace.github_provider = "github"
+            workspace.github_selected_by = user.id
+            workspace.github_selected_at = datetime.utcnow()
+
     await log_audit_event(
         db=db,
         user_id=user.id,
@@ -895,6 +904,8 @@ async def select_github_repo(body: RepoSelectRequest, request: Request, user=Dep
         ip_address=request.client.host if request.client else "unknown",
         user_agent=request.headers.get("user-agent", "unknown")
     )
+    
+    await db.commit()
 
     return {"message": "Repository selected and authorized", "repo": body.repo_full_name}
 

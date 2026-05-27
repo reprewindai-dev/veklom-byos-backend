@@ -15,6 +15,7 @@ from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.db.models.billing import BudgetRule, Invoice, Subscription, WalletTransaction
+from backend.db.models.security import KillSwitchState
 
 router = APIRouter(tags=["Billing"])
 
@@ -496,17 +497,49 @@ async def cost_predict(body: dict = None, user=Depends(get_current_user), db: As
     daily_avg = float(weekly_spend) / 7
     predicted_monthly = daily_avg * 30
     
+    body = body or {}
+    model = body.get("model", "llama3.1")
+    input_tokens = int(body.get("input_tokens", body.get("max_tokens", 1000)))
+    output_tokens = int(body.get("output_tokens", 500))
+    temperature = float(body.get("temperature", 0.7))
+    
+    # Compute cost based on slider variables
+    if "70b" in model.lower() or "haiku" in model.lower():
+        input_price_per_1k = 0.00059
+        output_price_per_1k = 0.00079
+    elif "mixtral" in model.lower():
+        input_price_per_1k = 0.00038
+        output_price_per_1k = 0.00060
+    elif "qwen" in model.lower() or "deepseek" in model.lower():
+        input_price_per_1k = 0.00018
+        output_price_per_1k = 0.00027
+    else: # default (ollama, standard local inference)
+        input_price_per_1k = 0.0
+        output_price_per_1k = 0.0
+        
+    input_cost = (input_tokens / 1000.0) * input_price_per_1k
+    output_cost = (output_tokens / 1000.0) * output_price_per_1k
+    predicted_cost = input_cost + output_cost
+    
+    tools_enabled = bool(body.get("tools_enabled", False))
+    if tools_enabled:
+        predicted_cost *= 1.15
+        
+    cost_str = f"{predicted_cost:.6f}"
+    lower_cost_str = f"{(predicted_cost * 0.9):.6f}"
+    upper_cost_str = f"{(predicted_cost * 1.1):.6f}"
+    
     return {
         "predicted_monthly": round(predicted_monthly, 4),
         "predicted_daily": round(daily_avg, 4),
-        "confidence": 0.85,
-        "predicted_cost": "0.002341",
-        "confidence_lower": "0.002100",
-        "confidence_upper": "0.002600",
+        "confidence": 0.85 + (0.05 if daily_avg > 0 else 0.0),
+        "predicted_cost": cost_str,
+        "confidence_lower": lower_cost_str,
+        "confidence_upper": upper_cost_str,
         "accuracy_score": 0.94,
         "alternative_providers": [
-            { "provider": "ollama", "cost": "0.000000", "savings_percent": 100 },
-            { "provider": "groq",   "cost": "0.000180", "savings_percent": 92.3 }
+            { "provider": "ollama", "cost": "0.000000", "savings_percent": 100.0 if predicted_cost > 0 else 0.0 },
+            { "provider": "groq",   "cost": f"{(predicted_cost * 0.15):.6f}", "savings_percent": 85.0 }
         ]
     }
 
@@ -542,28 +575,86 @@ async def cost_kill_switch_status(user=Depends(get_current_user), db: AsyncSessi
     from backend.db.models.ai import ExecLog
     from sqlalchemy import func
     from datetime import datetime, timezone
-    workspace_id = user.workspace_id or ""
+    workspace_id = user.workspace_id or "default"
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     current_spend = await db.scalar(
         select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
         .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start)
     ) or 0.0
+    
+    result = await db.execute(
+        select(KillSwitchState)
+        .where(KillSwitchState.workspace_id == workspace_id)
+        .order_by(KillSwitchState.activated_at.desc())
+        .limit(1)
+    )
+    state = result.scalar_one_or_none()
+    is_active = state.is_active if state else False
+    
     return {
-        "is_active": False,
+        "is_active": is_active,
         "threshold_usd": 1000,
         "current_spend": round(float(current_spend), 4),
+        "activated_by": state.activated_by if (state and is_active) else "",
+        "reason": state.reason if (state and is_active) else "",
     }
 
 
 @router.post("/cost/kill-switch")
-async def cost_kill_switch_toggle(body: dict, user=Depends(get_current_user)):
-    return {"is_active": True, "reason": body.get("reason", "Runaway usage detected"), "message": "Cost kill switch activated"}
+async def cost_kill_switch_toggle(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    workspace_id = user.workspace_id or "default"
+    reason = body.get("reason", "Runaway usage detected")
+    
+    result = await db.execute(
+        select(KillSwitchState).where(KillSwitchState.workspace_id == workspace_id)
+    )
+    state = result.scalar_one_or_none()
+    
+    if not state:
+        state = KillSwitchState(
+            workspace_id=workspace_id,
+            is_active=True,
+            activated_by=user.id,
+            reason=reason,
+            activated_at=datetime.utcnow()
+        )
+        db.add(state)
+    else:
+        state.is_active = True
+        state.activated_by = user.id
+        state.reason = reason
+        state.activated_at = datetime.utcnow()
+        state.deactivated_at = None
+        
+    await db.commit()
+    await db.refresh(state)
+    
+    return {
+        "is_active": True,
+        "reason": reason,
+        "message": "Cost kill switch activated"
+    }
 
 
 @router.delete("/cost/kill-switch")
-async def cost_kill_switch_disable(user=Depends(get_current_user)):
-    return {"is_active": False, "message": "Cost kill switch deactivated"}
+async def cost_kill_switch_disable(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    workspace_id = user.workspace_id or "default"
+    
+    result = await db.execute(
+        select(KillSwitchState).where(KillSwitchState.workspace_id == workspace_id)
+    )
+    state = result.scalar_one_or_none()
+    
+    if state:
+        state.is_active = False
+        state.deactivated_at = datetime.utcnow()
+        await db.commit()
+        
+    return {
+        "is_active": False,
+        "message": "Cost kill switch deactivated"
+    }
 
 
 # --- Payments ---

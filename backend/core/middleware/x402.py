@@ -60,6 +60,9 @@ _FREE_ROUTES_PREFIX = (
     "/api/v1/pricing", "/api/v1/sdk/", "/api/v1/agent-use-cases",
     "/agent-use-cases", "/sdk/examples",
     "/mcp/", "/static/", "/assets/", "/favicon",
+    "/api/v1/openapi.json", "/v1/openapi.json",
+    "/api/v1/sys/health", "/api/v1/sys/gpu",
+    "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"

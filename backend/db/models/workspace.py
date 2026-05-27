@@ -1,6 +1,6 @@
 """Workspace / tenant models — aligned to the live PostgreSQL schema."""
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, JSON
 from sqlalchemy.orm import relationship
 
 from backend.core.database.database import Base
@@ -35,6 +35,13 @@ class Workspace(Base):
     default_evidence_requirements = Column(Text, nullable=True)
     default_blocking_rules = Column(Text, nullable=True)
 
+    # GitHub Integration
+    selected_repo = Column(String(255), nullable=True)
+    selected_repo_branch = Column(String(128), nullable=True)
+    github_provider = Column(String(64), nullable=True)
+    github_selected_by = Column(String(36), nullable=True)
+    github_selected_at = Column(DateTime, nullable=True)
+
     plugins = relationship("WorkspacePlugin", back_populates="workspace", cascade="all, delete-orphan")
 
 
@@ -63,3 +70,19 @@ class ModelConfig(Base):
     cost_per_1k_output = Column(String(32), default="0.0")
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class WorkspaceIntegration(Base):
+    __tablename__ = "workspace_integrations"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    workspace_id = Column(String(36), nullable=False, index=True)
+    provider = Column(String(64), nullable=False, index=True)
+    status = Column(String(32), default="inactive")
+    config_json = Column(JSON, default=dict)
+    secret_ref = Column(String(128), default="")
+    last_tested_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, default="")
+    created_by = Column(String(36), default="")
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+

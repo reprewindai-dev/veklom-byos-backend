@@ -3,7 +3,7 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -782,5 +782,70 @@ def _pipe_detail_dict(p: Pipeline) -> dict:
     d["stages"] = stages
     d["description"] = p.description or ""
     return d
+
+
+# --- Deployments from GitHub trigger ---
+@router.post("/deployments/from-github")
+async def trigger_github_deployment(workspace_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """
+    Manually trigger a redeployment from GitHub, calling the Coolify build API if configured,
+    and creating a Deployment record tracking the run.
+    """
+    import os
+    import httpx
+    
+    # Normally check if user belongs to workspace_id
+    if user.workspace_id and user.workspace_id != workspace_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    coolify_token = os.getenv("COOLIFY_API_TOKEN")
+    coolify_url = os.getenv("COOLIFY_SERVER_URL", "http://5.78.135.11:8000")
+    resource_uuid = os.getenv("COOLIFY_RESOURCE_UUID")
+    
+    status = "success"
+    error_msg = ""
+    
+    if coolify_token and resource_uuid:
+        try:
+            url = f"{coolify_url.rstrip('/')}/api/v1/deploy"
+            params = {"uuid": resource_uuid, "force": "true"}
+            headers = {"Authorization": f"Bearer {coolify_token}"}
+            
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, params=params, headers=headers, timeout=10.0)
+                if resp.status_code not in (200, 201):
+                    status = "failed"
+                    error_msg = f"Coolify API returned {resp.status_code}: {resp.text}"
+        except Exception as e:
+            status = "failed"
+            error_msg = f"Failed to connect to Coolify: {str(e)}"
+    else:
+        status = "failed"
+        error_msg = "Coolify environment variables (COOLIFY_API_TOKEN, COOLIFY_RESOURCE_UUID) not configured"
+        
+    # Create deployment history record in database
+    new_dep = Deployment(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace_id,
+        name=f"GitHub Redeploy Triggered",
+        deployment_type="web",
+        endpoint_url="https://veklom.com",
+        status="live" if status == "success" else "failed",
+        config_json={
+            "trigger": "manual_github",
+            "error": error_msg,
+            "canary_active": False,
+            "region": "hetzner-fsn1",
+        }
+    )
+    db.add(new_dep)
+    await db.commit()
+    await db.refresh(new_dep)
+    
+    return {
+        "success": status == "success",
+        "deployment_id": new_dep.id,
+        "message": "Deployment triggered successfully" if status == "success" else f"Deployment failed: {error_msg}"
+    }
 
 

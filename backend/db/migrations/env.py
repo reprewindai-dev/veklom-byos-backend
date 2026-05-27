@@ -12,7 +12,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import the database models
-from backend.db.models import Base
+from backend.core.database.database import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

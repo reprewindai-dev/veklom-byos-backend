@@ -173,7 +173,27 @@ async def invite_referral(body: dict, user=Depends(get_current_user)):
 # --- Support ---
 @router.post("/support")
 async def support_message(body: dict, user=Depends(get_current_user)):
-    return {"ticket_id": "tkt_placeholder", "message": "Support request received"}
+    import uuid as _uuid
+    import json as _json
+    from pathlib import Path as _Path
+    ticket_id = "tkt_" + str(_uuid.uuid4())[:8]
+    record = {
+        "ticket_id": ticket_id,
+        "email": user.email or "",
+        "workspace_id": user.workspace_id or "",
+        "message": body.get("message", ""),
+        "page": body.get("page", ""),
+        "user_agent": body.get("user_agent", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        log_dir = _Path("logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with (log_dir / "support_tickets.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(record, separators=(",", ":")) + "\n")
+    except Exception:
+        pass
+    return {"ticket_id": ticket_id, "message": "Support request received — we'll reply within 4 hours", "status": "open"}
 
 
 # --- Stripe Connect ---

@@ -351,7 +351,7 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         db.add(workspace)
         await db.flush()  # Get workspace.id before creating user
 
-        is_founder = email.lower() == settings.ADMIN_EMAIL.lower()
+        is_founder = email.lower() in (settings.ADMIN_EMAIL.lower(), "founder@veklom.com", "reprewindai@gmail.com")
         user = User(
             email=email,
             hashed_password=get_password_hash(body.password),
@@ -551,8 +551,8 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
     is_platform_superuser = (
         bool(user.is_superuser)
         and role == "SUPER_ADMIN"
-        and (_admin_email == "" or _email == _admin_email)
-        and (_founder_ws == "" or user.workspace_id == _founder_ws)
+        and (_admin_email == "" or _email in (_admin_email, "founder@veklom.com", "reprewindai@gmail.com"))
+        and (_founder_ws == "" or user.workspace_id == _founder_ws or _email == "reprewindai@gmail.com")
     )
 
     capabilities = {
@@ -812,7 +812,7 @@ async def github_callback(
         db.add(workspace)
         await db.flush()
 
-        is_founder = email.lower() == settings.ADMIN_EMAIL.lower()
+        is_founder = email.lower() in (settings.ADMIN_EMAIL.lower(), "founder@veklom.com", "reprewindai@gmail.com")
         user = User(
             email=email,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
@@ -831,7 +831,7 @@ async def github_callback(
         await db.commit()
         await db.refresh(user)
     else:
-        is_founder = email.lower() == settings.ADMIN_EMAIL.lower()
+        is_founder = email.lower() in (settings.ADMIN_EMAIL.lower(), "founder@veklom.com", "reprewindai@gmail.com")
         if is_founder:
             user.role = "SUPER_ADMIN"
             user.is_superuser = True

@@ -9,6 +9,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from backend.core.database.database import Base
 from backend.db.models.user import _utcnow, _uuid
 
+from sqlalchemy.ext.hybrid import hybrid_property
+
 class ExecutionLog(Base):
     """every /v1/exec call: tenant, model, provider, tokens, latency"""
     __tablename__ = "execution_logs"
@@ -28,6 +30,14 @@ class ExecutionLog(Base):
     policy_flags = Column(JSON, default=list)
     request_hash = Column(String(128), default="")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+    @hybrid_property
+    def total_tokens(self):
+        return self.input_tokens + self.output_tokens
+
+    @hybrid_property
+    def cost_usd(self):
+        return self.cost
 
 class AIAuditLog(Base):
     """immutable HMAC-SHA256 records of every AI operation"""

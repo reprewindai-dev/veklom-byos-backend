@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
             # missing AFTER create_all, the DB is misconfigured and we want
             # the log to scream.
             from sqlalchemy import text
-            critical = ("users", "exec_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
+            critical = ("users", "execution_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
             check = await conn.execute(text(
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema='public' AND table_name = ANY(:names)"

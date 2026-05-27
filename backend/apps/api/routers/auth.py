@@ -533,6 +533,7 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
                 "plan": real_plan,
                 "license_tier": workspace.license_tier or "free",
                 "is_active": workspace.is_active,
+                "industry": workspace.industry or "generic",
             }
 
     # Override plan in user_data with real subscription plan

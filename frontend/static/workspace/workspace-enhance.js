@@ -1477,10 +1477,185 @@
   window.__VEKLOM_ENHANCE_LOADED__ = true;
 
   // ------ TENANT NAME INJECTION ------
+  function showOnboardingModal(workspace) {
+    if (document.getElementById("vertical-onboarding-modal")) return;
+    const modal = document.createElement("div");
+    modal.id = "vertical-onboarding-modal";
+    modal.style.cssText = `
+      position:fixed;top:0;left:0;width:100vw;height:100vh;
+      z-index:999999;background:rgba(5,5,6,0.85);
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      display:grid;place-items:center;opacity:0;transition:opacity 0.4s ease;
+    `;
+    
+    const panel = document.createElement("div");
+    panel.style.cssText = `
+      width:min(640px, calc(100vw - 40px));
+      background:rgba(18,18,22,0.92);
+      border:1px solid rgba(255,184,0,0.15);
+      box-shadow:0 0 50px rgba(0,0,0,0.8), 0 0 30px rgba(255,184,0,0.05);
+      border-radius:16px;padding:36px;text-align:center;
+      transform:translateY(20px);transition:transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      font-family:Inter, system-ui, -apple-system, sans-serif;
+    `;
+
+    panel.innerHTML = `
+      <div style="width:52px;height:52px;margin:0 auto 20px;border-radius:12px;background:rgba(255,184,0,0.1);display:grid;place-items:center;border:1px solid rgba(255,184,0,0.25);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="9"></rect>
+          <rect x="14" y="3" width="7" height="5"></rect>
+          <rect x="14" y="12" width="7" height="9"></rect>
+          <rect x="3" y="16" width="7" height="5"></rect>
+        </svg>
+      </div>
+      <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#fff;letter-spacing:-0.02em;">Welcome to your Veklom Workspace</h1>
+      <p style="margin:0 0 28px;color:#a1a1a6;font-size:14px;line-height:1.6;max-width:460px;margin-left:auto;margin-right:auto;">
+        Select your governed AI runtime vertical. This will isolate your tenant workspace, secure compliance baselines, and spin up a clean-slate governed execution mesh.
+      </p>
+      
+      <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:16px;margin-bottom:28px;" id="vertical-options">
+        <div data-vertical="Healthcare" style="cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);border-radius:10px;padding:16px;text-align:left;transition:all 0.2s;">
+          <div style="font-weight:600;font-size:14px;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+            <span>🏥</span> Healthcare
+          </div>
+          <div style="font-size:11px;color:#71717a;">HIPAA & PHI redact baselines. Medical agent routing templates.</div>
+        </div>
+        
+        <div data-vertical="Finance" style="cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);border-radius:10px;padding:16px;text-align:left;transition:all 0.2s;">
+          <div style="font-weight:600;font-size:14px;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+            <span>⚖️</span> Finance
+          </div>
+          <div style="font-size:11px;color:#71717a;">SEC compliance policies, audit hashing, and cost-capped budget gates.</div>
+        </div>
+        
+        <div data-vertical="Defense" style="cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);border-radius:10px;padding:16px;text-align:left;transition:all 0.2s;">
+          <div style="font-weight:600;font-size:14px;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+            <span>🛡️</span> Defense / Security
+          </div>
+          <div style="font-size:11px;color:#71717a;">Zero-Trust edge routing, offline Ollama mesh, airtight audit trails.</div>
+        </div>
+        
+        <div data-vertical="Legal" style="cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);border-radius:10px;padding:16px;text-align:left;transition:all 0.2s;">
+          <div style="font-weight:600;font-size:14px;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+            <span>💼</span> Legal / RFP
+          </div>
+          <div style="font-size:11px;color:#71717a;">Hashed evidence collection, privacy-shielded client RAG pipelines.</div>
+        </div>
+        
+        <div data-vertical="E-Commerce" style="cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);border-radius:10px;padding:16px;text-align:left;transition:all 0.2s;">
+          <div style="font-weight:600;font-size:14px;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+            <span>🛒</span> E-Commerce
+          </div>
+          <div style="font-size:11px;color:#71717a;">High-throughput latency limits, payment API webhooks, dynamic fallback.</div>
+        </div>
+        
+        <div data-vertical="Custom" style="cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);border-radius:10px;padding:16px;text-align:left;transition:all 0.2s;">
+          <div style="font-weight:600;font-size:14px;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+            <span>⚙️</span> Custom / Dev
+          </div>
+          <div style="font-size:11px;color:#71717a;">Start with a clean-slate governed sandbox. Connect all your custom keys.</div>
+        </div>
+      </div>
+      
+      <button id="submit-vertical" disabled style="
+        width:100%;padding:12px;border-radius:8px;font-size:14px;font-weight:600;
+        background:rgba(255,184,0,0.1);color:rgba(255,255,255,0.3);border:1px solid rgba(255,184,0,0.15);
+        cursor:not-allowed;transition:all 0.2s;
+      ">Select a Vertical to Initialize Workspace</button>
+    `;
+
+    modal.appendChild(panel);
+    document.body.appendChild(modal);
+
+    setTimeout(() => {
+      modal.style.opacity = "1";
+      panel.style.transform = "translateY(0)";
+    }, 50);
+
+    let selectedVertical = "";
+    const options = panel.querySelectorAll("#vertical-options > div");
+    const submitBtn = panel.querySelector("#submit-vertical");
+
+    options.forEach(opt => {
+      opt.addEventListener("mouseenter", () => {
+        if (opt.getAttribute("data-vertical") !== selectedVertical) {
+          opt.style.borderColor = "rgba(255,184,0,0.3)";
+          opt.style.background = "rgba(255,184,0,0.02)";
+        }
+      });
+      opt.addEventListener("mouseleave", () => {
+        if (opt.getAttribute("data-vertical") !== selectedVertical) {
+          opt.style.borderColor = "rgba(255,255,255,0.06)";
+          opt.style.background = "rgba(255,255,255,0.02)";
+        }
+      });
+      opt.addEventListener("click", () => {
+        selectedVertical = opt.getAttribute("data-vertical");
+        options.forEach(o => {
+          o.style.borderColor = "rgba(255,255,255,0.06)";
+          o.style.background = "rgba(255,255,255,0.02)";
+        });
+        opt.style.borderColor = "rgba(255,184,0,0.8)";
+        opt.style.background = "rgba(255,184,0,0.05)";
+
+        submitBtn.disabled = false;
+        submitBtn.style.background = "#f97316";
+        submitBtn.style.color = "#fff";
+        submitBtn.style.border = "none";
+        submitBtn.style.cursor = "pointer";
+        submitBtn.textContent = `Initialize Workspace as ${selectedVertical}`;
+      });
+    });
+
+    submitBtn.addEventListener("click", async () => {
+      if (!selectedVertical) return;
+      submitBtn.textContent = "Initializing clean slate...";
+      submitBtn.disabled = true;
+
+      const res = await api("PATCH", "/workspace/settings", {
+        industry: selectedVertical.toLowerCase(),
+        workspace_name: `${selectedVertical} Core Space`,
+      });
+
+      if (res) {
+        toast(`Workspace initialized: ${selectedVertical} Vertical Locked!`, "ok");
+        
+        const userStr = localStorage.getItem("veklom_user");
+        if (userStr) {
+          try {
+            const user = JSON.parse(userStr);
+            if (user.workspace) {
+              user.workspace.industry = selectedVertical.toLowerCase();
+              user.workspace.name = `${selectedVertical} Core Space`;
+            }
+            localStorage.setItem("veklom_user", JSON.stringify(user));
+          } catch(e){}
+        }
+
+        modal.style.opacity = "0";
+        panel.style.transform = "translateY(20px)";
+        setTimeout(() => {
+          modal.remove();
+          location.reload();
+        }, 400);
+      } else {
+        toast("Failed to initialize workspace", "error");
+        submitBtn.textContent = `Initialize Workspace as ${selectedVertical}`;
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
   async function injectTenantUser() {
     let res = window.__VEKLOM_USER__ || window.__VEKLOM_AUTH__?.getUser?.() || null;
     if (!res) res = await api("GET", "/auth/me").catch(() => null);
     if (!res) return;
+
+    // Check if workspace vertical is uninitialized ('generic') and onboarding is required
+    if (res.workspace && (res.workspace.industry || "generic").toLowerCase() === "generic") {
+      showOnboardingModal(res.workspace);
+    }
+
     const fullName = res.full_name || res.name || res.email?.split("@")[0] || "";
     const email = res.email || "";
     const initials = fullName

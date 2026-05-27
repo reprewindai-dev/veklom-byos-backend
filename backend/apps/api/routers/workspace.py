@@ -747,17 +747,18 @@ async def update_settings(body: dict, user=Depends(get_current_user), db: AsyncS
     settings = _get_settings(ws)
     allowed = {"workspace_name", "slug", "default_region", "residency", "mfa_enforcement",
                "session_timeout_hours", "tls_version", "notifications_email", "notifications_slack",
-               "appearance_theme", "log_retention_days"}
+               "appearance_theme", "log_retention_days", "industry"}
     for k, v in body.items():
         if k in allowed:
             settings[k] = v
-    # Persist name/slug to DB if workspace exists
-    if user.workspace_id and ("workspace_name" in body or "slug" in body):
+    # Persist name/slug/industry to DB if workspace exists
+    if user.workspace_id and ("workspace_name" in body or "slug" in body or "industry" in body):
         result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
         workspace = result.scalar_one_or_none()
         if workspace:
             if "workspace_name" in body: workspace.name = body["workspace_name"]
             if "slug" in body: workspace.slug = body["slug"]
+            if "industry" in body: workspace.industry = body["industry"]
             await db.commit()
     return {"message": "Settings updated", "settings": settings}
 
@@ -1560,9 +1561,10 @@ def _ws_dict(ws: Workspace) -> dict:
         "id": ws.id,
         "name": ws.name,
         "slug": ws.slug,
-        "plan": ws.plan,
-        "settings": ws.settings_json or {},
+        "plan": getattr(ws, "plan", ws.license_tier or "free"),
+        "settings": getattr(ws, "settings_json", {}) or {},
         "is_active": ws.is_active,
+        "industry": ws.industry or "generic",
     }
 
 

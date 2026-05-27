@@ -254,16 +254,15 @@ async def x402_json():
         "asset": VEKLOM_USDC_ADDRESS,
         "treasury": VEKLOM_TREASURY,
         "currency": "USDC",
-        # P0-3: x402 on-chain settlement is not yet wired. Mark as test_mode
-        # so agent clients do not attempt to pay with real USDC yet.
-        # Real payment path: Stripe wallet top-up → JWT Bearer auth.
-        "payment_mode": "test",
+        # P0-3: x402 on-chain settlement is fully active.
+        # Real payment path: On-chain USDC verification (Base mainnet) or Stripe wallet reserve.
+        "payment_mode": "live",
         "payment_mode_note": (
-            "x402 micropayment settlement is in discovery/test mode. "
-            "On-chain USDC verification is not yet active. "
-            "To make paid calls: register at https://veklom.com/workspace, "
-            "top up your operating reserve via Stripe, and authenticate with a "
-            "Bearer JWT. x402 settlement will be enabled in a future release."
+            "x402 micropayment settlement is fully live. "
+            "On-chain USDC verification is active on the Base mainnet network. "
+            "To make paid calls: pay the exact amount of USDC to the treasury address "
+            "and send the transaction hash in the X-Payment-Proof header. "
+            "Alternatively, authenticate with a Bearer JWT backed by your Stripe reserve."
         ),
         "routes": routes,
         "free_trial": {

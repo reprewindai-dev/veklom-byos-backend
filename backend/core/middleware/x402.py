@@ -170,32 +170,140 @@ async def _verify_workspace_auth(request: Request) -> Optional[dict]:
         return None
 
 
-def _verify_x402_payment(request: Request) -> bool:
+async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     """
-    Inspect x402 payment headers but never authorize payment in current build.
-
-    On-chain USDC settlement (Base mainnet) is not yet wired. This function
-    always returns False. Requests that include an X-Payment or X-Payment-Proof
-    header receive a structured log entry so operators can see attempted agent
-    payments in container logs.
-
-    Returns:
-        bool: Always False until real Base settlement verification is integrated.
+    Verify the x402 payment proof header by querying the Base mainnet JSON-RPC node.
+    Checks if the transaction is:
+      1. Valid transaction hash on Base mainnet
+      2. Successful status (0x1)
+      3. Transfers USDC (0x833589fcd6edb6e08f4c7c32d4f71b54bda02913)
+      4. Destination address matches VEKLOM_TREASURY
+      5. Value is greater than or equal to the route cost in micro USDC
+      6. Has not been previously used (prevents replay attacks via Redis)
     """
-    import logging as _log
+    import httpx
+    import logging
+    from backend.core.database.redis_client import redis_client
+
+    logger = logging.getLogger(__name__)
     proof = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment")
     if not proof:
         return False
 
-    # Log the attempt — useful for measuring organic agent traffic before
-    # settlement goes live.
-    _log.getLogger(__name__).info(
-        "[x402] Payment proof header received but settlement is in test mode. "
-        "Proof length=%d path=%s — returning 402. "
-        "Real on-chain USDC verification is pending.",
-        len(proof),
-        request.url.path,
-    )
+    tx_hash = proof.strip()
+    if not (tx_hash.startswith("0x") and len(tx_hash) == 66):
+        logger.warning(f"[x402] Invalid transaction hash format: {tx_hash}")
+        return False
+
+    # 1. Prevent replay attacks
+    redis_key = f"x402_tx:{tx_hash}"
+    already_used = await redis_client.get(redis_key)
+    if already_used:
+        logger.warning(f"[x402] Replay attack detected. Tx hash {tx_hash} already used.")
+        return False
+
+    # 2. Query Base mainnet JSON-RPC with high-reliability public endpoints
+    rpc_endpoints = [
+        "https://mainnet.base.org",
+        "https://base.llamarpc.com",
+        "https://base-rpc.publicnode.com"
+    ]
+
+    tx_receipt = None
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for rpc_url in rpc_endpoints:
+            try:
+                rpc_payload = {
+                    "jsonrpc": "2.0",
+                    "method": "eth_getTransactionReceipt",
+                    "params": [tx_hash],
+                    "id": 1
+                }
+                res = await client.post(rpc_url, json=rpc_payload)
+                if res.status_code == 200:
+                    data = res.json()
+                    if "result" in data and data["result"] is not None:
+                        tx_receipt = data["result"]
+                        break
+            except Exception as e:
+                logger.warning(f"[x402] RPC check failed on {rpc_url}: {e}")
+                continue
+
+    if not tx_receipt:
+        logger.warning(f"[x402] Could not fetch receipt for transaction hash: {tx_hash}")
+        return False
+
+    # 3. Check transaction status (0x1 = success)
+    status = tx_receipt.get("status")
+    if status != "0x1":
+        logger.warning(f"[x402] Transaction {tx_hash} failed or status is not 0x1: {status}")
+        return False
+
+    # 4. Check if treasury is configured
+    treasury_addr = VEKLOM_TREASURY.lower().strip()
+    if not treasury_addr or treasury_addr == "not_configured" or treasury_addr == "0x0000000000000000000000000000000000000001":
+        logger.warning(f"[x402] VEKLOM_TREASURY ({VEKLOM_TREASURY}) is not fully configured. Cannot verify payment destination.")
+        return False
+
+    # Standard USDC contract address on Base
+    usdc_contract = VEKLOM_USDC_ADDR.lower()
+    
+    # ERC20 Transfer event signature: Transfer(address,address,uint256)
+    transfer_event_sig = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+    # Compute expected transfer amount in micro USDC
+    expected_amount = int(route_config["price_usdc"] * 1_000_000)
+
+    # 5. Parse logs for USDC Transfer to VEKLOM_TREASURY
+    logs = tx_receipt.get("logs", [])
+    payment_verified = False
+    actual_amount = 0
+
+    for log in logs:
+        log_address = log.get("address", "").lower()
+        if log_address != usdc_contract:
+            continue
+
+        topics = log.get("topics", [])
+        if not topics or topics[0].lower() != transfer_event_sig:
+            continue
+
+        if len(topics) < 3:
+            continue
+
+        to_topic = topics[2].lower()
+        expected_padded = treasury_addr.replace("0x", "").zfill(64)
+        if expected_padded not in to_topic:
+            continue
+
+        log_data = log.get("data", "")
+        if not log_data or log_data == "0x":
+            continue
+
+        try:
+            val = int(log_data, 16)
+            actual_amount += val
+        except ValueError:
+            continue
+
+    if actual_amount >= expected_amount:
+        payment_verified = True
+    else:
+        logger.warning(
+            f"[x402] Payment amount insufficient. "
+            f"Expected={expected_amount} micro USDC, Found={actual_amount} micro USDC"
+        )
+        return False
+
+    if payment_verified:
+        # 6. Save tx hash to redis to prevent replay (expire in 7 days)
+        await redis_client.set(redis_key, "used", ex=604800)
+        logger.info(
+            f"[x402] Payment verified successfully! Tx: {tx_hash}, "
+            f"Verified {actual_amount} micro USDC to treasury {VEKLOM_TREASURY}."
+        )
+        return True
+
     return False
 
 
@@ -274,7 +382,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             return response
 
         # 2. Check x402 payment proof header
-        if _verify_x402_payment(request):
+        if await _verify_x402_payment(request, route_cfg):
             response = await call_next(request)
             receipt = _build_receipt(route_cfg)
             response.headers["X-Veklom-Request-ID"] = receipt["request_id"]

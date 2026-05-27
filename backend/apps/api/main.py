@@ -445,6 +445,10 @@ app.include_router(routing.router, prefix="/api/v1")
 # Webhooks for external integrations
 app.include_router(webhooks.router, prefix="/api/v1")
 
+# Integrations (PagerDuty, Slack, etc.)
+from backend.apps.api.routers import integrations
+app.include_router(integrations.router, prefix="/api/v1")
+
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(upload.router, prefix="/api/v1")

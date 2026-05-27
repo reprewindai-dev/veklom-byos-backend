@@ -883,7 +883,33 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
             success = False
             message = "PagerDuty integration key not configured"
         else:
-            message = "PagerDuty integration key validated and heartbeat event generated."
+            import httpx
+            try:
+                payload = {
+                    "routing_key": integration_key,
+                    "event_action": "trigger",
+                    "client": "Veklom Sovereign Governance Engine",
+                    "client_url": "https://veklom.com",
+                    "payload": {
+                        "summary": "🚨 [Veklom Integration Test] PagerDuty Connection successfully verified.",
+                        "severity": "info",
+                        "source": "veklom-governance-engine",
+                        "component": "integrations-manager",
+                        "group": "test-suite",
+                        "class": "connection-test"
+                    }
+                }
+                response = httpx.post("https://events.pagerduty.com/v2/enqueue", json=payload, timeout=5.0)
+                if response.status_code not in (200, 202):
+                    success = False
+                    message = f"PagerDuty Events API returned status code {response.status_code}"
+                    error_details = response.text
+                else:
+                    message = "PagerDuty integration key validated and real test incident triggered successfully."
+            except Exception as e:
+                success = False
+                message = f"Failed to connect to PagerDuty Events API: {str(e)}"
+                error_details = str(e)
             
     elif provider == "github":
         token = cfg.get("token")

@@ -1,1 +1,551 @@
-[]
+[
+  {
+    "surface": "home",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/platform/pulse",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "home",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/ai/escalation/stats",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/github/status",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "POST",
+    "url": "https://veklom.com/api/v1/copilot/suggestions",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview/live",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/copilot/money-saving-tips",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview/live",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "POST",
+    "url": "https://veklom.com/api/v1/copilot/suggestions",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/copilot/money-saving-tips",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "workspace",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "command-center",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/copilot/registry",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "command-center",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/copilot/recent-decisions",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "command-center",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/sys/health",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "command-center",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/sys/gpu",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "command-center",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/agents/monthly-report",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "command-center",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/command-center/users/summary",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "command-center",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/agents/decision-frames",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "terminal",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/ai/escalation/stats",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "gpc",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/github/status",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "gpc",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "gpc",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "gpc",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "gpc",
+    "method": "POST",
+    "url": "https://veklom.com/api/v1/copilot/suggestions",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "gpc",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview/live",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "gpc",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/copilot/money-saving-tips",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "gpc",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "gpc",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "security",
+    "method": "GET",
+    "url": "https://veklom.com/legal/security",
+    "resourceType": "document",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "acceptable-use",
+    "method": "GET",
+    "url": "https://veklom.com/legal/acceptable-use",
+    "resourceType": "document",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "privacy",
+    "method": "GET",
+    "url": "https://veklom.com/legal/privacy",
+    "resourceType": "document",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "llms.txt",
+    "method": "GET",
+    "url": "https://veklom.com/llms.txt",
+    "resourceType": "document",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/github/status",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "POST",
+    "url": "https://veklom.com/api/v1/copilot/suggestions",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview/live",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/copilot/money-saving-tips",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/workspace/overview/live",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 200,
+    "ok": true
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "POST",
+    "url": "https://veklom.com/api/v1/copilot/suggestions",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/copilot/money-saving-tips",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  },
+  {
+    "surface": "billing",
+    "method": "GET",
+    "url": "https://veklom.com/api/v1/auth/me",
+    "resourceType": "fetch",
+    "fromBundle": true,
+    "status": 401,
+    "ok": false
+  }
+]

@@ -1,0 +1,9 @@
+#!/bin/bash
+ENV=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env
+sed -i '/^GITHUB_CLIENT_ID=/d' "$ENV"
+sed -i '/^GITHUB_CLIENT_SECRET=/d' "$ENV"
+sed -i '/^GITHUB_REDIRECT_URI=/d' "$ENV"
+sed -i '/^STRIPE_WEBHOOK_SECRET=/d' "$ENV"
+printf 'GITHUB_CLIENT_ID=Ov23lijPnrtxwjtoP2vk\nGITHUB_CLIENT_SECRET=e07fff39c8ebdf90b31dc6920ca52d6839d67c3c\nGITHUB_REDIRECT_URI=https://veklom.com/auth/github/callback\n' >> "$ENV"
+echo "=== Updated env ==="
+grep -E 'GITHUB|STRIPE|OPENAI' "$ENV"

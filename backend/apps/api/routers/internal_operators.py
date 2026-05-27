@@ -395,3 +395,53 @@ async def reject_request(approval_id: str, body: dict, user=Depends(require_supe
     approval.reviewed_at = datetime.now(timezone.utc)
     await db.commit()
     return {"id": approval_id, "status": "rejected"}
+
+# ---------------------------------------------------------------------------
+# Scheduler Control Endpoints — interact with the live OperatorEngine
+# ---------------------------------------------------------------------------
+
+@router.get("/scheduler")
+async def get_scheduler_status(user=Depends(require_superuser)):
+    """Get current status of the governed operator workforce scheduler."""
+    try:
+        from backend.ops.operator_engine import engine as op_engine
+        return op_engine.status()
+    except Exception as e:
+        return {"error": str(e), "running": False}
+
+@router.post("/scheduler/stop")
+async def stop_scheduler(user=Depends(require_superuser)):
+    """Gracefully stop the entire operator workforce. System-level kill switch."""
+    from backend.ops.operator_engine import engine as op_engine
+    op_engine.stop()
+    return {"status": "stopped", "message": "All operator loops cancelled"}
+
+@router.post("/scheduler/start")
+async def start_scheduler(user=Depends(require_superuser)):
+    """Start (or restart) the governed operator workforce."""
+    from backend.ops.operator_engine import engine as op_engine
+    op_engine.start()
+    return op_engine.status()
+
+@router.post("/scheduler/workers/{worker_id}/pause")
+async def pause_engine_worker(worker_id: str, user=Depends(require_superuser)):
+    """Pause a specific operator worker loop (agent-level kill switch)."""
+    from backend.ops.operator_engine import engine as op_engine
+    op_engine.pause_worker(worker_id)
+    return {"worker_id": worker_id, "action": "paused"}
+
+@router.post("/scheduler/workers/{worker_id}/resume")
+async def resume_engine_worker(worker_id: str, user=Depends(require_superuser)):
+    """Resume a paused operator worker loop."""
+    from backend.ops.operator_engine import engine as op_engine
+    op_engine.resume_worker(worker_id)
+    return {"worker_id": worker_id, "action": "resumed"}
+
+@router.get("/scheduler/workers/{worker_id}/last-result")
+async def get_worker_last_result(worker_id: str, user=Depends(require_superuser)):
+    """Get the last tick result for a specific worker, including the LLM output."""
+    from backend.ops.operator_engine import engine as op_engine
+    result = op_engine._last_results.get(worker_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="No tick result yet for this worker")
+    return result

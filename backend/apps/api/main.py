@@ -224,10 +224,64 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] skills: seed warning: {type(e).__name__}: {e}")
 
+    # Seed default budget caps for minimum live operator set.
+    # These are conservative defaults — adjust per operator via the API.
+    _OPERATOR_BUDGETS = [
+        {"worker_id": "gauge",    "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+        {"worker_id": "ledger",   "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+        {"worker_id": "sentinel", "daily_cap_usd": 0.10, "monthly_cap_usd": 3.0},
+        {"worker_id": "mirror",   "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
+        {"worker_id": "pulse",    "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
+        {"worker_id": "sheriff",  "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+        {"worker_id": "polish",   "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
+        {"worker_id": "signal",   "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+        {"worker_id": "oracle",   "daily_cap_usd": 1.00, "monthly_cap_usd": 20.0},
+        {"worker_id": "welcome",  "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
+        {"worker_id": "harvest",  "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+        {"worker_id": "scout",    "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+    ]
+    try:
+        from backend.db.models.internal_operators import InternalOperatorBudget
+        from backend.core.database.database import async_session
+        async with async_session() as seed_db:
+            for b in _OPERATOR_BUDGETS:
+                existing = (await seed_db.execute(
+                    select(InternalOperatorBudget).where(InternalOperatorBudget.worker_id == b["worker_id"])
+                )).scalar_one_or_none()
+                if not existing:
+                    seed_db.add(InternalOperatorBudget(
+                        worker_id=b["worker_id"],
+                        daily_cap_usd=b["daily_cap_usd"],
+                        monthly_cap_usd=b["monthly_cap_usd"],
+                        daily_spent_usd=0.0,
+                        monthly_spent_usd=0.0
+                    ))
+            await seed_db.commit()
+        print(f"[startup] operator budgets: seeded {len(_OPERATOR_BUDGETS)} default budget caps")
+    except Exception as e:
+        print(f"[startup] operator budgets: seed warning: {type(e).__name__}: {e}")
+
+    # Start the governed operator workforce scheduler.
+    # Runs the "First 12" internal operators on real autonomous tasks.
+    # Kill switch: set OPERATOR_ENGINE_ENABLED=false in .env to disable.
+    try:
+        from backend.ops.operator_engine import engine as operator_engine
+        operator_engine.start()
+        print("[startup] operator engine: governed workforce started")
+    except Exception as e:
+        import traceback
+        print(f"[startup] operator engine: WARNING — failed to start: {type(e).__name__}: {e}")
+        traceback.print_exc()
+
     yield
 
-    # Graceful shutdown of plugins
+    # Graceful shutdown of plugins and operator workforce
     await plugin_manager.shutdown_all()
+    try:
+        from backend.ops.operator_engine import engine as operator_engine
+        operator_engine.stop()
+    except Exception:
+        pass
 
 
 app = FastAPI(

@@ -649,29 +649,39 @@ GITHUB_USER_URL = "https://api.github.com/user"
 GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
 
 
-def _build_github_state() -> str:
+def _build_github_state(user_id: Optional[str] = None) -> str:
     ts = str(int(time.time()))
     nonce = secrets.token_urlsafe(16)
-    payload = f"{ts}.{nonce}"
+    uid = user_id or ""
+    payload = f"{ts}.{nonce}.{uid}"
     sig = hmac.new(settings.JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).digest()
     sig_b64 = base64.urlsafe_b64encode(sig).decode().rstrip("=")
     return f"{payload}.{sig_b64}"
 
 
-def _validate_github_state(state: str, max_age_seconds: int = 600) -> bool:
+def _validate_github_state(state: str, max_age_seconds: int = 600) -> Optional[str]:
+    """
+    Validate the state payload and return the embedded user_id if valid and present,
+    or empty string if valid but no user was logged in, or raise HTTPException if invalid.
+    """
     try:
-        ts, nonce, sig_b64 = state.split(".", 2)
+        parts = state.split(".", 3)
+        ts, nonce, uid, sig_b64 = parts[0], parts[1], parts[2], parts[3]
         if not ts.isdigit() or not nonce:
-            return False
-        payload = f"{ts}.{nonce}"
+            raise HTTPException(status_code=400, detail="Invalid state payload structure")
+        payload = f"{ts}.{nonce}.{uid}"
         expected_sig = hmac.new(settings.JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).digest()
         expected_b64 = base64.urlsafe_b64encode(expected_sig).decode().rstrip("=")
         if not hmac.compare_digest(expected_b64, sig_b64):
-            return False
+            raise HTTPException(status_code=400, detail="State signature verification failed")
         age = int(time.time()) - int(ts)
-        return 0 <= age <= max_age_seconds
-    except Exception:
-        return False
+        if not (0 <= age <= max_age_seconds):
+            raise HTTPException(status_code=400, detail="OAuth state has expired")
+        return uid if uid else ""
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid state parameter: {str(e)}")
 
 
 @router.get("/github/status")
@@ -680,10 +690,19 @@ async def github_status():
 
 
 @router.get("/github/login")
-async def github_login(request: Request):
+async def github_login(request: Request, token: Optional[str] = None):
     if not _github_oauth_configured():
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
-    state = _build_github_state()
+    
+    user_id = None
+    if token:
+        try:
+            payload = verify_token(token)
+            user_id = payload.get("sub")
+        except Exception:
+            pass
+            
+    state = _build_github_state(user_id)
     from urllib.parse import urlencode
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
@@ -718,8 +737,10 @@ async def github_callback(
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
     if not code:
         raise HTTPException(status_code=400, detail="Missing GitHub OAuth code")
-    if not state or not _validate_github_state(state):
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+    if not state:
+        raise HTTPException(status_code=400, detail="Missing OAuth state")
+    
+    logged_in_user_id = _validate_github_state(state)
 
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
@@ -762,8 +783,15 @@ async def github_callback(
     # Check if GitHub ID already linked to a different account
     existing_by_gh = await db.execute(select(User).where(User.github_id == github_id))
     already_linked = existing_by_gh.scalar_one_or_none()
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
+
+    user = None
+    if logged_in_user_id:
+        result = await db.execute(select(User).where(User.id == logged_in_user_id))
+        user = result.scalar_one_or_none()
+
+    if not user:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
 
     if already_linked and user and already_linked.id != user.id:
         raise HTTPException(status_code=409, detail="GitHub account already linked to a different user")

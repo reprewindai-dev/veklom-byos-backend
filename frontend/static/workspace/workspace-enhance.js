@@ -133,6 +133,21 @@
     }
   }, true);
 
+  // Intercept any browser redirect to GitHub OAuth login and append the active session token to prevent duplicate accounts
+  document.addEventListener("click", function (e) {
+    const link = e.target.closest("a, button");
+    if (!link) return;
+    const href = link.href || link.getAttribute("href") || "";
+    if (href.includes("/auth/github/login")) {
+      const token = localStorage.getItem("veklom_token") || sessionStorage.getItem("veklom_token");
+      if (token) {
+        e.preventDefault(); e.stopPropagation();
+        const separator = href.includes("?") ? "&" : "?";
+        window.location.href = href + separator + "token=" + encodeURIComponent(token);
+      }
+    }
+  }, true);
+
   function currentPage() {
     return (location.hash || "#/").replace(/^#/, "").toLowerCase();
   }

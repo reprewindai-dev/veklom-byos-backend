@@ -1341,7 +1341,7 @@
       } catch (err) { toast("Export failed: " + err.message, "error"); }
       return;
     }
-    if (label === "schedule report" || label === "schedule" && page.includes("compliance")) {
+    if ((label === "schedule report" || label === "schedule" || label === "schedule export") && page.includes("compliance")) {
       e.preventDefault(); e.stopPropagation();
       document.getElementById("veklom-schedule-modal")?.remove();
       const sm = document.createElement("div");

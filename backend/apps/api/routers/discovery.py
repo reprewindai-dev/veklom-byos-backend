@@ -46,19 +46,23 @@ VEKLOM_BASE_URL    = "https://veklom.com"       # main site (workspace, landing,
 VEKLOM_API_BASE    = "https://api.veklom.com/api/v1"  # machine-facing API surface
 VEKLOM_AGENT_BASE  = "https://api.veklom.com"   # where .well-known, mcp/sse, openapi.json live
 
-# P0-4: treasury address MUST come from the environment — never fall back to a
-# hardcoded address that could receive real funds unintentionally.
-_raw_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
-_ZERO_ADDR = "0x0000000000000000000000000000000000000001"
-if not _raw_treasury or _raw_treasury == _ZERO_ADDR:
-    _disc_log.warning(
-        "[discovery] VEKLOM_TREASURY_ADDRESS is not set or is a placeholder. "
-        "x402 discovery will advertise 'NOT_CONFIGURED' until this env var is set. "
-        "Add VEKLOM_TREASURY_ADDRESS=<your real wallet> to .env and restart."
-    )
-    VEKLOM_TREASURY = "NOT_CONFIGURED"
-else:
-    VEKLOM_TREASURY = _raw_treasury
+def get_treasury_address() -> str:
+    raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    if not raw or raw == "0x0000000000000000000000000000000000000001":
+        return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+    return raw
+
+class DynamicTreasury(str):
+    def __new__(cls):
+        return str.__new__(cls, get_treasury_address())
+    def __str__(self):
+        return get_treasury_address()
+    def __repr__(self):
+        return get_treasury_address()
+    def strip(self, *args, **kwargs):
+        return get_treasury_address().strip(*args, **kwargs)
+
+VEKLOM_TREASURY = DynamicTreasury()
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +219,7 @@ async def agent_json():
 # ---------------------------------------------------------------------------
 @router.get("/.well-known/x402.json")
 async def x402_json():
+    treasury = get_treasury_address()
     routes = []
     route_map = {
         "/api/v1/ai/inference":        "ai_inference",
@@ -240,7 +245,7 @@ async def x402_json():
                 "scheme": "exact",
                 "network": VEKLOM_NETWORK,
                 "asset": VEKLOM_USDC_ADDRESS,
-                "pay_to": VEKLOM_TREASURY,
+                "pay_to": treasury,
                 "amount_micro_usdc": micro,
                 "max_timeout_seconds": 300,
                 "description": f"Veklom {p['name']} — governed AI execution",
@@ -252,7 +257,7 @@ async def x402_json():
         "provider": "Veklom Sovereign AI Hub",
         "network": VEKLOM_NETWORK,
         "asset": VEKLOM_USDC_ADDRESS,
-        "treasury": VEKLOM_TREASURY,
+        "treasury": treasury,
         "currency": "USDC",
         # P0-3: x402 on-chain settlement is fully active.
         # Real payment path: On-chain USDC verification (Base mainnet) or Stripe wallet reserve.

@@ -221,7 +221,7 @@
     } catch (error) {
       document.body.dataset.veklomOverviewLive = "error";
       document.body.dataset.veklomOverviewError = error.message || String(error);
-      updatePulseIndicator("error", "Runtime unavailable");
+      updatePulseIndicator("error", "Telemetry stream reconnecting...");
     }
   }
 

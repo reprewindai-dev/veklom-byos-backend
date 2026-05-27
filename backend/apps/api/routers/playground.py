@@ -152,13 +152,26 @@ async def delete_session(session_id: str, user=Depends(get_current_user), db: As
 
 @router.post("/playground/sessions/{session_id}/branch")
 async def branch_session(session_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(PlaygroundSession).where(
-            PlaygroundSession.id == session_id,
-            PlaygroundSession.workspace_id == (user.workspace_id or ""),
+    if session_id in ("null", "undefined", "none", "", None):
+        # Query the latest active session for this workspace
+        latest_res = await db.execute(
+            select(PlaygroundSession)
+            .where(PlaygroundSession.workspace_id == (user.workspace_id or ""))
+            .order_by(PlaygroundSession.updated_at.desc())
+            .limit(1)
         )
-    )
-    orig = result.scalar_one_or_none()
+        orig = latest_res.scalar_one_or_none()
+        if not orig:
+            raise HTTPException(status_code=404, detail="No active session found to branch from")
+        session_id = orig.id
+    else:
+        result = await db.execute(
+            select(PlaygroundSession).where(
+                PlaygroundSession.id == session_id,
+                PlaygroundSession.workspace_id == (user.workspace_id or ""),
+            )
+        )
+        orig = result.scalar_one_or_none()
     if not orig:
         raise HTTPException(status_code=404, detail="Session not found")
     now = datetime.now(timezone.utc)
@@ -237,7 +250,7 @@ async def list_prompts(user=Depends(get_current_user), db: AsyncSession = Depend
 async def create_prompt(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     name = (body.get("name") or "").strip()
     if not name:
-        raise HTTPException(status_code=400, detail="name is required")
+        name = f"Prompt {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}"
     now = datetime.now(timezone.utc)
     p = PlaygroundPrompt(
         user_id=user.id,
@@ -323,17 +336,31 @@ async def list_tools(user=Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 
 @router.post("/playground/inference")
+@router.post("/ai/chat")
+@router.post("/chat/completions")
 async def run_inference(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Execute inference using the session configuration."""
     session_id = body.get("session_id")
     message = body.get("message", "")
+    if not message:
+        message = body.get("prompt", "")
+    if not message and "messages" in body:
+        msgs = body.get("messages", [])
+        if isinstance(msgs, list) and msgs:
+            # Get the content of the last user message
+            for msg in reversed(msgs):
+                if isinstance(msg, dict) and msg.get("role") == "user":
+                    message = msg.get("content", "")
+                    break
+            if not message and isinstance(msgs[-1], dict):
+                message = msgs[-1].get("content", "")
     
     if not message:
-        raise HTTPException(status_code=400, detail="message is required")
+        raise HTTPException(status_code=400, detail="message or prompt is required")
     
     # If session_id provided, load session context
     session_context = {}
-    if session_id:
+    if session_id and session_id not in ("null", "undefined", "none", ""):
         result = await db.execute(
             select(PlaygroundSession).where(
                 PlaygroundSession.id == session_id,
@@ -351,14 +378,17 @@ async def run_inference(body: dict, user=Depends(get_current_user), db: AsyncSes
             }
     
     # Call real AI completion
-    from backend.apps.api.routers.ai import run_completion
+    from backend.core.ai.provider_router import run_completion
     
     t0 = __import__("time").monotonic()
-    result = await run_completion({
-        "model": session_context.get("model", body.get("model", "qwen2.5:3b")),
-        "messages": [{"role": "user", "content": message}],
-        "system": session_context.get("system_prompt", ""),
-    }, stream=False)
+    try:
+        result = await run_completion({
+            "model": session_context.get("model", body.get("model", "qwen2.5:3b")),
+            "messages": [{"role": "user", "content": message}],
+            "system": session_context.get("system_prompt", ""),
+        }, stream=False)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Inference provider call failed: {str(e)}")
     latency_ms = int((__import__("time").monotonic() - t0) * 1000)
     
     data = result.payload

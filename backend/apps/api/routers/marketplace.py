@@ -645,11 +645,25 @@ async def list_listings(user=Depends(get_current_user), db: AsyncSession = Depen
     return [_listing_dict(i) for i in items]
 
 
+def normalize_listing_id(listing_id: str) -> str:
+    val = listing_id.lower().replace("-", "_")
+    if val in ("clinical_rag", "ls_clinical_rag"):
+        return "ls_clinical_rag"
+    if val in ("legal_redactor", "ls_legal_redactor"):
+        return "ls_legal_redactor"
+    if val in ("qwen_72b", "ls_qwen_72b"):
+        return "ls_qwen_72b"
+    if val in ("pci_dss_v4", "ls_pci_dss_v4"):
+        return "ls_pci_dss_v4"
+    return listing_id
+
+
 @router.get("/listings/{listing_id}")
 async def get_listing_short(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _ensure_catalog_seeded(db)
-    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalars().first()
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return _listing_dict(listing)
@@ -658,8 +672,9 @@ async def get_listing_short(listing_id: str, user=Depends(get_current_user), db:
 @router.get("/marketplace/listings/{listing_id}")
 async def get_listing(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _ensure_catalog_seeded(db)
-    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalars().first()
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return _listing_dict(listing)
@@ -746,25 +761,27 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
 
     await _ensure_catalog_seeded(db)
 
-    # Verify listing exists
-    result = await db.execute(_select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+    # Verify listing exists (support standard aliases: ls_clinical_rag, clinical-rag, clinical_rag)
+    norm_id = normalize_listing_id(listing_id)
+        
+    result = await db.execute(_select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalars().first()
     if not listing:
-        raise _HTTPException(status_code=404, detail="Listing not found")
+        raise _HTTPException(status_code=404, detail=f"Listing '{listing_id}' not found")
 
     # Check if already installed
     existing = await db.execute(_select(InstalledAsset).where(
         InstalledAsset.workspace_id == target,
-        InstalledAsset.listing_id == listing_id
+        InstalledAsset.listing_id == norm_id
     ))
-    if existing.scalar_one_or_none():
+    if existing.scalars().first():
         return {"id": listing_id, "status": "already_installed", "message": "This listing is already installed in your workspace"}
 
     # Create InstalledAsset record
     asset = InstalledAsset(
         id=str(_uuid.uuid4()),
         workspace_id=target,
-        listing_id=listing_id,
+        listing_id=norm_id,
         installed_by=user.id,
         asset_type=listing.category,
         name=listing.name,

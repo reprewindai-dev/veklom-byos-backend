@@ -94,6 +94,19 @@ async def list_pipeline_templates(user=Depends(get_current_user)):
 
 
 async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: AsyncSession) -> Pipeline | None:
+    if pipeline_id in ("null", "undefined", "none", "", None):
+        # Try to resolve to the latest active pipeline for the workspace
+        result = await db.execute(
+            select(Pipeline)
+            .where(Pipeline.workspace_id == workspace_id)
+            .order_by(Pipeline.created_at.desc())
+            .limit(1)
+        )
+        pipe = result.scalar_one_or_none()
+        if pipe:
+            return pipe
+        pipeline_id = "clinical-rag"
+
     result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == workspace_id))
     pipe = result.scalar_one_or_none()
     if pipe:
@@ -298,7 +311,7 @@ async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: Asy
     from backend.db.models.marketplace import PipelineRun
     run = PipelineRun(
         id=run_id,
-        pipeline_id=pipeline_id,
+        pipeline_id=pipeline.id,
         workspace_id=user.workspace_id or "default",
         user_id=user.id,
         status="queued",
@@ -312,7 +325,7 @@ async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: Asy
     
     return {
         "run_id": run_id,
-        "pipeline_id": pipeline_id,
+        "pipeline_id": pipeline.id,
         "status": "queued",
         "progress": 0,
         "message": "Pipeline run queued"
@@ -345,11 +358,12 @@ async def list_pipeline_runs(pipeline_id: str, user=Depends(get_current_user), d
     from backend.db.models.marketplace import PipelineRun
     
     # Verify pipeline belongs to user's workspace
-    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
-    pipeline = result.scalar_one_or_none()
+    pipeline = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
     
     if not pipeline:
         raise HTTPException(status_code=404, detail="Pipeline not found or access denied")
+    
+    pipeline_id = pipeline.id
     
     # Get runs for this pipeline in user's workspace
     result = await db.execute(
@@ -396,11 +410,12 @@ async def get_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_curre
     from backend.db.models.marketplace import PipelineRun
     
     # Verify pipeline belongs to user's workspace
-    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
-    pipeline = result.scalar_one_or_none()
+    pipeline = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
     
     if not pipeline:
         raise HTTPException(status_code=404, detail="Pipeline not found or access denied")
+    
+    pipeline_id = pipeline.id
     
     # Get the specific run
     result = await db.execute(
@@ -444,11 +459,12 @@ async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_cu
     from backend.db.models.marketplace import PipelineRun
     
     # Verify pipeline belongs to user's workspace
-    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
-    pipeline = result.scalar_one_or_none()
+    pipeline = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
     
     if not pipeline:
         raise HTTPException(status_code=404, detail="Pipeline not found or access denied")
+    
+    pipeline_id = pipeline.id
     
     # Get the specific run
     result = await db.execute(

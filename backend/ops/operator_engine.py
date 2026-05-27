@@ -63,7 +63,7 @@ async def _call_ollama(prompt: str, model: Optional[str] = None) -> tuple[str, f
     base = getattr(settings, "LLM_BASE_URL", "http://host.docker.internal:11434")
     m = model or getattr(settings, "LLM_MODEL_DEFAULT", "qwen2.5:3b")
     try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(f"{base}/api/generate", json={
                 "model": m,
                 "prompt": prompt,
@@ -76,7 +76,7 @@ async def _call_ollama(prompt: str, model: Optional[str] = None) -> tuple[str, f
                 # Ollama cost is ~$0 (local), record a tiny accounting value
                 return text, 0.0001
     except Exception as e:
-        print(f"[engine] ollama error: {e}")
+        print(f"[engine] ollama error: {repr(e)}")
     return "", 0.0
 
 

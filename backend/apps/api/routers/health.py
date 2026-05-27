@@ -19,6 +19,13 @@ async def health_check():
     }
 
 
+
+
+@router.get("/api/v1/health")
+async def health_check_v1():
+    """Alias for /health — keeps API consistency for clients that call /api/v1/health."""
+    return await health_check()
+
 @router.get("/health/detailed")
 async def detailed_health():
     return {

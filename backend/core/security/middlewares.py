@@ -16,9 +16,11 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
         
         # Public bypass routes
         public_prefixes = (
-            "/status", "/health", "/api/v1/auth/login", "/api/v1/auth/register",
-            "/api/v1/auth/refresh", "/api/v1/auth/github", "/static", "/assets", "/workspace",
-            "/command-center", "/gpc", "/terminal", "/marketplace", "/docs",
+            "/status", "/health", "/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/register",
+            "/api/v1/auth/refresh", "/api/v1/auth/github", "/api/v1/auth/providers",
+            "/static", "/assets", "/workspace",
+            "/command-center", "/operator-center", "/gpc", "/terminal", "/marketplace",
+            "/docs", "/redoc",
             "/uptime", "/legal", "/irongrid", "/api/v1/webhooks", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
             "/apple-touch-icon.png", "/og-image.png", "/twitter-card.png",

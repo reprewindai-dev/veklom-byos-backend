@@ -689,6 +689,22 @@ def _validate_github_state(state: str, max_age_seconds: int = 600) -> Optional[s
         raise HTTPException(status_code=400, detail=f"Invalid state parameter: {str(e)}")
 
 
+
+
+@router.get("/providers")
+async def list_auth_providers():
+    """Public — returns available authentication providers for the login UI."""
+    from backend.apps.api.routers.auth import _github_oauth_configured
+    providers = [
+        {"id": "email", "name": "Email & Password", "enabled": True},
+    ]
+    if _github_oauth_configured():
+        providers.append({"id": "github", "name": "GitHub", "enabled": True, "url": "/api/v1/auth/github/login"})
+    else:
+        providers.append({"id": "github", "name": "GitHub", "enabled": False, "url": None, "note": "Not configured"})
+    return {"providers": providers}
+
+
 @router.get("/github/status")
 async def github_status():
     return {"configured": _github_oauth_configured()}

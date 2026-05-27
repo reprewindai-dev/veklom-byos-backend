@@ -647,6 +647,7 @@ async def list_listings(user=Depends(get_current_user), db: AsyncSession = Depen
 
 @router.get("/listings/{listing_id}")
 async def get_listing_short(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await _ensure_catalog_seeded(db)
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
     listing = result.scalar_one_or_none()
     if not listing:
@@ -656,6 +657,7 @@ async def get_listing_short(listing_id: str, user=Depends(get_current_user), db:
 
 @router.get("/marketplace/listings/{listing_id}")
 async def get_listing(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await _ensure_catalog_seeded(db)
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
     listing = result.scalar_one_or_none()
     if not listing:
@@ -741,6 +743,8 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
     body = body or {}
     # Always use the authenticated user's workspace_id - never trust client-supplied workspace_id
     target = user.workspace_id or "default"
+
+    await _ensure_catalog_seeded(db)
 
     # Verify listing exists
     result = await db.execute(_select(MarketplaceListing).where(MarketplaceListing.id == listing_id))

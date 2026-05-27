@@ -93,11 +93,53 @@ async def list_pipeline_templates(user=Depends(get_current_user)):
     }
 
 
+async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: AsyncSession) -> Pipeline | None:
+    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == workspace_id))
+    pipe = result.scalar_one_or_none()
+    if pipe:
+        return pipe
+
+    known_templates = {
+        "clinical-rag": ("Clinical RAG", "Healthcare"),
+        "legal-redactor": ("Legal Redactor", "Legal"),
+        "code-review": ("Code Review Pipeline", "Engineering"),
+        "batch-summarizer": ("Batch Summarizer", "Operations"),
+        "semantic-search": ("Semantic Search", "Search"),
+        "pii-strip-proxy": ("PII Strip Proxy", "Privacy")
+    }
+    if pipeline_id in known_templates:
+        name, cat = known_templates[pipeline_id]
+        pipe = Pipeline(
+            id=pipeline_id,
+            workspace_id=workspace_id,
+            name=name,
+            description=f"PHI-safe {name} pipeline.",
+            steps={
+                "template": pipeline_id,
+                "nodes": 9 if "rag" in pipeline_id else 6,
+                "vectorStore": "pgvector",
+                "invocations": 0,
+                "lastRun": "—",
+            }
+        )
+        db.add(pipe)
+        await db.commit()
+        await db.refresh(pipe)
+        return pipe
+    return None
+
+
 # --- Pipelines ---
 @router.get("/pipelines")
 async def list_pipelines(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == (user.workspace_id or "default")).limit(50))
     pipes = result.scalars().all()
+    # Seed default pipelines if none exist
+    if not pipes:
+        for pid in ("clinical-rag", "legal-redactor", "code-review"):
+            await _get_or_create_pipeline(pid, user.workspace_id or "default", db)
+        result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == (user.workspace_id or "default")).limit(50))
+        pipes = result.scalars().all()
     return [_pipe_dict(p) for p in pipes]
 
 
@@ -129,8 +171,7 @@ async def create_pipeline(body: dict, user=Depends(get_current_user), db: AsyncS
 @router.get("/pipelines/{pipeline_id}")
 async def get_pipeline(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from fastapi import HTTPException
-    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
-    pipe = result.scalar_one_or_none()
+    pipe = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
     if not pipe:
         raise HTTPException(status_code=404, detail="Pipeline not found")
     return _pipe_detail_dict(pipe)
@@ -161,8 +202,7 @@ async def update_pipeline(pipeline_id: str, body: dict, user=Depends(get_current
 @router.get("/pipelines/{pipeline_id}/graph")
 async def get_pipeline_graph(pipeline_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get the saved graph state (nodes, edges, viewport) for a pipeline."""
-    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id))
-    pipe = result.scalar_one_or_none()
+    pipe = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
     if pipe and isinstance(pipe.steps, dict) and "graph" in pipe.steps:
         return pipe.steps["graph"]
     # Return default graph for the mock pipelines
@@ -246,8 +286,7 @@ async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: Asy
     from fastapi import HTTPException
     
     # Verify pipeline belongs to user's workspace (multi-tenant safety)
-    result = await db.execute(select(Pipeline).where(Pipeline.id == pipeline_id, Pipeline.workspace_id == (user.workspace_id or "default")))
-    pipeline = result.scalar_one_or_none()
+    pipeline = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
     
     if not pipeline:
         raise HTTPException(status_code=404, detail="Pipeline not found or access denied")

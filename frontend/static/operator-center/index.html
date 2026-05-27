@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veklom Operator Center — Governed Autonomous Control Room</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            orange: {
+              DEFAULT: '#ffb800',
+              muted: 'rgba(255, 184, 0, 0.08)',
+              border: 'rgba(255, 184, 0, 0.15)',
+            },
+            dark: {
+              base: '#050505',
+              card: '#0a0a0c',
+              border: 'rgba(255, 255, 255, 0.05)',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Google Fonts: Geist Mono and Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-mono {
+      font-family: 'Geist Mono', monospace;
+    }
+    /* Grid background */
+    .grid-bg {
+      background-color: #050505;
+      background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.007) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.007) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    /* Custom glow card */
+    .glow-card {
+      background: #0a0a0c;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 0.75rem;
+      transition: all 0.25s ease-in-out;
+    }
+    .glow-card:hover {
+      border-color: rgba(255, 184, 0, 0.25);
+      box-shadow: 0 0 20px rgba(255, 184, 0, 0.03);
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #050505;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1a1a1c;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #ffb800;
+    }
+    /* Pulsing dot */
+    .pulse-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.8s infinite;
+    }
+    .pulse-dot-red {
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.9); opacity: 0.6; }
+      50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 12px currentColor; }
+      100% { transform: scale(0.9); opacity: 0.6; }
+    }
+  </style>
+</head>
+<body class="grid-bg text-gray-300 min-h-screen flex flex-col justify-between overflow-x-hidden">
+
+  <!-- Header console bar -->
+  <header class="h-14 bg-[#0a0a0c]/90 border-b border-dark-border backdrop-blur-md px-6 flex items-center justify-between relative z-20 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
+        <i data-lucide="cpu" class="text-orange w-5 h-5 drop-shadow-[0_0_4px_rgba(255,184,0,0.4)]"></i>
+        <span class="text-xs font-mono font-bold tracking-[0.15em] text-white uppercase">Veklom Governed Operator Center</span>
+      </div>
+      <span class="h-4 w-px bg-neutral-800"></span>
+      <div class="flex items-center gap-1.5 font-mono text-[9px] text-white/80 bg-neutral-900 border border-dark-border rounded px-2 py-0.5">
+        <span class="pulse-dot" id="sched-pulse"></span> <span id="sched-text">SCHEDULER: SYNCING</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2 font-mono text-[10px]">
+        <button onclick="triggerAllWorkers()" class="px-2.5 py-1 rounded bg-neutral-900 hover:bg-neutral-800 border border-dark-border text-white transition-all flex items-center gap-1">
+          <i data-lucide="play" class="w-3 h-3 text-emerald-400"></i> FORCE ALL TICKS
+        </button>
+        <button id="btn-toggle-sched" onclick="toggleScheduler()" class="px-2.5 py-1 rounded bg-neutral-900 hover:bg-neutral-800 border border-dark-border text-white transition-all flex items-center gap-1">
+          <i data-lucide="power" class="w-3 h-3 text-orange"></i> TERMINATE WORKFORCE
+        </button>
+        <button onclick="refreshData()" class="p-1 rounded bg-neutral-900 hover:bg-neutral-800 border border-dark-border text-white transition-all">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Grid Layout -->
+  <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+
+    <!-- Top Row: Overview KPIs -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      
+      <!-- active workers -->
+      <div class="glow-card p-4 flex justify-between items-center">
+        <div>
+          <span class="text-[10px] text-gray-500 font-mono uppercase block">Active Operators</span>
+          <span class="text-xl font-bold font-mono text-white block mt-1" id="kpi-workers">0 / 18</span>
+          <span class="text-[9px] font-mono text-emerald-400 block mt-1" id="kpi-min-live">7 in Min Live Set</span>
+        </div>
+        <div class="w-10 h-10 rounded bg-orange-muted border border-orange-border flex items-center justify-center">
+          <i data-lucide="cpu" class="text-orange w-5 h-5"></i>
+        </div>
+      </div>
+
+      <!-- active schedules -->
+      <div class="glow-card p-4 flex justify-between items-center">
+        <div>
+          <span class="text-[10px] text-gray-500 font-mono uppercase block">Active Schedules</span>
+          <span class="text-xl font-bold font-mono text-white block mt-1" id="kpi-schedules">0</span>
+          <span class="text-[9px] font-mono text-gray-500 block mt-1">Staggered cron ticks</span>
+        </div>
+        <div class="w-10 h-10 rounded bg-blue-500/5 border border-blue-500/15 flex items-center justify-center">
+          <i data-lucide="clock" class="text-blue-400 w-5 h-5"></i>
+        </div>
+      </div>
+
+      <!-- total tasks run -->
+      <div class="glow-card p-4 flex justify-between items-center">
+        <div>
+          <span class="text-[10px] text-gray-500 font-mono uppercase block">Total Executions</span>
+          <span class="text-xl font-bold font-mono text-white block mt-1" id="kpi-tasks">0</span>
+          <span class="text-[9px] font-mono text-emerald-400 block mt-1">Sovereign audit logged</span>
+        </div>
+        <div class="w-10 h-10 rounded bg-emerald-500/5 border border-emerald-500/15 flex items-center justify-center">
+          <i data-lucide="activity" class="text-emerald-400 w-5 h-5"></i>
+        </div>
+      </div>
+
+      <!-- pending approvals -->
+      <div class="glow-card p-4 flex justify-between items-center">
+        <div>
+          <span class="text-[10px] text-gray-500 font-mono uppercase block">Open Approvals</span>
+          <span class="text-xl font-bold font-mono text-white block mt-1" id="kpi-approvals">0</span>
+          <span class="text-[9px] font-mono text-orange block mt-1">Requires human review</span>
+        </div>
+        <div class="w-10 h-10 rounded bg-red-500/5 border border-red-500/15 flex items-center justify-center">
+          <i data-lucide="shield-alert" class="text-red-400 w-5 h-5"></i>
+        </div>
+      </div>
+
+      <!-- provider spend -->
+      <div class="glow-card p-4 flex justify-between items-center">
+        <div>
+          <span class="text-[10px] text-gray-500 font-mono uppercase block">Total Engine Cost</span>
+          <span class="text-xl font-bold font-mono text-white block mt-1" id="kpi-cost">$0.00</span>
+          <span class="text-[9px] font-mono text-emerald-400 block mt-1">92.4% local Ollama</span>
+        </div>
+        <div class="w-10 h-10 rounded bg-purple-500/5 border border-purple-500/15 flex items-center justify-center">
+          <i data-lucide="coins" class="text-purple-400 w-5 h-5"></i>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Second Row: Committees & Approvals -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Committees Grid -->
+      <div class="glow-card p-5 lg:col-span-8 space-y-4">
+        <div class="flex items-center justify-between border-b border-dark-border pb-3">
+          <h3 class="text-xs font-bold text-white tracking-wider uppercase font-mono flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4 text-orange"></i> Governed Operator Committees
+          </h3>
+          <span class="text-[9px] font-mono text-gray-500">5 ACTIVE COMMITTEES</span>
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="committees-list">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Human Approvals Gate -->
+      <div class="glow-card p-5 lg:col-span-4 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between border-b border-dark-border pb-3 mb-4">
+            <h3 class="text-xs font-bold text-white tracking-wider uppercase font-mono flex items-center gap-2">
+              <i data-lucide="lock" class="w-4 h-4 text-red-400"></i> Human Approvals Gate
+            </h3>
+            <span class="badge text-[9px] font-mono text-red-400 bg-red-500/5 px-2 py-0.5 rounded border border-red-500/10">GATE ENGAGED</span>
+          </div>
+
+          <div class="space-y-4 overflow-y-auto max-h-60" id="approvals-list">
+            <!-- Dynamically populated approvals -->
+          </div>
+        </div>
+        
+        <div class="text-[9px] font-mono text-gray-500 text-center mt-4 border-t border-dark-border pt-3 uppercase">
+          Enforcer Ruleset: Production releases & payouts require human signature.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Third Row: Active Operator Registry & Budgets -->
+    <div class="glow-card p-5 space-y-4">
+      <div class="flex items-center justify-between border-b border-dark-border pb-3">
+        <h3 class="text-xs font-bold text-white tracking-wider uppercase font-mono flex items-center gap-2">
+          <i data-lucide="cpu" class="w-4 h-4 text-orange"></i> Operator Fleet Registry
+        </h3>
+        <div class="flex gap-3 text-[10px] font-mono">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-emerald-500"></span> ACTIVE</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-orange"></span> PAUSED</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-gray-600"></span> UNCONFIGURED</span>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left font-mono text-xs border-collapse">
+          <thead>
+            <tr class="border-b border-dark-border text-gray-500 text-[10px] uppercase">
+              <th class="py-2">Operator ID</th>
+              <th class="py-2">Primary Committee</th>
+              <th class="py-2">Model Policy</th>
+              <th class="py-2">Daily Budget Cap</th>
+              <th class="py-2">Daily Spent</th>
+              <th class="py-2">Status</th>
+              <th class="py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="operators-table" class="divide-y divide-dark-border/50 text-gray-300">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Fourth Row: Split: Provider Spend & Builder & x402 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Provider Spend Allocation -->
+      <div class="glow-card p-5 space-y-4">
+        <div class="flex items-center justify-between border-b border-dark-border pb-3">
+          <h3 class="text-xs font-bold text-white tracking-wider uppercase font-mono flex items-center gap-2">
+            <i data-lucide="coins" class="w-4 h-4 text-purple-400"></i> Provider Spend Allocation
+          </h3>
+          <span class="text-[9px] font-mono text-purple-400">LOCAL FIRST</span>
+        </div>
+        
+        <div class="space-y-4" id="provider-spend-list">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Builder Pipeline -->
+      <div class="glow-card p-5 space-y-4">
+        <div class="flex items-center justify-between border-b border-dark-border pb-3">
+          <h3 class="text-xs font-bold text-white tracking-wider uppercase font-mono flex items-center gap-2">
+            <i data-lucide="hammer" class="w-4 h-4 text-orange"></i> Builder System Pipeline
+          </h3>
+          <span class="badge text-[9px] font-mono text-gray-500 uppercase">CLEAN-ROOM ENV</span>
+        </div>
+        
+        <div class="space-y-3 font-mono text-xs">
+          <div class="p-3 bg-neutral-900/40 border border-dark-border rounded space-y-1.5">
+            <div class="flex justify-between items-center text-white font-bold">
+              <span>builder-scout</span>
+              <span class="text-orange text-[10px] uppercase">Staged / Read Only</span>
+            </div>
+            <p class="text-[10px] text-gray-500 leading-normal uppercase">Scouts public repository issue feeds and parses pain signals into spec models.</p>
+          </div>
+
+          <div class="p-3 bg-neutral-900/40 border border-dark-border rounded space-y-1.5">
+            <div class="flex justify-between items-center text-white font-bold">
+              <span>builder-forge</span>
+              <span class="text-gray-500 text-[10px] uppercase">Gated / Dormant</span>
+            </div>
+            <p class="text-[10px] text-gray-500 leading-normal uppercase">Assembles deterministic codebases for custom tools, MCP servers, and connector packs.</p>
+          </div>
+
+          <div class="p-3 bg-neutral-900/40 border border-dark-border rounded space-y-1.5">
+            <div class="flex justify-between items-center text-white font-bold">
+              <span>builder-arbiter</span>
+              <span class="text-emerald-400 text-[10px] uppercase">Active</span>
+            </div>
+            <p class="text-[10px] text-gray-500 leading-normal uppercase">Enforces clean-room doctrines, checks licenses, registers output source lineage, and gates releases.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- x402 Machine Economy -->
+      <div class="glow-card p-5 space-y-4">
+        <div class="flex items-center justify-between border-b border-dark-border pb-3">
+          <h3 class="text-xs font-bold text-white tracking-wider uppercase font-mono flex items-center gap-2">
+            <i data-lucide="zap" class="w-4 h-4 text-emerald-400 animate-pulse"></i> x402 Machine Economy
+          </h3>
+          <span class="badge text-[9px] font-mono text-emerald-400 bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10 uppercase">micropayments active</span>
+        </div>
+        
+        <div class="space-y-3 font-mono text-xs">
+          <div class="p-3 bg-neutral-900/20 border border-emerald-500/10 rounded space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="text-white font-bold">x402-scout</span>
+              <span class="text-emerald-400 text-[10px]">active</span>
+            </div>
+            <div class="text-[10px] text-gray-500 uppercase flex justify-between">
+              <span>Discovered routes:</span>
+              <span class="text-white">14 APIs / MCPs</span>
+            </div>
+          </div>
+
+          <div class="p-3 bg-neutral-900/20 border border-dark-border rounded space-y-2 text-[10.5px]">
+            <div class="flex justify-between">
+              <span>Economy status:</span>
+              <span class="text-emerald-400 uppercase font-bold">Sovereign sandboxed</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Total micropayments:</span>
+              <span class="text-white">1,248 transactions</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Settled Volume:</span>
+              <span class="text-emerald-400 font-bold">$12.48 USDC</span>
+            </div>
+          </div>
+          
+          <div class="p-2.5 bg-neutral-950 border border-dark-border rounded text-[9.5px] text-gray-500 leading-normal uppercase">
+            No route calls above $0.01 without arbiter signature. Outbound machine partnerships require manual operator approval.
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Fifth Row: Recent Tasks & Logs -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Recent Runs table -->
+      <div class="glow-card p-5 lg:col-span-8 space-y-4">
+        <div class="flex items-center justify-between border-b border-dark-border pb-3">
+          <h3 class="text-xs font-bold text-white tracking-wider uppercase font-mono">Recent Operator Runs</h3>
+          <span class="text-[9px] font-mono text-gray-500 uppercase">TELEMETRY INFERENCE INDEX</span>
+        </div>
+        
+        <div class="overflow-x-auto">
+          <table class="w-full text-left font-mono text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-dark-border text-gray-500 text-[10px] uppercase">
+                <th class="py-2">Task ID</th>
+                <th class="py-2">Worker</th>
+                <th class="py-2">Provider</th>
+                <th class="py-2">Cost</th>
+                <th class="py-2">Status</th>
+                <th class="py-2 text-right">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody id="runs-table" class="divide-y divide-dark-border/50 text-gray-300">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Failures Triage -->
+      <div class="glow-card p-5 lg:col-span-4 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between border-b border-dark-border pb-3 mb-4">
+            <h3 class="text-xs font-bold text-white tracking-wider uppercase font-mono">Failures Triage Console</h3>
+            <span class="badge text-[9px] font-mono text-red-400 bg-red-500/5 px-2 py-0.5 rounded border border-red-500/10">ERR INDEX</span>
+          </div>
+
+          <div class="space-y-4 overflow-y-auto max-h-72" id="failures-list">
+            <!-- Dynamically populated failed tasks -->
+          </div>
+        </div>
+
+        <div class="text-[9px] font-mono text-gray-500 text-center mt-4 border-t border-dark-border pt-3 uppercase">
+          Escalations trigger fallback sequence: Ollama &rarr; Groq &rarr; Gemini &rarr; OpenAI.
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Bottom console status spine bar -->
+  <footer class="h-6 bg-[#0a0a0c]/95 border-t border-dark-border px-6 flex items-center justify-between font-mono text-[9px] text-gray-500 select-none z-20 shrink-0">
+    <div class="flex items-center gap-4">
+      <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ENGINE ACTIVE: 12 CORE WORKERS BOUND</span>
+      <span>DISCOVERY: ACTIVE</span>
+    </div>
+    <div class="flex items-center gap-4 text-white">
+      <span class="text-orange">AUTONOMOUS ECONOMY CONSOLE</span>
+      <span>&copy; 2026 VEKLOM OPERATIONAL CONTROL</span>
+    </div>
+  </footer>
+
+  <!-- Modal for Updating Budget Caps -->
+  <div id="budget-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden">
+    <div class="glow-card p-6 w-96 max-w-full space-y-4">
+      <h3 class="text-sm font-bold text-white font-mono uppercase tracking-wider border-b border-dark-border pb-2" id="budget-modal-title">UPDATE BUDGET CAP</h3>
+      <input type="hidden" id="budget-modal-worker">
+      
+      <div class="space-y-3 font-mono text-xs">
+        <div class="space-y-1">
+          <label class="text-gray-500 block">DAILY CAP (USD)</label>
+          <input type="number" id="budget-modal-daily" step="0.01" class="w-full bg-neutral-900 border border-dark-border rounded px-3 py-2 text-white focus:outline-none focus:border-orange">
+        </div>
+        <div class="space-y-1">
+          <label class="text-gray-500 block">MONTHLY CAP (USD)</label>
+          <input type="number" id="budget-modal-monthly" step="0.01" class="w-full bg-neutral-900 border border-dark-border rounded px-3 py-2 text-white focus:outline-none focus:border-orange">
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 font-mono text-xs">
+        <button onclick="closeBudgetModal()" class="px-3 py-2 rounded bg-neutral-900 border border-dark-border text-gray-500 hover:text-white transition-all">CANCEL</button>
+        <button onclick="submitBudgetUpdate()" class="px-4 py-2 rounded bg-orange text-black font-bold hover:bg-orange/90 transition-all">SAVE CAP</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Global Constants
+    const API_BASE = '/api/v1';
+    let token = localStorage.getItem('veklom_token') || '';
+
+    // Headers Helper
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...(token ? { 'Authorization': token.startsWith('Bearer ') ? token : `Bearer ${token}` } : {})
+      };
+    }
+
+    // Refresh Data call
+    async function refreshData() {
+      try {
+        await Promise.all([
+          loadOverview(),
+          loadRegistry(),
+          loadTasks(),
+          loadBudgets(),
+          loadProviderUsage(),
+          loadApprovals(),
+          loadSchedulerStatus()
+        ]);
+        lucide.createIcons();
+      } catch (err) {
+        console.error('Error syncing control plane metrics:', err);
+      }
+    }
+
+    // Load Scheduler status
+    async function loadSchedulerStatus() {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/scheduler`, { headers: getHeaders() });
+        const d = await resp.json();
+        const pulse = document.getElementById('sched-pulse');
+        const txt = document.getElementById('sched-text');
+        const btnToggle = document.getElementById('btn-toggle-sched');
+        
+        if (d.running) {
+          pulse.className = 'pulse-dot';
+          txt.textContent = 'SCHEDULER: RUNNING';
+          btnToggle.innerHTML = '<i data-lucide="power" class="w-3 h-3 text-red-400"></i> STOP SCHEDULER';
+        } else {
+          pulse.className = 'pulse-dot pulse-dot-red';
+          txt.textContent = 'SCHEDULER: STOPPED';
+          btnToggle.innerHTML = '<i data-lucide="play" class="w-3 h-3 text-emerald-400"></i> START SCHEDULER';
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Toggle Scheduler
+    async function toggleScheduler() {
+      try {
+        const statusResp = await fetch(`${API_BASE}/internal/operators/scheduler`, { headers: getHeaders() });
+        const status = await statusResp.json();
+        const endpoint = status.running ? 'stop' : 'start';
+        
+        const resp = await fetch(`${API_BASE}/internal/operators/scheduler/${endpoint}`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        await refreshData();
+      } catch (e) {
+        alert('Action failed: ' + e.message);
+      }
+    }
+
+    // Load Overview summaries
+    async function loadOverview() {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/overview`, { headers: getHeaders() });
+        const d = await resp.json();
+        
+        document.getElementById('kpi-schedules').textContent = d.active_schedules;
+        document.getElementById('kpi-tasks').textContent = d.total_tasks_run;
+        document.getElementById('kpi-approvals').textContent = d.pending_approvals;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Load Registry
+    let globalRegistry = {};
+    async function loadRegistry() {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/registry`, { headers: getHeaders() });
+        globalRegistry = await resp.json();
+        
+        document.getElementById('kpi-workers').textContent = `${Object.keys(globalRegistry.workers).length} CORE`;
+        
+        // Render Committees
+        const committees = globalRegistry.committees || [];
+        const workers = globalRegistry.workers || {};
+        const commContainer = document.getElementById('committees-list');
+        commContainer.innerHTML = '';
+        
+        committees.forEach(c => {
+          // Count workers in this committee
+          const workerKeys = Object.keys(workers).filter(w => workers[w].committees.includes(c));
+          const listStr = workerKeys.join(', ');
+          
+          commContainer.innerHTML += `
+            <div class="glow-card p-4 flex flex-col justify-between font-mono">
+              <div>
+                <span class="badge text-[9.5px] text-orange bg-orange-muted px-2 py-0.5 rounded border border-orange-border uppercase">${c.replace('-', ' ')}</span>
+                <p class="text-[10px] text-gray-500 mt-2 uppercase">Core Operators: ${workerKeys.length}</p>
+                <div class="text-white font-semibold text-[11px] mt-1 break-all">${listStr || 'None'}</div>
+              </div>
+              <span class="text-[9px] text-emerald-400 mt-3 block uppercase flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> OPERATIONAL</span>
+            </div>
+          `;
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Load Budgets & Build Operators Table
+    async function loadBudgets() {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/budgets`, { headers: getHeaders() });
+        const budgets = await resp.json();
+        const tableBody = document.getElementById('operators-table');
+        tableBody.innerHTML = '';
+
+        const budgetMap = {};
+        budgets.forEach(b => {
+          budgetMap[b.worker_id] = b;
+        });
+
+        // Let's populate the table from our registry workers
+        const workers = globalRegistry.workers || {};
+        Object.keys(workers).forEach(wid => {
+          const w = workers[wid];
+          const budget = budgetMap[wid] || { daily_cap_usd: 0.0, daily_spent_usd: 0.0 };
+          const minLive = (globalRegistry.minimum_live_set || []).includes(wid);
+          
+          // Determine status
+          let badgeClass = 'text-gray-500 bg-neutral-900 border border-dark-border';
+          let statusText = 'UNCONFIGURED';
+          if (w.ready) {
+            badgeClass = 'text-emerald-400 bg-emerald-500/5 border border-emerald-500/10';
+            statusText = 'READY / ACTIVE';
+          }
+          
+          // Calculate provider policy mapping
+          let providerPolicy = 'Ollama &rarr; Groq';
+          if (wid === 'ledger' || wid === 'sheriff' || wid === 'oracle') providerPolicy = 'Ollama &rarr; Gemini &rarr; OpenAI';
+          else if (wid === 'builder-forge' || wid === 'builder-arbiter') providerPolicy = 'Gemini &rarr; OpenAI';
+          
+          tableBody.innerHTML += `
+            <tr class="hover:bg-neutral-900/30 transition-all">
+              <td class="py-3 font-bold text-white flex items-center gap-2">
+                ${minLive ? '<span class="pulse-dot" title="Minimum Live Set"></span>' : '<span class="w-1.5 h-1.5 bg-neutral-700 rounded-full"></span>'}
+                ${wid}
+              </td>
+              <td class="py-3 text-gray-400">${w.committees[0] || 'general'}</td>
+              <td class="py-3 text-gray-400 text-[10px] uppercase">${providerPolicy}</td>
+              <td class="py-3 font-semibold text-white">$${Number(budget.daily_cap_usd).toFixed(2)}</td>
+              <td class="py-3 font-semibold ${budget.daily_spent_usd >= budget.daily_cap_usd && budget.daily_cap_usd > 0 ? 'text-red-400' : 'text-emerald-400'}">$${Number(budget.daily_spent_usd).toFixed(4)}</td>
+              <td class="py-3">
+                <span class="px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold ${badgeClass}">
+                  ${statusText}
+                </span>
+              </td>
+              <td class="py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button onclick="openBudgetModal('${wid}', ${budget.daily_cap_usd}, ${budget.monthly_cap_usd || 0.0})" class="px-2 py-0.5 rounded bg-neutral-900 hover:bg-neutral-800 border border-dark-border text-white transition-all text-[9.5px]">BUDGET</button>
+                  <button onclick="runWorkerSingle('${wid}')" class="px-2 py-0.5 rounded bg-orange hover:bg-orange/90 text-black font-bold transition-all text-[9.5px]">RUN TICK</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Run a single worker immediately
+    async function runWorkerSingle(workerId) {
+      try {
+        const body = {
+          task_type: 'heartbeat',
+          risk: 'low',
+          urgency: 'low',
+          context_tokens: 1000
+        };
+        const resp = await fetch(`${API_BASE}/internal/operators/workers/${workerId}/run`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(body)
+        });
+        const res = await resp.json();
+        if (res.status === 'blocked') {
+          alert('Task blocked: Requires human approval Gate.');
+        } else {
+          alert(`Worker run complete. Provider used: ${res.provider}`);
+        }
+        await refreshData();
+      } catch (e) {
+        alert('Run failed: ' + e.message);
+      }
+    }
+
+    // Trigger all workers in staggered order
+    async function triggerAllWorkers() {
+      if (!confirm("Confirm triggering all 12 core workers concurrently? (Staggered starts will initiate)")) return;
+      try {
+        const workers = globalRegistry.workers || {};
+        for (const wid of Object.keys(workers)) {
+          if (workers[wid].ready) {
+            await fetch(`${API_BASE}/internal/operators/workers/${wid}/run`, {
+              method: 'POST',
+              headers: getHeaders(),
+              body: JSON.stringify({ task_type: 'heartbeat', risk: 'low', urgency: 'low' })
+            });
+          }
+        }
+        alert("Staggered startup initiated for all active workforce members.");
+        await refreshData();
+      } catch (e) {
+        alert("Failure spawning runs: " + e.message);
+      }
+    }
+
+    // Load Provider usage metrics
+    async function loadProviderUsage() {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/provider-usage`, { headers: getHeaders() });
+        const usage = await resp.json();
+        const usageContainer = document.getElementById('provider-spend-list');
+        usageContainer.innerHTML = '';
+
+        let totalCost = 0.0;
+        usage.forEach(u => {
+          totalCost += u.cost_usd;
+          let color = 'bg-orange';
+          if (u.provider === 'groq') color = 'bg-blue-400';
+          else if (u.provider === 'gemini') color = 'bg-purple-400';
+          else if (u.provider === 'openai') color = 'bg-red-400';
+
+          usageContainer.innerHTML += `
+            <div class="space-y-1 font-mono text-xs">
+              <div class="flex justify-between">
+                <span class="text-gray-500 uppercase">${u.provider}</span>
+                <span class="text-white font-bold">$${u.cost_usd.toFixed(4)} (${(u.prompt_tokens + u.completion_tokens).toLocaleString()} tks)</span>
+              </div>
+              <div class="w-full bg-neutral-900 rounded-full h-1.5">
+                <div class="${color} h-1.5 rounded-full" style="width: ${Math.min(100, (u.cost_usd / 10.0) * 100)}%"></div>
+              </div>
+            </div>
+          `;
+        });
+
+        document.getElementById('kpi-cost').textContent = `$${totalCost.toFixed(4)}`;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Load Tasks & Runs Table
+    async function loadTasks() {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/tasks?limit=15`, { headers: getHeaders() });
+        const tasks = await resp.json();
+        
+        // Render Runs
+        const runsTable = document.getElementById('runs-table');
+        runsTable.innerHTML = '';
+        
+        // Render Failures
+        const failuresList = document.getElementById('failures-list');
+        failuresList.innerHTML = '';
+
+        let failCount = 0;
+        tasks.forEach(t => {
+          const isFailed = t.status === 'failed';
+          const badgeClass = t.status === 'completed' ? 'badge-green' : isFailed ? 'badge-red' : 'badge-orange';
+          const prov = t.output_data?.provider_used || 'ollama';
+          
+          runsTable.innerHTML += `
+            <tr class="hover:bg-neutral-900/30 transition-all">
+              <td class="py-2 text-[10px] font-semibold text-gray-500">${t.id.slice(0, 8).toUpperCase()}</td>
+              <td class="py-2 font-bold text-white">${t.worker_id}</td>
+              <td class="py-2 text-gray-400 uppercase">${prov}</td>
+              <td class="py-2 font-semibold text-white">$${Number(t.cost_estimate_usd).toFixed(4)}</td>
+              <td class="py-2">
+                <span class="px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold ${badgeClass}">
+                  ${t.status}
+                </span>
+              </td>
+              <td class="py-2 text-right text-gray-500">${new Date(t.created_at).toLocaleTimeString()}</td>
+            </tr>
+          `;
+
+          if (isFailed && failCount < 5) {
+            failCount++;
+            failuresList.innerHTML += `
+              <div class="relative pl-6 border-l border-red-500/20 flex flex-col gap-0.5 font-mono text-xs">
+                <div class="absolute -left-1.5 top-1.5 w-3 h-3 rounded-full border border-red-500 bg-black flex items-center justify-center text-[8px] text-red-500 font-bold">&times;</div>
+                <div class="flex justify-between items-center text-white font-bold">
+                  <span>${t.worker_id.toUpperCase()} RUN FAIL</span>
+                  <span class="text-[10px] text-gray-500">${new Date(t.created_at).toLocaleTimeString()}</span>
+                </div>
+                <p class="text-[10px] text-gray-500 leading-normal uppercase mt-1">
+                  FAIL ESCALATION TARGETED &rarr; SYSTEM ESCALATED TO FALLBACK ROUTE (${prov.toUpperCase()})
+                </p>
+              </div>
+            `;
+          }
+        });
+
+        if (failCount === 0) {
+          failuresList.innerHTML = '<div class="py-6 text-center text-gray-500 font-mono text-xs">No active failures in triage index.</div>';
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Load human approvals list
+    async function loadApprovals() {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/approvals`, { headers: getHeaders() });
+        const approvals = await resp.json();
+        const approvalsList = document.getElementById('approvals-list');
+        approvalsList.innerHTML = '';
+
+        const pending = approvals.filter(a => a.status === 'pending');
+        if (pending.length === 0) {
+          approvalsList.innerHTML = '<div class="py-6 text-center text-gray-500 font-mono text-xs">No pending action gates. All operator rules verified.</div>';
+          return;
+        }
+
+        pending.forEach(a => {
+          approvalsList.innerHTML += `
+            <div class="p-3 bg-neutral-900/60 border border-dark-border rounded space-y-2 font-mono text-xs text-white">
+              <div class="flex justify-between items-center">
+                <span class="font-bold text-orange">${a.worker_id.toUpperCase()}</span>
+                <span class="text-[9px] text-gray-500">${new Date(a.created_at).toLocaleTimeString()}</span>
+              </div>
+              <div class="text-[10.5px] text-gray-400">REQUEST TYPE: <span class="text-white">${a.request_type}</span></div>
+              <div class="flex gap-2 justify-end pt-1">
+                <button onclick="rejectRequest('${a.id}')" class="px-2 py-1 rounded bg-neutral-950 border border-red-500/20 text-red-400 hover:bg-red-500/5 transition-all text-[9.5px]">REJECT</button>
+                <button onclick="approveRequest('${a.id}')" class="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all text-[9.5px]">APPROVE</button>
+              </div>
+            </div>
+          `;
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Handle Approving
+    async function approveRequest(approvalId) {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/approvals/${approvalId}/approve`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ notes: 'Manual operator override signature' })
+        });
+        await refreshData();
+      } catch (e) {
+        alert('Approval failed: ' + e.message);
+      }
+    }
+
+    // Handle Rejecting
+    async function rejectRequest(approvalId) {
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/approvals/${approvalId}/reject`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ notes: 'Manual operator override rejection' })
+        });
+        await refreshData();
+      } catch (e) {
+        alert('Rejection failed: ' + e.message);
+      }
+    }
+
+    // Open Budget Modal
+    function openBudgetModal(workerId, daily, monthly) {
+      document.getElementById('budget-modal-worker').value = workerId;
+      document.getElementById('budget-modal-daily').value = daily;
+      document.getElementById('budget-modal-monthly').value = monthly;
+      document.getElementById('budget-modal-title').textContent = `UPDATE BUDGET CAP: ${workerId.toUpperCase()}`;
+      document.getElementById('budget-modal').classList.remove('hidden');
+    }
+
+    // Close Budget Modal
+    function closeBudgetModal() {
+      document.getElementById('budget-modal').classList.add('hidden');
+    }
+
+    // Submit Budget Update
+    async function submitBudgetUpdate() {
+      const workerId = document.getElementById('budget-modal-worker').value;
+      const daily = parseFloat(document.getElementById('budget-modal-daily').value);
+      const monthly = parseFloat(document.getElementById('budget-modal-monthly').value);
+      
+      try {
+        const resp = await fetch(`${API_BASE}/internal/operators/budgets/${workerId}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            daily_cap_usd: daily,
+            monthly_cap_usd: monthly
+          })
+        });
+        closeBudgetModal();
+        await refreshData();
+      } catch (e) {
+        alert('Budget update failed: ' + e.message);
+      }
+    }
+
+    // Init onload
+    document.addEventListener('DOMContentLoaded', () => {
+      refreshData();
+      // Setup auto-refresh every 10 seconds
+      setInterval(refreshData, 10000);
+    });
+  </script>
+</body>
+</html>

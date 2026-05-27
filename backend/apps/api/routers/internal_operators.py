@@ -366,6 +366,12 @@ async def update_budget(worker_id: str, body: dict, user=Depends(require_superus
     await db.refresh(budget)
     return budget
 
+@router.get("/approvals")
+async def get_approvals(user=Depends(require_superuser), db: AsyncSession = Depends(get_db)):
+    """List all pending/historical human approval requests."""
+    result = await db.execute(select(InternalOperatorApproval).order_by(InternalOperatorApproval.created_at.desc()))
+    return result.scalars().all()
+
 @router.post("/approvals/{approval_id}/approve")
 async def approve_request(approval_id: str, body: dict, user=Depends(require_superuser), db: AsyncSession = Depends(get_db)):
     """Approve a gated critical action request."""

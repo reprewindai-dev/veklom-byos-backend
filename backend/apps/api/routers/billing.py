@@ -696,14 +696,49 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         user_id = metadata.get("user_id")
         amount_total = session.get("amount_total") or 0
         if user_id and amount_total:
+            ws_id = metadata.get("workspace_id") or ""
             db.add(
                 WalletTransaction(
                     user_id=user_id,
-                    workspace_id=metadata.get("workspace_id") or "",
+                    workspace_id=ws_id,
                     amount=amount_total / 100,
                     tx_type="topup" if metadata.get("type") == "wallet_topup" else "activation",
                 )
             )
+            
+            # Handle subscription upgrades/activations
+            if metadata.get("type") == "subscription":
+                from datetime import timedelta
+                plan_id = metadata.get("plan", "growth")
+                
+                # Check for existing active subscription
+                res = await db.execute(
+                    select(Subscription)
+                    .where(Subscription.workspace_id == ws_id)
+                    .order_by(Subscription.created_at.desc())
+                    .limit(1)
+                )
+                existing_sub = res.scalar_one_or_none()
+                
+                if existing_sub:
+                    existing_sub.plan = plan_id
+                    existing_sub.status = "active"
+                    existing_sub.stripe_subscription_id = session.get("subscription") or session.get("id") or "sub_mock"
+                    existing_sub.current_period_end = datetime.now(timezone.utc) + timedelta(days=30)
+                else:
+                    new_sub = Subscription(
+                        user_id=user_id,
+                        workspace_id=ws_id,
+                        plan=plan_id,
+                        stripe_subscription_id=session.get("subscription") or session.get("id") or "sub_mock",
+                        stripe_customer_id=session.get("customer") or "",
+                        status="active",
+                        current_period_start=datetime.now(timezone.utc),
+                        current_period_end=datetime.now(timezone.utc) + timedelta(days=30),
+                        activation_fee_paid=True
+                    )
+                    db.add(new_sub)
+                    
             await db.commit()
     return {"status": "ok"}
 

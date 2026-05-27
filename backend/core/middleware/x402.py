@@ -369,17 +369,75 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 return response
 
         # 1. Check for valid workspace auth (JWT + operating reserve)
-        user = await _verify_workspace_auth(request)
-        if user:
-            # Authenticated workspace user — execute and add receipt headers
-            response = await call_next(request)
-            receipt = _build_receipt(route_cfg)
-            response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
-            response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_id"]
-            response.headers["X-Veklom-Cost-USDC"] = receipt["cost_usdc"]
-            response.headers["X-Veklom-Policy-Result"] = receipt["policy_result"]
-            response.headers["X-Veklom-Receipt-URL"] = receipt["receipt_url"]
-            return response
+        user_payload = await _verify_workspace_auth(request)
+        if user_payload:
+            user_id = user_payload.get("sub")
+            if user_id:
+                from sqlalchemy import select, func
+                from backend.core.database.database import get_db_session
+                from backend.db.models.user import User
+                from backend.db.models.workspace import Workspace
+                from backend.db.models.ai import ExecutionLog
+                from backend.db.models.billing import Subscription
+
+                async with get_db_session() as db:
+                    user_res = await db.execute(select(User).where(User.id == user_id))
+                    db_user = user_res.scalar_one_or_none()
+                    
+                    if db_user:
+                        ws_id = db_user.workspace_id or ""
+                        
+                        # Resolve active subscription
+                        sub_res = await db.execute(
+                            select(Subscription)
+                            .where(
+                                Subscription.workspace_id == ws_id,
+                                Subscription.status.in_(["active", "trialing"]),
+                            )
+                            .order_by(Subscription.created_at.desc())
+                            .limit(1)
+                        )
+                        active_sub = sub_res.scalar_one_or_none()
+                        
+                        # Fallback to workspace license_tier
+                        ws_res = await db.execute(select(Workspace).where(Workspace.id == ws_id))
+                        db_ws = ws_res.scalar_one_or_none()
+                        license_tier = db_ws.license_tier if db_ws else "free"
+                        
+                        plan = active_sub.plan if active_sub else license_tier
+                        
+                        # If workspace is on free/community evaluation tier, check 15 cumulative runs limit
+                        if plan in ("free", "community", "none", None):
+                            runs_count = await db.scalar(
+                                select(func.count(ExecutionLog.id))
+                                .where(ExecutionLog.workspace_id == ws_id)
+                            ) or 0
+                            
+                            if runs_count >= 15:
+                                return _build_402_response(path, route_cfg)
+                        
+                        # Execute request
+                        response = await call_next(request)
+                        
+                        if response.status_code < 400:
+                            new_log = ExecutionLog(
+                                workspace_id=ws_id,
+                                user_id=user_id,
+                                model=route_cfg.get("name", "Governed Action"),
+                                provider="ollama:qwen2.5:3b",
+                                cost=route_cfg["price_usdc"],
+                                status="completed"
+                            )
+                            db.add(new_log)
+                            await db.commit()
+                            
+                        receipt = _build_receipt(route_cfg)
+                        response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
+                        response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_id"]
+                        response.headers["X-Veklom-Cost-USDC"] = receipt["cost_usdc"]
+                        response.headers["X-Veklom-Policy-Result"] = receipt["policy_result"]
+                        response.headers["X-Veklom-Receipt-URL"] = receipt["receipt_url"]
+                        return response
 
         # 2. Check x402 payment proof header
         if await _verify_x402_payment(request, route_cfg):

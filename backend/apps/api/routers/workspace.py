@@ -1351,7 +1351,6 @@ async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSes
         
         target_user = User(
             email=email,
-            username=email.split("@")[0] + "_" + secrets.token_hex(4),
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             full_name="Invited User",
             workspace_id=user.workspace_id

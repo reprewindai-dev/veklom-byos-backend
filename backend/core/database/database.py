@@ -16,6 +16,9 @@ try:
         db_url,
         echo=settings.DEBUG,
         future=True,
+        pool_size=20,
+        max_overflow=30,
+        pool_timeout=60,
     )
 except Exception as e:
     print(f"WARNING: Database engine creation failed: {e}. Falling back to in-memory SQLite.")
@@ -24,6 +27,9 @@ except Exception as e:
         db_url,
         echo=settings.DEBUG,
         future=True,
+        pool_size=20,
+        max_overflow=30,
+        pool_timeout=60,
     )
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

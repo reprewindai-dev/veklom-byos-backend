@@ -268,9 +268,11 @@ async def create_eval_session(body: dict = None, db: AsyncSession = Depends(get_
 
     body = body or {}
     fingerprint = (body.get("fingerprint") or "anonymous")[:64]
+    import re as _re
+    fingerprint_clean = _re.sub(r"[^a-zA-Z0-9]", "", fingerprint) or "anonymous"
 
     # Deterministic eval email from fingerprint
-    eval_email = f"eval-{fingerprint[:16]}@eval.veklom.local"
+    eval_email = f"eval-{fingerprint_clean[:16]}@eval.veklom.local"
     result = await db.execute(select(User).where(User.email == eval_email))
     user = result.scalar_one_or_none()
 

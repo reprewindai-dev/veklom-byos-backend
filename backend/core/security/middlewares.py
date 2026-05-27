@@ -8,7 +8,21 @@ import json
 class ZeroTrustMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path == "/" or path.startswith("/status") or path.startswith("/health") or path.startswith("/api/v1/auth/login") or path.startswith("/api/v1/auth/register") or path.startswith("/api/v1/auth/refresh") or path.startswith("/static") or path.startswith("/assets") or path.startswith("/workspace") or path.startswith("/command-center") or path.startswith("/gpc") or path.startswith("/terminal") or path.startswith("/marketplace") or path.startswith("/docs") or path.startswith("/uptime") or path.startswith("/legal") or path.startswith("/irongrid") or path.startswith("/api/v1/webhooks"):
+        
+        # Public bypass routes
+        public_prefixes = (
+            "/status", "/health", "/api/v1/auth/login", "/api/v1/auth/register",
+            "/api/v1/auth/refresh", "/static", "/assets", "/workspace",
+            "/command-center", "/gpc", "/terminal", "/marketplace", "/docs",
+            "/uptime", "/legal", "/irongrid", "/api/v1/webhooks", "/.well-known",
+            "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
+            "/apple-touch-icon.png", "/og-image.png", "/twitter-card.png",
+            "/logo.png", "/icon.png", "/api/v1/ai/models", "/api/v1/pricing",
+            "/api/v1/platform/pulse", "/api/v1/sdk/", "/api/v1/agent-use-cases",
+            "/sdk/examples", "/mcp/", "/openapi.json"
+        )
+        
+        if path == "/" or any(path.startswith(prefix) for prefix in public_prefixes):
             return await call_next(request)
             
         auth_header = request.headers.get("Authorization")

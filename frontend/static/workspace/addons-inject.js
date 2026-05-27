@@ -24,7 +24,7 @@
       ownerOnly: true  // SUPER ADMIN ONLY — never shown to tenants
     },
     '#/gpc': {
-      url: 'https://uacpv3.onrender.com',
+      url: '/gpc',
       label: 'GPC',
       icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>',
       paidOnly: true   // Paid customers only (sovereign / pro plan)

@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var UACPGEMINI_URL = 'https://uacpv3.onrender.com';
+  var UACPGEMINI_URL = '/gpc';
 
   /* ================================================================
    *  Sidebar injection — add GPC link between Playground & Marketplace

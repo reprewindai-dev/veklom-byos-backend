@@ -26,7 +26,8 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/platform/pulse", "/api/v1/sdk/", "/api/v1/agent-use-cases",
             "/sdk/examples", "/mcp/", "/openapi.json", "/api/v1/openapi.json",
             "/v1/openapi.json", "/api/v1/sys/health", "/api/v1/sys/gpu",
-            "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions"
+            "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
+            "/api/v1/workspace/overview/live"
         )
         
         if path == "/" or any(path.startswith(prefix) for prefix in public_prefixes):

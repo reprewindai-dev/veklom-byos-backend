@@ -36,10 +36,11 @@ target_metadata = Base.metadata
 def get_database_url():
     """Get the database URL from environment variables."""
     import os
-    return os.getenv(
+    url = os.getenv(
         "DATABASE_URL",
         "postgresql+asyncpg://veklom:veklom_password@localhost:5432/veklom"
     )
+    return url.replace("postgresql+asyncpg://", "postgresql://")
 
 
 def run_migrations_offline() -> None:

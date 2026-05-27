@@ -17,7 +17,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
         # Public bypass routes
         public_prefixes = (
             "/status", "/health", "/api/v1/auth/login", "/api/v1/auth/register",
-            "/api/v1/auth/refresh", "/static", "/assets", "/workspace",
+            "/api/v1/auth/refresh", "/api/v1/auth/github", "/static", "/assets", "/workspace",
             "/command-center", "/gpc", "/terminal", "/marketplace", "/docs",
             "/uptime", "/legal", "/irongrid", "/api/v1/webhooks", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
@@ -128,3 +128,4 @@ class BudgetCheckMiddleware(BaseHTTPMiddleware):
                 print(f"[BudgetCheckMiddleware] warning: failed to check kill switch state: {e}")
                 
         return await call_next(request)
+

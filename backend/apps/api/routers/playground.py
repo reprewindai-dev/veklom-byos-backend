@@ -357,6 +357,12 @@ async def run_inference(body: dict, user=Depends(get_current_user), db: AsyncSes
     
     if not message:
         raise HTTPException(status_code=400, detail="message or prompt is required")
+
+    # Enforce MCP Gateway checks: prompt injection scan, rate limits, and filesystem path blocks
+    from backend.core.security.mcp_gateway import MCPGateway
+    MCPGateway.sanitize_and_check(message, field_name="playground_prompt")
+    MCPGateway.enforce_rate_limit(f"user_{user.id}")
+    MCPGateway.pre_execution_file_hook(message)
     
     # If session_id provided, load session context
     session_context = {}

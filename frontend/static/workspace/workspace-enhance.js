@@ -10,9 +10,11 @@
 
   function authHeaders() {
     const token =
+      localStorage.getItem("veklom_token") ||
       localStorage.getItem("veklom-auth-token") ||
       localStorage.getItem("auth_token") ||
       localStorage.getItem("token") ||
+      sessionStorage.getItem("veklom_token") ||
       sessionStorage.getItem("veklom-auth-token") ||
       "";
     return {
@@ -100,30 +102,36 @@
   }
 
   function wireHeaderIcons() {
-    const containers = document.querySelectorAll("header, [class*='header'], [class*='topbar'], [class*='navbar'], [class*='Header']");
-    const scanned = new WeakSet();
-    containers.forEach(container => {
-      const iconBtns = [...container.querySelectorAll("button, [role='button']")].filter(b => {
-        if (scanned.has(b)) return false;
-        const hasSvg = !!b.querySelector("svg");
-        const text = b.textContent.trim();
-        return hasSvg && text.length < 4;
-      });
-      iconBtns.forEach(btn => {
-        if (scanned.has(btn)) return;
-        scanned.add(btn);
-        const al = (btn.getAttribute("aria-label") || btn.getAttribute("title") || "").toLowerCase();
-        const svgPaths = [...btn.querySelectorAll("path")].map(p => p.getAttribute("d") || "").join(" ");
-        if (al.includes("notif") || al.includes("bell") || al.includes("alert") || /M15.*bell|bell.*M15/i.test(svgPaths)) {
-          btn.addEventListener("click", (e) => { e.stopPropagation(); navigate("#/monitoring"); });
-        } else if (al.includes("key") || al.includes("api") || /M21.*M3.*M10|key.*circle/i.test(svgPaths)) {
-          btn.addEventListener("click", (e) => { e.stopPropagation(); navigate("#/vault"); });
-        } else if (al.includes("doc") || al.includes("help") || al.includes("book")) {
-          btn.addEventListener("click", (e) => { e.stopPropagation(); window.open("https://docs.veklom.com", "_blank"); });
-        }
-      });
-    });
+    // Left as a legacy stub; functionality is now robustly handled via the global event delegation listener below.
   }
+
+  // Global event delegation for header icons — captures clicks before React can interfere and survives all DOM updates.
+  document.addEventListener("click", function (e) {
+    const btn = e.target.closest("button, [role='button']");
+    if (!btn) return;
+
+    // Check if the button is inside a top bar or header container
+    const container = btn.closest("header, [class*='header'], [class*='topbar'], [class*='navbar'], [class*='Header']");
+    if (!container) return;
+
+    const hasSvg = !!btn.querySelector("svg");
+    const text = btn.textContent.trim();
+    if (hasSvg && text.length < 4) {
+      const al = (btn.getAttribute("aria-label") || btn.getAttribute("title") || "").toLowerCase();
+      const svgPaths = [...btn.querySelectorAll("path")].map(p => p.getAttribute("d") || "").join(" ");
+
+      if (al.includes("notif") || al.includes("bell") || al.includes("alert") || /M15.*bell|bell.*M15/i.test(svgPaths)) {
+        e.preventDefault(); e.stopPropagation();
+        navigate("#/monitoring");
+      } else if (al.includes("key") || al.includes("api") || /M21.*M3.*M10|key.*circle/i.test(svgPaths)) {
+        e.preventDefault(); e.stopPropagation();
+        navigate("#/vault");
+      } else if (al.includes("doc") || al.includes("help") || al.includes("book")) {
+        e.preventDefault(); e.stopPropagation();
+        window.open("https://docs.veklom.com", "_blank");
+      }
+    }
+  }, true);
 
   function currentPage() {
     return (location.hash || "#/").replace(/^#/, "").toLowerCase();

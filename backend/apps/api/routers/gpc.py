@@ -1,14 +1,8 @@
-"""GPC (Governed Plan Compiler) routes.
-
-Prompt → Plan → Pipeline → Proof
-
-GPC asks: Can this idea be governed, approved, deployed, priced, and proven?
-Every compile emits a Decision Frame — the replayable proof object.
-"""
-
 import json
 import uuid
 from datetime import datetime, timezone
+from typing import Optional, List
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import StreamingResponse
@@ -20,6 +14,47 @@ from backend.core.services.autonomous_worker import run_gpc_background
 import asyncio
 
 router = APIRouter(prefix="/gpc", tags=["GPC"])
+
+class GpcCompileRequest(BaseModel):
+    intent: str
+    graph: Optional[dict] = None
+    compliance: Optional[List[str]] = Field(default_factory=list)
+    provider: Optional[str] = "gemini"
+    model: Optional[str] = "gemini-2.5-flash"
+    budget_usdc: Optional[float] = 0.015
+
+class GpcNode(BaseModel):
+    id: str
+    type: str
+    description: str
+    policy_tag: str
+    entropy: float
+
+class GpcEdge(BaseModel):
+    from_node: str = Field(..., alias="from")
+    to: str
+
+    class Config:
+        populate_by_name = True
+
+class GpcGraph(BaseModel):
+    nodes: List[GpcNode]
+    edges: List[GpcEdge]
+
+class GpcCompileResponse(BaseModel):
+    id: str
+    name: str
+    intent: str
+    graph: GpcGraph
+    status: str
+    policy_result: str
+    compliance: List[str]
+    provider: str
+    model: str
+    createdAt: str
+    decision_frame_id: Optional[str] = None
+    evidence_id: Optional[str] = None
+    proof_hash: Optional[str] = None
 
 
 def _can_use_gpc_full(user) -> bool:
@@ -97,18 +132,10 @@ async def save_plan(body: dict, user=Depends(get_current_user)):
 
 
 @router.post("/compile")
-async def gpc_compile(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@router.post("/compile", response_model=GpcCompileResponse)
+async def gpc_compile(body: GpcCompileRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Compile an agent intent into a governed plan and attempt to emit a Decision Frame.
-    
-    Parameters:
-        body (dict): Request payload containing at minimum an "intent" string. May include optional keys such as "graph", "compliance", "provider", "model", and "budget_usdc".
-    
-    Returns:
-        dict: A compiled plan payload containing fields like `id`, `name`, `intent`, `graph`, `status`, and `createdAt`. If Decision Frame emission succeeds, the payload will also include `decision_frame_id`, `evidence_id`, and `proof_hash`.
-    
-    Raises:
-        HTTPException: 403 if the current user is not entitled to use GPC (neither full nor demo access).
     """
     # Check GPC entitlement
     if not _can_use_gpc_full(user) and not _can_use_gpc_demo(user):
@@ -120,24 +147,10 @@ async def gpc_compile(body: dict, user=Depends(get_current_user), db: AsyncSessi
     return await _build_and_emit_plan(body, user, db)
 
 
-@router.post("/intent-to-plan")
-async def intent_to_plan(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@router.post("/intent-to-plan", response_model=GpcCompileResponse)
+async def intent_to_plan(body: GpcCompileRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Convert a high-level intent into a governed execution plan.
-    
-    Parameters:
-        body (dict): Input payload containing the plan request. Expected keys include:
-            - `intent` (str): The natural-language objective to compile.
-            - `graph` (dict, optional): Explicit plan graph structure.
-            - `compliance` (list, optional): Compliance constraints or tags.
-            - `provider` (str, optional): Model provider override.
-            - `model` (str, optional): Model identifier override.
-            - `budget_usdc` (number, optional): Cost estimate for Decision Frame emission.
-    
-    Returns:
-        dict: Compiled plan payload with fields such as `id`, `name`, `intent`, `graph`, `status`,
-        `policy_result`, `compliance`, `provider`, `model`, and `createdAt`. When Decision Frame
-        emission succeeds, the result also includes `decision_frame_id`, `evidence_id`, and `proof_hash`.
     """
     # Check GPC entitlement
     if not _can_use_gpc_full(user) and not _can_use_gpc_demo(user):
@@ -149,10 +162,10 @@ async def intent_to_plan(body: dict, user=Depends(get_current_user), db: AsyncSe
     return await _build_and_emit_plan(body, user, db)
 
 
-async def _build_and_emit_plan(body: dict, user, db: AsyncSession) -> dict:
+async def _build_and_emit_plan(body: GpcCompileRequest, user, db: AsyncSession) -> dict:
     """Core compile logic. Returns plan + decision_frame_id + proof_hash."""
     from backend.apps.api.routers.decision_frames import emit_decision_frame
-    intent = body.get("intent", "")
+    intent = body.intent
     plan_id = str(uuid.uuid4())[:8]
     result = {
         "id": plan_id,
@@ -175,9 +188,9 @@ async def _build_and_emit_plan(body: dict, user, db: AsyncSession) -> dict:
         },
         "status": "compiled",
         "policy_result": "passed",
-        "compliance": body.get("compliance", []),
-        "provider": body.get("provider", "gemini"),
-        "model": body.get("model", "gemini-2.5-flash"),
+        "compliance": body.compliance or [],
+        "provider": body.provider or "gemini",
+        "model": body.model or "gemini-2.5-flash",
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -190,12 +203,12 @@ async def _build_and_emit_plan(body: dict, user, db: AsyncSession) -> dict:
             model=result["model"],
             provider=result["provider"],
             plan_id=plan_id,
-            cost_estimate_usd=float(body.get("budget_usdc", 0.015)),
+            cost_estimate_usd=float(body.budget_usdc or 0.015),
             policy_result="passed",
             final_action="compiled",
             source="gpc",
             tags=["gpc", "compile"],
-            replay_inputs={"intent": intent, "compliance": body.get("compliance", [])},
+            replay_inputs={"intent": intent, "compliance": body.compliance or []},
         )
         result["decision_frame_id"] = frame.id
         result["evidence_id"] = frame.evidence_id

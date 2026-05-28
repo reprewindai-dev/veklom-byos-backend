@@ -52,7 +52,7 @@ for name, method, path, exp_code, check_fn in TESTS:
 
 # 2. Check HTTP 402 Gating on Paid Route
 print("\nVerifying HTTP 402 Payment Required gating...")
-code, body, headers = run_req(BASE + "/api/v1/gpc/compile", "POST", {"intent": "test"})
+code, body, headers = run_req(BASE + "/api/v1/gpc/runs", "POST", {"intent": "test"})
 body_str = body.decode("utf-8")
 try:
     payload = json.loads(body_str)

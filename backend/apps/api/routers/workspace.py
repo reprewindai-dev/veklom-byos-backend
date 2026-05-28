@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.core.services.posthog_client import posthog_service, hash_id
 from backend.db.models.ai import ExecLog
 from backend.db.models.marketplace import Deployment, Pipeline
 from backend.db.models.security import AuditLog, SecurityEvent

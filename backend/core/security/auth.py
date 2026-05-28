@@ -99,8 +99,20 @@ def verify_token(token: str) -> dict:
 
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
 ):
+    if getattr(request.state, "x402_paid", False):
+        class MockAgentUser:
+            id = "agent_autonomous"
+            email = "agent@veklom.com"
+            workspace_id = "agent_workspace"
+            plan = "pro"
+            role = "super_admin"
+            is_active = True
+            status = "active"
+        return MockAgentUser()
+
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 

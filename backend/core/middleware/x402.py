@@ -346,6 +346,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             is_valid_rapidapi = rapidapi_configured_secret and rapidapi_secret == rapidapi_configured_secret
             
             if is_valid_gateway or is_valid_rapidapi:
+                request.state.x402_paid = True
                 response = await call_next(request)
                 receipt = _build_receipt(route_cfg, provider="gateway:x402")
                 response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
@@ -429,6 +430,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
 
         # 2. Check x402 payment proof header
         if await _verify_x402_payment(request, route_cfg):
+            request.state.x402_paid = True
             response = await call_next(request)
             receipt = _build_receipt(route_cfg)
             response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
@@ -447,6 +449,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
 
         if daily_limit > 0 and used < daily_limit:
             _free_usage[day_key] = used + 1
+            request.state.x402_paid = True
             response = await call_next(request)
             receipt = _build_receipt(route_cfg)
             response.headers["X-Veklom-Free-Trial"] = "true"

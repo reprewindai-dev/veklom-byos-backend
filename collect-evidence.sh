@@ -2,8 +2,8 @@
 set -euo pipefail
 
 if [[ $# -lt 3 ]]; then
-  echo "Usage: $0 <HOST> <BASE_URL> <POSTHOG_API_KEY> [POSTHOG_HOST]"
-  echo "Example: $0 veklom.com https://veklom.com phc_xxx https://app.posthog.com"
+  echo "Usage: $0 <HOST> <BASE_URL> <POSTHOG_API_KEY> [POSTHOG_HOST] [POSTHOG_PROJECT]"
+  echo "Example: $0 veklom.com https://veklom.com phc_xxx https://app.posthog.com 12345"
   exit 1
 fi
 
@@ -11,6 +11,7 @@ HOST="$1"                       # e.g., veklom.com
 BASE_URL="$2"                   # e.g., https://veklom.com
 PH_API_KEY="$3"                 # PostHog project API key
 PH_HOST="${4:-https://app.posthog.com}"
+PH_PROJECT="${5:-}"             # PostHog project ID (optional)
 TS="$(date +%Y%m%d-%H%M%S)"
 OUT="evidence"
 ZIP="evidence-$TS.zip"
@@ -45,6 +46,7 @@ const https = require('https');
 
 const PH_API_KEY = process.env.PH_API_KEY;
 const PH_HOST = process.env.PH_HOST || 'https://app.posthog.com';
+const PH_PROJECT = process.env.PH_PROJECT || '';
 const idsPath = process.env.IDS_PATH || 'evidence/posthog_session_ids.txt';
 const outPath = process.env.OUT_PATH || 'evidence/posthog-events.json';
 
@@ -61,8 +63,6 @@ try {
 const params = new URLSearchParams();
 // If we detected session IDs, filter by them; otherwise just bail gracefully.
 if (ids.length) {
-  // PostHog SQL / Insights API varies by plan; here we use /events export style via /api/events
-  // and match distinct_id heuristically. Adjust to your schema/ingestion approach.
   params.set('limit', '2000');
   // NOTE: For production, consider paging & time windows.
 }
@@ -93,9 +93,9 @@ function get(path) {
 
   const all = [];
   for (const id of ids) {
-    // Basic distinct_id query (Events API). Depending on your plan, you may prefer /api/projects/:id/events
-    // or a Query API (Trends/Session Replay export). This keeps credentials generic.
-    const path = `/api/events/?distinct_id=${encodeURIComponent(id)}&${params.toString()}`;
+    // Use project-specific events API if PH_PROJECT is set
+    const basePath = PH_PROJECT ? `/api/projects/${PH_PROJECT}/events` : '/api/events';
+    const path = `${basePath}/?distinct_id=${encodeURIComponent(id)}&${params.toString()}`;
     try {
       const res = await get(path);
       if (res && res.results) {
@@ -107,12 +107,12 @@ function get(path) {
       all.push({ id, error: String(e) });
     }
   }
-  fs.writeFileSync(outPath, JSON.stringify({ host: PH_HOST, distinct_ids: ids, bundles: all }, null, 2));
+  fs.writeFileSync(outPath, JSON.stringify({ host: PH_HOST, project: PH_PROJECT, distinct_ids: ids, bundles: all }, null, 2));
   console.log(`Exported PostHog events for ${ids.length} id(s) → ${outPath}`);
 })();
 NODE
 
-PH_API_KEY="$PH_API_KEY" PH_HOST="$PH_HOST" IDS_PATH="$OUT/posthog_session_ids.txt" OUT_PATH="$OUT/posthog-events.json" \
+PH_API_KEY="$PH_API_KEY" PH_HOST="$PH_HOST" PH_PROJECT="$PH_PROJECT" IDS_PATH="$OUT/posthog_session_ids.txt" OUT_PATH="$OUT/posthog-events.json" \
   node "$OUT/export-posthog.js" || true
 
 echo "==> 6) Compute checksums + sizes (manifest)"

@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import time
@@ -179,13 +180,93 @@ def _looks_concatenated_env(value: str) -> bool:
     return "=" in candidate or "\n" in candidate or "\r" in candidate
 
 
+_GITHUB_ENV_KEY = {
+    "client_id": "GITHUB_CLIENT_ID",
+    "client_secret": "GITHUB_CLIENT_SECRET",
+    "redirect_uri": "GITHUB_REDIRECT_URI",
+}
+
+_GITHUB_ENV_ALIASES = {
+    "client_id": (
+        "GITHUB_CLIENT_ID",
+        "GITHUB_OAUTH_CLIENT_ID",
+        "GITHUB_APP_CLIENT_ID",
+    ),
+    "client_secret": (
+        "GITHUB_CLIENT_SECRET",
+        "GITHUB_OAUTH_CLIENT_SECRET",
+        "GITHUB_APP_CLIENT_SECRET",
+    ),
+    "redirect_uri": (
+        "GITHUB_REDIRECT_URI",
+        "GITHUB_REDIRECT_URL",
+        "GITHUB_CALLBACK_URL",
+    ),
+}
+
+
+def _extract_embedded_github_value(blob: str, env_key: str) -> Optional[str]:
+    if not blob:
+        return None
+    pattern = re.compile(rf"{re.escape(env_key)}=([^\r\n]+?)(?=[A-Z][A-Z0-9_]*=|$)")
+    match = pattern.search(blob)
+    if not match:
+        return None
+    value = match.group(1).strip().strip(' "\'')
+    return value or None
+
+
+def _resolve_github_oauth_values(request: Optional[Request] = None) -> dict:
+    values = {
+        "client_id": (settings.GITHUB_CLIENT_ID or "").strip(),
+        "client_secret": (settings.GITHUB_CLIENT_SECRET or "").strip(),
+        "redirect_uri": (settings.GITHUB_REDIRECT_URI or "").strip(),
+    }
+
+    for field, aliases in _GITHUB_ENV_ALIASES.items():
+        if _is_real_config_value(values[field]) and not _looks_concatenated_env(values[field]):
+            continue
+        for env_name in aliases:
+            candidate = (os.environ.get(env_name) or "").strip()
+            if _is_real_config_value(candidate) and not _looks_concatenated_env(candidate):
+                values[field] = candidate
+                break
+
+    needs_embedded_scan = any(
+        (not _is_real_config_value(values[field]) or _looks_concatenated_env(values[field]))
+        for field in ("client_id", "client_secret", "redirect_uri")
+    )
+    if needs_embedded_scan:
+        for _, raw_value in os.environ.items():
+            blob = (raw_value or "").strip()
+            if not blob:
+                continue
+            for field in ("client_id", "client_secret", "redirect_uri"):
+                if _is_real_config_value(values[field]) and not _looks_concatenated_env(values[field]):
+                    continue
+                parsed = _extract_embedded_github_value(blob, _GITHUB_ENV_KEY[field])
+                if parsed and _is_real_config_value(parsed) and not _looks_concatenated_env(parsed):
+                    values[field] = parsed
+
+    redirect_uri = values["redirect_uri"]
+    if not (_is_real_config_value(redirect_uri) and not _looks_concatenated_env(redirect_uri) and redirect_uri.startswith("http")):
+        base = (settings.API_BASE_URL or "").strip().rstrip("/")
+        if base.startswith("http"):
+            values["redirect_uri"] = f"{base}/api/v1/auth/github/callback"
+        elif request is not None:
+            values["redirect_uri"] = f"{_external_origin(request)}/api/v1/auth/github/callback"
+
+    return values
+
+
 def _github_config_status() -> dict:
     """
     Return a safe GitHub OAuth config status payload with present/missing flags only.
     """
-    raw_client_id = (settings.GITHUB_CLIENT_ID or "").strip()
-    raw_client_secret = (settings.GITHUB_CLIENT_SECRET or "").strip()
-    raw_redirect_uri = (settings.GITHUB_REDIRECT_URI or "").strip()
+    resolved = _resolve_github_oauth_values()
+    raw_client_id = (resolved.get("client_id") or "").strip()
+    raw_client_secret = (resolved.get("client_secret") or "").strip()
+    raw_redirect_uri = (resolved.get("redirect_uri") or "").strip()
 
     client_id_ok = _is_real_config_value(raw_client_id) and not _looks_concatenated_env(raw_client_id)
     client_secret_ok = _is_real_config_value(raw_client_secret) and not _looks_concatenated_env(raw_client_secret)
@@ -221,17 +302,22 @@ def _github_oauth_configured() -> bool:
     Returns:
         True if both GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET contain real (non-placeholder) values, False otherwise.
     """
-    status = _github_config_status()
-    return bool(status.get("configured"))
+    resolved = _resolve_github_oauth_values()
+    client_id = (resolved.get("client_id") or "").strip()
+    client_secret = (resolved.get("client_secret") or "").strip()
+    return (
+        _is_real_config_value(client_id)
+        and not _looks_concatenated_env(client_id)
+        and _is_real_config_value(client_secret)
+        and not _looks_concatenated_env(client_secret)
+    )
 
 
 def _github_redirect_uri(request: Request) -> str:
-    configured = (settings.GITHUB_REDIRECT_URI or "").strip()
-    if configured and not _looks_concatenated_env(configured):
+    resolved = _resolve_github_oauth_values(request)
+    configured = (resolved.get("redirect_uri") or "").strip()
+    if configured and configured.startswith("http"):
         return configured
-    base = (settings.API_BASE_URL or "").strip().rstrip("/")
-    if base.startswith("http"):
-        return f"{base}/api/v1/auth/github/callback"
     return f"{_external_origin(request)}/api/v1/auth/github/callback"
 
 
@@ -781,6 +867,7 @@ async def github_config_status():
 async def github_login(request: Request, token: Optional[str] = None):
     if not _github_oauth_configured():
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
+    oauth_values = _resolve_github_oauth_values(request)
     
     user_id = None
     if token:
@@ -796,7 +883,7 @@ async def github_login(request: Request, token: Optional[str] = None):
     redirect_uri = _github_redirect_uri(request)
         
     params = {
-        "client_id": settings.GITHUB_CLIENT_ID,
+        "client_id": oauth_values["client_id"],
         "redirect_uri": redirect_uri,
         "scope": "user:email read:user",
         "state": state,
@@ -829,6 +916,7 @@ async def github_callback(
 
     if not _github_oauth_configured():
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
+    oauth_values = _resolve_github_oauth_values(request)
     if not code:
         raise HTTPException(status_code=400, detail="Missing GitHub OAuth code")
     if not state:
@@ -840,8 +928,8 @@ async def github_callback(
         token_resp = await client.post(
             GITHUB_TOKEN_URL,
             data={
-                "client_id": settings.GITHUB_CLIENT_ID,
-                "client_secret": settings.GITHUB_CLIENT_SECRET,
+                "client_id": oauth_values["client_id"],
+                "client_secret": oauth_values["client_secret"],
                 "code": code,
                 "redirect_uri": _github_redirect_uri(request),
             },

@@ -397,8 +397,9 @@ def _trusted_hosts() -> list[str]:
     return sorted(derived_hosts)
 
 
-if settings.APP_ENV == "production" and os.getenv("ENFORCE_TRUSTED_HOSTS", "false").lower() in {"1", "true", "yes"}:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts())
+# TrustedHostMiddleware is intentionally disabled here to avoid production lockouts
+# from host-header drift between Cloudflare, Traefik, and direct service probes.
+# Edge proxy host ACLs should enforce host restrictions upstream.
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(X402PaymentMiddleware)

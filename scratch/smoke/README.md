@@ -20,6 +20,15 @@ For authenticated and x402 paid-path checks:
 
 `SMOKE_TEST_SECRET` must be configured only in Coolify/CI secrets, never committed.
 
+**Note:** When running smoke tests locally without `SMOKE_TEST_SECRET`, the x402 payment smoke test will report 1 failure for the authenticated check. This is expected behavior - the unpaid 402 flow will still pass, which validates the payment protocol for anonymous users.
+
+## Current smoke test status (2026-05-28)
+
+- ✅ `anonymous_public_smoke.py`: PASS: 20 FAIL: 0
+- ✅ `ui_playwright_smoke.py`: PASS: 5 FAIL: 0
+- ⚠️ `x402_payment_smoke.py`: PASS: 1 FAIL: 1 (requires SMOKE_TEST_SECRET for authenticated flow)
+- ⚠️ `authenticated_user_smoke.py`: Requires SMOKE_TEST_SECRET
+
 ## Commands
 
 ```powershell

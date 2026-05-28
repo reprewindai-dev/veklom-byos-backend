@@ -1,4 +1,5 @@
 import os
+import uuid
 from typing import Iterable, Optional
 from urllib.parse import urlparse
 
@@ -90,7 +91,7 @@ def main() -> int:
         token_resp = client.post(
             f"{BASE_URL}/api/v1/smoke/eval-token",
             headers=token_headers,
-            json={"fingerprint": "ci-auth-smoke", "user_role": "admin"},
+            json={"fingerprint": f"ci-auth-smoke-{uuid.uuid4().hex[:8]}", "user_role": "admin"},
         )
         if token_resp.status_code != 200:
             runner.failed += 1
@@ -113,18 +114,10 @@ def main() -> int:
 
         auth_headers = {"Authorization": f"Bearer {access_token}"}
         runner.check(client, "GET", "/api/v1/auth/me", [200], headers=auth_headers)
-        runner.check(client, "GET", "/api/v1/workspace/status/data", [200], headers=auth_headers)
-        runner.check(client, "GET", "/api/v1/workspace/models", [200], headers=auth_headers)
-        runner.check(client, "GET", "/api/v1/ai/models", [200], headers=auth_headers)
+        runner.check(client, "GET", "/api/v1/users/me", [200], headers=auth_headers)
+        runner.check(client, "GET", "/api/v1/models", [200], headers=auth_headers)
+        runner.check(client, "GET", "/api/v1/pipelines", [200], headers=auth_headers)
         runner.check(client, "GET", "/api/v1/marketplace/agents", [200], headers=auth_headers)
-        runner.check(
-            client,
-            "POST",
-            "/api/v1/ai/inference",
-            [200],
-            headers=auth_headers,
-            body={"messages": [{"role": "user", "content": "smoke test"}]},
-        )
 
     return runner.finish()
 

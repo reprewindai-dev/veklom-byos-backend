@@ -1,4 +1,5 @@
 import os
+import uuid
 from urllib.parse import urlparse
 
 import httpx
@@ -58,7 +59,7 @@ def main() -> int:
             token_resp = client.post(
                 f"{BASE_URL}/api/v1/smoke/eval-token",
                 headers=token_headers,
-                json={"fingerprint": "ci-x402-smoke", "user_role": "admin"},
+                json={"fingerprint": f"ci-x402-smoke-{uuid.uuid4().hex[:8]}", "user_role": "admin"},
             )
             if token_resp.status_code != 200:
                 failed += 1

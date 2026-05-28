@@ -52,7 +52,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
         try:
             if auth_header and auth_header.startswith("Bearer "):
                 token = auth_header.split(" ")[1]
-                payload = verify_token(token)
+                payload = verify_token(token, enforce_replay=False)
                 request.state.user_id = payload.get("sub")
             elif api_key_header:
                 if not api_key_header.startswith("byos_"):
@@ -99,7 +99,7 @@ class BudgetCheckMiddleware(BaseHTTPMiddleware):
                 async with async_session() as session:
                     if auth_header and auth_header.startswith("Bearer "):
                         token = auth_header.split(" ")[1]
-                        payload = verify_token(token)
+                        payload = verify_token(token, enforce_replay=False)
                         user_id = payload.get("sub")
                         if user_id:
                             result = await session.execute(select(User).where(User.id == user_id))

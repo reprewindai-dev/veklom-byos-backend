@@ -1,0 +1,36 @@
+{
+  "name": "Veklom",
+  "description": "Sovereign AI runtime your company can trust and control. Install on your own servers in ~30 minutes, connect 160+ systems, and govern agents with policy, audit, and shut-off switches.",
+  "short_description": "Sovereign AI runtime with policy governance and audit trails",
+  "url": "https://veklom.com",
+  "documentation": "https://docs.veklom.com",
+  "logo": "https://veklom.com/assets/logo.png",
+  "install_command": "curl -fsSL https://get.veklom.com/install.sh | bash && veklom up --connect",
+  "category": "DevOps",
+  "tags": ["AI", "Governance", "Security", "BYOS", "Privacy"],
+  "pricing": {
+    "team": {
+      "price": "$12,000/mo or $120,000/yr",
+      "features": ["BYOS install", "10 seats", "10 connectors", "basic audit", "email support"]
+    },
+    "business": {
+      "price": "$35,000/mo or $350,000/yr",
+      "features": ["Unlimited seats", "50 connectors", "advanced policy/audit", "SSO", "priority support"]
+    },
+    "enterprise": {
+      "price": "Custom",
+      "features": ["Private terms", "on-prem support", "custom connectors", "dedicated SLA"]
+    }
+  },
+  "features": [
+    "Install on your own servers (BYOS)",
+    "Connect 160+ systems",
+    "Policy governance with deny/allow rules",
+    "Audit trails with who/what/when",
+    "Shut-off switches for agents",
+    "14-day evaluation",
+    "No data lock-in"
+  ],
+  "demo_url": "https://veklom.com/demo",
+  "support_email": "support@veklom.com"
+}

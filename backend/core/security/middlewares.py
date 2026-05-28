@@ -37,7 +37,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/ai/inference", "/api/v1/ai/chat", "/api/v1/gpc/compile",
             "/api/v1/gpc/intent-to-plan", "/api/v1/gpc/runs", "/api/v1/pipelines/trigger",
             "/api/v1/runtime/jobs", "/api/v1/evidence/export", "/api/v1/compliance/report",
-            "/api/v1/marketplace/acquire", "/api/v1/audit/verify"
+            "/api/v1/marketplace/acquire", "/api/v1/audit/verify", "/api/v1/webhook"
         )
         
         if path == "/" or any(path.startswith(prefix) for prefix in public_prefixes):

@@ -29,6 +29,7 @@ from backend.core.security.auth import (
 )
 from backend.core.security.encryption import encrypt_token, decrypt_token
 from backend.core.audit import log_audit_event
+from backend.core.services.posthog_client import posthog_service
 from backend.db.models.user import APIKey, Session, User
 from backend.db.models.workspace import Workspace, WorkspaceMember
 

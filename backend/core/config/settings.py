@@ -164,6 +164,11 @@ class Settings(BaseSettings):
     GRAFANA_USER: str = "admin"
     GRAFANA_PASSWORD: str = ""
 
+    # PostHog Analytics
+    POSTHOG_API_KEY: str = ""
+    POSTHOG_HOST: str = "https://app.posthog.com"
+    POSTHOG_ENABLED: bool = True
+
     # Performance Tuning
     MAX_CONCURRENT_REQUESTS: int = 100
     REQUEST_TIMEOUT_SECONDS: int = 30

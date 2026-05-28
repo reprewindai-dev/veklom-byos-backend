@@ -461,8 +461,8 @@ async def _get_or_create_eval_user(db: AsyncSession, fingerprint: str = "anonymo
         email=eval_email,
         full_name="Free Evaluation",
         hashed_password="",
-        role="viewer",
-        status="ACTIVE",
+        role="readonly",
+        status="active",
         is_active=True,
         workspace_id=ws_id,
     )

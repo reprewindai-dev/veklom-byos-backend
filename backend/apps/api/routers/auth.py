@@ -556,13 +556,41 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(body.password, user.hashed_password):
+        # Track failed login
+        posthog_service.capture(
+            distinct_id=email,
+            event="auth_login_failed",
+            properties={
+                "email": email,
+                "ip_address": request.client.host if request.client else "",
+                "reason": "invalid_credentials" if user else "user_not_found"
+            }
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     status_value = (user.status or "").upper()
     if status_value in ("LOCKED", "SUSPENDED"):
+        posthog_service.capture(
+            distinct_id=str(user.id),
+            event="auth_login_failed",
+            properties={
+                "email": email,
+                "ip_address": request.client.host if request.client else "",
+                "reason": f"account_{status_value.lower()}"
+            }
+        )
         raise HTTPException(status_code=401, detail="Account is locked or suspended")
 
     if status_value == "INACTIVE" or not user.is_active:
+        posthog_service.capture(
+            distinct_id=str(user.id),
+            event="auth_login_failed",
+            properties={
+                "email": email,
+                "ip_address": request.client.host if request.client else "",
+                "reason": "account_inactive"
+            }
+        )
         raise HTTPException(status_code=401, detail="Account is inactive")
 
     # Reset failed attempts and log login time
@@ -585,6 +613,17 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     )
     db.add(session)
     await db.commit()
+
+    # Track successful login
+    posthog_service.capture(
+        distinct_id=str(user.id),
+        event="auth_login_success",
+        properties={
+            "email": email,
+            "ip_address": request.client.host if request.client else "",
+            "user_agent": request.headers.get("user-agent", "")[:512]
+        }
+    )
 
     return {
         "access_token": access_token,

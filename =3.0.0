@@ -1,0 +1,19 @@
+Collecting posthog
+  Downloading posthog-7.16.2-py3-none-any.whl.metadata (4.7 kB)
+Requirement already satisfied: requests<3.0,>=2.7 in C:\Users\antho\AppData\Local\Programs\Python\Python311\Lib\site-packages (from posthog) (2.33.1)
+Collecting backoff>=1.10.0 (from posthog)
+  Downloading backoff-2.2.1-py3-none-any.whl.metadata (14 kB)
+Requirement already satisfied: distro>=1.5.0 in C:\Users\antho\AppData\Local\Programs\Python\Python311\Lib\site-packages (from posthog) (1.9.0)
+Requirement already satisfied: typing-extensions>=4.2.0 in C:\Users\antho\AppData\Local\Programs\Python\Python311\Lib\site-packages (from posthog) (4.15.0)
+Requirement already satisfied: charset_normalizer<4,>=2 in C:\Users\antho\AppData\Local\Programs\Python\Python311\Lib\site-packages (from requests<3.0,>=2.7->posthog) (3.4.4)
+Requirement already satisfied: idna<4,>=2.5 in C:\Users\antho\AppData\Local\Programs\Python\Python311\Lib\site-packages (from requests<3.0,>=2.7->posthog) (3.11)
+Requirement already satisfied: urllib3<3,>=1.26 in C:\Users\antho\AppData\Local\Programs\Python\Python311\Lib\site-packages (from requests<3.0,>=2.7->posthog) (2.6.3)
+Requirement already satisfied: certifi>=2023.5.7 in C:\Users\antho\AppData\Local\Programs\Python\Python311\Lib\site-packages (from requests<3.0,>=2.7->posthog) (2026.2.25)
+Downloading posthog-7.16.2-py3-none-any.whl (264 kB)
+Downloading backoff-2.2.1-py3-none-any.whl (15 kB)
+Installing collected packages: backoff, posthog
+
+Successfully installed backoff-2.2.1 posthog-7.16.2
+
+[notice] A new release of pip is available: 26.0.1 -> 26.1.1
+[notice] To update, run: python.exe -m pip install --upgrade pip

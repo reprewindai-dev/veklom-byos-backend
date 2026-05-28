@@ -65,3 +65,22 @@ class Invoice(Base):
     description = Column(String(512), default="")
     pdf_url = Column(String(512), default="")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+class Payment(Base):
+    """Server-side payment tracking for on-chain transactions."""
+    __tablename__ = "payments"
+
+    order_id = Column(String(64), primary_key=True, nullable=False)
+    user_hash = Column(String(64), nullable=False, index=True)  # SHA-256 hash for distinctId
+    user_id = Column(String(36), nullable=False, index=True)
+    workspace_id = Column(String(36), default="", index=True)
+    expected_amount = Column(Float, nullable=False)  # in token units
+    token_contract = Column(String(64), nullable=False)
+    chain_id = Column(Integer, nullable=False)
+    status = Column(String(32), default="pending")  # pending|confirmed|failed|expired
+    tx_hash = Column(String(128), nullable=True)
+    confirmations = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

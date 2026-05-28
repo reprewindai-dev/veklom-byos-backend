@@ -484,6 +484,7 @@ from backend.apps.api.routers import (
     # langchain_ops intentionally not imported - kept off the surface until real
     marketplace,
     monitoring,
+    payments,
     pipelines,
     providers,
     repo_risk_gate,

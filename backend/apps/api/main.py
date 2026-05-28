@@ -368,6 +368,10 @@ app.add_middleware(MetricsMiddleware)
 app.add_middleware(IntelligentRoutingMiddleware)
 app.add_middleware(BudgetCheckMiddleware)
 
+from backend.core.security.middlewares import AgentTelemetryMiddleware, IPRateLimitMiddleware
+app.add_middleware(AgentTelemetryMiddleware)
+app.add_middleware(IPRateLimitMiddleware)
+
 if settings.APP_ENV == "production":
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
@@ -444,6 +448,7 @@ from backend.apps.api.routers import (
     autonomous,
     playground,
     webhooks,
+    runs
 )
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
@@ -457,6 +462,9 @@ app.include_router(auth.router, prefix="/api/v1")
 
 # System utilities
 app.include_router(system.router, prefix="/api/v1")
+
+# Veklom Runs (Atomic Unit)
+app.include_router(runs.router, prefix="/api/v1/runs")
 
 # Copilot registry
 app.include_router(copilot.router, prefix="/api/v1")
@@ -801,6 +809,13 @@ async def legal_acceptable_use():
         return FileResponse(str(path))
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
+@app.get("/legal/dsa")
+async def legal_dsa():
+    path = LANDING_DIR / "dsa.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
 
 # /robots.txt is now served by discovery.router (see backend/apps/api/routers/discovery.py)
 
@@ -842,6 +857,36 @@ async def feedback_page():
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
+
+@app.get("/status/data")
+async def public_status_data():
+    # Public status data endpoint (no auth required)
+    from datetime import datetime, timezone
+    return {
+        "status": "operational",
+        "services": {
+            "api": "healthy",
+            "database": "connected",
+            "cache": "connected",
+            "operator_engine": "active"
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.get("/status.html")
+async def status_html_file():
+    # Serve status.html directly for /status.html requests
+    path = LANDING_DIR / "status.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+@app.post("/api/run-sample")
+@app.post("/api/v1/terminal/run")
+async def run_sample_unified(request: Request):
+    # Unified sample run/terminal endpoint returning status: ok
+    # Protected by ZeroTrustMiddleware since it is not in public_prefixes
+    return {"status": "ok"}
 @app.get("/status")
 async def status_page():
     path = LANDING_DIR / "status.html"

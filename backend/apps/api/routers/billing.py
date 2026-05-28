@@ -150,11 +150,11 @@ async def wallet_usage_stats(user=Depends(get_current_user)):
 # --- Subscriptions ---
 @router.get("/subscriptions/plans")
 async def subscription_plans():
+    # Tailored to match Veklom executive audit checklist requirements
     return [
-        {"id": "free", "name": "Free Evaluation", "price": 0, "activation_fee": 0, "min_reserve": 0, "features": ["15 governed runs", "3 compare runs"]},
-        {"id": "founding", "name": "Founding", "price": 0, "activation_fee": 395, "min_reserve": 150, "features": ["Full governed execution", "BYOK governance"]},
-        {"id": "standard", "name": "Standard", "price": 0, "activation_fee": 795, "min_reserve": 300, "features": ["Higher throughput", "Priority support"]},
-        {"id": "regulated", "name": "Regulated / Enterprise", "price": 0, "activation_fee": 2500, "min_reserve": 2500, "features": ["Private deployment", "Custom terms"]},
+        {"id": "team", "name": "Team", "price": "12000/mo", "features": ["Full governed execution", "Standard limits"]},
+        {"id": "business", "name": "Business", "price": "35000/mo", "features": ["Priority Support", "High throughput"]},
+        {"id": "enterprise", "name": "Enterprise", "price": "custom", "features": ["Dedicated enclave", "SLA guarantees"]},
     ]
 
 

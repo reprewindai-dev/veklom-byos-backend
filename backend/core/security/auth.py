@@ -33,17 +33,63 @@ def create_access_token(
     data: dict,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
+    import uuid
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode.update({"exp": expire})
+    to_encode.update({
+        "exp": expire,
+        "jti": str(uuid.uuid4()),
+        "aud": getattr(settings, "JWT_EXPECTED_AUDIENCE", "veklom-api")
+    })
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
+import logging
+
 def verify_token(token: str) -> dict:
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        # Decode without verifying aud initially to allow soft enforcement
+        payload = jwt.decode(
+            token, 
+            settings.JWT_SECRET_KEY, 
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_aud": False}
+        )
+        
+        # Audience Enforcement
+        aud = payload.get("aud")
+        expected_aud = getattr(settings, "JWT_EXPECTED_AUDIENCE", "veklom-api")
+        enforcement_mode = getattr(settings, "JWT_AUD_ENFORCEMENT", "warn")
+        
+        if aud != expected_aud:
+            msg = f"Invalid or missing audience in token: expected {expected_aud}, got {aud}"
+            if enforcement_mode == "strict":
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token audience")
+            else:
+                logging.warning(f"[JWT_AUD_WARN] {msg}")
+                
+        # JTI Replay Cache (Redis)
+        jti = payload.get("jti")
+        if jti:
+            import redis
+            try:
+                # Synchronous redis check; fast enough for auth
+                r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=2)
+                if r.exists(f"jti_cache:{jti}"):
+                    logging.critical(f"[JWT_REPLAY_DETECTED] Token replay attempted for JTI {jti}")
+                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token replay detected")
+                
+                exp = payload.get("exp")
+                if exp:
+                    ttl = int(exp - datetime.now(timezone.utc).timestamp())
+                    if ttl > 0:
+                        r.setex(f"jti_cache:{jti}", ttl, "1")
+            except redis.RedisError as e:
+                logging.error(f"[REDIS_ERR] Failed to connect to Redis for JTI check: {e}")
+                # Fail-open if Redis is down, or configure to fail-closed
+        
         return payload
     except JWTError as exc:
         raise HTTPException(

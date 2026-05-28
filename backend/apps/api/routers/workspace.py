@@ -19,6 +19,17 @@ from backend.db.models.billing import BudgetRule
 
 router = APIRouter(prefix="/workspace", tags=["Workspace"])
 
+@router.get("/status/data")
+async def workspace_status_data(user=Depends(get_current_user)):
+    # Workspace status / data endpoint (requires authentication)
+    return {
+        "status": "active",
+        "workspace_id": user.workspace_id,
+        "role": user.role,
+        "is_active": user.is_active,
+        "health": "nominal"
+    }
+
 
 # --- Search ---
 @router.get("/search")

@@ -17,6 +17,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
+@router.post("/test")
+async def test_webhook_ack(request: Request):
+    # Webhook delivery test endpoint returning 200 ACK
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"ack": True, "received_payload": payload}
+
 
 @router.post("/resend")
 async def resend_webhook(request: Request):

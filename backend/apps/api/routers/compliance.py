@@ -675,3 +675,30 @@ async def explain_cost_prediction(prediction_id: str, user=Depends(get_current_u
         "reasoning": "Based on 847 historical samples for qwen2.5:3b inference...",
         "confidence": 0.91
     }
+
+
+# --- Legal & DSA ---
+@router.post("/complaints", status_code=201)
+async def submit_complaint(body: dict):
+    """
+    DSA Article 16 / 20: Notice and Action mechanism & Internal Complaint Handling.
+    Accepts reports of illegal content and logs them for review.
+    """
+    import uuid
+    import logging
+    
+    complaint_id = f"dsa-{uuid.uuid4().hex[:8]}"
+    contact_email = body.get("contact_email", "anonymous")
+    complaint_type = body.get("type", "unknown")
+    description = body.get("description", "")
+    
+    # In a real system, this would insert into a database and trigger an email via Resend/SendGrid
+    # or create a ticket in Zendesk/Jira for the legal/compliance team.
+    logging.info(f"[DSA_COMPLIANCE] New complaint received: ID={complaint_id}, Type={complaint_type}, User={contact_email}, Desc={description}")
+    
+    return {
+        "status": "acknowledged",
+        "message": "Complaint received and queued for legal review.",
+        "tracking_id": complaint_id,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }

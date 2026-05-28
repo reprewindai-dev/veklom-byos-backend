@@ -25,6 +25,8 @@ from backend.db.models.internal_operators import (
     InternalOperatorProviderUsage,
     InternalOperatorApproval
 )
+from backend.db.models.telemetry import AgentCall
+from backend.db.models.run import VeklomRun
 
 __all__ = [
     # existing
@@ -33,6 +35,10 @@ __all__ = [
     "ExecLog",
     "WalletTransaction", "Subscription", "BudgetRule", "Invoice",
     "AuditLog", "SecurityEvent", "ComplianceCheck", "KillSwitchState",
+    "MarketplaceAsset",
+    "AssetReview",
+    "AgentCall",
+    "VeklomRun",
     "MarketplaceListing", "Pipeline", "PipelineRun", "Deployment", "Vendor",
     # UACP V3 institutional ownership
     "Account", "AgentUser", "Agent", "AgentSkill",

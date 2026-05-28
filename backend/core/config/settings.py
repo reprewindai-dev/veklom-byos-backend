@@ -107,16 +107,19 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     MAX_FAILED_LOGIN_ATTEMPTS: int = 10
     ACCOUNT_LOCKOUT_MINUTES: int = 30
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    JWT_AUD_ENFORCEMENT: str = "warn"
+    JWT_EXPECTED_AUDIENCE: str = "veklom-api"
 
     # Content Safety
     CONTENT_FILTERING_ENABLED: bool = True
     AGE_VERIFICATION_REQUIRED: bool = False
 
-    # GitHub OAuth
+    # GitHub Auth Settings
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
+    GITHUB_REDIRECT_URI: str = ""
 
     # Email (Resend)
     RESEND_API_KEY: str = ""
@@ -179,6 +182,21 @@ class Settings(BaseSettings):
     # x402 paid gateway secret
     UPSTREAM_GATEWAY_SECRET: str = ""
     RAPIDAPI_PROXY_SECRET: str = ""
+
+    # UACP V2 Compiler (uacpgemini)
+    UACPGEMINI_MODE: str = "mock"  # 'http' or 'mock'
+    UACPGEMINI_BASE_URL: str = "http://uacpgemini:8000"
+    UACPGEMINI_TIMEOUT_MS: int = 10000
+
+    # UACP V3 Contextual Brain (uacpv3)
+    UACPV3_MODE: str = "mock"  # 'http' or 'mock'
+    UACPV3_BASE_URL: str = "http://uacpv3:8001"
+    UACPV3_TIMEOUT_MS: int = 15000
+
+    # UACP V4 Decision Kernel (govern)
+    UACPV4_MODE: str = "mock"  # 'http' or 'mock'
+    UACPV4_BASE_URL: str = "http://uacpv4:8002"
+    UACPV4_TIMEOUT_MS: int = 15000
 
     # Keeping old JWT variables mapped to new ones for backward compatibility during refactor
     @property

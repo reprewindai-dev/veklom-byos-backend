@@ -725,13 +725,21 @@ async def github_login(request: Request, token: Optional[str] = None):
             
     state = _build_github_state(user_id)
     from urllib.parse import urlencode
+    
+    redirect_uri = settings.GITHUB_REDIRECT_URI
+    if not redirect_uri:
+        redirect_uri = f"{_external_origin(request)}/api/v1/auth/github/callback"
+        
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
-        "redirect_uri": f"{_external_origin(request)}/api/v1/auth/github/callback",
+        "redirect_uri": redirect_uri,
         "scope": "user:email read:user",
         "state": state,
     }
     redirect_url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
+    
+    if request.headers.get("accept") == "application/json":
+        return {"auth_url": redirect_url}
     return RedirectResponse(url=redirect_url)
 
 

@@ -26,6 +26,11 @@ async def health_check_v1():
     """Alias for /health — keeps API consistency for clients that call /api/v1/health."""
     return await health_check()
 
+@router.get("/api/health")
+async def health_check_api():
+    """Alias for /health — explicitly requested by observability script."""
+    return await health_check()
+
 @router.get("/health/detailed")
 async def detailed_health():
     return {

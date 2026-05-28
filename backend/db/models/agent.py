@@ -68,6 +68,7 @@ class Agent(Base):
     agent_number: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     squad_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     capabilities: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    pgl_genome_hash: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     account: Mapped[Account] = relationship(back_populates="agents")
     genome_versions: Mapped[list["GenomeVersion"]] = relationship(  # noqa: F821

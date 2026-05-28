@@ -1,0 +1,138 @@
+name: secure-release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}
+  TAG: ${{ github.sha }} # or use a semver/tag if you prefer
+
+permissions:
+  contents: read
+  id-token: write         # required for keyless cosign
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.TAG }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push (multi-arch)
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.TAG }}
+          provenance: true
+          outputs: type=registry
+          # expose digest via output metadata
+      - name: Show pushed digest
+        run: echo "DIGEST=${{ steps.build.outputs.digest }}"
+
+  sbom-and-scan:
+    runs-on: ubuntu-latest
+    needs: [ build-and-push ]
+    env:
+      IMG: ${{ needs.build-and-push.outputs.image_ref }}
+    steps:
+      - name: Pull image (by tag to ensure availability)
+        run: docker pull "$IMG"
+
+      - name: Generate SBOM (CycloneDX JSON via Syft)
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" -w /work \
+            anchore/syft:latest "$IMG" -o cyclonedx-json > sbom.json
+          test -s sbom.json || (echo "SBOM missing/empty" && exit 1)
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.json
+          if-no-files-found: error
+
+      - name: Trivy scan (fail on HIGH/CRITICAL)
+        run: |
+          docker run --rm \
+            -e TRIVY_DB_REPOSITORY=ghcr.io/aquasecurity/trivy-db:2 \
+            aquasec/trivy:latest image \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --timeout 10m \
+            "$IMG"
+
+  sign-and-verify:
+    runs-on: ubuntu-latest
+    needs: [ build-and-push, sbom-and-scan ]
+    env:
+      COSIGN_EXPERIMENTAL: "1"
+      IMAGE_DIGEST: ${{ needs.build-and-push.outputs.digest }}
+      IMAGE_REF: ghcr.io/${{ github.repository }}@${{ needs.build-and-push.outputs.digest }}
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # If you prefer key-based signing, set COSIGN_PRIVATE_KEY and COSIGN_PASSWORD
+      # in repo secrets and use: cosign sign --key env://COSIGN_PRIVATE_KEY ...
+      - name: Keyless sign (OIDC)
+        run: |
+          cosign sign "$IMAGE_REF"
+
+      - name: Verify signature (gate)
+        run: |
+          cosign verify "$IMAGE_REF" \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+          --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/secure-release.yml@refs/heads/main"
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: [ sign-and-verify ]
+    steps:
+      - name: Docker login (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull by immutable digest
+        run: |
+          DIGEST='${{ needs.sign-and-verify.outputs.not_used || needs.build-and-push.outputs.digest }}'
+          docker pull ghcr.io/${{ github.repository }}@"$DIGEST"
+
+      - name: Run container & health probe
+        run: |
+          DIGEST='${{ needs.build-and-push.outputs.digest }}'
+          docker run -d --rm -p 8088:8088 --name app \
+            ghcr.io/${{ github.repository }}@"$DIGEST"
+          # give it a moment to boot
+          for i in {1..20}; do
+            if curl -fsS http://localhost:8088/api/health >/dev/null 2>&1; then
+              echo "health OK"; exit 0
+            fi
+            sleep 1
+          done
+          echo "health check failed"; docker logs app || true; exit 1

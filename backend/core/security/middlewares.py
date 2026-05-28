@@ -16,15 +16,14 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
         
         # Public bypass routes
         public_prefixes = (
-            "/status", "/health", "/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/register",
-            "/api/v1/auth/refresh", "/api/v1/auth/github", "/api/v1/auth/providers",
-            "/static", "/assets", "/workspace",
-            "/command-center", "/operator-center", "/gpc", "/terminal", "/marketplace",
-            "/docs", "/redoc",
+            "/status", "/health", "/api/health", "/api/v1/auth/login", "/api/v1/auth/register",
+            "/api/v1/auth/refresh", "/api/v1/auth/github", "/static", "/assets", "/workspace",
+            "/api/v1/complaints",
+            "/command-center", "/gpc", "/terminal", "/marketplace", "/docs",
             "/uptime", "/legal", "/irongrid", "/api/v1/webhooks", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
             "/apple-touch-icon.png", "/og-image.png", "/twitter-card.png",
-            "/logo.png", "/icon.png", "/api/v1/ai/models", "/api/v1/pricing",
+            "/logo.png", "/icon.png", "/api/v1/ai/models", "/api/v1/pricing", "/api/v1/subscriptions/plans", "/status/data",
             "/api/v1/platform/pulse", "/api/v1/sdk/", "/api/v1/agent-use-cases",
             "/sdk/examples", "/mcp/", "/openapi.json", "/api/v1/openapi.json",
             "/v1/openapi.json", "/api/v1/sys/health", "/api/v1/sys/gpu",
@@ -132,3 +131,81 @@ class BudgetCheckMiddleware(BaseHTTPMiddleware):
                 
         return await call_next(request)
 
+import asyncio
+from backend.db.models.telemetry import AgentCall
+
+class AgentTelemetryMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if not (path.startswith("/api/v1/ai") or path.startswith("/api/v1/playground") or path.startswith("/api/v1/exec")):
+            return await call_next(request)
+            
+        start_time = time.time()
+        response = await call_next(request)
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        tenant_id = getattr(request.state, "workspace_id", "unknown")
+        if not tenant_id or tenant_id == "unknown":
+            tenant_id = getattr(request.state, "user_id", "anonymous")
+            
+        status_code = response.status_code
+        policy_result = getattr(request.state, "policy_result", "allow" if status_code < 400 else "error")
+        policy_error_code = getattr(request.state, "policy_error_code", None)
+        model_key = getattr(request.state, "model_key", "unknown")
+        context_tokens = getattr(request.state, "context_tokens", 0)
+        input_tokens = getattr(request.state, "input_tokens", 0)
+        output_tokens = getattr(request.state, "output_tokens", 0)
+        
+        async def write_telemetry():
+            try:
+                async with async_session() as session:
+                    call = AgentCall(
+                        tenant_id=tenant_id,
+                        route=path,
+                        model_key=model_key,
+                        latency_ms=duration_ms,
+                        http_status=status_code,
+                        policy_result=policy_result,
+                        policy_error_code=policy_error_code,
+                        context_tokens=context_tokens,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens
+                    )
+                    session.add(call)
+                    await session.commit()
+            except Exception as e:
+                print(f"[Telemetry] failed to write: {e}")
+                
+        asyncio.create_task(write_telemetry())
+        return response
+
+
+# Simple in-memory rate limiting for IP auth failures
+ip_failures = {}
+
+class IPRateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if not path.startswith("/api/v1/auth/login"):
+            return await call_next(request)
+            
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        
+        if client_ip in ip_failures:
+            # 15 minute window
+            ip_failures[client_ip] = [ts for ts in ip_failures[client_ip] if now - ts < 900]
+            if len(ip_failures[client_ip]) >= 5:
+                import logging
+                logging.warning(json.dumps({"event": "auth.ip.banned", "ip": client_ip, "reason": "Too many failed attempts"}))
+                return JSONResponse(status_code=429, content={"detail": "Too many failed attempts. IP temporarily locked."})
+                
+        response = await call_next(request)
+        if response.status_code == 401:
+            import logging
+            logging.warning(json.dumps({"event": "auth.login.failed", "ip": client_ip}))
+            if client_ip not in ip_failures:
+                ip_failures[client_ip] = []
+            ip_failures[client_ip].append(now)
+            
+        return response

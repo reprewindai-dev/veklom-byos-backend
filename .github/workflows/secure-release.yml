@@ -66,7 +66,7 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD:/work" -w /work \
-            anchore/syft:latest "$IMG" -o cyclonedx-json > sbom.json
+            ghcr.io/anchore/syft:latest "$IMG" -o cyclonedx-json > sbom.json
           test -s sbom.json || (echo "SBOM missing/empty" && exit 1)
 
       - name: Upload SBOM artifact
@@ -155,7 +155,7 @@ jobs:
             ghcr.io/${{ github.repository }}@"$DIGEST"
           # give it a moment to boot
           for i in {1..20}; do
-            if curl -fsS http://localhost:8088/api/health >/dev/null 2>&1; then
+            if curl -fsS http://localhost:8088/health >/dev/null 2>&1; then
               echo "health OK"; exit 0
             fi
             sleep 1

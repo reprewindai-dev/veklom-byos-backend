@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse
 
 import httpx
 
@@ -6,6 +7,8 @@ import httpx
 BASE_URL = os.getenv("SMOKE_BASE_URL", "https://api.veklom.com").rstrip("/")
 TIMEOUT = float(os.getenv("SMOKE_TIMEOUT_SECONDS", "25"))
 SMOKE_SECRET = os.getenv("SMOKE_TEST_SECRET", "").strip()
+DEFAULT_API_HOST = (urlparse(BASE_URL).hostname or "").strip()
+API_HOST_HEADER = os.getenv("SMOKE_API_HOST", DEFAULT_API_HOST).strip()
 
 
 def main() -> int:
@@ -16,14 +19,17 @@ def main() -> int:
     print("=================================================================")
     print("VEKLOM X402 PAYMENT SMOKE")
     print(f"BASE_URL={BASE_URL}")
+    print(f"API_HOST_HEADER={API_HOST_HEADER or '<default-from-url>'}")
     print("=================================================================")
 
     unpaid_saw_402 = False
 
     with httpx.Client(timeout=TIMEOUT, follow_redirects=False) as client:
+        base_headers = {"Host": API_HOST_HEADER} if API_HOST_HEADER else {}
         for idx in range(1, 8):
             response = client.post(
                 f"{BASE_URL}/api/v1/ai/inference",
+                headers=base_headers,
                 json={"messages": [{"role": "user", "content": f"unpaid smoke {idx}"}]},
             )
             if response.status_code == 402:
@@ -44,10 +50,14 @@ def main() -> int:
             failed += 1
             failures.append("SMOKE_TEST_SECRET env variable is required for paid/authenticated x402 check")
             print("[FAIL] missing SMOKE_TEST_SECRET for authenticated check")
+            print("Set SMOKE_TEST_ENABLED=true on API and SMOKE_TEST_SECRET in CI/Coolify (not in repo).")
         else:
+            token_headers = {"x-smoke-test-secret": SMOKE_SECRET}
+            if API_HOST_HEADER:
+                token_headers["Host"] = API_HOST_HEADER
             token_resp = client.post(
                 f"{BASE_URL}/api/v1/smoke/eval-token",
-                headers={"x-smoke-test-secret": SMOKE_SECRET},
+                headers=token_headers,
                 json={"fingerprint": "ci-x402-smoke", "user_role": "admin"},
             )
             if token_resp.status_code != 200:
@@ -63,7 +73,7 @@ def main() -> int:
                 else:
                     paid_resp = client.post(
                         f"{BASE_URL}/api/v1/ai/inference",
-                        headers={"Authorization": f"Bearer {token}"},
+                        headers={**base_headers, "Authorization": f"Bearer {token}"},
                         json={"messages": [{"role": "user", "content": "paid smoke"}]},
                     )
                     if paid_resp.status_code == 200:

@@ -380,26 +380,35 @@ def _trusted_hosts() -> list[str]:
     else:
         host_list = [str(h).strip() for h in (raw_hosts or []) if str(h).strip()]
 
-    if not host_list:
-        host_list = ["*"]
-    if "*" in host_list:
+    required_hosts = {
+        "veklom.com",
+        "www.veklom.com",
+        "api.veklom.com",
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",
+        "testserver",
+    }
+
+    allow_wildcard = "*" in host_list
+    if allow_wildcard and settings.DEBUG:
         return ["*"]
 
-    derived_hosts = set(host_list)
-    derived_hosts.update({"veklom.com", "www.veklom.com", "api.veklom.com", "localhost", "127.0.0.1"})
+    derived_hosts = set(required_hosts)
+    for host in host_list:
+        if host and host != "*":
+            derived_hosts.add(host.lower())
     for url in (settings.FRONTEND_URL, settings.API_URL, settings.API_BASE_URL):
         try:
             parsed = urlparse(url)
             if parsed.hostname:
-                derived_hosts.add(parsed.hostname)
+                derived_hosts.add(parsed.hostname.lower())
         except Exception:
             continue
     return sorted(derived_hosts)
 
 
-# TrustedHostMiddleware is intentionally disabled here to avoid production lockouts
-# from host-header drift between Cloudflare, Traefik, and direct service probes.
-# Edge proxy host ACLs should enforce host restrictions upstream.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts())
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(X402PaymentMiddleware)

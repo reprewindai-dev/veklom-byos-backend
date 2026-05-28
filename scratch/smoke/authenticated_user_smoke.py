@@ -1,5 +1,6 @@
 import os
 from typing import Iterable, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -7,6 +8,8 @@ import httpx
 BASE_URL = os.getenv("SMOKE_BASE_URL", "https://api.veklom.com").rstrip("/")
 TIMEOUT = float(os.getenv("SMOKE_TIMEOUT_SECONDS", "25"))
 SMOKE_SECRET = os.getenv("SMOKE_TEST_SECRET", "").strip()
+DEFAULT_API_HOST = (urlparse(BASE_URL).hostname or "").strip()
+API_HOST_HEADER = os.getenv("SMOKE_API_HOST", DEFAULT_API_HOST).strip()
 
 
 class SmokeRunner:
@@ -26,8 +29,13 @@ class SmokeRunner:
         json_required: bool = True,
     ) -> None:
         url = f"{BASE_URL}{path}"
+        request_headers = {}
+        if API_HOST_HEADER:
+            request_headers["Host"] = API_HOST_HEADER
+        if headers:
+            request_headers.update(headers)
         try:
-            response = client.request(method, url, headers=headers, json=body)
+            response = client.request(method, url, headers=request_headers, json=body)
             ok = response.status_code in set(expected)
             json_ok = True
             if json_required:
@@ -64,6 +72,7 @@ def main() -> int:
     print("=================================================================")
     print("VEKLOM AUTHENTICATED USER SMOKE")
     print(f"BASE_URL={BASE_URL}")
+    print(f"API_HOST_HEADER={API_HOST_HEADER or '<default-from-url>'}")
     print("=================================================================")
 
     runner = SmokeRunner()
@@ -71,12 +80,16 @@ def main() -> int:
         if not SMOKE_SECRET:
             runner.failed += 1
             runner.failures.append("SMOKE_TEST_SECRET env variable is required for /api/v1/smoke/eval-token")
-            print("[FAIL] Missing SMOKE_TEST_SECRET environment variable")
+            print("[FAIL] Missing SMOKE_TEST_SECRET environment variable.")
+            print("Set SMOKE_TEST_ENABLED=true on API and SMOKE_TEST_SECRET in CI/Coolify (not in repo).")
             return runner.finish()
 
+        token_headers = {"x-smoke-test-secret": SMOKE_SECRET}
+        if API_HOST_HEADER:
+            token_headers["Host"] = API_HOST_HEADER
         token_resp = client.post(
             f"{BASE_URL}/api/v1/smoke/eval-token",
-            headers={"x-smoke-test-secret": SMOKE_SECRET},
+            headers=token_headers,
             json={"fingerprint": "ci-auth-smoke", "user_role": "admin"},
         )
         if token_resp.status_code != 200:
@@ -118,4 +131,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

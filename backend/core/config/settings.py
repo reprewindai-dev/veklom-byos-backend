@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "json"
     LOG_FILE_PATH: str = "/app/logs/veklom.log"
     CORS_ORIGINS: Union[str, List[str]] = "[]"
-    ALLOWED_HOSTS: Union[str, List[str]] = "*"
+    ALLOWED_HOSTS: Union[str, List[str]] = "veklom.com,www.veklom.com,api.veklom.com,localhost,127.0.0.1,0.0.0.0,testserver"
     MAX_WORKERS: int = 4
     FRONTEND_URL: str = "http://localhost:3000"
     API_URL: str = "http://localhost:8088"

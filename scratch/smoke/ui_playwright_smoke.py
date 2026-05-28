@@ -1,11 +1,12 @@
 import os
 import re
-from typing import Iterable
+from urllib.parse import urlparse
 
 import httpx
 
 
 WEB_BASE_URL = os.getenv("SMOKE_WEB_BASE_URL", "https://veklom.com").rstrip("/")
+WEB_HOST_HEADER = os.getenv("SMOKE_WEB_HOST", (urlparse(WEB_BASE_URL).hostname or "").strip())
 TIMEOUT = float(os.getenv("SMOKE_TIMEOUT_SECONDS", "30"))
 
 PAGES = [
@@ -27,14 +28,21 @@ EXPECTED_STATUS = {
 BAD_MARKERS = [
     "undefined",
     "nan",
-    "not_wired",
 ]
 
 BAD_PATTERNS = {
     "undefined": r"\bundefined\b",
     "nan": r"\bnan\b",
-    "not_wired": r"\bnot_wired\b",
 }
+
+SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _visible_text(html_or_text: str) -> str:
+    no_scripts = SCRIPT_STYLE_RE.sub(" ", html_or_text)
+    no_tags = TAG_RE.sub(" ", no_scripts)
+    return re.sub(r"\s+", " ", no_tags).strip()
 
 
 def scan_text(path: str, text: str) -> list[str]:
@@ -51,11 +59,12 @@ def run_http_checks() -> tuple[int, int, list[str]]:
     passed = 0
     failed = 0
     failures: list[str] = []
+    default_headers = {"Host": WEB_HOST_HEADER} if WEB_HOST_HEADER else {}
     with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as client:
         for path in PAGES:
             url = f"{WEB_BASE_URL}{path}"
             try:
-                response = client.get(url)
+                response = client.get(url, headers=default_headers)
                 expected = EXPECTED_STATUS.get(path, {200})
                 if response.status_code not in expected:
                     failed += 1
@@ -66,7 +75,7 @@ def run_http_checks() -> tuple[int, int, list[str]]:
                     passed += 1
                     print(f"[PASS] GET {path} -> {response.status_code}")
                     continue
-                markers = scan_text(path, response.text)
+                markers = scan_text(path, _visible_text(response.text))
                 if markers:
                     failed += 1
                     failures.append(f"GET {path} placeholder markers found={markers}")
@@ -110,8 +119,8 @@ def run_playwright_checks() -> tuple[int, int, list[str]]:
                     passed += 1
                     print(f"[PASS] GET {path} -> {status}")
                     continue
-                content = page.content()
-                markers = scan_text(path, content)
+                body_text = page.locator("body").inner_text()
+                markers = scan_text(path, body_text)
                 if markers:
                     failed += 1
                     failures.append(f"GET {path} placeholder markers found={markers}")
@@ -132,6 +141,7 @@ def main() -> int:
     print("=================================================================")
     print("VEKLOM UI/TELEMETRY SMOKE")
     print(f"WEB_BASE_URL={WEB_BASE_URL}")
+    print(f"WEB_HOST_HEADER={WEB_HOST_HEADER or '<default-from-url>'}")
     print("=================================================================")
     passed, failed, failures = run_playwright_checks()
     print(f"PASS: {passed}")

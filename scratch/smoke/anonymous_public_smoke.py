@@ -1,12 +1,15 @@
 import json
 import os
 from typing import Iterable, Optional
+from urllib.parse import urlparse
 
 import httpx
 
 
 BASE_URL = os.getenv("SMOKE_BASE_URL", "https://api.veklom.com").rstrip("/")
 TIMEOUT = float(os.getenv("SMOKE_TIMEOUT_SECONDS", "20"))
+DEFAULT_API_HOST = (urlparse(BASE_URL).hostname or "").strip()
+API_HOST_HEADER = os.getenv("SMOKE_API_HOST", DEFAULT_API_HOST).strip()
 
 
 class SmokeRunner:
@@ -27,8 +30,13 @@ class SmokeRunner:
         body: Optional[dict] = None,
     ) -> None:
         url = f"{BASE_URL}{path}"
+        request_headers = {}
+        if API_HOST_HEADER:
+            request_headers["Host"] = API_HOST_HEADER
+        if headers:
+            request_headers.update(headers)
         try:
-            response = client.request(method, url, headers=headers, json=body)
+            response = client.request(method, url, headers=request_headers, json=body)
             ok = response.status_code in set(expected)
             json_ok = True
             if json_required:
@@ -65,6 +73,7 @@ def main() -> int:
     print("=================================================================")
     print("VEKLOM ANONYMOUS/PUBLIC SMOKE")
     print(f"BASE_URL={BASE_URL}")
+    print(f"API_HOST_HEADER={API_HOST_HEADER or '<default-from-url>'}")
     print("=================================================================")
 
     runner = SmokeRunner()
@@ -106,4 +115,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

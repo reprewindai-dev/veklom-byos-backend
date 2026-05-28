@@ -19,7 +19,7 @@ jobs:
             git fetch origin main
             git checkout main
             git pull --ff-only origin main
-            docker build -t n13gp1nhrcdp0hvazvbnlxru:9c5cc40971d3d5480b3e1ccc56ece9ec92d30501 .
+            docker build -t n13gp1nhrcdp0hvazvbnlxru:${{ github.sha }} .
             docker compose -f docker-compose.yaml up -d --force-recreate --no-deps n13gp1nhrcdp0hvazvbnlxru-083606963671
             docker rm -f n13gp1nhrcdp0hvazvbnlxru-213557155694 >/dev/null 2>&1 || true
             cat >/data/coolify/proxy/dynamic/veklom.yaml <<'YAML'

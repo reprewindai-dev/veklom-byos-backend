@@ -131,3 +131,17 @@ class ReconFinding(Base):
     ledger_sum = Column(Float, nullable=False)
     chain_sum = Column(Float, nullable=False)
     detected_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+class WebhookDeadLetter(Base):
+    """Dead-letter queue for failed webhook processing."""
+    __tablename__ = "webhook_dead_letter"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    idempotency_key = Column(String(128), nullable=True, index=True)
+    payload = Column(JSON, nullable=False)
+    error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, default=0)
+    status = Column(String(32), default="pending")  # pending, retrying, failed, resolved
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

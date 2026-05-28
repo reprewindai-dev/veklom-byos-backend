@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.services.redis_cache import redis_cache
-from backend.db.models.billing import Order, Ledger, WebhookReceipt
+from backend.db.models.billing import Order, Ledger, WebhookReceipt, WebhookDeadLetter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/webhook", tags=["Webhook"])

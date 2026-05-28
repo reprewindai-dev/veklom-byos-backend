@@ -80,6 +80,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_table('webhook_dead_letter')
     op.drop_table('recon_findings')
     op.drop_table('webhook_receipts')
     op.drop_table('ledger')

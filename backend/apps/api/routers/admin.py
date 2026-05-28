@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -85,6 +85,31 @@ async def get_admin_audit_logs(workspace_id: str = None, limit: int = 500, user=
         "details": { "target_user_id": "u-demo-1" },
         "created_at": datetime.now(timezone.utc).isoformat()
     }]
+
+
+@router.get("/admin/recon_findings")
+async def list_recon_findings(user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.billing import ReconFinding
+    result = await db.execute(select(ReconFinding).limit(100))
+    findings = result.scalars().all()
+    return [{"tx_hash": f.tx_hash, "ledger_sum": f.ledger_sum, "chain_sum": f.chain_sum, "detected_at": f.detected_at.isoformat() if f.detected_at else None} for f in findings]
+
+
+@router.get("/admin/webhook_dead_letter")
+async def list_webhook_dead_letter(user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.billing import WebhookDeadLetter
+    result = await db.execute(select(WebhookDeadLetter).limit(100))
+    dead_letters = result.scalars().all()
+    return [{
+        "id": dl.id,
+        "idempotency_key": dl.idempotency_key,
+        "payload": dl.payload,
+        "error_message": dl.error_message,
+        "retry_count": dl.retry_count,
+        "status": dl.status,
+        "created_at": dl.created_at.isoformat() if dl.created_at else None,
+        "updated_at": dl.updated_at.isoformat() if dl.updated_at else None
+    } for dl in dead_letters]
 
 
 # --- Internal / UACP ---

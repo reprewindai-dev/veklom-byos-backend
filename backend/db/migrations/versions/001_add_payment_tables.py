@@ -77,6 +77,19 @@ def upgrade() -> None:
         sa.Column('chain_sum', sa.Float, nullable=False),
         sa.Column('detected_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
     )
+    
+    # Create webhook_dead_letter table
+    op.create_table(
+        'webhook_dead_letter',
+        sa.Column('id', sa.String(36), primary_key=True, nullable=False),
+        sa.Column('idempotency_key', sa.String(128), nullable=True, index=True),
+        sa.Column('payload', sa.JSON(), nullable=False),
+        sa.Column('error_message', sa.Text(), nullable=True),
+        sa.Column('retry_count', sa.Integer(), server_default='0'),
+        sa.Column('status', sa.String(32), server_default='pending'),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
+    )
 
 
 def downgrade() -> None:

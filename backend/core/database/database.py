@@ -27,9 +27,6 @@ except Exception as e:
         db_url,
         echo=settings.DEBUG,
         future=True,
-        pool_size=20,
-        max_overflow=30,
-        pool_timeout=60,
     )
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

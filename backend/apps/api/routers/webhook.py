@@ -97,13 +97,13 @@ async def process_with_idempotency(
             )
     
     try:
-        # Reserve the idempotency key in database
-        receipt = WebhookReceipt(
-            idempotency_key=idempotency_key,
-            body_sha256=digest
-        )
-        db.add(receipt)
-        await db.flush()
+        # Reserve the idempotency key in database using savepoint
+        async with db.begin_nested():
+            receipt = WebhookReceipt(
+                idempotency_key=idempotency_key,
+                body_sha256=digest
+            )
+            db.add(receipt)
     except Exception:
         # Key already exists - check if body matches
         result = await db.execute(
@@ -215,6 +215,19 @@ async def payment_webhook(
                     note="tx_confirmed"
                 )
                 db.add(ledger_entry)
+                
+                # Emit PostHog event
+                try:
+                    from backend.core.services.posthog_client import posthog_service
+                    posthog_service.payment_confirmed(
+                        distinct_id=order.user_id,
+                        order_id=order.order_id,
+                        tx_hash=payload["tx_hash"],
+                        confirmations=payload.get("confirmations", 1),
+                        status="confirmed"
+                    )
+                except Exception as ph_err:
+                    print(f"[Webhook PostHog] error emitting event: {ph_err}")
     
     # Process with idempotency
     return await process_with_idempotency(db, x_idempotency_key, raw_body, handler)

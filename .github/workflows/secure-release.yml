@@ -57,6 +57,8 @@ jobs:
     env:
       IMG: ${{ needs.build-and-push.outputs.image_ref }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Pull image (by tag to ensure availability)
         run: docker pull "$IMG"
 

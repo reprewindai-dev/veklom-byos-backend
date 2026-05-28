@@ -1,0 +1,42 @@
+name: Playwright Smoke
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps
+        run: |
+          npm ci || npm i
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run smoke
+        env:
+          CI: 'true'
+          SMOKE_ONLY: '1'
+          BASE_URL: https://veklom.com
+          API_URL: https://api.veklom.com
+          TEST_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          FAILING_ENDPOINTS: ${{ secrets.FAILING_ENDPOINTS }} # e.g. "GET /api/v1/boom,POST /api/v1/miswired"
+        run: npx playwright test --project=chromium --grep @smoke --reporter=line
+      - name: Upload artifacts (traces, screenshots, videos)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report
+            test-results
+            **/trace.zip
+            **/*-failed.png
+            **/*.webm

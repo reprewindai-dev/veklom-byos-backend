@@ -15,3 +15,12 @@ CVE-2025-62727
 # Package: ecdsa
 # Reason: Transitive dependency from auth stack; no validated drop-in replacement in current release train.
 CVE-2024-23342
+
+# VEKLOM-SEC-424 | expires=2026-06-30 | ticket=VEKLOM-SEC-424
+# Scope: Runtime Debian 13.5 OS layer in ghcr.io/reprewindai-dev/veklom-byos-backend
+# Affected packages: curl, libcurl4t64, libncursesw6, libtinfo6, ncurses-base, ncurses-bin, libssh2-1t64
+# Reason: No patched Debian package versions are available in the current base-image channel at scan time.
+CVE-2026-5773
+CVE-2026-6276
+CVE-2025-69720
+CVE-2026-7598

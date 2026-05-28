@@ -19,8 +19,13 @@ jobs:
             git fetch origin main
             git checkout main
             git pull --ff-only origin main
-            docker build -t n13gp1nhrcdp0hvazvbnlxru:${{ github.sha }} .
-            sed -i "s#image: 'n13gp1nhrcdp0hvazvbnlxru:[^']*'#image: 'n13gp1nhrcdp0hvazvbnlxru:${{ github.sha }}'#" docker-compose.yaml
+            # Find and stop any container using port 8088
+            OLD_CONTAINER=$(docker ps -q -f publish=8088)
+            if [ -n "$OLD_CONTAINER" ]; then
+              docker stop $OLD_CONTAINER || true
+              docker rm $OLD_CONTAINER || true
+            fi
+            # Also try to stop by name if it exists
             docker stop n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
             docker rm n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
             docker build -t veklom-local:latest .

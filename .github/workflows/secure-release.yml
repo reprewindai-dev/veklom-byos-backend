@@ -124,7 +124,7 @@ jobs:
       # in repo secrets and use: cosign sign --key env://COSIGN_PRIVATE_KEY ...
       - name: Keyless sign (OIDC)
         run: |
-          cosign sign "$IMAGE_REF"
+          cosign sign --yes "$IMAGE_REF"
 
       - name: Verify signature (gate)
         run: |

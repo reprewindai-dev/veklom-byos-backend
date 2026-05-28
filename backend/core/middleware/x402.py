@@ -108,7 +108,7 @@ def _build_receipt(route_config: dict, provider: str = "ollama:qwen2.5:3b") -> d
     }
 
 
-def _build_402_response(path: str, route_config: dict) -> JSONResponse:
+def _build_402_response(path: str, route_config: dict, detail: Optional[str] = None) -> JSONResponse:
     request_id = f"req_{uuid.uuid4().hex[:16]}"
     payload = {
         "error": "payment_required",
@@ -128,6 +128,8 @@ def _build_402_response(path: str, route_config: dict) -> JSONResponse:
         },
         "request_id": request_id
     }
+    if detail:
+        payload["detail"] = detail
     headers = {
         "X-Payment-Required": "true",
         "X-Payment-Price-USDC": str(route_config["price_usdc"]),
@@ -176,11 +178,13 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     logger = logging.getLogger(__name__)
     proof = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment")
     if not proof:
+        request.state.x402_error = "missing_payment_proof"
         return False
 
     tx_hash = proof.strip()
     if not (tx_hash.startswith("0x") and len(tx_hash) == 66):
         logger.warning(f"[x402] Invalid transaction hash format: {tx_hash}")
+        request.state.x402_error = "invalid_transaction"
         return False
 
     # 1. Prevent replay attacks
@@ -188,6 +192,7 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     already_used = await redis_client.get(redis_key)
     if already_used:
         logger.warning(f"[x402] Replay attack detected. Tx hash {tx_hash} already used.")
+        request.state.x402_error = "replay_detected"
         return False
 
     # 2. Query Base mainnet JSON-RPC with high-reliability public endpoints
@@ -219,18 +224,21 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
 
     if not tx_receipt:
         logger.warning(f"[x402] Could not fetch receipt for transaction hash: {tx_hash}")
+        request.state.x402_error = "invalid_transaction"
         return False
 
     # 3. Check transaction status (0x1 = success)
     status = tx_receipt.get("status")
     if status != "0x1":
         logger.warning(f"[x402] Transaction {tx_hash} failed or status is not 0x1: {status}")
+        request.state.x402_error = "invalid_transaction"
         return False
 
     # 4. Check if treasury is configured
     treasury_addr = VEKLOM_TREASURY.lower().strip()
     if not treasury_addr or treasury_addr == "not_configured" or treasury_addr == "0x0000000000000000000000000000000000000001":
         logger.warning(f"[x402] VEKLOM_TREASURY ({VEKLOM_TREASURY}) is not fully configured. Cannot verify payment destination.")
+        request.state.x402_error = "invalid_transaction"
         return False
 
     # Standard USDC contract address on Base
@@ -281,6 +289,7 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
             f"[x402] Payment amount insufficient. "
             f"Expected={expected_amount} micro USDC, Found={actual_amount} micro USDC"
         )
+        request.state.x402_error = "insufficient_payment"
         return False
 
     if payment_verified:
@@ -292,6 +301,7 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
         )
         return True
 
+    request.state.x402_error = "invalid_transaction"
     return False
 
 
@@ -330,6 +340,9 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         route_cfg = _get_route_config(path)
         if route_cfg is None:
             return await call_next(request)
+
+        # Initialize default error detail for diagnostic 402s
+        request.state.x402_error = "missing_payment_proof"
 
         # 0. Check if this request came through the paid Node.js gateway or RapidAPI.
         #    The gateway/RapidAPI already verified the payment.
@@ -459,4 +472,4 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             return response
 
         # 4. No auth, no payment, over quota → 402
-        return _build_402_response(path, route_cfg)
+        return _build_402_response(path, route_cfg, detail=request.state.x402_error)

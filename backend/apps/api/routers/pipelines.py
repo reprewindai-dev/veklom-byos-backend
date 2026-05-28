@@ -128,9 +128,14 @@ async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: Async
                 return p
 
         name, cat = known_templates[pipeline_id]
-        # Use UUID for id, so that multiple workspaces can own their own instance of this template
+        import hashlib
+        # Generate a deterministic unique ID based on workspace and template to prevent concurrent insertion races
+        seed_hash = hashlib.sha256(f"{workspace_id}:{pipeline_id}".encode()).hexdigest()
+        deterministic_id = f"{seed_hash[:8]}-{seed_hash[8:12]}-{seed_hash[12:16]}-{seed_hash[16:20]}-{seed_hash[20:32]}"
+
+        # Use deterministic ID, so that multiple workspaces can own their own instance of this template safely
         pipe = Pipeline(
-            id=str(uuid.uuid4()),
+            id=deterministic_id,
             workspace_id=workspace_id,
             name=name,
             description=f"PHI-safe {name} pipeline.",
@@ -149,7 +154,7 @@ async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: Async
             await db.refresh(pipe)
             return pipe
         except Exception:
-            await db.rollback()
+            # The begin_nested context manager automatically rolled back the savepoint.
             # Double check if another concurrent request inserted it in the meantime
             result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == workspace_id))
             for p in result.scalars().all():

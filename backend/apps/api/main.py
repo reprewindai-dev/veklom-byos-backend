@@ -7,6 +7,7 @@ All routes wired for the REALFRONTEND built frontend.
 import os
 import socket
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -506,6 +507,7 @@ from backend.apps.api.routers import (
     smoke
 )
 from backend.services.uacp.http import router as uacp_http_router
+from backend.apps.api.routers import admin_billing
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
 app.include_router(discovery.router)
@@ -576,6 +578,7 @@ app.include_router(integrations.router, prefix="/api/v1")
 
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(admin_billing.router, prefix="/api/v1")
 app.include_router(upload.router, prefix="/api/v1")
 
 # GPC (Governed Plan Compiler) + Decision Frames

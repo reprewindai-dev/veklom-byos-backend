@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from pydantic import BaseModel
 
 from backend.db.session import get_db
 from backend.db.models.run import VeklomRun
@@ -11,7 +12,44 @@ from backend.db.models.user import User
 
 router = APIRouter()
 
-@router.post("/", response_model=Dict[str, Any])
+class CreateRunResponse(BaseModel):
+    run_id: str
+    status: str
+
+class GetRunResponse(BaseModel):
+    run_id: str
+    status: str
+    intent: Optional[dict] = None
+    v2_plan: Optional[dict] = None
+    v4_decision: Optional[str] = None
+    pgl_identity: Optional[str] = None
+    created_at: str
+
+class CompileRunResponse(BaseModel):
+    run_id: str
+    status: str
+    v2_plan: Optional[dict] = None
+
+class ContextualizeRunResponse(BaseModel):
+    run_id: str
+    status: str
+    v3_context: Optional[dict] = None
+
+class GovernRunResponse(BaseModel):
+    run_id: str
+    status: str
+    v4_decision: Optional[str] = None
+    seked_state: Optional[dict] = None
+
+class ApproveRunResponse(BaseModel):
+    run_id: str
+    status: str
+
+class RollbackRunResponse(BaseModel):
+    run_id: str
+    status: str
+
+@router.post("/", response_model=CreateRunResponse)
 async def create_run(
     intent: dict,
     db: AsyncSession = Depends(get_db),
@@ -33,10 +71,10 @@ async def create_run(
         intent=intent
     )
     
-    return {"run_id": run.run_id, "status": run.status.value}
+    return CreateRunResponse(run_id=run.run_id, status=run.status.value)
 
 
-@router.get("/{run_id}", response_model=Dict[str, Any])
+@router.get("/{run_id}", response_model=GetRunResponse)
 async def get_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
@@ -55,18 +93,18 @@ async def get_run(
     if run.actor_id != current_user.id and run.workspace_id != current_user.workspace_id:
          raise HTTPException(status_code=403, detail="Not authorized to view this run")
          
-    return {
-        "run_id": run.run_id,
-        "status": run.status.value,
-        "intent": run.intent,
-        "v2_plan": run.v2_plan,
-        "v4_decision": run.v4_decision,
-        "pgl_identity": run.pgl_identity,
-        "created_at": run.created_at.isoformat()
-    }
+    return GetRunResponse(
+        run_id=run.run_id,
+        status=run.status.value,
+        intent=run.intent,
+        v2_plan=run.v2_plan,
+        v4_decision=run.v4_decision,
+        pgl_identity=run.pgl_identity,
+        created_at=run.created_at.isoformat()
+    )
 
 
-@router.post("/{run_id}/compile", response_model=Dict[str, Any])
+@router.post("/{run_id}/compile", response_model=CompileRunResponse)
 async def compile_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
@@ -85,14 +123,14 @@ async def compile_run(
     orchestrator = RunOrchestrator(db)
     run = await orchestrator.compile_run(run)
     
-    return {
-        "run_id": run.run_id,
-        "status": run.status.value,
-        "v2_plan": run.v2_plan
-    }
+    return CompileRunResponse(
+        run_id=run.run_id,
+        status=run.status.value,
+        v2_plan=run.v2_plan
+    )
 
 
-@router.post("/{run_id}/contextualize", response_model=Dict[str, Any])
+@router.post("/{run_id}/contextualize", response_model=ContextualizeRunResponse)
 async def contextualize_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
@@ -110,14 +148,14 @@ async def contextualize_run(
     orchestrator = RunOrchestrator(db)
     run = await orchestrator.contextualize_run(run)
     
-    return {
-        "run_id": run.run_id,
-        "status": run.status.value,
-        "v3_context": run.v3_context
-    }
+    return ContextualizeRunResponse(
+        run_id=run.run_id,
+        status=run.status.value,
+        v3_context=run.v3_context
+    )
 
 
-@router.post("/{run_id}/govern", response_model=Dict[str, Any])
+@router.post("/{run_id}/govern", response_model=GovernRunResponse)
 async def govern_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
@@ -136,15 +174,15 @@ async def govern_run(
     orchestrator = RunOrchestrator(db)
     run = await orchestrator.govern_run(run)
     
-    return {
-        "run_id": run.run_id,
-        "status": run.status.value,
-        "v4_decision": run.v4_decision,
-        "seked_state": run.seked_state
-    }
+    return GovernRunResponse(
+        run_id=run.run_id,
+        status=run.status.value,
+        v4_decision=run.v4_decision,
+        seked_state=run.seked_state
+    )
 
 
-@router.post("/{run_id}/approve", response_model=Dict[str, Any])
+@router.post("/{run_id}/approve", response_model=ApproveRunResponse)
 async def approve_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
@@ -164,10 +202,10 @@ async def approve_run(
     from backend.db.models.run import VeklomRunStatus
     run = await orchestrator._update_state(run, VeklomRunStatus.APPROVED)
     
-    return {"run_id": run.run_id, "status": run.status.value}
+    return ApproveRunResponse(run_id=run.run_id, status=run.status.value)
 
 
-@router.post("/{run_id}/rollback", response_model=Dict[str, Any])
+@router.post("/{run_id}/rollback", response_model=RollbackRunResponse)
 async def rollback_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
@@ -185,4 +223,4 @@ async def rollback_run(
     orchestrator = RunOrchestrator(db)
     run = await orchestrator.rollback_run(run)
     
-    return {"run_id": run.run_id, "status": run.status.value}
+    return RollbackRunResponse(run_id=run.run_id, status=run.status.value)

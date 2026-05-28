@@ -63,7 +63,7 @@ _FREE_ROUTES_PREFIX = (
     "/api/v1/openapi.json", "/v1/openapi.json",
     "/api/v1/sys/health", "/api/v1/sys/gpu",
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
-    "/api/v1/integrations/"
+    "/api/v1/integrations/", "/api/v1/receipts", "/api/v1/evidence/verify"
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
@@ -109,37 +109,24 @@ def _build_receipt(route_config: dict, provider: str = "ollama:qwen2.5:3b") -> d
 
 
 def _build_402_response(path: str, route_config: dict) -> JSONResponse:
-    micro = int(route_config["price_usdc"] * 1_000_000)
+    request_id = f"req_{uuid.uuid4().hex[:16]}"
     payload = {
-        "x402Version": 1,
-        "error": "Payment Required",
-        "message": (
-            f"This endpoint ({route_config['name']}) requires payment of "
-            f"${route_config['price_usdc']} USDC per request, or a valid "
-            "workspace Bearer token with sufficient operating reserve."
-        ),
-        "free_trial": route_config.get("free_daily", 0) > 0,
-        "free_daily_limit": route_config.get("free_daily", 0),
-        "upgrade_url": "https://veklom.com/pricing",
-        "accepts": [
-            {
-                "scheme": "exact",
-                "network": "base",
-                "asset": VEKLOM_USDC_ADDR,
-                "maxAmountRequired": str(micro),
-                "payTo": VEKLOM_TREASURY,
-                "resource": f"https://veklom.com{path}",
-                "description": f"Veklom {route_config['name']} — governed AI execution",
-                "mimeType": "application/json",
-                "maxTimeoutSeconds": 300,
-                "extra": {
-                    "name": f"Veklom {route_config['name']}",
-                    "version": "1",
-                    "evidence": "sha256_sealed",
-                    "policy": "enforced",
-                }
-            }
-        ],
+        "error": "payment_required",
+        "route": path,
+        "price": {
+            "amount": str(route_config["price_usdc"]),
+            "currency": "USDC",
+            "network": "base"
+        },
+        "payment": {
+            "protocol": "x402",
+            "config_url": "https://api.veklom.com/.well-known/x402.json"
+        },
+        "retry": {
+            "header": "payment-required",
+            "idempotency_key_required": True
+        },
+        "request_id": request_id
     }
     headers = {
         "X-Payment-Required": "true",

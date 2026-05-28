@@ -397,7 +397,7 @@ def _trusted_hosts() -> list[str]:
     return sorted(derived_hosts)
 
 
-if settings.APP_ENV == "production":
+if settings.APP_ENV == "production" and os.getenv("ENFORCE_TRUSTED_HOSTS", "false").lower() in {"1", "true", "yes"}:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts())
 
 app.add_middleware(SecurityHeadersMiddleware)

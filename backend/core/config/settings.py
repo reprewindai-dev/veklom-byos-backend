@@ -174,6 +174,10 @@ class Settings(BaseSettings):
     RELAYER_URL: str = ""
     CHAIN_ID: int = 1
     USDC_ADDRESS: str = ""
+    
+    # Redis for webhook idempotency cache
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_ENABLED: bool = True
 
     # Performance Tuning
     MAX_CONCURRENT_REQUESTS: int = 100

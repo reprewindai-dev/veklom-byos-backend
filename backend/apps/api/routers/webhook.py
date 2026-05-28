@@ -1,7 +1,8 @@
-"""Webhook handler for payment confirmations with HMAC verification."""
+"""Webhook handler for payment confirmations with HMAC verification and atomic idempotency."""
 
 import hashlib
 import hmac
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -10,8 +11,8 @@ from pydantic import BaseModel
 
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
-from backend.core.security.auth import get_current_user
-from backend.db.models.billing import Order, Ledger
+from backend.core.services.redis_cache import redis_cache
+from backend.db.models.billing import Order, Ledger, WebhookReceipt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/webhook", tags=["Webhook"])
@@ -26,19 +27,18 @@ class WebhookPayload(BaseModel):
     tx_hash: str
     order_id: str
     confirmations: int
+    amount: Optional[float] = None
 
 
 class WebhookResponse(BaseModel):
-    ok: bool
+    status: str
+    idempotent: bool
     message: str
 
 
 # ---------------------------------------------------------------------------
-# In-memory replay cache (for idempotency)
+# Signature verification
 # ---------------------------------------------------------------------------
-# In production, use Redis or a database table for this
-_webhook_cache: dict = {}
-
 
 def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> bool:
     """
@@ -59,14 +59,89 @@ def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> boo
     return hmac.compare_digest(computed_digest, expected_digest)
 
 
-def is_replay(payload_hash: str) -> bool:
-    """Check if this webhook payload has already been processed."""
-    return payload_hash in _webhook_cache
+# ---------------------------------------------------------------------------
+# Atomic idempotency with database
+# ---------------------------------------------------------------------------
 
-
-def mark_processed(payload_hash: str):
-    """Mark a webhook payload as processed."""
-    _webhook_cache[payload_hash] = datetime.now(timezone.utc)
+async def process_with_idempotency(
+    db: AsyncSession,
+    idempotency_key: str,
+    body_bytes: bytes,
+    handler
+) -> WebhookResponse:
+    """
+    Process webhook with atomic idempotency.
+    
+    First checks Redis cache for fast replay detection, then uses database
+    for atomic reservation and processing.
+    """
+    from sqlalchemy import select, text
+    
+    digest = hashlib.sha256(body_bytes).hexdigest()
+    
+    # Fast path: check Redis cache
+    cache_key = f"webhook:idem:{idempotency_key}"
+    cached_digest = await redis_cache.get(cache_key)
+    
+    if cached_digest:
+        if cached_digest == digest:
+            return WebhookResponse(
+                status="ok",
+                idempotent=True,
+                message="Already processed (idempotent)"
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency key re-used with different body"
+            )
+    
+    try:
+        # Reserve the idempotency key in database
+        receipt = WebhookReceipt(
+            idempotency_key=idempotency_key,
+            body_sha256=digest
+        )
+        db.add(receipt)
+        await db.flush()
+    except Exception:
+        # Key already exists - check if body matches
+        result = await db.execute(
+            select(WebhookReceipt).where(WebhookReceipt.idempotency_key == idempotency_key)
+        )
+        existing = result.scalar_one_or_none()
+        
+        if not existing or existing.body_sha256 != digest:
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency key re-used with different body"
+            )
+        
+        # Cache the result in Redis
+        await redis_cache.set(cache_key, digest, ttl=3600)
+        
+        return WebhookResponse(
+            status="ok",
+            idempotent=True,
+            message="Already processed (idempotent)"
+        )
+    
+    # First time - execute handler within same transaction
+    try:
+        await handler()
+        await db.commit()
+        
+        # Cache the result in Redis
+        await redis_cache.set(cache_key, digest, ttl=3600)
+        
+        return WebhookResponse(
+            status="ok",
+            idempotent=False,
+            message="Webhook processed successfully"
+        )
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -75,25 +150,21 @@ def mark_processed(payload_hash: str):
 
 @router.post("/payment")
 async def payment_webhook(
-    payload: WebhookPayload,
     request: Request,
+    x_idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
     x_signature: Optional[str] = Header(None, alias="X-Signature"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Handle payment confirmation webhook from relayer.
     
-    Verifies HMAC signature, ensures idempotency, and updates ledger.
+    Verifies HMAC signature, enforces idempotency with X-Idempotency-Key,
+    and updates ledger atomically.
     """
     from sqlalchemy import select
     
     # Read raw body for signature verification
     raw_body = await request.body()
-    payload_hash = hashlib.sha256(raw_body).hexdigest()
-    
-    # Check replay cache
-    if is_replay(payload_hash):
-        return WebhookResponse(ok=True, message="Already processed (idempotent)")
     
     # Verify HMAC signature
     if not settings.WEBHOOK_SECRET:
@@ -102,44 +173,51 @@ async def payment_webhook(
     elif not x_signature or not verify_webhook_signature(raw_body, x_signature, settings.WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="Invalid signature")
     
-    # Process the webhook
-    if payload.type == "tx_confirmed":
-        # Find the order
-        result = await db.execute(
-            select(Order).where(Order.order_id == payload.order_id)
-        )
-        order = result.scalar_one_or_none()
-        
-        if not order:
-            # Order not found - this is okay for idempotency
-            mark_processed(payload_hash)
-            return WebhookResponse(ok=True, message="Order not found (idempotent)")
-        
-        # Update order status
-        if order.status != "confirmed":
-            order.status = "confirmed"
-            order.tx_hash = payload.tx_hash
-            order.updated_at = datetime.now(timezone.utc)
-            
-            # Create ledger entry
-            ledger_entry = Ledger(
-                order_id=payload.order_id,
-                entry_type="payment",
-                amount=order.amount,
-                tx_hash=payload.tx_hash,
-                meta={
-                    "confirmations": payload.confirmations,
-                    "webhook_type": payload.type
-                }
+    # Require idempotency key
+    if not x_idempotency_key:
+        raise HTTPException(status_code=400, detail="Missing X-Idempotency-Key")
+    
+    # Parse payload
+    try:
+        payload = json.loads(raw_body.decode())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    
+    # Validate payload shape
+    if not all(k in payload for k in ["type", "tx_hash", "order_id"]):
+        raise HTTPException(status_code=400, detail="Missing required fields")
+    
+    # Define the handler that does the actual work
+    async def handler():
+        if payload["type"] == "tx_confirmed":
+            # Find the order
+            result = await db.execute(
+                select(Order).where(Order.order_id == payload["order_id"])
             )
-            db.add(ledger_entry)
+            order = result.scalar_one_or_none()
             
-            await db.commit()
+            if not order:
+                # Order not found - this is okay for idempotency
+                return
+            
+            # Update order status
+            if order.status != "confirmed":
+                order.status = "confirmed"
+                order.tx_hash = payload["tx_hash"]
+                order.updated_at = datetime.now(timezone.utc)
+                
+                # Create ledger entry
+                ledger_entry = Ledger(
+                    tx_hash=payload["tx_hash"],
+                    order_id=payload["order_id"],
+                    amount=payload.get("amount", order.amount),
+                    direction="credit",
+                    note="tx_confirmed"
+                )
+                db.add(ledger_entry)
     
-    # Mark as processed
-    mark_processed(payload_hash)
-    
-    return WebhookResponse(ok=True, message="Webhook processed successfully")
+    # Process with idempotency
+    return await process_with_idempotency(db, x_idempotency_key, raw_body, handler)
 
 
 @router.get("/health")
@@ -147,6 +225,5 @@ async def webhook_health():
     """Health check for webhook endpoint."""
     return {
         "status": "healthy",
-        "cache_size": len(_webhook_cache),
         "webhook_secret_configured": bool(settings.WEBHOOK_SECRET)
     }

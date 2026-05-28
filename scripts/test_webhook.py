@@ -26,7 +26,7 @@ def test_valid_hmac():
     
     headers = {
         "Content-Type": "application/json",
-        "X-Signature": f"sha256={signature}",
+        "X-Webhook-Signature": f"sha256={signature}",
         "X-Idempotency-Key": "test_key_001"
     }
     
@@ -44,11 +44,11 @@ def test_invalid_hmac():
     
     headers = {
         "Content-Type": "application/json",
-        "X-Webhook-Signature": "sha256=invalid_signature",
+        "X-Signature": "sha256=invalid_signature",
         "X-Idempotency-Key": "test_key_002"
     }
     
-    response = requests.post(WEBHOOK_URL, json=json.loads(payload), headers=headers)
+    response = requests.post(WEBHOOK_URL, data=payload, headers=headers)
     print(f"Invalid HMAC test: {response.status_code} - {response.text}")
     assert response.status_code == 401, f"Expected 401, got {response.status_code}"
 
@@ -64,7 +64,7 @@ def test_idempotency_replay():
     
     headers = {
         "Content-Type": "application/json",
-        "X-Signature": f"sha256={signature}",
+        "X-Webhook-Signature": f"sha256={signature}",
         "X-Idempotency-Key": "test_key_003"
     }
     
@@ -97,13 +97,13 @@ def test_idempotency_conflict():
     
     headers1 = {
         "Content-Type": "application/json",
-        "X-Webhook-Signature": f"sha256={signature1}",
+        "X-Signature": f"sha256={signature1}",
         "X-Idempotency-Key": "test_key_004"
     }
     
     headers2 = {
         "Content-Type": "application/json",
-        "X-Webhook-Signature": f"sha256={signature2}",
+        "X-Signature": f"sha256={signature2}",
         "X-Idempotency-Key": "test_key_004"
     }
     

@@ -108,11 +108,11 @@ def test_idempotency_conflict():
     }
     
     # First request
-    response1 = requests.post(WEBHOOK_URL, json=json.loads(payload1), headers=headers1)
+    response1 = requests.post(WEBHOOK_URL, data=payload1, headers=headers1)
     print(f"First request: {response1.status_code}")
     
     # Second request with same key but different body
-    response2 = requests.post(WEBHOOK_URL, json=json.loads(payload2), headers=headers2)
+    response2 = requests.post(WEBHOOK_URL, data=payload2, headers=headers2)
     print(f"Conflict test: {response2.status_code} - {response2.text}")
     assert response2.status_code == 409, f"Expected 409 for conflict, got {response2.status_code}"
 

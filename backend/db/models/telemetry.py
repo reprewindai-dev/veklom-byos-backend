@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text
-from backend.db.base_class import Base
+from backend.core.database.database import Base
 
 class AgentCall(Base):
     __tablename__ = "agent_calls"

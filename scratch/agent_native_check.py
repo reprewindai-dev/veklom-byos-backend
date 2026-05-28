@@ -4,7 +4,7 @@ import urllib.error
 import json
 import sys
 
-BASE = "http://localhost:8088"
+BASE = "https://api.veklom.com"
 
 TESTS = [
     ("agent-json", "GET", "/.well-known/agent.json", 200, lambda b, h: "openapi_url" in json.loads(b)),

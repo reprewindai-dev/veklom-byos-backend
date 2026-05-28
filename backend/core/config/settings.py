@@ -169,6 +169,12 @@ class Settings(BaseSettings):
     POSTHOG_HOST: str = "https://app.posthog.com"
     POSTHOG_ENABLED: bool = True
 
+    # Payment Webhook & Relayer
+    WEBHOOK_SECRET: str = ""
+    RELAYER_URL: str = ""
+    CHAIN_ID: int = 1
+    USDC_ADDRESS: str = ""
+
     # Performance Tuning
     MAX_CONCURRENT_REQUESTS: int = 100
     REQUEST_TIMEOUT_SECONDS: int = 30

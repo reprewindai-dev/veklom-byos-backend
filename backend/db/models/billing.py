@@ -84,3 +84,31 @@ class Payment(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     confirmed_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class Order(Base):
+    """Orders table for payment tracking with unique constraint."""
+    __tablename__ = "orders"
+
+    order_id = Column(String(64), primary_key=True, nullable=False, unique=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(16), default="USD")
+    user_id = Column(String(36), nullable=False, index=True)
+    workspace_id = Column(String(36), default="", index=True)
+    status = Column(String(32), default="pending")  # pending|confirmed|failed|expired
+    tx_hash = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class Ledger(Base):
+    """Ledger entries for accounting and audit trail."""
+    __tablename__ = "ledger"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    order_id = Column(String(64), nullable=False, index=True)
+    entry_type = Column(String(32), nullable=False)  # credit, debit, payment, refund
+    amount = Column(Float, nullable=False)
+    tx_hash = Column(String(128), nullable=True)
+    meta = Column(JSON, nullable=True)  # Additional metadata
+    created_at = Column(DateTime(timezone=True), default=_utcnow)

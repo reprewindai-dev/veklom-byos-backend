@@ -541,6 +541,7 @@ app.include_router(runtime_jobs.router, prefix="/api/v1")
 
 # Billing, wallet, subscriptions, budget, cost, payments, payouts
 app.include_router(billing.router, prefix="/api/v1")
+app.include_router(payments.router, prefix="/api/v1")
 
 # Security, kill switch, locker
 app.include_router(security.router, prefix="/api/v1")

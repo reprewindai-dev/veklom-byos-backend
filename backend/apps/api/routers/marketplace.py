@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.core.services.posthog_client import posthog_service, hash_id
 from backend.db.models.marketplace import MarketplaceListing, Vendor
 
 router = APIRouter(tags=["Marketplace"])
@@ -677,6 +678,14 @@ async def get_listing(listing_id: str, user=Depends(get_current_user), db: Async
     listing = result.scalars().first()
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Track marketplace listing view
+    posthog_service.marketplace_listing_view(
+        distinct_id=hash_id(user.email),
+        listing_id=norm_id,
+        price_usd=listing.price
+    )
+    
     return _listing_dict(listing)
 
 
@@ -796,6 +805,15 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
 
     await db.commit()
     await db.refresh(asset)
+
+    # Track marketplace purchase (install)
+    posthog_service.marketplace_purchase(
+        distinct_id=hash_id(user.email),
+        order_id=asset.id,
+        listing_id=norm_id,
+        price_cents=int(listing.price * 100),
+        currency="USD"
+    )
 
     return {
         "id": asset.id,

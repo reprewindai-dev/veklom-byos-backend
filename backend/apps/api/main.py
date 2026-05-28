@@ -5,6 +5,7 @@ All routes wired for the REALFRONTEND built frontend.
 """
 
 import os
+import socket
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -394,7 +395,22 @@ def _trusted_hosts() -> list[str]:
     if allow_wildcard and settings.DEBUG:
         return ["*"]
 
-    derived_hosts = set(required_hosts)
+    internal_hosts = set()
+    for key in ("HOSTNAME", "COOLIFY_CONTAINER_NAME", "COOLIFY_RESOURCE_UUID"):
+        value = (os.getenv(key) or "").strip().lower()
+        if value:
+            internal_hosts.add(value)
+    coolify_fqdn = (os.getenv("COOLIFY_FQDN") or "").strip()
+    if coolify_fqdn:
+        for host in coolify_fqdn.split(","):
+            host = host.strip().lower()
+            if host:
+                internal_hosts.add(host)
+    runtime_hostname = socket.gethostname().strip().lower()
+    if runtime_hostname:
+        internal_hosts.add(runtime_hostname)
+
+    derived_hosts = set(required_hosts) | internal_hosts
     for host in host_list:
         if host and host != "*":
             derived_hosts.add(host.lower())

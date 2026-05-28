@@ -114,10 +114,10 @@ def main() -> int:
 
         auth_headers = {"Authorization": f"Bearer {access_token}"}
         runner.check(client, "GET", "/api/v1/auth/me", [200], headers=auth_headers)
-        runner.check(client, "GET", "/api/v1/users/me", [200], headers=auth_headers)
-        runner.check(client, "GET", "/api/v1/models", [200], headers=auth_headers)
-        runner.check(client, "GET", "/api/v1/pipelines", [200], headers=auth_headers)
-        runner.check(client, "GET", "/api/v1/marketplace/agents", [200], headers=auth_headers)
+        runner.check(client, "GET", "/api/v1/workspace/status/data", [200], headers=auth_headers)
+        runner.check(client, "GET", "/api/v1/workspace/models", [200], headers=auth_headers)
+        runner.check(client, "GET", "/api/v1/ai/models", [200], headers=auth_headers)
+        runner.check(client, "GET", "/api/v1/marketplace/tools", [200], headers=auth_headers)
 
     return runner.finish()
 

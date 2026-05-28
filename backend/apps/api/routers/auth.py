@@ -171,6 +171,49 @@ def _is_real_config_value(value: str) -> bool:
     return True
 
 
+def _looks_concatenated_env(value: str) -> bool:
+    """
+    Detect broken .env values where multiple assignments are accidentally glued together.
+    """
+    candidate = (value or "").strip()
+    return "=" in candidate or "\n" in candidate or "\r" in candidate
+
+
+def _github_config_status() -> dict:
+    """
+    Return a safe GitHub OAuth config status payload with present/missing flags only.
+    """
+    raw_client_id = (settings.GITHUB_CLIENT_ID or "").strip()
+    raw_client_secret = (settings.GITHUB_CLIENT_SECRET or "").strip()
+    raw_redirect_uri = (settings.GITHUB_REDIRECT_URI or "").strip()
+
+    client_id_ok = _is_real_config_value(raw_client_id) and not _looks_concatenated_env(raw_client_id)
+    client_secret_ok = _is_real_config_value(raw_client_secret) and not _looks_concatenated_env(raw_client_secret)
+    redirect_ok = (
+        _is_real_config_value(raw_redirect_uri)
+        and not _looks_concatenated_env(raw_redirect_uri)
+        and raw_redirect_uri.startswith("http")
+    )
+
+    missing = []
+    if not client_id_ok:
+        missing.append("GITHUB_CLIENT_ID")
+    if not client_secret_ok:
+        missing.append("GITHUB_CLIENT_SECRET")
+    if not redirect_ok:
+        missing.append("GITHUB_REDIRECT_URI")
+
+    return {
+        "configured": not missing,
+        "present": {
+            "GITHUB_CLIENT_ID": client_id_ok,
+            "GITHUB_CLIENT_SECRET": client_secret_ok,
+            "GITHUB_REDIRECT_URI": redirect_ok,
+        },
+        "missing": missing,
+    }
+
+
 def _github_oauth_configured() -> bool:
     """
     Determine whether GitHub OAuth is enabled by checking that both client ID and client secret are set to non-placeholder configuration values.
@@ -178,7 +221,23 @@ def _github_oauth_configured() -> bool:
     Returns:
         True if both GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET contain real (non-placeholder) values, False otherwise.
     """
-    return _is_real_config_value(settings.GITHUB_CLIENT_ID) and _is_real_config_value(settings.GITHUB_CLIENT_SECRET)
+    status = _github_config_status()
+    return bool(status.get("configured"))
+
+
+def _github_redirect_uri(request: Request) -> str:
+    configured = (settings.GITHUB_REDIRECT_URI or "").strip()
+    if configured and not _looks_concatenated_env(configured):
+        return configured
+    base = (settings.API_BASE_URL or "").strip().rstrip("/")
+    if base.startswith("http"):
+        return f"{base}/api/v1/auth/github/callback"
+    return f"{_external_origin(request)}/api/v1/auth/github/callback"
+
+
+def _prefers_json(request: Request) -> bool:
+    accept = (request.headers.get("accept") or "").lower()
+    return "application/json" in accept or request.query_params.get("format") == "json"
 
 
 def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> str:
@@ -193,10 +252,12 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> st
     Returns:
         str: Complete HTML page as a string containing a script that writes the tokens and user to localStorage and performs a client-side redirect to "/workspace/#/overview".
     """
+    frontend_workspace_url = f"{settings.FRONTEND_URL.rstrip('/')}/workspace/#/overview"
     payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "user": _user_dict(user),
+        "frontend_workspace_url": frontend_workspace_url,
     }
     encoded = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     return f"""<!doctype html>
@@ -246,7 +307,7 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> st
     localStorage.setItem("veklom_token", payload.access_token);
     localStorage.setItem("veklom_refresh_token", payload.refresh_token);
     localStorage.setItem("veklom_user", JSON.stringify(payload.user));
-    window.location.replace("/workspace/#/overview");
+    window.location.replace(payload.frontend_workspace_url);
   </script>
 </body>
 </html>"""
@@ -263,47 +324,9 @@ async def create_eval_session(body: dict = None, db: AsyncSession = Depends(get_
     Unauthenticated visitors get a limited free-tier account so the workspace
     is functional without requiring sign-up. Limited to 10 AI runs per day.
     """
-    import uuid as _uuid
-    from backend.db.models.workspace import Workspace
-
     body = body or {}
     fingerprint = (body.get("fingerprint") or "anonymous")[:64]
-    import re as _re
-    fingerprint_clean = _re.sub(r"[^a-zA-Z0-9]", "", fingerprint) or "anonymous"
-
-    # Deterministic eval email from fingerprint
-    eval_email = f"eval-{fingerprint_clean[:16]}@eval.veklom.local"
-    result = await db.execute(select(User).where(User.email == eval_email))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        # Create workspace first (FK constraint)
-        ws_id = str(_uuid.uuid4())
-        ws = Workspace(
-            id=ws_id,
-            name="Free Evaluation",
-            slug=f"eval-{_uuid.uuid4().hex[:8]}",
-            is_active=True,
-            industry="generic",
-            playground_profile="standard",
-            risk_tier="generic",
-        )
-        db.add(ws)
-        await db.flush()
-
-        user = User(
-            id=str(_uuid.uuid4()),
-            email=eval_email,
-            full_name="Free Evaluation",
-            hashed_password="",
-            role="viewer",
-            status="ACTIVE",
-            is_active=True,
-            workspace_id=ws_id,
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
+    user = await _get_or_create_eval_user(db, fingerprint=fingerprint)
 
     access_token = create_access_token(data={"sub": user.id})
     return {
@@ -320,6 +343,47 @@ async def create_eval_session(body: dict = None, db: AsyncSession = Depends(get_
             "features": ["playground", "models", "pipelines_view", "marketplace_browse"],
         },
     }
+
+
+async def _get_or_create_eval_user(db: AsyncSession, fingerprint: str = "anonymous") -> User:
+    import uuid as _uuid
+    from backend.db.models.workspace import Workspace
+
+    fingerprint_clean = re.sub(r"[^a-zA-Z0-9]", "", (fingerprint or "anonymous")) or "anonymous"
+    eval_email = f"eval-{fingerprint_clean[:16]}@eval.veklom.local"
+
+    result = await db.execute(select(User).where(User.email == eval_email))
+    user = result.scalar_one_or_none()
+    if user:
+        return user
+
+    ws_id = str(_uuid.uuid4())
+    ws = Workspace(
+        id=ws_id,
+        name="Free Evaluation",
+        slug=f"eval-{_uuid.uuid4().hex[:8]}",
+        is_active=True,
+        industry="generic",
+        playground_profile="standard",
+        risk_tier="generic",
+    )
+    db.add(ws)
+    await db.flush()
+
+    user = User(
+        id=str(_uuid.uuid4()),
+        email=eval_email,
+        full_name="Free Evaluation",
+        hashed_password="",
+        role="viewer",
+        status="ACTIVE",
+        is_active=True,
+        workspace_id=ws_id,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -693,12 +757,12 @@ def _validate_github_state(state: str, max_age_seconds: int = 600) -> Optional[s
 
 @router.get("/providers")
 async def list_auth_providers():
-    """Public — returns available authentication providers for the login UI."""
-    from backend.apps.api.routers.auth import _github_oauth_configured
+    """Public - returns available authentication providers for the login UI."""
+    github_status_data = _github_config_status()
     providers = [
         {"id": "email", "name": "Email & Password", "enabled": True},
     ]
-    if _github_oauth_configured():
+    if github_status_data.get("configured"):
         providers.append({"id": "github", "name": "GitHub", "enabled": True, "url": "/api/v1/auth/github/login"})
     else:
         providers.append({"id": "github", "name": "GitHub", "enabled": False, "url": None, "note": "Not configured"})
@@ -707,9 +771,12 @@ async def list_auth_providers():
 
 @router.get("/github/status")
 async def github_status():
-    return {"configured": _github_oauth_configured()}
+    return _github_config_status()
 
 
+@router.get("/github/config-status")
+async def github_config_status():
+    return _github_config_status()
 @router.get("/github/login")
 async def github_login(request: Request, token: Optional[str] = None):
     if not _github_oauth_configured():
@@ -726,9 +793,7 @@ async def github_login(request: Request, token: Optional[str] = None):
     state = _build_github_state(user_id)
     from urllib.parse import urlencode
     
-    redirect_uri = settings.GITHUB_REDIRECT_URI
-    if not redirect_uri:
-        redirect_uri = f"{_external_origin(request)}/api/v1/auth/github/callback"
+    redirect_uri = _github_redirect_uri(request)
         
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
@@ -738,7 +803,7 @@ async def github_login(request: Request, token: Optional[str] = None):
     }
     redirect_url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
     
-    if request.headers.get("accept") == "application/json":
+    if _prefers_json(request):
         return {"auth_url": redirect_url}
     return RedirectResponse(url=redirect_url)
 
@@ -778,6 +843,7 @@ async def github_callback(
                 "client_id": settings.GITHUB_CLIENT_ID,
                 "client_secret": settings.GITHUB_CLIENT_SECRET,
                 "code": code,
+                "redirect_uri": _github_redirect_uri(request),
             },
             headers={"Accept": "application/json"},
         )
@@ -1034,3 +1100,4 @@ def _default_api_keys():
         {"id": "k2", "name": "rag-ingest", "prefix": "vk_live_q01p", "scope": ["embeddings:write", "pipelines:invoke"], "created": "2026-03-04", "lastUsed": "9 min ago", "status": "active"},
         {"id": "k3", "name": "ci-test-runner", "prefix": "vk_test_42aa", "scope": ["chat:write", "completions:write"], "created": "2026-04-29", "lastUsed": "1 hr ago", "status": "rotating"},
     ]
+

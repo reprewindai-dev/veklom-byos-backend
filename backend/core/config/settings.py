@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     MAX_WORKERS: int = 4
     FRONTEND_URL: str = "http://localhost:3000"
     API_URL: str = "http://localhost:8088"
+    API_BASE_URL: str = "http://localhost:8088"
     ADMIN_EMAIL: str = "founder@veklom.com"
     VEKLOM_API_BASE: str = "/api/v1"
     AI_CITIZENSHIP_SECRET: str = ""
@@ -120,6 +121,8 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
     GITHUB_REDIRECT_URI: str = ""
+    SMOKE_TEST_ENABLED: bool = False
+    SMOKE_TEST_SECRET: str = ""
 
     # Email (Resend)
     RESEND_API_KEY: str = ""

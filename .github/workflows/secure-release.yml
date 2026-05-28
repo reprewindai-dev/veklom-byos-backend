@@ -74,11 +74,33 @@ jobs:
           path: sbom.json
           if-no-files-found: error
 
+      - name: Trivy JSON report (artifact)
+        run: |
+          docker run --rm \
+            -e TRIVY_DB_REPOSITORY=ghcr.io/aquasecurity/trivy-db:2 \
+            -v "$PWD:/work" -w /work \
+            aquasec/trivy:latest image \
+            --scanners vuln \
+            --ignorefile .trivyignore \
+            --format json \
+            --output trivy-report.json \
+            "$IMG"
+          test -s trivy-report.json || (echo "Trivy JSON report missing/empty" && exit 1)
+
+      - name: Upload Trivy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-${{ github.sha }}
+          path: trivy-report.json
+          if-no-files-found: error
+
       - name: Trivy scan (fail on HIGH/CRITICAL)
         run: |
           docker run --rm \
             -e TRIVY_DB_REPOSITORY=ghcr.io/aquasecurity/trivy-db:2 \
             aquasec/trivy:latest image \
+            --scanners vuln \
+            --ignorefile .trivyignore \
             --severity CRITICAL,HIGH \
             --exit-code 1 \
             --timeout 10m \

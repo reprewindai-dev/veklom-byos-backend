@@ -7,6 +7,7 @@ All routes wired for the REALFRONTEND built frontend.
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 import sentry_sdk
 from fastapi import FastAPI, Request
@@ -372,8 +373,32 @@ from backend.core.security.middlewares import AgentTelemetryMiddleware, IPRateLi
 app.add_middleware(AgentTelemetryMiddleware)
 app.add_middleware(IPRateLimitMiddleware)
 
+def _trusted_hosts() -> list[str]:
+    raw_hosts = settings.ALLOWED_HOSTS
+    if isinstance(raw_hosts, str):
+        host_list = [h.strip() for h in raw_hosts.split(",") if h.strip()]
+    else:
+        host_list = [str(h).strip() for h in (raw_hosts or []) if str(h).strip()]
+
+    if not host_list:
+        host_list = ["*"]
+    if "*" in host_list:
+        return ["*"]
+
+    derived_hosts = set(host_list)
+    derived_hosts.update({"veklom.com", "www.veklom.com", "api.veklom.com", "localhost", "127.0.0.1"})
+    for url in (settings.FRONTEND_URL, settings.API_URL, settings.API_BASE_URL):
+        try:
+            parsed = urlparse(url)
+            if parsed.hostname:
+                derived_hosts.add(parsed.hostname)
+        except Exception:
+            continue
+    return sorted(derived_hosts)
+
+
 if settings.APP_ENV == "production":
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts())
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(X402PaymentMiddleware)
@@ -418,6 +443,7 @@ from backend.apps.api.routers import (
     agents,
     ai,
     auth,
+    evaluations,
     billing,
     command_center,
     compliance,
@@ -448,7 +474,8 @@ from backend.apps.api.routers import (
     autonomous,
     playground,
     webhooks,
-    runs
+    runs,
+    smoke
 )
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
@@ -459,6 +486,8 @@ app.include_router(health.router)
 
 # Auth - restore /api/v1 prefix
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(evaluations.router, prefix="/api/v1")
+app.include_router(smoke.router, prefix="/api/v1")
 
 # System utilities
 app.include_router(system.router, prefix="/api/v1")

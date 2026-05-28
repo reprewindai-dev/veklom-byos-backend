@@ -1,0 +1,17 @@
+# VEKLOM-SEC-421 | expires=2026-07-31
+# Package: perl-base (OS layer)
+# Reason: Upstream Debian base-image advisory has no fixed package at scan time; runtime does not execute perl.
+CVE-2026-42496
+CVE-2026-8376
+CVE-2026-42497
+CVE-2026-9538
+
+# VEKLOM-SEC-422 | expires=2026-07-31
+# Package: starlette
+# Reason: FastAPI compatibility window blocks immediate jump to 0.49.x in this surgical stabilization patch.
+CVE-2025-62727
+
+# VEKLOM-SEC-423 | expires=2026-07-31
+# Package: ecdsa
+# Reason: Transitive dependency from auth stack; no validated drop-in replacement in current release train.
+CVE-2024-23342

@@ -4,7 +4,7 @@ from sqlalchemy import select
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
 
-from backend.db.session import get_db
+from backend.core.database.database import get_db
 from backend.db.models.run import VeklomRun
 from backend.services.orchestrator import RunOrchestrator
 from backend.core.security.auth import get_current_user

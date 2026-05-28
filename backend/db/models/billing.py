@@ -106,9 +106,28 @@ class Ledger(Base):
     __tablename__ = "ledger"
 
     id = Column(String(36), primary_key=True, default=_uuid)
+    tx_hash = Column(String(128), nullable=True, index=True)
     order_id = Column(String(64), nullable=False, index=True)
-    entry_type = Column(String(32), nullable=False)  # credit, debit, payment, refund
     amount = Column(Float, nullable=False)
-    tx_hash = Column(String(128), nullable=True)
-    meta = Column(JSON, nullable=True)  # Additional metadata
+    direction = Column(String(32), nullable=False)  # credit, debit
+    note = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+class WebhookReceipt(Base):
+    """Webhook idempotency receipts for replay protection."""
+    __tablename__ = "webhook_receipts"
+
+    idempotency_key = Column(String(128), primary_key=True, nullable=False)
+    body_sha256 = Column(String(64), nullable=False)  # SHA-256 hex digest
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+class ReconFinding(Base):
+    """Reconciliation findings for drift detection."""
+    __tablename__ = "recon_findings"
+
+    tx_hash = Column(String(128), primary_key=True, nullable=False)
+    ledger_sum = Column(Float, nullable=False)
+    chain_sum = Column(Float, nullable=False)
+    detected_at = Column(DateTime(timezone=True), default=_utcnow)

@@ -566,6 +566,9 @@ app.include_router(routing.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(webhook.router, prefix="/api/v1")
 
+# UACP Service - dual-adapter architecture (HTTP service + library shim)
+app.include_router(uacp_http_router, prefix="/api/v1")
+
 # Integrations (PagerDuty, Slack, etc.)
 from backend.apps.api.routers import integrations
 app.include_router(integrations.router, prefix="/api/v1")

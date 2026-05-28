@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import uuid
 from sqlalchemy import Column, String, DateTime, Enum, Float
 from sqlalchemy.dialects.postgresql import JSONB
-from backend.db.base_class import Base
+from backend.core.database.database import Base
 import enum
 
 class VeklomRunStatus(str, enum.Enum):

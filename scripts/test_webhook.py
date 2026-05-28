@@ -26,7 +26,7 @@ def test_valid_hmac():
     
     headers = {
         "Content-Type": "application/json",
-        "X-Webhook-Signature": f"sha256={signature}",
+        "X-Signature": f"sha256={signature}",
         "X-Idempotency-Key": "test_key_001"
     }
     
@@ -64,7 +64,7 @@ def test_idempotency_replay():
     
     headers = {
         "Content-Type": "application/json",
-        "X-Webhook-Signature": f"sha256={signature}",
+        "X-Signature": f"sha256={signature}",
         "X-Idempotency-Key": "test_key_003"
     }
     

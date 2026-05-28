@@ -121,9 +121,16 @@ async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: Async
         "pii-strip-proxy": ("PII Strip Proxy", "Privacy")
     }
     if pipeline_id in known_templates:
+        # Check if a pipeline with this template already exists for this workspace to avoid duplicates and primary key conflicts
+        result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == workspace_id))
+        for p in result.scalars().all():
+            if isinstance(p.steps, dict) and p.steps.get("template") == pipeline_id:
+                return p
+
         name, cat = known_templates[pipeline_id]
+        # Use UUID for id, so that multiple workspaces can own their own instance of this template
         pipe = Pipeline(
-            id=pipeline_id,
+            id=str(uuid.uuid4()),
             workspace_id=workspace_id,
             name=name,
             description=f"PHI-safe {name} pipeline.",
@@ -135,10 +142,19 @@ async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: Async
                 "lastRun": "—",
             }
         )
-        db.add(pipe)
-        await db.commit()
-        await db.refresh(pipe)
-        return pipe
+        try:
+            async with db.begin_nested():
+                db.add(pipe)
+            await db.commit()
+            await db.refresh(pipe)
+            return pipe
+        except Exception:
+            await db.rollback()
+            # Double check if another concurrent request inserted it in the meantime
+            result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == workspace_id))
+            for p in result.scalars().all():
+                if isinstance(p.steps, dict) and p.steps.get("template") == pipeline_id:
+                    return p
     return None
 
 

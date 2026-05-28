@@ -501,6 +501,7 @@ from backend.apps.api.routers import (
     autonomous,
     playground,
     webhooks,
+    webhook,
     runs,
     smoke
 )

@@ -100,6 +100,7 @@ jobs:
         run: |
           docker run --rm \
             -e TRIVY_DB_REPOSITORY=ghcr.io/aquasecurity/trivy-db:2 \
+            -v "$PWD:/work" -w /work \
             aquasec/trivy:latest image \
             --scanners vuln \
             --ignorefile .trivyignore \

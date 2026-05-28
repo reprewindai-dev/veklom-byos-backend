@@ -4,6 +4,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -29,6 +30,17 @@ jobs:
           TEST_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
           FAILING_ENDPOINTS: ${{ secrets.FAILING_ENDPOINTS }} # e.g. "GET /api/v1/boom,POST /api/v1/miswired"
         run: npx playwright test --project=chromium --grep @smoke --reporter=line
+      - name: Collect evidence bundle
+        if: always()
+        env:
+          HOST: veklom.com
+          BASE_URL: https://veklom.com
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+          POSTHOG_PROJECT: ${{ secrets.POSTHOG_PROJECT }}
+        run: |
+          chmod +x collect-evidence.sh
+          ./collect-evidence.sh veklom.com https://veklom.com "${POSTHOG_API_KEY:-}" "${POSTHOG_HOST:-https://app.posthog.com}" "${POSTHOG_PROJECT:-}" || true
       - name: Upload artifacts (traces, screenshots, videos)
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,3 +52,10 @@ jobs:
             **/trace.zip
             **/*-failed.png
             **/*.webm
+      - name: Upload evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-${{ github.run_id }}
+          path: evidence-*.zip
+          retention-days: 90

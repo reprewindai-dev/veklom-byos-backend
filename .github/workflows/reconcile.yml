@@ -1,0 +1,29 @@
+name: Nightly Payments & Ledger Reconciliation
+
+on:
+  schedule:
+    - cron: "7 2 * * *"  # Nightly @ 02:07 UTC
+  workflow_dispatch:      # Enable manual triggers
+
+jobs:
+  reconcile:
+    name: Run Reconciliation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq curl
+
+      - name: Run Reconcile script
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL || 'https://mainnet.base.org' }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PAGERDUTY_KEY: ${{ secrets.PAGERDUTY_KEY }}
+        run: |
+          chmod +x ./scripts/reconcile.sh
+          ./scripts/reconcile.sh

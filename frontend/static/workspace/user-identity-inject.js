@@ -1,8 +1,10 @@
 (function () {
   const base = (window.__VEKLOM_API_BASE__ || "/api/v1").replace(/\/+$/, "");
+  let cachedUserData = null;
 
   function authHeaders() {
     const token =
+      localStorage.getItem("veklom_token") ||
       localStorage.getItem("veklom-auth-token") ||
       localStorage.getItem("auth_token") ||
       localStorage.getItem("token") ||
@@ -22,6 +24,7 @@
       });
       if (res.ok) {
         const data = await res.json();
+        cachedUserData = data;
         console.log("User data from /auth/me:", data);
         return data;
       }
@@ -182,9 +185,11 @@
 
     // Also re-inject when DOM changes (for dynamic content)
     const observer = new MutationObserver(() => {
-      fetchUserData().then((data) => {
-        if (data) injectUserIdentity(data);
-      });
+      if (cachedUserData) {
+        observer.disconnect();
+        injectUserIdentity(cachedUserData);
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }

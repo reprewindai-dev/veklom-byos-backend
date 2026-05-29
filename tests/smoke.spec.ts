@@ -67,13 +67,17 @@ test.describe('Veklom smoke', () => {
     const signUpTab = page.locator('#vk-tab-up');
     await signUpTab.waitFor({ state: 'visible', timeout: 15000 });
     await signUpTab.click();
+    await page.waitForTimeout(500);
     
     // Fill signup form (use deterministic unique email to avoid "User already exists" 409)
     const testEmail = process.env.TEST_EMAIL || `smoke+signup${Date.now()}@example.com`;
     await page.fill('#vk-email', testEmail);
     await page.fill('#vk-pass', process.env.TEST_PASSWORD || 'Playwright!234');
     await page.fill('#vk-name', 'Smoke Test User');
-    await page.click('#vk-submit');
+    await page.click('#vk-submit', { force: true });
+
+    // Wait for registration to succeed and show the success message
+    await expect(page.locator('#vk-ok')).toBeVisible({ timeout: 10000 });
 
     // Wait for the success/redirect or workspace main view
     await page.waitForLoadState('networkidle');
@@ -89,11 +93,17 @@ test.describe('Veklom smoke', () => {
     // Wait for email input to be visible in Sign In tab
     const emailInput = page.locator('#vk-email');
     await emailInput.waitFor({ state: 'visible', timeout: 15000 });
+    await page.waitForTimeout(500);
     await page.fill('#vk-email', testEmail);
     await page.fill('#vk-pass', process.env.TEST_PASSWORD || 'Playwright!234');
-    await page.click('#vk-submit');
+    await page.click('#vk-submit', { force: true });
     await page.waitForLoadState('networkidle');
     
+    // Log auth overlay status for debugging
+    const errText = await page.locator('#vk-err').innerText().catch(() => '');
+    const okText = await page.locator('#vk-ok').innerText().catch(() => '');
+    console.log(`[Test Debug] #vk-err: "${errText}", #vk-ok: "${okText}"`);
+
     // Verify overlay is dismissed and workspace loaded
     await expect(page.locator('#veklom-auth-overlay')).not.toBeVisible();
   });

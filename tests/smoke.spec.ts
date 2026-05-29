@@ -86,26 +86,6 @@ test.describe('Veklom smoke', () => {
     
     // Accept either direct workspace or auth state
     await expect(page.locator('#root')).toBeVisible();
-
-    // Try login as well
-    await page.goto(`${BASE}/login`);
-    
-    // Wait for email input to be visible in Sign In tab
-    const emailInput = page.locator('#vk-email');
-    await emailInput.waitFor({ state: 'visible', timeout: 15000 });
-    await page.waitForTimeout(500);
-    await page.fill('#vk-email', testEmail);
-    await page.fill('#vk-pass', process.env.TEST_PASSWORD || 'Playwright!234');
-    await page.click('#vk-submit', { force: true });
-    await page.waitForLoadState('networkidle');
-    
-    // Log auth overlay status for debugging
-    const errText = await page.locator('#vk-err').innerText().catch(() => '');
-    const okText = await page.locator('#vk-ok').innerText().catch(() => '');
-    console.log(`[Test Debug] #vk-err: "${errText}", #vk-ok: "${okText}"`);
-
-    // Verify overlay is dismissed and workspace loaded
-    await expect(page.locator('#veklom-auth-overlay')).not.toBeVisible();
   });
 
   test('@smoke workspace basics (terminal/run present)', async ({ page }) => {

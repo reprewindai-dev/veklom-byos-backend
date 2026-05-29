@@ -344,6 +344,43 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         # Initialize default error detail for diagnostic 402s
         request.state.x402_error = "missing_payment_proof"
 
+        # A. Replay Protection (Nonce check)
+        # Store nonces in Redis with a short 5-minute (300 seconds) TTL.
+        # Reject any request that presents a previously used nonce.
+        nonce = request.headers.get("X-Payment-Nonce")
+        if nonce:
+            from backend.core.database.redis_client import redis_client
+            redis_key = f"x402_nonce:{nonce}"
+            nonce_exists = await redis_client.get(redis_key)
+            if nonce_exists:
+                request.state.x402_error = "replay_detected"
+                return _build_402_response(path, route_cfg, detail="replay_detected")
+            # Save nonce to redis
+            await redis_client.set(redis_key, "1", ex=300)
+
+        # B. PII/Data Sanitisation
+        # Read the request body, run regex PII filtering, and reset the receive stream.
+        # Scanning metadata fields (or request body) for patterns like api_key=, token=, secret=, or sk-proj.
+        if method in ("POST", "PUT", "PATCH"):
+            import re
+            import logging
+            logger = logging.getLogger(__name__)
+            try:
+                body_bytes = await request.body()
+                body_str = body_bytes.decode("utf-8", errors="ignore")
+                
+                # Check for sensitive key patterns
+                if re.search(r"api_key=|token=|secret=|sk-proj", body_str, re.IGNORECASE):
+                    logger.warning(f"[x402 PII Filter] Sensitive credentials or keys detected in request body.")
+                    return JSONResponse(status_code=400, content={"error": "Sensitive data detected"})
+                
+                # Rewind body stream so downstream parses do not receive an empty stream
+                async def receive():
+                    return {"type": "http.request", "body": body_bytes, "more_body": False}
+                request._receive = receive
+            except Exception as pii_err:
+                logger.error(f"[x402 PII Filter] Error parsing body: {pii_err}")
+
         # 0. Check if this request came through the paid Node.js gateway or RapidAPI.
         #    The gateway/RapidAPI already verified the payment.
         #    Trust it — don't double-gate. Just add receipt headers and pass through.
@@ -380,7 +417,8 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 from backend.db.models.user import User
                 from backend.db.models.workspace import Workspace
                 from backend.db.models.ai import ExecutionLog
-                from backend.db.models.billing import Subscription
+                from backend.db.models.billing import Subscription, BudgetRule
+                from backend.db.models.security import KillSwitchState
 
                 async with get_db_session() as db:
                     user_res = await db.execute(select(User).where(User.id == user_id))
@@ -389,6 +427,57 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                     if db_user:
                         ws_id = db_user.workspace_id or ""
                         
+                        # C. Active Workspace Emergency Kill Switch Verification
+                        # Query active workspace emergency halts.
+                        ks_res = await db.execute(
+                            select(KillSwitchState)
+                            .where(
+                                KillSwitchState.workspace_id == ws_id,
+                                KillSwitchState.is_active == True
+                            )
+                        )
+                        active_ks = ks_res.scalar_one_or_none()
+                        if active_ks:
+                            return JSONResponse(
+                                status_code=402,
+                                content={
+                                    "detail": "Emergency halt active. All AI executions paused via Cost Kill Switch.",
+                                    "kill_switch_active": True,
+                                    "reason": active_ks.reason or "Runaway usage detected",
+                                    "activated_at": active_ks.activated_at.isoformat() if active_ks.activated_at else None
+                                }
+                            )
+
+                        # D. Spend caps and infrastructure budgeting validation
+                        # Fetch Budget Rules configured for the active workspace and ensure they are not breached.
+                        budget_res = await db.execute(
+                            select(BudgetRule)
+                            .where(
+                                BudgetRule.workspace_id == ws_id,
+                                BudgetRule.is_active == True
+                            )
+                        )
+                        budget_rules = budget_res.scalars().all()
+                        for rule in budget_rules:
+                            if rule.current_spend >= rule.limit_usd:
+                                # Trigger automatic Emergency Halt kill switch
+                                new_ks = KillSwitchState(
+                                    workspace_id=ws_id,
+                                    is_active=True,
+                                    reason=f"Infrastructure limit breached: Budget '{rule.name}' ({rule.limit_usd} USD) exceeded.",
+                                    activated_by="system_agent"
+                                )
+                                db.add(new_ks)
+                                await db.commit()
+                                return JSONResponse(
+                                    status_code=402,
+                                    content={
+                                        "detail": f"Budget rule breached: '{rule.name}'. Cost Kill Switch activated automatically.",
+                                        "kill_switch_active": True,
+                                        "reason": f"Infrastructure limit breached: Budget '{rule.name}' exceeded."
+                                    }
+                                )
+
                         # Resolve active subscription
                         sub_res = await db.execute(
                             select(Subscription)

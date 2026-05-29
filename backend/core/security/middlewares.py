@@ -22,7 +22,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/signup", "/api/v1/auth/signin",
             "/api/v1/evaluations/start", "/api/v1/smoke/eval-token",
             "/api/v1/auth/refresh", "/api/v1/auth/github", "/static", "/assets", "/workspace",
-            "/api/v1/complaints",
+            "/login", "/signup", "/api/v1/complaints",
             "/command-center", "/gpc", "/terminal", "/marketplace", "/docs",
             "/uptime", "/legal", "/irongrid", "/api/v1/webhooks", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",

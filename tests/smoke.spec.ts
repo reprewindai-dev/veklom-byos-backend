@@ -56,6 +56,10 @@ test.describe('Veklom smoke', () => {
   });
 
   test('@smoke auth: login/signup flow', async ({ page }) => {
+    page.on('console', msg => console.log(`[Browser Console] ${msg.type()}: ${msg.text()}`));
+    page.on('request', req => console.log(`[Browser Request] ${req.method()} ${req.url()}`));
+    page.on('response', res => console.log(`[Browser Response] ${res.status()} ${res.url()}`));
+
     // Navigate to login (which triggers auth overlay in SPA)
     await page.goto(`${BASE}/login`);
     

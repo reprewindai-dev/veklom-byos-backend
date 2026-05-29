@@ -436,7 +436,7 @@ app.add_middleware(X402PaymentMiddleware)
 async def not_found(request: Request, exc):
     if request.url.path.startswith("/api/"):
         return JSONResponse(status_code=404, content={"detail": "Not found"})
-    if request.url.path.startswith("/workspace") or request.url.path.startswith("/login") or request.url.path.startswith("/github"):
+    if request.url.path.startswith("/workspace") or request.url.path.startswith("/login") or request.url.path.startswith("/signup") or request.url.path.startswith("/github"):
         workspace_index = WORKSPACE_DIR / "index.html"
         if workspace_index.exists():
             # Read the index.html and inject the auto-editor script

@@ -56,8 +56,8 @@ test.describe('Veklom smoke', () => {
   });
 
   test('@smoke auth: login/signup flow', async ({ page }) => {
-    // Navigate to signup (which triggers auth overlay in SPA)
-    await page.goto(`${BASE}/signup`);
+    // Navigate to login (which triggers auth overlay in SPA)
+    await page.goto(`${BASE}/login`);
     
     // Switch to Sign Up tab
     const signUpTab = page.locator('#vk-tab-up');

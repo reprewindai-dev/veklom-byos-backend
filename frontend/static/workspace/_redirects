@@ -1,3 +1,7 @@
 # Cloudflare Pages — SPA fallback for hash router
+# Status pages redirects
+/status /status.html 200
+/status.html /status.html 200
+
 # All non-asset requests serve index.html so wouter's hash routing handles them.
 /*    /index.html   200

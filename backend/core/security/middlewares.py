@@ -23,6 +23,8 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/evaluations/start", "/api/v1/smoke/eval-token",
             "/api/v1/auth/refresh", "/api/v1/auth/github", "/static", "/assets", "/workspace",
             "/login", "/signup", "/api/v1/complaints",
+            "/config.js", "/base-attribution.js", "/auth-gate.js", "/addons-inject.js", "/overview-live.js",
+            "/workspace-enhance.js", "/pipeline-live.js", "/playground-live.js", "/user-identity-inject.js", "/copilot-widget.js",
             "/command-center", "/gpc", "/terminal", "/marketplace", "/docs",
             "/uptime", "/legal", "/irongrid", "/api/v1/webhooks", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",

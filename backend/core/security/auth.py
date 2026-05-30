@@ -52,30 +52,29 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
     try:
         # Decode without verifying aud initially to allow soft enforcement
         payload = jwt.decode(
-            token, 
-            settings.JWT_SECRET_KEY, 
+            token,
+            settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
             options={"verify_aud": False}
         )
-        
+
         # Audience Enforcement
         aud = payload.get("aud")
         expected_aud = getattr(settings, "JWT_EXPECTED_AUDIENCE", "veklom-api")
         enforcement_mode = getattr(settings, "JWT_AUD_ENFORCEMENT", "warn")
-        
+
         if aud != expected_aud:
             msg = f"Invalid or missing audience in token: expected {expected_aud}, got {aud}"
             if enforcement_mode == "strict":
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token audience")
             else:
                 logging.warning(f"[JWT_AUD_WARN] {msg}")
-                
+
         # JTI replay checks (optional/configurable)
         jti = payload.get("jti")
         if jti:
             import redis
             try:
-                # Synchronous redis check; fast enough for auth
                 r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=2)
                 replay_mode = str(getattr(settings, "JWT_REPLAY_ENFORCEMENT", "off")).lower()
                 replay_seen = bool(r.exists(f"jti_cache:{jti}"))
@@ -85,7 +84,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
                         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token replay detected")
                     if replay_mode == "warn":
                         logging.warning(f"[JWT_REPLAY_WARN] repeated JTI observed for token {jti}")
-                
+
                 exp = payload.get("exp")
                 if exp:
                     ttl = int(exp - datetime.now(timezone.utc).timestamp())
@@ -93,8 +92,8 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
                         r.setex(f"jti_cache:{jti}", ttl, "1")
             except redis.RedisError as e:
                 logging.error(f"[REDIS_ERR] Failed to connect to Redis for JTI check: {e}")
-                # Fail-open if Redis is down, or configure to fail-closed
-        
+                # Fail-open if Redis is down
+
         return payload
     except JWTError as exc:
         raise HTTPException(
@@ -153,10 +152,77 @@ async def require_internal_operator(user=Depends(get_current_user)):
     """Guard for UACP internal API routes."""
     if (user.role or "").lower() not in ("admin", "super_admin", "operator", "owner"):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="UACP Internal Operator access required"
         )
     return user
+
+
+# ---------------------------------------------------------------------------
+# Optional auth — returns a guest user instead of raising 401.
+# Used by public inference endpoints so the Playground works without login.
+# ---------------------------------------------------------------------------
+
+class _GuestUser:
+    """Ephemeral guest identity for unauthenticated Playground/inference calls."""
+    id = "guest"
+    email = "guest@veklom.com"
+    workspace_id = "guest"
+    plan = "starter"
+    role = "user"
+    is_active = True
+    status = "active"
+
+
+_GUEST_USER = _GuestUser()
+
+
+async def get_current_user_optional(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+):
+    """Like get_current_user but returns a guest user instead of raising 401.
+
+    Use on endpoints that should work for unauthenticated users (Playground,
+    public inference) while still providing the real user object when a valid
+    token is present.
+    """
+    if getattr(request.state, "x402_paid", False):
+        class MockAgentUser:
+            id = "agent_autonomous"
+            email = "agent@veklom.com"
+            workspace_id = "agent_workspace"
+            plan = "pro"
+            role = "super_admin"
+            is_active = True
+            status = "active"
+        return MockAgentUser()
+
+    if credentials is None:
+        return _GUEST_USER
+
+    try:
+        payload = verify_token(credentials.credentials)
+    except HTTPException:
+        return _GUEST_USER
+
+    user_id: Optional[str] = payload.get("sub")
+    if user_id is None:
+        return _GUEST_USER
+
+    from backend.db.models.user import User
+
+    async with get_db_session() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            return _GUEST_USER
+        status_value = (user.status or "").upper()
+        if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
+            return _GUEST_USER
+        user.last_activity = datetime.utcnow()
+        await db.commit()
+        return user
 
 
 async def get_current_user_or_api_key(
@@ -165,13 +231,13 @@ async def get_current_user_or_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     if credentials is not None:
-        return await get_current_user(credentials, db)
+        return await get_current_user(request, credentials)
 
     api_key_header = request.headers.get("X-API-Key")
     if api_key_header:
         if not api_key_header.startswith("byos_"):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key format")
-            
+
         prefix = api_key_header[:10]
         from backend.db.models.user import APIKey, User
         result = await db.execute(select(APIKey).where(APIKey.key_prefix == prefix, APIKey.is_active == True))
@@ -185,5 +251,5 @@ async def get_current_user_or_api_key(
                     await db.commit()
                     return user
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or inactive API Key")
-        
+
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication credentials missing")

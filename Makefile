@@ -1,4 +1,4 @@
-.PHONY: help release-check rollback health-check
+.PHONY: help release-check rollback health-check smoke-x402 reconcile
 
 help:
 	@echo "Veklom Backend Makefile"
@@ -7,7 +7,10 @@ help:
 	@echo "  make release-check  - Run all release gates"
 	@echo "  make rollback       - Execute rollback to previous commit"
 	@echo "  make health-check   - Quick health check of production"
+	@echo "  make smoke-x402     - Execute E2E wallet->relayer->webhook->ledger smoke test"
+	@echo "  make reconcile      - Run payments & ledger reconciliation check"
 	@echo ""
+
 
 release-check:
 	@echo "=== Gate 1: Artifact & Integrity ==="
@@ -51,3 +54,13 @@ health-check:
 	@curl -fsS https://veklom.com/health || (echo "FAIL: Health endpoint down" && exit 1)
 	@echo ""
 	@echo "PASS: https://veklom.com/health is responding"
+
+smoke-x402:
+	@echo "=== E2E Wallet->Relayer->Webhook->Ledger Smoke Test ==="
+	python scripts/smoke_x402.py
+
+reconcile:
+	@echo "=== Running Payments & Ledger Reconciliation ==="
+	chmod +x ./scripts/reconcile.sh
+	./scripts/reconcile.sh
+

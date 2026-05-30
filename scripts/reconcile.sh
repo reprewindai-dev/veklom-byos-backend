@@ -63,16 +63,50 @@ for tx in $TXS; do
   HAS=$(echo "$RECEIPT" | jq '.result!=null' 2>/dev/null || echo "false")
   if [ "$HAS" != "true" ]; then
     echo "❌ Missing on-chain receipt for tx: $tx!"
-    echo "$tx" >> /tmp/missing_tx
+    echo "$tx" >> /tmp/reconcile_failures
     MISSING_COUNT=$((MISSING_COUNT+1))
   fi
 done
 
+# Assemble failure report and trigger alerts if needed
+ALERT_NEEDED=0
+ALERT_MSG="[reconcile] Reconciliation Failures Detected:\n"
+
+if [ "$DUP_COUNT" -ne 0 ]; then
+  ALERT_NEEDED=1
+  ALERT_MSG="${ALERT_MSG}- Duplicate tx_hashes found in ledger (Count: $DUP_COUNT)\n"
+fi
+
 if [ "$MISSING_COUNT" -gt 0 ]; then
-  echo "❌ $MISSING_COUNT confirmed payments have missing on-chain receipts!"
+  ALERT_NEEDED=1
+  ALERT_MSG="${ALERT_MSG}- Missing on-chain receipts for confirmed payments (Count: $MISSING_COUNT)\n"
+  if [ -f /tmp/reconcile_failures ]; then
+    ALERT_MSG="${ALERT_MSG}  Txs: $(cat /tmp/reconcile_failures | tr '\n' ' ')\n"
+  fi
+fi
+
+if [ "$ALERT_NEEDED" -eq 1 ]; then
+  echo "❌ Reconciliation failed! Dispatching alerts..."
+  
+  # 1) Slack Alert
+  if [ -n "${SLACK_WEBHOOK_URL:-}" ] && [ "$SLACK_WEBHOOK_URL" != "NEED_FROM_SLACK" ]; then
+    echo "Sending Slack alert..."
+    curl -s -X POST -H 'Content-Type: application/json' \
+      -d '{"text": "'"${ALERT_MSG}"'"}' \
+      "$SLACK_WEBHOOK_URL" || echo "Slack post failed"
+  fi
+  
+  # 2) PagerDuty Alert
+  if [ -n "${PAGERDUTY_KEY:-}" ]; then
+    echo "Sending PagerDuty alert..."
+    curl -s -X POST -H 'Content-Type: application/json' \
+      -d '{"routing_key":"'"$PAGERDUTY_KEY"'","event_action":"trigger","payload":{"summary":"payments reconciliation failed","severity":"critical","source":"ci.reconcile","custom_details":{"details":"'"${ALERT_MSG}"'"}}}' \
+      https://events.pagerduty.com/v2/enqueue || echo "PagerDuty post failed"
+  fi
+  
   exit 2
 else
-  echo "✓ All checked confirmed payments exist on-chain."
+  echo "✓ All reconciliation checks passed successfully."
 fi
 
 echo "✓ Reconciliation complete. All checks passed."

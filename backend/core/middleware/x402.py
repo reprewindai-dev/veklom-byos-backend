@@ -520,6 +520,12 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                                 status="completed"
                             )
                             db.add(new_log)
+                            
+                            # Dynamically update budget rule spend
+                            for rule in budget_rules:
+                                rule.current_spend += float(route_cfg["price_usdc"])
+                                db.add(rule)
+                                
                             await db.commit()
                             
                         receipt = _build_receipt(route_cfg)

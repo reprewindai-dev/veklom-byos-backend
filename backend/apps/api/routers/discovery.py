@@ -317,6 +317,13 @@ Receipts are also returned as response headers:
 5 free governed calls/day per IP on AI inference and GPC compile.
 No sign-up, no card. Start calling: https://api.veklom.com/api/v1/ai/inference
 
+## Legal
+
+Software License Agreement (EULA): https://veklom.com/legal/license
+Vendor Agreement:                   https://veklom.com/legal/vendor-agreement
+Terms of Service:                   https://veklom.com/legal/terms
+Privacy Policy:                     https://veklom.com/legal/privacy
+
 ## Contact
 
 api@veklom.com

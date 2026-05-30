@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
-from backend.core.security.auth import get_current_user
+from backend.core.security.auth import get_current_user, get_current_user_optional
 from backend.db.models.playground import PlaygroundPrompt, PlaygroundSession
 
 router = APIRouter(tags=["Playground"])
@@ -327,7 +327,7 @@ async def delete_prompt(prompt_id: str, user=Depends(get_current_user), db: Asyn
 # ---------------------------------------------------------------------------
 
 @router.get("/playground/tools")
-async def list_tools(user=Depends(get_current_user)):
+async def list_tools(user=Depends(get_current_user_optional)):
     return {"tools": _available_tools(), "total": len(_available_tools())}
 
 
@@ -338,7 +338,7 @@ async def list_tools(user=Depends(get_current_user)):
 @router.post("/playground/inference")
 @router.post("/ai/chat")
 @router.post("/chat/completions")
-async def run_inference(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def run_inference(body: dict, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
     """Execute inference using the session configuration."""
     session_id = body.get("session_id")
     message = body.get("message", "")

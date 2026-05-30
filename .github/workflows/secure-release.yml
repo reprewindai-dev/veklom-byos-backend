@@ -152,6 +152,7 @@ jobs:
         run: |
           DIGEST='${{ needs.build-and-push.outputs.digest }}'
           docker run -d --rm -p 8088:8088 --name app \
+            -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
             ghcr.io/${{ github.repository }}@"$DIGEST"
           # give it a moment to boot
           for i in {1..20}; do

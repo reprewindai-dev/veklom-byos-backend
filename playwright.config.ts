@@ -4,6 +4,7 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   testDir: 'tests',
+  testIgnore: '**/playwright/**',
   retries: process.env.CI ? 2 : 0,
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {

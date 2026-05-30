@@ -891,6 +891,37 @@ async def legal_dsa():
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
+@app.get("/legal/license")
+async def legal_license():
+    path = LANDING_DIR / "license.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.get("/legal/vendor-agreement")
+async def legal_vendor_agreement():
+    path = LANDING_DIR / "vendor-agreement.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+# Canonical redirects for .html aliases and shorthand legal paths
+@app.get("/legal/license.html")
+@app.get("/license")
+async def legal_license_alias():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/legal/license", status_code=301)
+
+
+@app.get("/legal/vendor-agreement.html")
+@app.get("/vendor-agreement")
+async def legal_vendor_agreement_alias():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/legal/vendor-agreement", status_code=301)
+
+
 # /robots.txt is now served by discovery.router (see backend/apps/api/routers/discovery.py)
 
 
@@ -904,6 +935,8 @@ async def sitemap_xml():
   <url><loc>https://veklom.com/legal/terms</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://veklom.com/legal/privacy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://veklom.com/legal/security</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://veklom.com/legal/license</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://veklom.com/legal/vendor-agreement</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
 </urlset>"""
     return HTMLResponse(content=content, media_type="application/xml")
 

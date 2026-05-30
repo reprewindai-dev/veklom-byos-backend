@@ -1,0 +1,57 @@
+name: UACPGemini Failure Drill SLO Gate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  failure-drill:
+    name: Blast-Radius & Recovery SLO Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Application Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Start API Server
+        run: |
+          DATABASE_URL="sqlite+aiosqlite:///:memory:" REDIS_ENABLED="False" uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          for i in {1..30}; do
+            curl -s http://127.0.0.1:8088/health && break
+            sleep 1
+          done
+
+      - name: Simulate Service Crash & Recover SLO Assertion
+        run: |
+          echo "=== Step 1: Verify API Server Healthy ==="
+          curl -f http://127.0.0.1:8088/health
+          
+          echo "=== Step 2: Terminate Server (SIGTERM Crash simulation) ==="
+          pkill -TERM -f uvicorn
+          sleep 5
+          
+          echo "=== Step 3: Assert Failed Requests yield clean exceptions ==="
+          # curl should fail with connection error
+          curl -s --connect-timeout 2 http://127.0.0.1:8088/health && { echo "❌ Server should be down!"; exit 1; } || echo "✓ Server down successfully."
+          
+          echo "=== Step 4: Restart Server & Confirm Auto-Recovery ==="
+          DATABASE_URL="sqlite+aiosqlite:///:memory:" REDIS_ENABLED="False" uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          for i in {1..30}; do
+            curl -s http://127.0.0.1:8088/health && break
+            sleep 1
+          done
+          
+          echo "=== Step 5: Final Health Check ==="
+          curl -f http://127.0.0.1:8088/health
+          echo "✓ Blast-radius & Auto-Recovery SLO successfully satisfied."

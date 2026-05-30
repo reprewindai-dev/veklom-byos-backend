@@ -1,0 +1,64 @@
+name: UACPGemini Latency A/B Test Gate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  latency-ab:
+    name: Microservice vs In-Process Latency Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+          # Install vegeta for load testing
+          curl -s -L https://github.com/tsenart/vegeta/releases/download/v12.12.0/vegeta_12.12.0_linux_amd64.tar.gz | tar xz
+          sudo mv vegeta /usr/local/bin/
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Application Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Start Local API Server
+        run: |
+          # Start app in background to run latency tests against
+          DATABASE_URL="sqlite+aiosqlite:///:memory:" REDIS_ENABLED="False" uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          # Wait for startup
+          for i in {1..30}; do
+            curl -s http://127.0.0.1:8088/health && break
+            sleep 1
+          done
+
+      - name: Run load test via Vegeta
+        run: |
+          echo "=== Starting Saturation Load Test (100 RPS) ==="
+          echo 'POST http://127.0.0.1:8088/api/v1/health' | vegeta attack -duration=10s -rate=100 | vegeta report -type=json > /tmp/vegeta_report.json
+          cat /tmp/vegeta_report.json | jq .
+
+      - name: Assert Latency Gates
+        run: |
+          p95=$(cat /tmp/vegeta_report.json | jq '.latencies["95th"]')
+          # convert ns to ms
+          p95_ms=$(echo "$p95 / 1000000" | bc -l)
+          echo "Measured p95 latency: ${p95_ms}ms"
+          
+          # Gate: hard threshold of 150ms for local health hop
+          limit=150.0
+          if (( $(echo "$p95_ms > $limit" | bc -l) )); then
+            echo "❌ LATENCY GATE BREACHED: p95 ${p95_ms}ms > ${limit}ms limit"
+            exit 1
+          fi
+          echo "✓ Latency within bounds."

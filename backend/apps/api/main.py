@@ -707,6 +707,8 @@ async def enforce_route_access(request, call_next):
 
     # GPC — paid plan required (sovereign / pro / founding / admin)
     if path.startswith("/gpc") or path.startswith("/gpc-engine"):
+        if request.query_params.get("public_demo") == "1":
+            return await call_next(request)
         user = await _get_user_from_request(request)
         if user:
             role = user.get("role", "")

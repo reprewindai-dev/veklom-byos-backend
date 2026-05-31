@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
 import httpx
 from sqlalchemy import select
@@ -327,7 +327,7 @@ def _prefers_json(request: Request) -> bool:
     return "application/json" in accept or request.query_params.get("format") == "json"
 
 
-def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> str:
+def _github_bridge_html(access_token: str, refresh_token: str, user: User, next_url: str = None) -> str:
     """
     Render an HTML document that stores the provided access token, refresh token, and user payload into localStorage and then redirects the browser to the workspace overview.
     
@@ -339,7 +339,10 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User) -> st
     Returns:
         str: Complete HTML page as a string containing a script that writes the tokens and user to localStorage and performs a client-side redirect to "/workspace/#/overview".
     """
-    frontend_workspace_url = f"{settings.FRONTEND_URL.rstrip('/')}/workspace/#/overview"
+    if next_url and next_url.startswith("/"):
+        frontend_workspace_url = next_url
+    else:
+        frontend_workspace_url = f"{settings.FRONTEND_URL.rstrip('/')}/workspace/#/overview"
     payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -904,7 +907,7 @@ async def github_status():
 async def github_config_status():
     return _github_config_status()
 @router.get("/github/login")
-async def github_login(request: Request, token: Optional[str] = None):
+async def github_login(request: Request, token: Optional[str] = None, next: Optional[str] = None):
     if not _github_oauth_configured():
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
     oauth_values = _resolve_github_oauth_values(request)
@@ -930,9 +933,16 @@ async def github_login(request: Request, token: Optional[str] = None):
     }
     redirect_url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
     
+    
     if _prefers_json(request):
-        return {"auth_url": redirect_url}
-    return RedirectResponse(url=redirect_url)
+        response = JSONResponse(content={"auth_url": redirect_url})
+    else:
+        response = RedirectResponse(url=redirect_url)
+        
+    if next:
+        response.set_cookie(key="github_next_url", value=next, max_age=600, httponly=True, samesite="lax")
+        
+    return response
 
 
 @router.post("/github/callback")
@@ -1079,8 +1089,12 @@ async def github_callback(
     db.add(session)
     await db.commit()
 
+    next_url = request.cookies.get("github_next_url")
+
     if request.method == "GET":
-        return HTMLResponse(content=_github_bridge_html(app_access_token, app_refresh_token, user))
+        response = HTMLResponse(content=_github_bridge_html(app_access_token, app_refresh_token, user, next_url))
+        response.delete_cookie("github_next_url")
+        return response
 
     return {
         "access_token": app_access_token,

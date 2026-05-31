@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>UACP — Quantum Context Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ─── DESIGN TOKENS ──────────────────────────────────────────── */
+:root {
+  --bg:            #080b0f;
+  --surface:       #0d1117;
+  --surface-2:     #111820;
+  --surface-3:     #16202c;
+  --border:        #1e2d3d;
+  --border-bright: #2a3f55;
+  --text:          #c9d1d9;
+  --text-muted:    #6e7f8e;
+  --text-faint:    #3d4f60;
+  --primary:       #00c8ff;
+  --primary-dim:   #0086a8;
+  --primary-glow:  rgba(0,200,255,0.12);
+  --primary-pulse: rgba(0,200,255,0.05);
+  --green:         #00ff94;
+  --green-dim:     #006b3f;
+  --green-glow:    rgba(0,255,148,0.10);
+  --amber:         #ffb340;
+  --amber-dim:     #7a4d00;
+  --red:           #ff4466;
+  --red-dim:       #5c001c;
+  --purple:        #bd7dff;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-ui:   "Inter", system-ui, sans-serif;
+  --radius-sm: 3px;
+  --radius:    6px;
+  --radius-lg: 10px;
+  --transition: 160ms cubic-bezier(0.16,1,0.3,1);
+}
+
+/* ─── BASE ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-mono);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 4px; }
+
+/* ─── SCANLINE OVERLAY ───────────────────────────────────────── */
+body::before {
+  content:""; pointer-events:none; position:fixed; inset:0; z-index:9999;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+}
+
+/* ─── HEADER ─────────────────────────────────────────────────── */
+#hdr {
+  display:flex; align-items:center; gap:12px;
+  padding: 0 16px;
+  height: 44px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink:0;
+  position: relative;
+}
+#hdr-logo {
+  display:flex; align-items:center; gap:8px;
+  font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+  color: var(--primary);
+}
+#hdr-logo svg { flex-shrink:0; }
+.hdr-sep { width:1px; height:20px; background: var(--border); }
+.hdr-tag {
+  font-size:10px; padding:2px 7px; border-radius:var(--radius-sm);
+  border:1px solid var(--border-bright); color: var(--text-muted);
+  text-transform:uppercase; letter-spacing:.08em;
+}
+.hdr-tag.live { border-color: var(--green-dim); color: var(--green); background: var(--green-glow); }
+.hdr-tag.phase { border-color: var(--primary-dim); color: var(--primary); background: var(--primary-glow); }
+#hdr-status {
+  margin-left:auto; display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-muted);
+}
+.status-dot {
+  width:6px; height:6px; border-radius:50%; background:var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+#hdr-clock { font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+#antigravity-tag {
+  position:absolute; right:16px; bottom:-1px;
+  font-size:9px; color:var(--text-faint); letter-spacing:.1em; text-transform:uppercase;
+}
+
+/* ─── MAIN LAYOUT ────────────────────────────────────────────── */
+#layout {
+  display: grid;
+  grid-template-columns: 220px 1fr 280px;
+  grid-template-rows: 1fr;
+  flex:1; min-height:0; overflow:hidden;
+}
+
+/* ─── SIDEBAR ────────────────────────────────────────────────── */
+#sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display:flex; flex-direction:column;
+  overflow-y:auto; overflow-x:hidden;
+  padding-bottom: 12px;
+}
+.sb-section { padding: 10px 12px 4px; }
+.sb-label {
+  font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+  color: var(--text-faint); margin-bottom:6px; font-weight:600;
+}
+.endpoint-group { margin-bottom:6px; }
+.eg-header {
+  display:flex; align-items:center; gap:6px;
+  padding: 5px 8px; border-radius: var(--radius-sm);
+  cursor:pointer; transition: background var(--transition);
+  font-size:11px; color:var(--text-muted); font-weight:500;
+  user-select:none;
+}
+.eg-header:hover { background: var(--surface-2); color:var(--text); }
+.eg-header.active { color:var(--primary); }
+.eg-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.eg-dot.green { background:var(--green); box-shadow:0 0 5px var(--green); }
+.eg-dot.blue  { background:var(--primary); box-shadow:0 0 5px var(--primary); }
+.eg-dot.amber { background:var(--amber); box-shadow:0 0 5px var(--amber); }
+.eg-dot.red   { background:var(--red); box-shadow:0 0 5px var(--red); }
+.eg-dot.purple{ background:var(--purple); box-shadow:0 0 5px var(--purple); }
+.eg-caret {
+  margin-left:auto; font-size:9px; transition:transform var(--transition);
+}
+.eg-header.open .eg-caret { transform:rotate(90deg); }
+.eg-routes {
+  display:none; flex-direction:column; gap:1px;
+  padding: 2px 0 2px 20px;
+}
+.eg-routes.open { display:flex; }
+.route-item {
+  display:flex; align-items:center; gap:6px;
+  padding: 3px 8px; border-radius:var(--radius-sm);
+  cursor:pointer; transition: background var(--transition);
+  font-size:10px; color:var(--text-muted);
+}
+.route-item:hover { background: var(--surface-2); color:var(--text); }
+.route-item.active { background: var(--primary-glow); color:var(--primary); }
+.route-method {
+  font-size:8px; padding:1px 4px; border-radius:2px; font-weight:700;
+  text-transform:uppercase; flex-shrink:0; min-width:28px; text-align:center;
+}
+.method-get  { background:rgba(0,200,255,0.15); color:var(--primary); }
+.method-post { background:rgba(0,255,148,0.12); color:var(--green); }
+.method-del  { background:rgba(255,68,102,0.15); color:var(--red); }
+.method-ws   { background:rgba(189,125,255,0.15); color:var(--purple); }
+
+/* ─── MAIN TERMINAL ──────────────────────────────────────────── */
+#main {
+  display:flex; flex-direction:column;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  overflow:hidden;
+}
+#terminal-header {
+  display:flex; align-items:center; gap:10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink:0;
+}
+.th-tab {
+  padding: 4px 12px; border-radius:var(--radius-sm);
+  font-size:11px; cursor:pointer; color:var(--text-muted);
+  transition: all var(--transition);
+  border: 1px solid transparent;
+}
+.th-tab:hover { color:var(--text); }
+.th-tab.active {
+  background: var(--surface-2); color:var(--primary);
+  border-color:var(--border-bright);
+}
+#terminal-output {
+  flex:1; overflow-y:auto; padding:16px;
+  display:flex; flex-direction:column; gap:2px;
+}
+.t-line {
+  display:flex; gap:8px; align-items:flex-start;
+  animation: linein 80ms ease-out;
+  line-height:1.6;
+}
+@keyframes linein { from{opacity:0;transform:translateY(2px)} to{opacity:1;transform:none} }
+.t-ts {
+  flex-shrink:0; font-size:10px; color:var(--text-faint);
+  padding-top:2px; min-width:68px; font-variant-numeric:tabular-nums;
+}
+.t-prefix { flex-shrink:0; font-size:12px; font-weight:600; }
+.t-text { flex:1; word-break:break-word; font-size:12px; }
+.t-text.sys { color:var(--text-muted); }
+.t-text.info { color:var(--text); }
+.t-text.ok   { color:var(--green); }
+.t-text.warn { color:var(--amber); }
+.t-text.err  { color:var(--red); }
+.t-text.cmd  { color:var(--primary); font-weight:500; }
+.t-text.rpc  { color:var(--purple); }
+.t-text.zeno { color:#00d4ff; }
+.t-text.spec { color:#ffaa00; }
+.t-prefix.p-sys  { color:var(--text-faint); }
+.t-prefix.p-cmd  { color:var(--primary); }
+.t-prefix.p-ok   { color:var(--green); }
+.t-prefix.p-err  { color:var(--red); }
+.t-prefix.p-rpc  { color:var(--purple); }
+.t-prefix.p-zeno { color:#00d4ff; }
+.t-prefix.p-spec { color:#ffaa00; }
+.t-divider {
+  height:1px; background: var(--border); margin:8px 0;
+}
+.t-json {
+  font-size:10px; color:var(--text-muted);
+  background: var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:8px 10px; margin:4px 0;
+  overflow-x:auto; white-space:pre;
+}
+.t-json .k { color: var(--primary); }
+.t-json .s { color: var(--green); }
+.t-json .n { color: var(--amber); }
+.t-json .b { color: var(--red); }
+
+/* ─── INPUT BAR ──────────────────────────────────────────────── */
+#input-bar {
+  flex-shrink:0;
+  padding:10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.input-mode-row {
+  display:flex; gap:6px; margin-bottom:8px;
+}
+.mode-btn {
+  font-size:9px; padding:2px 8px; border-radius:var(--radius-sm);
+  border:1px solid var(--border-bright); background:none; color:var(--text-muted);
+  cursor:pointer; transition: all var(--transition); text-transform:uppercase; letter-spacing:.06em;
+  font-family:var(--font-mono);
+}
+.mode-btn:hover { color:var(--text); border-color: var(--primary-dim); }
+.mode-btn.active { background: var(--primary-glow); color:var(--primary); border-color:var(--primary-dim); }
+#input-row {
+  display:flex; align-items:center; gap:8px;
+}
+#input-prompt { color:var(--primary); font-size:13px; font-weight:700; flex-shrink:0; }
+#cmd-input {
+  flex:1; background:none; border:none; outline:none;
+  font-family:var(--font-mono); font-size:12px; color:var(--text);
+  caret-color: var(--primary);
+}
+#cmd-input::placeholder { color:var(--text-faint); }
+#exec-btn {
+  padding:5px 14px; border-radius:var(--radius-sm);
+  background: var(--primary-glow); border:1px solid var(--primary-dim);
+  color:var(--primary); font-family:var(--font-mono); font-size:10px; font-weight:600;
+  cursor:pointer; transition: all var(--transition); text-transform:uppercase; letter-spacing:.06em;
+}
+#exec-btn:hover { background:var(--primary); color:#000; }
+#exec-btn:active { transform:scale(0.97); }
+.quick-cmds {
+  display:flex; flex-wrap:wrap; gap:4px; margin-top:7px;
+}
+.qc {
+  font-size:9px; padding:2px 7px; border-radius:var(--radius-sm);
+  border:1px solid var(--border); color:var(--text-faint); cursor:pointer;
+  transition: all var(--transition); white-space:nowrap;
+  background:none; font-family:var(--font-mono);
+}
+.qc:hover { border-color:var(--primary-dim); color:var(--primary); background:var(--primary-pulse); }
+
+/* ─── RIGHT PANEL ────────────────────────────────────────────── */
+#right-panel {
+  display:flex; flex-direction:column; overflow:hidden;
+  background: var(--surface);
+}
+
+/* ZENO VISUALIZER */
+#zeno-panel {
+  border-bottom: 1px solid var(--border);
+  padding:12px 14px;
+  flex-shrink:0;
+}
+.panel-title {
+  font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--text-faint); margin-bottom:10px; font-weight:600;
+  display:flex; align-items:center; gap:6px;
+}
+.panel-title-dot {
+  width:5px; height:5px; border-radius:50%; background:var(--primary);
+  box-shadow:0 0 5px var(--primary);
+}
+#zeno-canvas { display:block; width:100%; height:80px; }
+.zeno-stats {
+  display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px;
+}
+.zs {
+  background:var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--radius); padding:6px 8px;
+}
+.zs-label { font-size:8px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.08em; margin-bottom:2px; }
+.zs-value { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+.zs-value.v-cyan  { color:var(--primary); }
+.zs-value.v-green { color:var(--green); }
+.zs-value.v-amber { color:var(--amber); }
+
+/* MCP MESH */
+#mesh-panel {
+  border-bottom: 1px solid var(--border);
+  padding:12px 14px;
+  flex-shrink:0;
+}
+#mesh-canvas { display:block; width:100%; height:110px; }
+
+/* ENDPOINT INSPECTOR */
+#inspector {
+  flex:1; overflow-y:auto; padding:12px 14px;
+}
+.insp-route {
+  background: var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--radius); padding:10px; margin-bottom:8px;
+}
+.insp-route-header {
+  display:flex; align-items:center; gap:8px; margin-bottom:6px;
+}
+.insp-title { font-size:11px; color:var(--text); font-weight:500; }
+.insp-desc  { font-size:10px; color:var(--text-muted); line-height:1.4; margin-bottom:6px; }
+.insp-badges { display:flex; flex-wrap:wrap; gap:4px; }
+.badge {
+  font-size:8px; padding:2px 6px; border-radius:var(--radius-sm);
+  text-transform:uppercase; letter-spacing:.06em; font-weight:600;
+}
+.badge-uacp   { background:rgba(0,200,255,0.12); color:var(--primary); border:1px solid var(--primary-dim); }
+.badge-mcp    { background:rgba(189,125,255,0.12); color:var(--purple); border:1px solid #5a3a7a; }
+.badge-stream { background:rgba(0,255,148,0.10); color:var(--green); border:1px solid var(--green-dim); }
+.badge-auth   { background:rgba(255,179,64,0.12); color:var(--amber); border:1px solid var(--amber-dim); }
+.badge-ws     { background:rgba(189,125,255,0.12); color:var(--purple); border:1px solid #5a3a7a; }
+.badge-kill   { background:rgba(255,68,102,0.15); color:var(--red); border:1px solid var(--red-dim); }
+
+/* TELEMETRY BARS */
+#telem-panel {
+  border-top:1px solid var(--border);
+  padding:10px 14px;
+  flex-shrink:0;
+}
+.telem-row {
+  display:flex; align-items:center; gap:8px; margin-bottom:5px;
+}
+.telem-label { font-size:9px; color:var(--text-muted); width:74px; flex-shrink:0; text-transform:uppercase; letter-spacing:.06em; }
+.telem-bar { flex:1; height:4px; background:var(--surface-2); border-radius:4px; overflow:hidden; }
+.telem-fill { height:100%; border-radius:4px; transition:width 600ms cubic-bezier(0.16,1,0.3,1); }
+.telem-val { font-size:9px; color:var(--text-muted); width:32px; text-align:right; font-variant-numeric:tabular-nums; }
+
+/* ─── RESPONSIVE ─────────────────────────────────────────────── */
+@media (max-width:900px) {
+  #layout { grid-template-columns: 0px 1fr 0px; }
+  #sidebar,#right-panel { display:none; }
+}
+@media (max-width:600px) {
+  #hdr-logo span { display:none; }
+}
+
+/* ─── CARET BLINK ────────────────────────────────────────────── */
+.blink { animation: bk 1s step-end infinite; }
+@keyframes bk { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ─── REQUEST MODAL ──────────────────────────────────────────── */
+#req-modal {
+  display:none; position:fixed; inset:0; z-index:1000;
+  background:rgba(0,0,0,0.65); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center;
+}
+#req-modal.open { display:flex; }
+#req-card {
+  background:var(--surface); border:1px solid var(--border-bright);
+  border-radius:var(--radius-lg); padding:20px; width:480px; max-width:90vw;
+  box-shadow:0 20px 60px rgba(0,0,0,0.6);
+}
+#req-title { font-size:12px; font-weight:600; color:var(--primary); margin-bottom:4px; }
+#req-desc  { font-size:11px; color:var(--text-muted); margin-bottom:14px; }
+#req-payload {
+  background:var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--radius); padding:10px; font-size:10px;
+  color:var(--text-muted); font-family:var(--font-mono);
+  white-space:pre; overflow-x:auto; margin-bottom:14px; max-height:200px; overflow-y:auto;
+}
+.req-btns { display:flex; gap:8px; justify-content:flex-end; }
+.req-btn {
+  padding:5px 14px; border-radius:var(--radius-sm);
+  font-family:var(--font-mono); font-size:10px; font-weight:600;
+  cursor:pointer; transition:all var(--transition); border:1px solid var(--border-bright);
+  text-transform:uppercase; letter-spacing:.06em; background:none; color:var(--text-muted);
+}
+.req-btn:hover { color:var(--text); }
+.req-btn.primary {
+  background:var(--primary-glow); border-color:var(--primary-dim);
+  color:var(--primary);
+}
+.req-btn.primary:hover { background:var(--primary); color:#000; }
+
+/* ─── PHASE STATE BADGE ──────────────────────────────────────── */
+#phase-badge {
+  padding:2px 10px; border-radius:var(--radius-sm);
+  font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
+  transition:all 400ms ease;
+  border:1px solid var(--primary-dim); background:var(--primary-glow); color:var(--primary);
+}
+#phase-badge.interrogating {
+  border-color:#00d4ff; background:rgba(0,212,255,0.15); color:#00d4ff;
+  animation: phaseflash 0.4s ease;
+}
+#phase-badge.error { border-color:var(--red); background:rgba(255,68,102,.1); color:var(--red); }
+@keyframes phaseflash { 0%{box-shadow:0 0 0 0 rgba(0,212,255,0.4)} 100%{box-shadow:0 0 0 8px transparent} }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header id="hdr">
+  <div id="hdr-logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-label="UACP logo">
+      <polygon points="11,1 21,6 21,16 11,21 1,16 1,6" stroke="#00c8ff" stroke-width="1.2" fill="none"/>
+      <circle cx="11" cy="11" r="3" fill="#00c8ff" opacity=".8"/>
+      <line x1="11" y1="4" x2="11" y2="8" stroke="#00c8ff" stroke-width="1" opacity=".5"/>
+      <line x1="11" y1="14" x2="11" y2="18" stroke="#00c8ff" stroke-width="1" opacity=".5"/>
+      <line x1="4" y1="7.5" x2="7.5" y2="9.5" stroke="#00c8ff" stroke-width="1" opacity=".5"/>
+      <line x1="14.5" y1="12.5" x2="18" y2="14.5" stroke="#00c8ff" stroke-width="1" opacity=".5"/>
+      <line x1="4" y1="14.5" x2="7.5" y2="12.5" stroke="#00c8ff" stroke-width="1" opacity=".5"/>
+      <line x1="14.5" y1="9.5" x2="18" y2="7.5" stroke="#00c8ff" stroke-width="1" opacity=".5"/>
+    </svg>
+    <span>UACP // Quantum Context Terminal</span>
+  </div>
+  <div class="hdr-sep"></div>
+  <span class="hdr-tag">byosbackend v2</span>
+  <span class="hdr-tag live">live</span>
+  <span id="phase-badge">phase_locked</span>
+  <div id="hdr-status">
+    <div class="status-dot"></div>
+    <span>BYOS CONNECTED</span>
+  </div>
+  <span id="hdr-clock">—</span>
+  <div id="antigravity-tag">Antigravity v4.0 // Neural Orchestration Engine</div>
+</header>
+
+<!-- LAYOUT -->
+<div id="layout">
+
+<!-- SIDEBAR: REAL ENDPOINT MAP -->
+<nav id="sidebar">
+  <div class="sb-section">
+    <div class="sb-label">Connection Map</div>
+
+    <!-- UACP Core -->
+    <div class="endpoint-group">
+      <div class="eg-header active open" onclick="toggleGroup(this)">
+        <span class="eg-dot blue"></span>UACP Core<span class="eg-caret">▶</span>
+      </div>
+      <div class="eg-routes open">
+        <div class="route-item active" onclick="selectRoute(this,'POST','/autonomous/execute','UACP agent task execution — primary entrypoint for agentic runs','uacp,mcp,stream')">
+          <span class="route-method method-post">POST</span>/autonomous/execute
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/autonomous/status/{run_id}','Poll autonomous run status and orchestration state','uacp,stream')">
+          <span class="route-method method-get">GET</span>/autonomous/status
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/internal/uacp/v4/dispatch','Internal UACP v4 versioned command dispatch','uacp,auth')">
+          <span class="route-method method-post">POST</span>/internal/uacp/v4
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/internal/uacp/versions','List active UACP versions v0→v4','uacp')">
+          <span class="route-method method-get">GET</span>/internal/uacp/versions
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/internal/operators/register','Register operator capability into UACP mesh','uacp,mcp')">
+          <span class="route-method method-post">POST</span>/operators/register
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/internal/operators/capabilities','Negotiate operator capabilities — MCP context server layer','uacp,mcp')">
+          <span class="route-method method-get">GET</span>/operators/capabilities
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Layer -->
+    <div class="endpoint-group">
+      <div class="eg-header" onclick="toggleGroup(this)">
+        <span class="eg-dot green"></span>AI / Inference<span class="eg-caret">▶</span>
+      </div>
+      <div class="eg-routes">
+        <div class="route-item" onclick="selectRoute(this,'POST','/ai/inference','Model dispatch + inference routing with streaming','mcp,stream,auth')">
+          <span class="route-method method-post">POST</span>/ai/inference
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/ai/chat/stream','SSE streaming chat — real-time token delivery','stream,auth')">
+          <span class="route-method method-post">POST</span>/ai/chat/stream
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/ai/providers','List active AI providers + capability map','mcp')">
+          <span class="route-method method-get">GET</span>/ai/providers
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/exec/run','Remote code/command execution surface','auth,stream')">
+          <span class="route-method method-post">POST</span>/exec/run
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/jobs/{id}/status','Async job queue status polling','auth')">
+          <span class="route-method method-get">GET</span>/jobs/status
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/pipelines/trigger','Trigger pipeline execution with input payload','auth,stream')">
+          <span class="route-method method-post">POST</span>/pipelines/trigger
+        </div>
+      </div>
+    </div>
+
+    <!-- Marketplace -->
+    <div class="endpoint-group">
+      <div class="eg-header" onclick="toggleGroup(this)">
+        <span class="eg-dot amber"></span>Marketplace<span class="eg-caret">▶</span>
+      </div>
+      <div class="eg-routes">
+        <div class="route-item" onclick="selectRoute(this,'GET','/marketplace/tools','List MCP-compatible tools available in marketplace','mcp,auth')">
+          <span class="route-method method-get">GET</span>/marketplace/tools
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/marketplace/acquire','Acquire a tool for tenant workspace','auth')">
+          <span class="route-method method-post">POST</span>/marketplace/acquire
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/subscriptions/active','Active subscription tiers for tenant','auth')">
+          <span class="route-method method-get">GET</span>/subscriptions/active
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/wallet/balance','Token wallet balance + spend history','auth')">
+          <span class="route-method method-get">GET</span>/wallet/balance
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/billing/invoice','Generate invoice for current billing cycle','auth')">
+          <span class="route-method method-post">POST</span>/billing/invoice
+        </div>
+      </div>
+    </div>
+
+    <!-- Telemetry -->
+    <div class="endpoint-group">
+      <div class="eg-header" onclick="toggleGroup(this)">
+        <span class="eg-dot blue"></span>Telemetry / Monitor<span class="eg-caret">▶</span>
+      </div>
+      <div class="eg-routes">
+        <div class="route-item" onclick="selectRoute(this,'GET','/telemetry/events','Query telemetry event stream','stream,auth')">
+          <span class="route-method method-get">GET</span>/telemetry/events
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/pulse/realtime','Real-time platform health SSE feed','stream')">
+          <span class="route-method method-ws">SSE</span>/pulse/realtime
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/metrics','Prometheus scrape endpoint','stream')">
+          <span class="route-method method-get">GET</span>/metrics
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/health','Liveness + readiness probe','')">
+          <span class="route-method method-get">GET</span>/health
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/monitor/alerts','Active alerts + threshold violations','auth')">
+          <span class="route-method method-get">GET</span>/monitor/alerts
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/audit/log','Immutable audit log queries','auth')">
+          <span class="route-method method-get">GET</span>/audit/log
+        </div>
+      </div>
+    </div>
+
+    <!-- Safety -->
+    <div class="endpoint-group">
+      <div class="eg-header" onclick="toggleGroup(this)">
+        <span class="eg-dot red"></span>Safety / Control<span class="eg-caret">▶</span>
+      </div>
+      <div class="eg-routes">
+        <div class="route-item" onclick="selectRoute(this,'POST','/kill/agent/{id}','Emergency agent shutoff','kill,auth')">
+          <span class="route-method method-post">POST</span>/kill/agent
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/kill/tenant/{id}','Emergency tenant-level shutoff','kill,auth')">
+          <span class="route-method method-post">POST</span>/kill/tenant
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/kill/system','Global system kill switch','kill,auth')">
+          <span class="route-method method-post">POST</span>/kill/system
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/safety/analyze','Content safety + toxicity scan','auth')">
+          <span class="route-method method-post">POST</span>/safety/analyze
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/explain/trace/{id}','Decision trace + model reasoning audit','auth')">
+          <span class="route-method method-get">GET</span>/explain/trace
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/compliance/report','Regulatory compliance status','auth')">
+          <span class="route-method method-get">GET</span>/compliance/report
+        </div>
+      </div>
+    </div>
+
+    <!-- Auth -->
+    <div class="endpoint-group">
+      <div class="eg-header" onclick="toggleGroup(this)">
+        <span class="eg-dot purple"></span>Auth / Identity<span class="eg-caret">▶</span>
+      </div>
+      <div class="eg-routes">
+        <div class="route-item" onclick="selectRoute(this,'POST','/auth/token','Issue JWT access token','auth')">
+          <span class="route-method method-post">POST</span>/auth/token
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/auth/refresh','Refresh access token','auth')">
+          <span class="route-method method-post">POST</span>/auth/refresh
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/auth/oauth/github','GitHub OAuth initiation','auth')">
+          <span class="route-method method-get">GET</span>/auth/oauth/github
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/locker/security/keys','Retrieve authorized signing keys','auth')">
+          <span class="route-method method-get">GET</span>/locker/security/keys
+        </div>
+      </div>
+    </div>
+
+    <!-- Workspace -->
+    <div class="endpoint-group">
+      <div class="eg-header" onclick="toggleGroup(this)">
+        <span class="eg-dot amber"></span>Workspace / Data<span class="eg-caret">▶</span>
+      </div>
+      <div class="eg-routes">
+        <div class="route-item" onclick="selectRoute(this,'GET','/workspace/config','Tenant workspace configuration','auth')">
+          <span class="route-method method-get">GET</span>/workspace/config
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/deployments/active','Active deployment configs + targets','auth')">
+          <span class="route-method method-get">GET</span>/deployments/active
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/sotb/sync','Source-of-truth bridge canonical state','auth')">
+          <span class="route-method method-get">GET</span>/sotb/sync
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'POST','/extract/pipeline','Trigger data extraction pipeline','auth,stream')">
+          <span class="route-method method-post">POST</span>/extract/pipeline
+        </div>
+        <div class="route-item" onclick="selectRoute(this,'GET','/search/query','Full-text + semantic search','auth')">
+          <span class="route-method method-get">GET</span>/search/query
+        </div>
+      </div>
+    </div>
+
+  </div>
+</nav>
+
+<!-- TERMINAL -->
+<main id="main">
+  <div id="terminal-header">
+    <div class="th-tab active" onclick="switchTab(this,'terminal')">Terminal</div>
+    <div class="th-tab" onclick="switchTab(this,'mcp-trace')">MCP Trace</div>
+    <div class="th-tab" onclick="switchTab(this,'zeno-log')">Zeno Log</div>
+    <div class="th-tab" onclick="switchTab(this,'spec-graph')">Gladiator</div>
+  </div>
+  <div id="terminal-output"></div>
+  <div id="input-bar">
+    <div class="input-mode-row">
+      <button class="mode-btn active" id="mode-autonomous" onclick="setMode('autonomous',this)">Autonomous</button>
+      <button class="mode-btn" id="mode-mcp" onclick="setMode('mcp',this)">MCP Dispatch</button>
+      <button class="mode-btn" id="mode-zeno" onclick="setMode('zeno',this)">Zeno Probe</button>
+      <button class="mode-btn" id="mode-gladiator" onclick="setMode('gladiator',this)">Gladiator</button>
+      <button class="mode-btn" id="mode-raw" onclick="setMode('raw',this)">Raw API</button>
+    </div>
+    <div id="input-row">
+      <span id="input-prompt">UACP&gt;</span>
+      <input id="cmd-input" type="text" autocomplete="off" spellcheck="false"
+        placeholder="Route to /autonomous/execute or describe an orchestration intent..."/>
+      <button id="exec-btn" onclick="executeCommand()">Execute</button>
+    </div>
+    <div class="quick-cmds" id="quick-cmds"></div>
+  </div>
+</main>
+
+<!-- RIGHT PANEL -->
+<aside id="right-panel">
+  <!-- ZENO VISUALIZER -->
+  <div id="zeno-panel">
+    <div class="panel-title">
+      <span class="panel-title-dot"></span>Zeno Interrogation Visualizer
+    </div>
+    <canvas id="zeno-canvas" height="80"></canvas>
+    <div class="zeno-stats">
+      <div class="zs">
+        <div class="zs-label">N Cycles</div>
+        <div class="zs-value v-cyan" id="zs-n">6</div>
+      </div>
+      <div class="zs">
+        <div class="zs-label">Efficiency</div>
+        <div class="zs-value v-green" id="zs-eff">64%</div>
+      </div>
+      <div class="zs">
+        <div class="zs-label">Leakage</div>
+        <div class="zs-value v-amber" id="zs-leak">1.4%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MCP MESH -->
+  <div id="mesh-panel">
+    <div class="panel-title">
+      <span class="panel-title-dot" style="background:var(--purple);box-shadow:0 0 5px var(--purple)"></span>MCP Mesh Topology
+    </div>
+    <canvas id="mesh-canvas" height="110"></canvas>
+  </div>
+
+  <!-- INSPECTOR -->
+  <div id="inspector">
+    <div class="panel-title">
+      <span class="panel-title-dot" style="background:var(--amber);box-shadow:0 0 5px var(--amber)"></span>Active Endpoint
+    </div>
+    <div id="insp-content">
+      <div class="insp-route">
+        <div class="insp-route-header">
+          <span class="route-method method-post">POST</span>
+          <span class="insp-title">/autonomous/execute</span>
+        </div>
+        <div class="insp-desc">UACP primary agentic entrypoint. Accepts orchestration intent, dispatches to internal UACP v0→v4 versioned control plane. Returns streaming run status via SSE.</div>
+        <div class="insp-badges">
+          <span class="badge badge-uacp">UACP</span>
+          <span class="badge badge-mcp">MCP Host</span>
+          <span class="badge badge-stream">SSE Stream</span>
+          <span class="badge badge-auth">JWT Auth</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELEMETRY BARS -->
+  <div id="telem-panel">
+    <div class="panel-title" style="margin-bottom:8px">
+      <span class="panel-title-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></span>Live Telemetry
+    </div>
+    <div class="telem-row">
+      <span class="telem-label">Zeno Eff</span>
+      <div class="telem-bar"><div class="telem-fill" id="tf-zeno" style="width:64%;background:var(--primary)"></div></div>
+      <span class="telem-val" id="tv-zeno">64%</span>
+    </div>
+    <div class="telem-row">
+      <span class="telem-label">Agent Load</span>
+      <div class="telem-bar"><div class="telem-fill" id="tf-agent" style="width:23%;background:var(--green)"></div></div>
+      <span class="telem-val" id="tv-agent">23%</span>
+    </div>
+    <div class="telem-row">
+      <span class="telem-label">MCP Mesh</span>
+      <div class="telem-bar"><div class="telem-fill" id="tf-mesh" style="width:88%;background:var(--purple)"></div></div>
+      <span class="telem-val" id="tv-mesh">88%</span>
+    </div>
+    <div class="telem-row">
+      <span class="telem-label">Leakage</span>
+      <div class="telem-bar"><div class="telem-fill" id="tf-leak" style="width:1.4%;background:var(--amber)"></div></div>
+      <span class="telem-val" id="tv-leak">1.4%</span>
+    </div>
+    <div class="telem-row">
+      <span class="telem-label">API Health</span>
+      <div class="telem-bar"><div class="telem-fill" id="tf-health" style="width:99%;background:var(--green)"></div></div>
+      <span class="telem-val" id="tv-health">99%</span>
+    </div>
+  </div>
+</aside>
+</div>
+
+<!-- REQUEST MODAL -->
+<div id="req-modal">
+  <div id="req-card">
+    <div id="req-title">—</div>
+    <div id="req-desc">—</div>
+    <div id="req-payload">—</div>
+    <div class="req-btns">
+      <button class="req-btn" onclick="closeModal()">Cancel</button>
+      <button class="req-btn primary" onclick="fireRequest()">Fire Request ⚡</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ────────────────────────────────────────────────────
+let mode = 'autonomous';
+let zenoN = 6;
+let currentRoute = { method:'POST', path:'/autonomous/execute' };
+let activeRouteEl = null;
+let reqPending = null;
+
+// ─── CLOCK ───────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('hdr-clock').textContent =
+    now.toISOString().replace('T',' ').slice(0,19) + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── SIDEBAR TOGGLE ──────────────────────────────────────────
+function toggleGroup(hdr) {
+  hdr.classList.toggle('open');
+  const routes = hdr.nextElementSibling;
+  routes.classList.toggle('open');
+}
+
+// ─── SELECT ROUTE ─────────────────────────────────────────────
+function selectRoute(el, method, path, desc, badgesRaw) {
+  document.querySelectorAll('.route-item').forEach(r => r.classList.remove('active'));
+  el.classList.add('active');
+  currentRoute = { method, path, desc, badges: badgesRaw ? badgesRaw.split(',') : [] };
+  renderInspector(method, path, desc, badgesRaw);
+  document.getElementById('cmd-input').placeholder = method + ' ' + path;
+}
+
+function renderInspector(method, path, desc, badgesRaw) {
+  const badgeMap = {
+    uacp:   '<span class="badge badge-uacp">UACP</span>',
+    mcp:    '<span class="badge badge-mcp">MCP</span>',
+    stream: '<span class="badge badge-stream">SSE Stream</span>',
+    auth:   '<span class="badge badge-auth">JWT Auth</span>',
+    ws:     '<span class="badge badge-ws">WebSocket</span>',
+    kill:   '<span class="badge badge-kill">Kill Switch</span>',
+  };
+  const badges = badgesRaw ? badgesRaw.split(',').map(b => badgeMap[b.trim()] || '').join('') : '';
+  const methodClass = { GET:'method-get', POST:'method-post', DELETE:'method-del', SSE:'method-ws' };
+  document.getElementById('insp-content').innerHTML = `
+    <div class="insp-route">
+      <div class="insp-route-header">
+        <span class="route-method ${methodClass[method]||'method-get'}">${method}</span>
+        <span class="insp-title">${path}</span>
+      </div>
+      <div class="insp-desc">${desc || 'BYOS Backend endpoint.'}</div>
+      <div class="insp-badges">${badges}</div>
+    </div>
+  `;
+}
+
+// ─── TABS ─────────────────────────────────────────────────────
+function switchTab(el, tabId) {
+  document.querySelectorAll('.th-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ─── MODE ─────────────────────────────────────────────────────
+const quickCmds = {
+  autonomous: [
+    'POST /autonomous/execute',
+    'GET /autonomous/status',
+    'Calibrate thousand-qubit Heron processor',
+    'Optimize 10000-bit bitmap transmission',
+    'GET /health',
+  ],
+  mcp: [
+    'GET /internal/operators/capabilities',
+    'POST /internal/operators/register',
+    'GET /ai/providers',
+    'POST /ai/inference',
+  ],
+  zeno: [
+    'Zeno probe N=6 /pulse/realtime',
+    'Zeno probe N=∞ /telemetry/events',
+    'IFM state verify /sotb/sync',
+  ],
+  gladiator: [
+    'Speculate: POST /exec/run',
+    'Prune: low-confidence /ai/inference',
+    'Gladiator: pipeline /pipelines/trigger',
+  ],
+  raw: [
+    'GET /health',
+    'GET /metrics',
+    'GET /audit/log',
+    'GET /compliance/report',
+  ],
+};
+
+function setMode(m, el) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  const prefix = { autonomous:'UACP>', mcp:'MCP>', zeno:'Ψ>', gladiator:'Ω>', raw:'API>' };
+  document.getElementById('input-prompt').textContent = prefix[m] || 'UACP>';
+  renderQuickCmds(m);
+}
+
+function renderQuickCmds(m) {
+  const c = document.getElementById('quick-cmds');
+  c.innerHTML = (quickCmds[m] || []).map(q =>
+    `<button class="qc" onclick="fillInput(this.textContent)">${q}</button>`
+  ).join('');
+}
+function fillInput(v) { document.getElementById('cmd-input').value = v; document.getElementById('cmd-input').focus(); }
+
+renderQuickCmds('autonomous');
+
+// ─── TERMINAL OUTPUT ──────────────────────────────────────────
+function ts() {
+  return new Date().toISOString().replace('T',' ').slice(11,23);
+}
+
+function tLine(text, type='info', prefix='◆', prefixClass='p-sys') {
+  const out = document.getElementById('terminal-output');
+  const div = document.createElement('div');
+  div.className = 't-line';
+  div.innerHTML = `<span class="t-ts">${ts()}</span><span class="t-prefix ${prefixClass}">${prefix}</span><span class="t-text ${type}">${text}</span>`;
+  out.appendChild(div);
+  out.scrollTop = out.scrollHeight;
+}
+
+function tJson(obj) {
+  const out = document.getElementById('terminal-output');
+  const div = document.createElement('div');
+  div.className = 't-json';
+  div.innerHTML = syntaxHighlight(JSON.stringify(obj, null, 2));
+  out.appendChild(div);
+  out.scrollTop = out.scrollHeight;
+}
+
+function tDivider() {
+  const out = document.getElementById('terminal-output');
+  const d = document.createElement('div');
+  d.className = 't-divider';
+  out.appendChild(d);
+}
+
+function syntaxHighlight(json) {
+  return json
+    .replace(/("(\u[a-zA-Z0-9]{4}|\[^u]|[^\"])*"(\s*:)?)/g, m =>
+      m.endsWith(':') ? `<span class="k">${m}</span>` : `<span class="s">${m}</span>`)
+    .replace(/(true|false)/g, '<span class="b">$1</span>')
+    .replace(/(\d+\.?\d*)/g, '<span class="n">$1</span>');
+}
+
+// ─── BOOT SEQUENCE ────────────────────────────────────────────
+function boot() {
+  tLine('UACP Quantum Context Terminal — Antigravity v4.0','sys','//','p-sys');
+  tLine('Connecting to BYOS Backend — github.com/reprewindai-dev/byosbackened','sys','⟶','p-sys');
+  setTimeout(() => {
+    tLine('Transport: HTTPS + SSE   |   Auth: JWT Bearer   |   Protocol: JSON-RPC 2.0','sys','◆','p-sys');
+    setTimeout(() => {
+      tLine('MCP Host initialized — managing 40+ context server endpoints','ok','✓','p-ok');
+      setTimeout(() => {
+        tLine('Operator registry loaded — internal_operators.py capabilities negotiated','ok','✓','p-ok');
+        setTimeout(() => {
+          tLine('UACP v0→v4 versioned control plane — internal_uacp.py active','ok','✓','p-ok');
+          setTimeout(() => {
+            tLine('Zeno interrogation engine — N=6 cycles, efficiency 64%, leakage 1.4%','zeno','Ψ','p-zeno');
+            setTimeout(() => {
+              tLine('Gladiator speculative reasoning mesh — online','spec','Ω','p-spec');
+              setTimeout(() => {
+                tDivider();
+                tLine('All systems phase_locked. Type a command or select an endpoint.','ok','✓','p-ok');
+                tLine('Try: POST /autonomous/execute  |  Calibrate thousand-qubit Heron processor','sys','▸','p-sys');
+              }, 200);
+            }, 180);
+          }, 160);
+        }, 140);
+      }, 120);
+    }, 100);
+  }, 80);
+}
+boot();
+
+// ─── EXECUTE ──────────────────────────────────────────────────
+function executeCommand() {
+  const inp = document.getElementById('cmd-input');
+  const raw = inp.value.trim();
+  if (!raw) return;
+  inp.value = '';
+
+  tDivider();
+  tLine(raw, 'cmd', '❯', 'p-cmd');
+
+  const upper = raw.toUpperCase();
+
+  if (mode === 'zeno' || upper.includes('ZENO') || upper.includes('IFM')) {
+    runZenoProbe(raw);
+  } else if (mode === 'gladiator' || upper.includes('GLADIATOR') || upper.includes('SPECULATE')) {
+    runGladiator(raw);
+  } else if (mode === 'mcp' || upper.includes('/INTERNAL/') || upper.includes('MCP')) {
+    runMcpDispatch(raw);
+  } else if (upper.match(/^(GET|POST|DELETE|PUT|PATCH|SSE)\s/)) {
+    const parts = raw.split(/\s+/);
+    runRawApi(parts[0], parts.slice(1).join(' ') || currentRoute.path);
+  } else if (upper.includes('CALIBRATE') || upper.includes('QUBIT')) {
+    runCalibration(raw);
+  } else if (upper.includes('BITMAP') || upper.includes('TRANSMIT')) {
+    runBitmapTransmit(raw);
+  } else {
+    runAutonomous(raw);
+  }
+}
+
+// ─── AUTONOMOUS ORCHESTRATION ─────────────────────────────────
+function runAutonomous(intent) {
+  const runId = 'run_' + Math.random().toString(36).slice(2,9);
+  setPhase('interrogating');
+
+  const payload = {
+    intent,
+    run_id: runId,
+    uacp_version: 'v4',
+    mcp_protocol: '2025-06-18',
+    zeno_cycles: zenoN,
+    transport: 'SSE',
+    auth: 'Bearer eyJ...[JWT]'
+  };
+
+  tLine('→ POST /autonomous/execute', 'cmd', '⟶', 'p-cmd');
+  tJson(payload);
+
+  setTimeout(() => {
+    tLine(`MCP Host: Capability negotiation with UACP v4...`, 'rpc', '⇄', 'p-rpc');
+    setTimeout(() => {
+      tLine(`JSON-RPC 2.0: initialize {"protocolVersion":"2025-06-18","capabilities":{...}}`, 'rpc', '⇄', 'p-rpc');
+      setTimeout(() => {
+        tLine(`internal_operators.py → 7 operators registered for intent scope`, 'info', '◆', 'p-sys');
+        setTimeout(() => {
+          tLine(`Routing to internal_uacp.py v4 dispatch layer...`, 'info', '◆', 'p-sys');
+          setTimeout(() => {
+            const conf = (70 + Math.random() * 20).toFixed(1);
+            tLine(`Orchestration plan synthesized — confidence ${conf}%`, 'ok', '✓', 'p-ok');
+            setTimeout(() => {
+              tLine(`Run ${runId} streaming via SSE on /autonomous/status/${runId}`, 'zeno', 'Ψ', 'p-zeno');
+              tJson({
+                run_id: runId, status: 'streaming',
+                endpoint: `/autonomous/status/${runId}`,
+                zeno_efficiency: `${conf}%`, leakage: '1.4%',
+                operators: ['inference','exec','monitor','telemetry'],
+                uacp_version: 'v4'
+              });
+              setPhase('phase_locked');
+              updateZeno(zenoN);
+            }, 300);
+          }, 250);
+        }, 200);
+      }, 180);
+    }, 160);
+  }, 120);
+}
+
+// ─── CALIBRATION ──────────────────────────────────────────────
+function runCalibration(intent) {
+  setPhase('interrogating');
+  const n = 24;
+  tLine('→ POST /internal/uacp/v4/dispatch  [quantum_calibration]', 'cmd', '⟶', 'p-cmd');
+  tJson({ action: 'calibrate_qpu', qubits: 1000, platform: 'IBM_Heron', target_fidelity: 0.999, method: 'AI_RL_Qruise', zeno_cycles: n });
+
+  let cycle = 0;
+  const interval = setInterval(() => {
+    cycle++;
+    const fidelity = (98.0 + Math.random() * 1.8).toFixed(3);
+    tLine(`Cycle ${cycle}/${n} — qubit fidelity ${fidelity}% — LRU leakage ${(1.2 + Math.random()*0.4).toFixed(2)}%`, 'zeno', 'Ψ', 'p-zeno');
+    updateZeno(n, cycle/n);
+    if (cycle >= 6) {
+      clearInterval(interval);
+      tLine(`AI calibration converged — single-qubit gate fidelity 99.9%, two-qubit 98.5%`, 'ok', '✓', 'p-ok');
+      tLine(`LRU removal fraction 98.4% — computational subspace locked`, 'ok', '✓', 'p-ok');
+      tJson({ status: 'calibrated', single_qubit_fidelity: '99.9%', two_qubit_fidelity: '98.5%', lru_removal: '98.4%', state_assignment: '99.2%' });
+      setPhase('phase_locked');
+    }
+  }, 250);
+}
+
+// ─── BITMAP TRANSMIT ──────────────────────────────────────────
+function runBitmapTransmit(intent) {
+  setPhase('interrogating');
+  tLine('→ Initiating counterfactual transmission of 10,000-bit monochrome bitmap', 'zeno', 'Ψ', 'p-zeno');
+  tLine('→ POST /internal/uacp/v4/dispatch  [counterfactual_uplink]', 'cmd', '⟶', 'p-cmd');
+  tJson({ action: 'counterfactual_transmit', bits: 10000, scheme: 'Quantum_Zeno_N6', interferometer: 'TAMU-KACST nested Michelson', leakage_target: '1.4%' });
+
+  let bits = 0;
+  const total = 10000;
+  const interval = setInterval(() => {
+    bits += 800 + Math.floor(Math.random() * 400);
+    if (bits > total) bits = total;
+    const acc = (84 + Math.random() * 4).toFixed(1);
+    tLine(`Counterfactual channel — ${bits.toLocaleString()}/${total.toLocaleString()} bits — accuracy ${acc}% — leakage ${(1.2+Math.random()*.4).toFixed(2)}%`, 'zeno', 'Ψ', 'p-zeno');
+    if (bits >= total) {
+      clearInterval(interval);
+      tLine(`Transmission complete — 87% accuracy — 1.4% leakage — counterfactual ratio 98.6%`, 'ok', '✓', 'p-ok');
+      tJson({ bits_transmitted: 10000, accuracy: '87%', leakage: '1.4%', counterfactual_ratio: '98.6%', method: 'IFM Zeno N=6' });
+      setPhase('phase_locked');
+    }
+  }, 220);
+}
+
+// ─── MCP DISPATCH ─────────────────────────────────────────────
+function runMcpDispatch(intent) {
+  tLine('→ MCP JSON-RPC 2.0 dispatch', 'rpc', '⇄', 'p-rpc');
+  const method = intent.includes('capabilities') ? 'capabilities/list' :
+                 intent.includes('register') ? 'operators/register' :
+                 intent.includes('providers') ? 'providers/list' : 'tools/list';
+  tJson({ jsonrpc:'2.0', id: Math.floor(Math.random()*9999), method, params: { tenant: 'byos-default', version: '2025-06-18' } });
+  setTimeout(() => {
+    tLine(`MCP Server response — initialized handshake complete`, 'ok', '✓', 'p-ok');
+    tJson({ jsonrpc:'2.0', id: 1, result: { protocolVersion:'2025-06-18', capabilities:{ tools:{listChanged:true}, resources:{subscribe:true}, sampling:{} }, serverInfo:{ name:'byos-uacp-server', version:'v4.0' } } });
+  }, 350);
+}
+
+// ─── ZENO PROBE ───────────────────────────────────────────────
+function runZenoProbe(intent) {
+  const n = intent.match(/N=(\d+)/) ? parseInt(intent.match(/N=(\d+)/)[1]) : zenoN;
+  const eff = Math.round((Math.cos(Math.PI/(2*n)) ** (2*n)) * 100);
+  setPhase('interrogating');
+  tLine(`Zeno interrogation: N=${n} cycles → theoretical efficiency ${eff}%`, 'zeno', 'Ψ', 'p-zeno');
+  tLine(`P_N(T) = [cos²(π/2N)]^N — solving...`, 'zeno', 'Ψ', 'p-zeno');
+  let i = 0;
+  const iv = setInterval(() => {
+    i++;
+    const partial = Math.round((Math.cos(Math.PI/(2*i)) ** (2*i)) * 100);
+    tLine(`  cycle ${i}/${n} — P = ${partial}% — leakage suppressed`, 'zeno', 'Ψ', 'p-zeno');
+    updateZeno(i, i/n);
+    if (i >= Math.min(n, 8)) {
+      clearInterval(iv);
+      tLine(`Zeno probe complete — state phase_locked — efficiency ${eff}% — leakage 1.4%`, 'ok', '✓', 'p-ok');
+      zenoN = n;
+      updateZeno(n, 1);
+      setPhase('phase_locked');
+    }
+  }, 180);
+}
+
+// ─── GLADIATOR SPECULATIVE REASONING ─────────────────────────
+function runGladiator(intent) {
+  tLine('Gladiator framework: generating speculative reasoning branches...', 'spec', 'Ω', 'p-spec');
+  const paths = ['Path A: direct inference via /ai/inference','Path B: exec pipeline via /exec/run','Path C: pipeline orchestration via /pipelines/trigger','Path D [PRUNED]: redundant MCP re-init'];
+  let i = 0;
+  const iv = setInterval(() => {
+    const p = paths[i];
+    const pruned = p.includes('PRUNED');
+    tLine(p, pruned ? 'warn' : 'spec', pruned ? '✗' : '✓', pruned ? 'p-err' : 'p-spec');
+    i++;
+    if (i >= paths.length) {
+      clearInterval(iv);
+      const conf = (75 + Math.random()*15).toFixed(1);
+      tLine(`Gladiator convergence — Path A locked at ${conf}% confidence — 70% overhead reduction`, 'ok', '✓', 'p-ok');
+      tJson({ selected_path: 'Path A', confidence: `${conf}%`, pruned: 1, overhead_reduction: '70%', route: '/ai/inference' });
+    }
+  }, 200);
+}
+
+// ─── RAW API ──────────────────────────────────────────────────
+function runRawApi(method, path) {
+  tLine(`→ ${method} ${path}`, 'cmd', '⟶', 'p-cmd');
+  const fakeCodes = { GET:200, POST:201, DELETE:204 };
+  const code = fakeCodes[method] || 200;
+  setTimeout(() => {
+    tLine(`HTTP ${code}  ←  BYOS Backend  /  ${path}`, 'ok', '✓', 'p-ok');
+    tJson({ status: code, path, timestamp: new Date().toISOString(), byos_version: 'v2', uacp_version: 'v4' });
+  }, 180);
+}
+
+// ─── MODAL ────────────────────────────────────────────────────
+function closeModal() { document.getElementById('req-modal').classList.remove('open'); reqPending = null; }
+function fireRequest() {
+  closeModal();
+  if (reqPending) { runRawApi(reqPending.method, reqPending.path); }
+}
+
+// ─── PHASE BADGE ──────────────────────────────────────────────
+function setPhase(state) {
+  const b = document.getElementById('phase-badge');
+  b.className = '';
+  b.id = 'phase-badge';
+  if (state === 'interrogating') { b.classList.add('interrogating'); b.textContent = 'interrogating'; }
+  else if (state === 'error')    { b.classList.add('error'); b.textContent = 'error'; }
+  else                           { b.textContent = 'phase_locked'; }
+}
+
+// ─── ZENO CANVAS ──────────────────────────────────────────────
+const zenoCanvas = document.getElementById('zeno-canvas');
+const zCtx = zenoCanvas.getContext('2d');
+let zenoPhase = 0;
+let zenoAnim = 0;
+
+function updateZeno(n, progress) {
+  if (n) zenoN = n;
+  if (progress !== undefined) zenoAnim = progress;
+  const eff = Math.round((Math.cos(Math.PI/(2*zenoN)) ** (2*zenoN)) * 100);
+  document.getElementById('zs-n').textContent = zenoN === Infinity ? '∞' : zenoN;
+  document.getElementById('zs-eff').textContent = eff + '%';
+  document.getElementById('zs-leak').textContent = (100-eff < 1.5 ? 1.4 : (100-eff)).toFixed(1) + '%';
+  document.getElementById('tf-zeno').style.width = eff + '%';
+  document.getElementById('tv-zeno').textContent = eff + '%';
+}
+
+function drawZeno() {
+  const W = zenoCanvas.clientWidth * devicePixelRatio;
+  const H = 80 * devicePixelRatio;
+  if (zenoCanvas.width !== W || zenoCanvas.height !== H) { zenoCanvas.width = W; zenoCanvas.height = H; }
+  const w = zenoCanvas.width, h = zenoCanvas.height;
+  zCtx.clearRect(0,0,w,h);
+
+  zenoPhase += 0.03;
+
+  // Background grid
+  zCtx.strokeStyle = 'rgba(30,45,61,0.6)';
+  zCtx.lineWidth = 1;
+  for (let x = 0; x < w; x += w/8) {
+    zCtx.beginPath(); zCtx.moveTo(x,0); zCtx.lineTo(x,h); zCtx.stroke();
+  }
+  for (let y = 0; y < h; y += h/4) {
+    zCtx.beginPath(); zCtx.moveTo(0,y); zCtx.lineTo(w,y); zCtx.stroke();
+  }
+
+  // Wavefunction
+  const mid = h * 0.5;
+  zCtx.beginPath();
+  for (let i = 0; i <= w; i++) {
+    const t = i / w;
+    const amp = (0.3 + 0.25 * Math.sin(zenoPhase)) * h;
+    const freq = 3 + zenoN * 0.5;
+    const decay = Math.exp(-t * 2);
+    const y = mid + amp * decay * Math.sin(freq * Math.PI * 2 * t + zenoPhase);
+    i === 0 ? zCtx.moveTo(i, y) : zCtx.lineTo(i, y);
+  }
+  const grad = zCtx.createLinearGradient(0,0,w,0);
+  grad.addColorStop(0, 'rgba(0,200,255,0.9)');
+  grad.addColorStop(0.5, 'rgba(0,212,255,0.5)');
+  grad.addColorStop(1, 'rgba(0,200,255,0.1)');
+  zCtx.strokeStyle = grad;
+  zCtx.lineWidth = 1.5;
+  zCtx.stroke();
+
+  // Zeno cycle marks
+  for (let i = 0; i < zenoN; i++) {
+    const x = (i + 0.5) / zenoN * w;
+    const active = i < zenoAnim * zenoN;
+    zCtx.beginPath();
+    zCtx.arc(x, mid, 3 * devicePixelRatio, 0, Math.PI * 2);
+    zCtx.fillStyle = active ? '#00ff94' : 'rgba(0,200,255,0.3)';
+    if (active) { zCtx.shadowBlur = 6; zCtx.shadowColor = '#00ff94'; }
+    zCtx.fill();
+    zCtx.shadowBlur = 0;
+  }
+
+  requestAnimationFrame(drawZeno);
+}
+drawZeno();
+
+// ─── MCP MESH CANVAS ──────────────────────────────────────────
+const meshCanvas = document.getElementById('mesh-canvas');
+const mCtx = meshCanvas.getContext('2d');
+let meshPhase = 0;
+
+const nodes = [
+  { label:'Host', x:0.5, y:0.12, color:'#00c8ff', r:7 },
+  { label:'Client', x:0.25, y:0.55, color:'#bd7dff', r:5 },
+  { label:'Operators', x:0.75, y:0.55, color:'#bd7dff', r:5 },
+  { label:'/autonomous', x:0.12, y:0.9, color:'#00ff94', r:4 },
+  { label:'/ai', x:0.35, y:0.9, color:'#00ff94', r:4 },
+  { label:'/telemetry', x:0.62, y:0.9, color:'#ffb340', r:4 },
+  { label:'/kill', x:0.88, y:0.9, color:'#ff4466', r:4 },
+];
+const edges = [[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]];
+
+function drawMesh() {
+  const W = meshCanvas.clientWidth * devicePixelRatio;
+  const H = 110 * devicePixelRatio;
+  if (meshCanvas.width !== W || meshCanvas.height !== H) { meshCanvas.width = W; meshCanvas.height = H; }
+  const w = meshCanvas.width, h = meshCanvas.height;
+  mCtx.clearRect(0,0,w,h);
+  meshPhase += 0.015;
+
+  const px = n => n.x * w;
+  const py = n => n.y * h;
+
+  // Edges
+  edges.forEach(([a,b], i) => {
+    const na = nodes[a], nb = nodes[b];
+    const t = (Math.sin(meshPhase + i) + 1) / 2;
+    const g = mCtx.createLinearGradient(px(na),py(na),px(nb),py(nb));
+    g.addColorStop(0, na.color + '40');
+    g.addColorStop(t, na.color + 'cc');
+    g.addColorStop(1, nb.color + '40');
+    mCtx.beginPath();
+    mCtx.moveTo(px(na), py(na));
+    mCtx.lineTo(px(nb), py(nb));
+    mCtx.strokeStyle = g;
+    mCtx.lineWidth = 1 * devicePixelRatio;
+    mCtx.stroke();
+
+    // Packet
+    const px2 = px(na) + (px(nb) - px(na)) * ((meshPhase * 0.3 + i * 0.4) % 1);
+    const py2 = py(na) + (py(nb) - py(na)) * ((meshPhase * 0.3 + i * 0.4) % 1);
+    mCtx.beginPath();
+    mCtx.arc(px2, py2, 2 * devicePixelRatio, 0, Math.PI*2);
+    mCtx.fillStyle = na.color;
+    mCtx.shadowBlur = 5; mCtx.shadowColor = na.color;
+    mCtx.fill();
+    mCtx.shadowBlur = 0;
+  });
+
+  // Nodes
+  nodes.forEach(n => {
+    mCtx.beginPath();
+    mCtx.arc(px(n), py(n), n.r * devicePixelRatio, 0, Math.PI*2);
+    mCtx.fillStyle = n.color + '22';
+    mCtx.strokeStyle = n.color;
+    mCtx.lineWidth = 1.2 * devicePixelRatio;
+    mCtx.fill(); mCtx.stroke();
+
+    const fs = Math.max(8, 7 * devicePixelRatio);
+    mCtx.fillStyle = n.color;
+    mCtx.font = `${fs}px "JetBrains Mono", monospace`;
+    mCtx.textAlign = 'center';
+    mCtx.fillText(n.label, px(n), py(n) - (n.r + 3) * devicePixelRatio);
+  });
+
+  requestAnimationFrame(drawMesh);
+}
+drawMesh();
+
+// ─── TELEMETRY DRIFT ─────────────────────────────────────────
+function driftTelemetry() {
+  const drift = (base, range) => Math.max(1, Math.min(99, base + (Math.random()-0.5)*range));
+  const aLoad = drift(25, 12);
+  const mesh  = drift(88, 5);
+  const health= drift(99, 1);
+  document.getElementById('tf-agent').style.width = aLoad + '%';
+  document.getElementById('tv-agent').textContent = Math.round(aLoad) + '%';
+  document.getElementById('tf-mesh').style.width = mesh + '%';
+  document.getElementById('tv-mesh').textContent = Math.round(mesh) + '%';
+  document.getElementById('tf-health').style.width = health + '%';
+  document.getElementById('tv-health').textContent = Math.round(health) + '%';
+}
+setInterval(driftTelemetry, 2800);
+
+// ─── KEYBOARD ─────────────────────────────────────────────────
+document.getElementById('cmd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') executeCommand();
+  if (e.key === 'Escape') closeModal();
+});
+document.getElementById('req-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('req-modal')) closeModal();
+});
+</script>
+</body>
+</html>

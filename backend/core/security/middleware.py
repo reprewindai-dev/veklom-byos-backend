@@ -42,6 +42,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         
         # Referrer Policy
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Robots: keep ONLY the temporary staging preview UI out of search engines.
+        # This is route-specific by design — it must NOT be applied globally.
+        # The public product site (/, /pricing, /marketplace, /docs), x402 discovery
+        # (/.well-known/x402.json) and all /api/v1/* routes stay fully indexable.
+        if path.startswith("/control-plane-next"):
+            response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
         
         # Permissions Policy
         response.headers["Permissions-Policy"] = (

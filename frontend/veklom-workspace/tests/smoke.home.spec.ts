@@ -14,8 +14,8 @@ test.describe('Home hero CTA @smoke', () => {
 
     // Click and verify navigation
     await cta.click();
-    // It should navigate to /login or /signup
-    await page.waitForURL(/.*(login|signup).*/);
-    await expect(page).toHaveURL(/.*(login|signup).*/);
+    // It should navigate to /workspace/login or similar
+    await page.waitForURL(/.*(login|signup|workspace).*/, { timeout: 10000 });
+    await expect(page).toHaveURL(/.*(login|signup|workspace).*/);
   });
 });

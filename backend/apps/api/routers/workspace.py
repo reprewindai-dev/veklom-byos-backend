@@ -23,6 +23,12 @@ router = APIRouter(prefix="/workspace", tags=["Workspace"])
 @router.get("/status/data")
 async def workspace_status_data(user=Depends(get_current_user)):
     # Workspace status / data endpoint (requires authentication)
+    # Track workspace opened
+    posthog_service.workspace_opened(
+        distinct_id=hash_id(user.email),
+        workspace_id=user.workspace_id or "default"
+    )
+    
     return {
         "status": "active",
         "workspace_id": user.workspace_id,

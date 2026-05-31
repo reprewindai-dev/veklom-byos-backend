@@ -1,43 +1,46 @@
 import React, { useState } from 'react';
-import { api, setToken } from '../api/client';
-import { Shield, Key, AlertCircle, Cpu } from 'lucide-react';
+import { Shield, Key, AlertCircle, Cpu, Sparkles } from 'lucide-react';
+import { login, startEvalSession, type AuthUser } from '../api/auth';
 
 interface LoginProps {
-  onLoginSuccess: (user: any) => void;
+  onAuthed: (user: AuthUser) => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+export const Login: React.FC<LoginProps> = ({ onAuthed }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [evalLoading, setEvalLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setError('Please fill in all credentials.');
+      setError('Please enter your email and password.');
       return;
     }
-
     setIsLoading(true);
     setError('');
-
     try {
-      const data = await api('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (data && data.access_token) {
-        setToken(data.access_token);
-        onLoginSuccess(data.user);
-      } else {
-        throw new Error('Authentication returned an invalid response token.');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Invalid email or password. Access Denied.');
+      const res = await login(email, password);
+      onAuthed(res.user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleEval = async () => {
+    setEvalLoading(true);
+    setError('');
+    try {
+      const res = await startEvalSession();
+      onAuthed(res.user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start evaluation session.');
+    } finally {
+      setEvalLoading(false);
     }
   };
 
@@ -130,6 +133,20 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </button>
           </div>
         </form>
+
+        <div className="mt-4">
+          <button
+            onClick={handleEval}
+            className="btn btn-secondary w-full py-3 text-xs tracking-[0.08em] font-bold"
+            disabled={evalLoading}
+          >
+            {evalLoading ? (
+              <><Cpu size={14} className="animate-spin" /> STARTING SESSION…</>
+            ) : (
+              <><Sparkles size={14} /> START FREE EVALUATION</>
+            )}
+          </button>
+        </div>
 
         <div className="mt-8 pt-6 border-t border-[rgba(255,255,255,0.05)] text-[10px] text-center text-[var(--text-muted)] flex flex-col gap-1 font-mono">
           <div>REGIONAL GATEWAY: HETZNER-FSN1</div>

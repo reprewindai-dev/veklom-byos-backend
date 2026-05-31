@@ -141,6 +141,21 @@ async def process_with_idempotency(
         )
     except Exception as e:
         await db.rollback()
+        
+        # Add to dead-letter queue
+        try:
+            dead_letter = WebhookDeadLetter(
+                idempotency_key=idempotency_key,
+                payload=payload,
+                error_message=str(e),
+                retry_count=0,
+                status="pending"
+            )
+            db.add(dead_letter)
+            await db.commit()
+        except Exception as dl_error:
+            print(f"Failed to add to dead-letter queue: {dl_error}")
+        
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 

@@ -28,7 +28,7 @@ opentelemetry-instrumentation-httpx>=0.45b0
 opentelemetry-instrumentation-asyncpg>=0.45b0
 posthog>=3.0.0
 web3==6.11.3
-web3==6.11.3
+@playwright/test
 
 
 

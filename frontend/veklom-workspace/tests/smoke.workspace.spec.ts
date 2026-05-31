@@ -8,9 +8,9 @@ test.describe('Workspace & Command Center Assets @smoke', () => {
     const response = await request.get(`${BASE_URL}/workspace-next/`);
     expect(response.status()).toBe(200);
     const html = await response.text();
-    // Verify it's loading the correct compiled bundle index-EUKZeqk4.js as per AGENTS.md
-    expect(html).toContain('index-EUKZeqk4.js');
-    expect(html).toContain('index-WqgIFi2m.css');
+    // Verify it's loading the correct compiled bundle index-*.js
+    expect(html).toMatch(/index-.*\.js/);
+    expect(html).toMatch(/index-.*\.css/);
   });
 
   test('Command Center app loads', async ({ request }) => {

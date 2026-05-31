@@ -6,12 +6,19 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: './',
+  // Preview path. NEVER output to ./static/workspace (the live REALFRONTEND
+  // bundle protected by AGENTS.md). Promote to /workspace/ only after audit.
+  base: '/workspace-next/',
   build: {
-    outDir: './static/workspace',
+    outDir: './static/workspace-next',
     emptyOutDir: true,
     assetsDir: 'assets',
     sourcemap: false
+  },
+  server: {
+    proxy: {
+      '/api': { target: 'http://5.78.135.11:8088', changeOrigin: true }
+    }
   },
   resolve: {
     alias: {

@@ -22,11 +22,8 @@ test.describe('Protected Endpoints Security @smoke', () => {
     await page.context().clearCookies();
     const response = await page.goto(`${BASE_URL}/workspace-next/`);
     
-    // Depending on the frontend router, it might redirect to /login
-    await page.waitForURL(/.*(login|signup).*/, { timeout: 5000 }).catch(() => {});
-    
-    // Check if we are on login or get a 401/403
-    const url = page.url();
-    expect(url).toMatch(/.*(login|signup|401|unauthorized).*/i);
+    // Depending on the frontend architecture, it might render the login component inline
+    await expect(page.locator('input[type="email"], input[name="email"], #email-input')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("ESTABLISH SECURE ACCESS")')).toBeVisible();
   });
 });

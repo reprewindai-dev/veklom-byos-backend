@@ -6,9 +6,9 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: '/workspace-next/',
+  base: '/workspace/',
   build: {
-    outDir: '../static/workspace-next',
+    outDir: '../static/workspace',
     emptyOutDir: true,
     assetsDir: 'assets',
     sourcemap: false

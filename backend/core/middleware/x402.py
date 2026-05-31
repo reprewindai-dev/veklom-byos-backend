@@ -491,17 +491,47 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                             if rule.current_spend >= rule.limit_usd:
                                 return JSONResponse(status_code=402, content={"detail": "Budget limit exceeded."})
 
-                        # Subscription / Plan verification
                         ws_res = await db.execute(select(Workspace).where(Workspace.id == ws_id))
                         db_ws = ws_res.scalar_one_or_none()
-                        plan = db_ws.license_tier if db_ws else "free"
+                        plan = db_ws.license_tier.lower() if db_ws and db_ws.license_tier else "free"
                         
+                        # 1. Community / Free Tier Constraints (Evaluation Mode)
                         if plan in ("free", "community", "none", None):
                             runs_count = await db.scalar(
                                 select(func.count(ExecutionLog.id)).where(ExecutionLog.workspace_id == ws_id)
                             ) or 0
                             if runs_count >= 15:
-                                return _build_402_response(path, method, route_cfg)
+                                return _build_402_response(path, method, route_cfg, detail="free_runs_exhausted")
+                            
+                            # Gate advanced features for Community users (Pipelines, Deployments, Custom GPC Runs, Marketplace)
+                            free_restricted = (
+                                "/api/v1/gpc/runs", "/api/v1/pipelines/trigger",
+                                "/api/v1/runtime/jobs", "/api/v1/marketplace/acquire",
+                                "/api/v1/compliance/report", "/api/v1/evidence/export"
+                            )
+                            if any(path.startswith(rf) for rf in free_restricted):
+                                return JSONResponse(
+                                    status_code=403,
+                                    content={
+                                        "detail": f"The '{route_cfg.get('name', 'advanced feature')}' requires a Growth plan or higher. Please upgrade at /workspace/#/billing.",
+                                        "required_tier": "growth",
+                                        "workspace_tier": plan
+                                    }
+                                )
+                        
+                        # 2. Growth Tier Constraints
+                        elif plan == "growth":
+                            # Gate heavy enterprise compliance tools (continuous compliance, raw evidence packages)
+                            growth_restricted = ("/api/v1/compliance/report", "/api/v1/evidence/export")
+                            if any(path.startswith(sf) for sf in growth_restricted):
+                                return JSONResponse(
+                                    status_code=403,
+                                    content={
+                                        "detail": f"Tamper-evident Compliance Reporting & Evidence Export require a Sovereign plan or higher. Please upgrade at /workspace/#/billing.",
+                                        "required_tier": "sovereign",
+                                        "workspace_tier": plan
+                                    }
+                                )
                         
                         # Process response
                         response = await call_next(request)

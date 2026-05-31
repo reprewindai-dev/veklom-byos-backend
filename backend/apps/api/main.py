@@ -442,26 +442,39 @@ async def not_found(request: Request, exc):
         query_str = f"?{request.url.query}" if request.url.query else ""
         return RedirectResponse(url=f"/workspace/login{query_str}", status_code=302)
 
-    if request.url.path.startswith("/workspace") or request.url.path.startswith("/github"):
-        workspace_index = WORKSPACE_DIR / "index.html"
-        if workspace_index.exists():
-            # Read the index.html and inject the auto-editor script
-            with open(workspace_index, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            # Inject script before closing </head> or </body>
-            script_tag = '<script src="/workspace/auto-editor.js"></script>'
-            if '</head>' in html_content:
-                html_content = html_content.replace('</head>', f'{script_tag}</head>')
-            elif '</body>' in html_content:
-                html_content = html_content.replace('</body>', f'{script_tag}</body>')
-            return HTMLResponse(
-                content=html_content,
-                headers={
-                    "Cache-Control": "no-store, no-cache, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0",
-                },
-            )
+    # Serve workspace SPA fallback
+    is_workspace_next = request.url.path.startswith("/workspace-next")
+    is_workspace = request.url.path.startswith("/workspace") and not is_workspace_next
+    is_github = request.url.path.startswith("/github")
+
+    if is_workspace_next:
+        index_path = WORKSPACE_NEXT_DIR / "index.html"
+        base_path = "/workspace-next"
+    elif is_workspace or is_github:
+        index_path = WORKSPACE_DIR / "index.html"
+        base_path = "/workspace"
+    else:
+        index_path = None
+        base_path = ""
+
+    if index_path and index_path.exists():
+        # Read the index.html and inject the auto-editor script
+        with open(index_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        # Inject script before closing </head> or </body>
+        script_tag = f'<script src="{base_path}/auto-editor.js"></script>'
+        if '</head>' in html_content:
+            html_content = html_content.replace('</head>', f'{script_tag}</head>')
+        elif '</body>' in html_content:
+            html_content = html_content.replace('</body>', f'{script_tag}</body>')
+        return HTMLResponse(
+            content=html_content,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
     return await _serve_frontend(request)
 
 
@@ -573,7 +586,6 @@ app.include_router(routing.router, prefix="/api/v1")
 
 # Webhooks for external integrations
 app.include_router(webhooks.router, prefix="/api/v1")
-app.include_router(webhook.router, prefix="/api/v1")
 
 # UACP Service - dual-adapter architecture (HTTP service + library shim)
 app.include_router(uacp_http_router, prefix="/api/v1")
@@ -636,6 +648,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend"
 LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "landing"
 GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "gpc"
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
+WORKSPACE_NEXT_DIR = FRONTEND_DIR / "workspace-next"
 COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
 LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
@@ -648,6 +661,14 @@ def _mount_static():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     if WORKSPACE_DIR.exists():
         app.mount("/workspace", StaticFiles(directory=str(WORKSPACE_DIR), html=True), name="workspace")
+    # Preview build of the new multi-file React workspace (AGENTS.md: do NOT
+    # overwrite /workspace — this is the staging path until it passes audit).
+    if WORKSPACE_NEXT_DIR.exists():
+        app.mount(
+            "/workspace-next",
+            StaticFiles(directory=str(WORKSPACE_NEXT_DIR), html=True),
+            name="workspace-next",
+        )
     if OPERATOR_CENTER_DIR.exists():
         app.mount("/operator-center", StaticFiles(directory=str(OPERATOR_CENTER_DIR), html=True), name="operator-center")
     if COMMAND_CENTER_DIR.exists():

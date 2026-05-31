@@ -584,6 +584,9 @@ app.include_router(routing.router, prefix="/api/v1")
 # Webhooks for external integrations
 app.include_router(webhooks.router, prefix="/api/v1")
 
+# Payment Relayer Webhook Ingress
+app.include_router(webhook.router, prefix="/api/v1")
+
 # Edge Legacy & Webhook Ingestion Ingress
 app.include_router(edge.router, prefix="/api/v1")
 

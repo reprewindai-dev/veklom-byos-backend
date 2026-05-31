@@ -25,6 +25,8 @@ from backend.core.security.auth import get_current_user
 from backend.core.security.wallet_guard import token_deduction_guard
 from backend.core.security.entitlements import require_entitlement
 from backend.db.models.ai import ExecLog
+from backend.db.models.provider import ProviderKey
+from backend.core.security.key_encryption import decrypt_key
 
 router = APIRouter(
     prefix="/ai",
@@ -288,16 +290,56 @@ async def ai_inference(body: dict, user=Depends(get_current_user), db: AsyncSess
         }
 
     # 3. Cache miss — route to best provider for this tier
+    # Load BYOK keys for this workspace
+    keys_res = await db.execute(
+        select(ProviderKey).where(
+            ProviderKey.workspace_id == workspace_id,
+            ProviderKey.is_active == True,
+        )
+    )
+    byok_keys = {}
+    for k in keys_res.scalars().all():
+        try:
+            byok_keys[k.provider] = decrypt_key(k.key_encrypted)
+        except Exception:
+            continue
+
     override_body = {**body, "messages": messages}
     result, key_source, reason = await run_completion_for_tenant(
-        override_body, workspace_id
+        override_body, workspace_id, byok_keys=byok_keys
     )
     latency_ms = int((_time.monotonic() - t0) * 1000)
     content = _content_from_openai_response(result.payload)
     used_model = result.payload.get("model", model)
     usage = result.payload.get("usage", {})
-    total_tokens = usage.get("total_tokens", 0)
-    cost_usd = round(total_tokens * 0.000002, 6)
+    input_tokens = usage.get("prompt_tokens", 0)
+    output_tokens = usage.get("completion_tokens", 0)
+
+    # Compute real pricing cost dynamically
+    from backend.db.models.workspace import ModelConfig
+    try:
+        model_config_res = await db.execute(
+            select(ModelConfig).where(
+                ModelConfig.id == used_model,
+                ModelConfig.workspace_id == workspace_id
+            )
+        )
+        model_config = model_config_res.scalar_one_or_none()
+        if model_config:
+            cost_per_1k_input = float(model_config.cost_per_1k_input or 0)
+            cost_per_1k_output = float(model_config.cost_per_1k_output or 0)
+        else:
+            cost_map = {
+                "gpt-4o": (0.005, 0.015),
+                "gpt-4o-mini": (0.00015, 0.0006),
+                "llama-3.1-8b-instant": (0.00005, 0.0001),
+                "gemini-2.5-flash": (0.0003, 0.001),
+                "qwen2.5:3b": (0.0, 0.0),
+            }
+            cost_per_1k_input, cost_per_1k_output = cost_map.get(used_model, (0.002, 0.006))
+        cost_usd = round(((input_tokens / 1000) * cost_per_1k_input) + ((output_tokens / 1000) * cost_per_1k_output), 6)
+    except Exception:
+        cost_usd = round((input_tokens + output_tokens) * 0.000002, 6)
 
     # Populate caches
     await set_hot(used_model, messages, result.payload, temperature)
@@ -403,13 +445,56 @@ async def ai_chat(
         }
 
     # 4. Cache miss — run completion with full history context
+    # Load BYOK keys for this workspace
+    keys_res = await db.execute(
+        select(ProviderKey).where(
+            ProviderKey.workspace_id == workspace_id,
+            ProviderKey.is_active == True,
+        )
+    )
+    byok_keys = {}
+    for k in keys_res.scalars().all():
+        try:
+            byok_keys[k.provider] = decrypt_key(k.key_encrypted)
+        except Exception:
+            continue
+
     completion_body = {**body, "messages": full_context}
-    result, key_source, reason = await run_completion_for_tenant(completion_body, workspace_id)
+    result, key_source, reason = await run_completion_for_tenant(
+        completion_body, workspace_id, byok_keys=byok_keys
+    )
     latency_ms = int((_time.monotonic() - t0) * 1000)
     content = _content_from_openai_response(result.payload)
     used_model = result.payload.get("model", model)
     usage = result.payload.get("usage", {})
-    total_tokens = usage.get("total_tokens", 0)
+    input_tokens = usage.get("prompt_tokens", 0)
+    output_tokens = usage.get("completion_tokens", 0)
+
+    # Compute real pricing cost dynamically
+    from backend.db.models.workspace import ModelConfig
+    try:
+        model_config_res = await db.execute(
+            select(ModelConfig).where(
+                ModelConfig.id == used_model,
+                ModelConfig.workspace_id == workspace_id
+            )
+        )
+        model_config = model_config_res.scalar_one_or_none()
+        if model_config:
+            cost_per_1k_input = float(model_config.cost_per_1k_input or 0)
+            cost_per_1k_output = float(model_config.cost_per_1k_output or 0)
+        else:
+            cost_map = {
+                "gpt-4o": (0.005, 0.015),
+                "gpt-4o-mini": (0.00015, 0.0006),
+                "llama-3.1-8b-instant": (0.00005, 0.0001),
+                "gemini-2.5-flash": (0.0003, 0.001),
+                "qwen2.5:3b": (0.0, 0.0),
+            }
+            cost_per_1k_input, cost_per_1k_output = cost_map.get(used_model, (0.002, 0.006))
+        cost_usd = round(((input_tokens / 1000) * cost_per_1k_input) + ((output_tokens / 1000) * cost_per_1k_output), 6)
+    except Exception:
+        cost_usd = round((input_tokens + output_tokens) * 0.000002, 6)
 
     # 5. Update memory: append user + assistant turns
     assistant_msg = {"role": "assistant", "content": content}
@@ -424,9 +509,9 @@ async def ai_chat(
         workspace_id=workspace_id,
         model=used_model,
         provider=result.provider,
-        input_tokens=usage.get("prompt_tokens", 0),
-        output_tokens=usage.get("completion_tokens", 0),
-        cost=round(total_tokens * 0.000002, 6),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost=cost_usd,
         latency_ms=latency_ms,
         status="completed",
         content_safety_score=0.98,
@@ -451,9 +536,9 @@ async def ai_chat(
         "policy": {"status": "passed", "policy_id": "outbound.public.v3"},
         "audit_id": log.id,
         "latency_ms": latency_ms,
-        "input_tokens": usage.get("prompt_tokens", 0),
-        "output_tokens": usage.get("completion_tokens", 0),
-        "cost_usd": round(total_tokens * 0.000002, 6),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": cost_usd,
     }
 
 

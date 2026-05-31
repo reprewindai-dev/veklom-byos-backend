@@ -44,7 +44,7 @@ def _build_sockets(port: int) -> List[socket.socket]:
 
 async def _serve() -> None:
     port = int(os.getenv("PORT", "8088"))
-    config = uvicorn.Config("backend.apps.api.main:app", host=None, port=port)
+    config = uvicorn.Config("backend.apps.api.main:app", host=None, port=port, proxy_headers=True, forwarded_allow_ips="*")
     server = uvicorn.Server(config)
     sockets = _build_sockets(port)
     await server.serve(sockets=sockets)

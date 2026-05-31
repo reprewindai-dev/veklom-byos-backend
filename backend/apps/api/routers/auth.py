@@ -339,7 +339,7 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User, next_
     Returns:
         str: Complete HTML page as a string containing a script that writes the tokens and user to localStorage and performs a client-side redirect to "/workspace/#/overview".
     """
-    if next_url and next_url.startswith("/"):
+    if next_url and (next_url.startswith("/") or next_url.startswith("https://") or next_url.startswith("http://")):
         frontend_workspace_url = next_url
     else:
         frontend_workspace_url = f"{settings.FRONTEND_URL.rstrip('/')}/workspace/#/overview"
@@ -847,35 +847,63 @@ GITHUB_USER_URL = "https://api.github.com/user"
 GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
 
 
-def _build_github_state(user_id: Optional[str] = None) -> str:
+def _build_github_state(user_id: Optional[str] = None, next_url: Optional[str] = None) -> str:
     ts = str(int(time.time()))
     nonce = secrets.token_urlsafe(16)
     uid = user_id or ""
-    payload = f"{ts}.{nonce}.{uid}"
+    # Encode next_url safely using base64 so it can survive URL round-trips
+    next_encoded = base64.urlsafe_b64encode((next_url or "").encode()).decode().rstrip("=") if next_url else ""
+    payload = f"{ts}.{nonce}.{uid}.{next_encoded}"
     sig = hmac.new(settings.JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).digest()
     sig_b64 = base64.urlsafe_b64encode(sig).decode().rstrip("=")
     return f"{payload}.{sig_b64}"
 
 
-def _validate_github_state(state: str, max_age_seconds: int = 600) -> Optional[str]:
+def _validate_github_state(state: str, max_age_seconds: int = 600) -> tuple:
     """
-    Validate the state payload and return the embedded user_id if valid and present,
-    or empty string if valid but no user was logged in, or raise HTTPException if invalid.
+    Validate the state payload.
+    Returns (user_id, next_url) tuple.
+    user_id is empty string if no user was logged in.
+    next_url is empty string if not present.
+    Raises HTTPException if invalid.
     """
     try:
-        parts = state.split(".", 3)
-        ts, nonce, uid, sig_b64 = parts[0], parts[1], parts[2], parts[3]
+        # Format: ts.nonce.uid.next_encoded.sig_b64
+        parts = state.split(".", 4)
+        if len(parts) < 4:
+            raise ValueError("Too few parts")
+        if len(parts) == 4:
+            # Legacy format without next_url
+            ts, nonce, uid, sig_b64 = parts
+            next_encoded = ""
+        else:
+            ts, nonce, uid, next_encoded, sig_b64 = parts
         if not ts.isdigit() or not nonce:
             raise HTTPException(status_code=400, detail="Invalid state payload structure")
-        payload = f"{ts}.{nonce}.{uid}"
+        payload = f"{ts}.{nonce}.{uid}.{next_encoded}" if next_encoded else f"{ts}.{nonce}.{uid}"
+        # Also try legacy payload format for backward compat
         expected_sig = hmac.new(settings.JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).digest()
         expected_b64 = base64.urlsafe_b64encode(expected_sig).decode().rstrip("=")
         if not hmac.compare_digest(expected_b64, sig_b64):
-            raise HTTPException(status_code=400, detail="State signature verification failed")
+            # Try legacy format (3-part payload)
+            legacy_payload = f"{ts}.{nonce}.{uid}"
+            legacy_sig = hmac.new(settings.JWT_SECRET_KEY.encode(), legacy_payload.encode(), hashlib.sha256).digest()
+            legacy_b64 = base64.urlsafe_b64encode(legacy_sig).decode().rstrip("=")
+            if not hmac.compare_digest(legacy_b64, sig_b64):
+                raise HTTPException(status_code=400, detail="State signature verification failed")
         age = int(time.time()) - int(ts)
         if not (0 <= age <= max_age_seconds):
             raise HTTPException(status_code=400, detail="OAuth state has expired")
-        return uid if uid else ""
+        next_url = ""
+        if next_encoded:
+            try:
+                # Add padding if needed
+                padding = 4 - len(next_encoded) % 4
+                padded = next_encoded + "=" * (padding % 4)
+                next_url = base64.urlsafe_b64decode(padded).decode("utf-8")
+            except Exception:
+                next_url = ""
+        return (uid if uid else "", next_url)
     except HTTPException:
         raise
     except Exception as e:
@@ -919,8 +947,10 @@ async def github_login(request: Request, token: Optional[str] = None, next: Opti
             user_id = payload.get("sub")
         except Exception:
             pass
-            
-    state = _build_github_state(user_id)
+
+    # Encode next_url directly in state so it survives the cross-domain GitHub round-trip.
+    # A cookie set on veklom.com is NOT sent to api.veklom.com (different subdomain).
+    state = _build_github_state(user_id, next_url=next)
     from urllib.parse import urlencode
     
     redirect_uri = _github_redirect_uri(request)
@@ -933,16 +963,10 @@ async def github_login(request: Request, token: Optional[str] = None, next: Opti
     }
     redirect_url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
     
-    
     if _prefers_json(request):
-        response = JSONResponse(content={"auth_url": redirect_url})
+        return JSONResponse(content={"auth_url": redirect_url})
     else:
-        response = RedirectResponse(url=redirect_url)
-        
-    if next:
-        response.set_cookie(key="github_next_url", value=next, max_age=600, httponly=True, samesite="lax")
-        
-    return response
+        return RedirectResponse(url=redirect_url)
 
 
 @router.post("/github/callback")
@@ -972,7 +996,7 @@ async def github_callback(
     if not state:
         raise HTTPException(status_code=400, detail="Missing OAuth state")
     
-    logged_in_user_id = _validate_github_state(state)
+    logged_in_user_id, next_url_from_state = _validate_github_state(state)
 
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
@@ -1089,7 +1113,8 @@ async def github_callback(
     db.add(session)
     await db.commit()
 
-    next_url = request.cookies.get("github_next_url")
+    # Prefer next_url from state (cross-domain safe) over cookie (same-domain only)
+    next_url = next_url_from_state or request.cookies.get("github_next_url") or ""
 
     if request.method == "GET":
         response = HTMLResponse(content=_github_bridge_html(app_access_token, app_refresh_token, user, next_url))

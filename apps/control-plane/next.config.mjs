@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "export",
+  trailingSlash: true,
   basePath: "/control-plane-next",
   env: {
     NEXT_PUBLIC_API_BASE_URL:

@@ -70,7 +70,7 @@ export default function SignupPage() {
           className="w-full justify-center mt-6 bg-bg-700 hover:bg-bg-600 text-ink-50"
           onClick={() => {
             const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://veklom.com/api/v1";
-            const nextUrl = encodeURIComponent("/control-plane-next/dashboard");
+            const nextUrl = encodeURIComponent(window.location.origin + "/control-plane-next/dashboard");
             window.location.href = `${apiBase}/auth/github/login?next=${nextUrl}`;
           }}
         >

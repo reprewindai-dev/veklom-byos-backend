@@ -519,7 +519,8 @@ from backend.apps.api.routers import (
     webhooks,
     webhook,
     runs,
-    smoke
+    smoke,
+    edge
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -582,6 +583,9 @@ app.include_router(routing.router, prefix="/api/v1")
 
 # Webhooks for external integrations
 app.include_router(webhooks.router, prefix="/api/v1")
+
+# Edge Legacy & Webhook Ingestion Ingress
+app.include_router(edge.router, prefix="/api/v1")
 
 # UACP Service - dual-adapter architecture (HTTP service + library shim)
 app.include_router(uacp_http_router, prefix="/api/v1")

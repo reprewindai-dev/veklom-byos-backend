@@ -175,6 +175,13 @@ class Settings(BaseSettings):
     CHAIN_ID: int = 1
     USDC_ADDRESS: str = ""
     
+    # Edge Ingestion
+    EDGE_API_KEY: str = "veklom_edge_dev_key"
+    EDGE_MQTT_ENABLED: bool = False
+    EDGE_SNMP_ENABLED: bool = False
+    EDGE_MODBUS_ENABLED: bool = False
+    EDGE_OPC_ENABLED: bool = False
+    
     # Redis for webhook idempotency cache
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_ENABLED: bool = True

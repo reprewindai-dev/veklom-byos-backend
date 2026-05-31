@@ -4,8 +4,8 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:8088';
 
 test.describe('Workspace & Command Center Assets @smoke', () => {
   test('Workspace SPA shell loads', async ({ request }) => {
-    // The workspace index.html should always load on /workspace/
-    const response = await request.get(`${BASE_URL}/workspace/`);
+    // The workspace index.html should always load on /workspace-next/
+    const response = await request.get(`${BASE_URL}/workspace-next/`);
     expect(response.status()).toBe(200);
     const html = await response.text();
     // Verify it's loading the correct compiled bundle index-EUKZeqk4.js as per AGENTS.md

@@ -25,12 +25,14 @@ const App: React.FC = () => {
         if (Array.isArray(memberInfo) && memberInfo.length > 0) {
           setUser(memberInfo[0]);
         } else {
-          setUser({ email: 'operator@veklom.perimeter', role: 'owner' });
+          throw new Error('No valid user profile found.');
         }
       } catch (err) {
-        console.warn('Session verification rejected or testing on bare-metal fallback:', err);
-        // Robust fallback for previewing/offline deployment
-        setUser({ email: 'operator@veklom.perimeter', role: 'owner' });
+        console.warn('Session verification rejected:', err);
+        setUser(null);
+        setTokenState('');
+        // Also clear invalid token from storage
+        localStorage.removeItem('veklom_token');
       } finally {
         setLoading(false);
       }

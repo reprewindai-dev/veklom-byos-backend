@@ -20,7 +20,7 @@ test.describe('Protected Endpoints Security @smoke', () => {
   test('Navigating to workspace without auth redirects to login', async ({ page }) => {
     // Clear cookies/storage to ensure unauthenticated state
     await page.context().clearCookies();
-    const response = await page.goto(`${BASE_URL}/workspace/`);
+    const response = await page.goto(`${BASE_URL}/workspace-next/`);
     
     // Depending on the frontend router, it might redirect to /login
     await page.waitForURL(/.*(login|signup).*/, { timeout: 5000 }).catch(() => {});

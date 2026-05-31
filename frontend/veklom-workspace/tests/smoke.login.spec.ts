@@ -18,7 +18,7 @@ test.describe('Auth Flow @smoke', () => {
     await page.click('button[type="submit"], button:has-text("Sign In"), button:has-text("Log In")');
     
     // Wait for redirect to workspace
-    await page.waitForURL(/.*\/workspace\/.*/, { timeout: 10000 });
+    await page.waitForURL(/.*\/workspace-next\/.*/, { timeout: 10000 });
     
     // Check if some workspace element is visible
     // We expect the workspace shell to load index-EUKZeqk4.js and show elements

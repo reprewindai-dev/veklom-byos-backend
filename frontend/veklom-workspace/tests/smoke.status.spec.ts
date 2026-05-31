@@ -11,7 +11,7 @@ test.describe('Public Status Endpoints @smoke', () => {
   });
 
   test('Workspace status data endpoint returns 401 without auth', async ({ request }) => {
-    const response = await request.get(`${BASE_URL}/api/v1/workspace/status/data`);
+    const response = await request.get(`${BASE_URL}/api/v1/workspace-next/status/data`);
     expect([401, 403]).toContain(response.status());
   });
 });

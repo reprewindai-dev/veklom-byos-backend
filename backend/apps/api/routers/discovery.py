@@ -144,9 +144,10 @@ async def agent_json():
 # ---------------------------------------------------------------------------
 @router.get("/.well-known/x402.json")
 async def x402_json():
-    treasury = get_treasury_address()
     missing_config = []
-    if not treasury or treasury == "0x0000000000000000000000000000000000000001":
+    treasury = get_treasury_address()
+    raw_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    if not raw_treasury or raw_treasury == "0x0000000000000000000000000000000000000001":
         missing_config.append("VEKLOM_TREASURY_ADDRESS")
     
     is_enabled = len(missing_config) == 0

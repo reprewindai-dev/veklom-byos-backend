@@ -644,7 +644,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend"
 LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "landing"
 GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "gpc"
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
-WORKSPACE_NEXT_DIR = FRONTEND_DIR / "workspace-next"
+CONTROL_PLANE_NEXT_DIR = FRONTEND_DIR / "control-plane-next"
 COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
 LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
@@ -657,8 +657,8 @@ def _mount_static():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     if WORKSPACE_DIR.exists():
         app.mount("/workspace", StaticFiles(directory=str(WORKSPACE_DIR), html=True), name="workspace")
-    if WORKSPACE_NEXT_DIR.exists():
-        app.mount("/workspace-next", StaticFiles(directory=str(WORKSPACE_NEXT_DIR), html=True), name="workspace-next")
+    if CONTROL_PLANE_NEXT_DIR.exists():
+        app.mount("/control-plane-next", StaticFiles(directory=str(CONTROL_PLANE_NEXT_DIR), html=True), name="control-plane-next")
     if OPERATOR_CENTER_DIR.exists():
         app.mount("/operator-center", StaticFiles(directory=str(OPERATOR_CENTER_DIR), html=True), name="operator-center")
     if COMMAND_CENTER_DIR.exists():

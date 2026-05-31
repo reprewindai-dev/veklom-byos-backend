@@ -181,6 +181,8 @@ class Settings(BaseSettings):
     EDGE_SNMP_ENABLED: bool = False
     EDGE_MODBUS_ENABLED: bool = False
     EDGE_OPC_ENABLED: bool = False
+    EDGE_POLLING_ENABLED: bool = False
+    EDGE_WEBHOOK_HMAC_SECRET: str = ""
     
     # Redis for webhook idempotency cache
     REDIS_URL: str = "redis://localhost:6379/0"

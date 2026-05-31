@@ -7,17 +7,14 @@ to ingest signal metrics cleanly, safely, and securely into the governed Veklom 
 import uuid
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
-from backend.db.models.security import AuditLog, SecurityEvent
-from backend.db.models.run import VeklomRun
-from backend.services.orchestrator import RunOrchestrator
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -25,30 +22,91 @@ router = APIRouter(prefix="/edge", tags=["Edge Ingestion"])
 
 
 # ---------------------------------------------------------------------------
-# Ingestion Pydantic Schemas
+# Ingestion Pydantic Schemas & OpenAPI Examples
 # ---------------------------------------------------------------------------
 
 class LegacyWebhookPayload(BaseModel):
     source_protocol: str = Field(..., description="Ingress protocol: snmp, modbus, mqtt, opc_ua, webhook, polling")
     source_system: str = Field(..., description="Origin identifier of the gateway, machine, or router")
-    workspace_id: str = Field(..., description="Target Veklom workspace UUID")
+    workspace_id: Optional[str] = Field(None, description="Optional target Veklom workspace UUID")
+    tenant_id: Optional[str] = Field(None, description="Optional tenant UUID")
     signal_type: str = Field(..., description="Metric or indicator category, e.g. system_failure, temperature, alert")
     payload: Dict[str, Any] = Field(..., description="Raw dictionary containing the unstructured signal data")
-    severity: str = Field("info", description="Signal alert level: info, warning, medium, high, critical")
+    severity: str = Field("info", description="Signal alert level: info, low, medium, warning, high, critical")
+    timestamp: Optional[datetime] = Field(None, description="Optional external timestamp of the event")
     correlation_id: Optional[str] = Field(None, description="Optional external trace identifier")
+    raw_ref: Optional[str] = Field(None, description="Optional raw reference string")
+    normalized_fields: Dict[str, Any] = Field(default_factory=dict, description="Pre-normalized fields if already structured")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "source_protocol": "snmp",
+                    "source_system": "core-router-01",
+                    "workspace_id": "89078ab2-12e4-4fa7-a3cc-1afd2137d473",
+                    "signal_type": "link_down",
+                    "severity": "critical",
+                    "payload": {
+                        "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+                        "error_status": 2,
+                        "variables": {
+                            "1.3.6.1.2.1.2.2.1.8.1": 2
+                        }
+                    }
+                },
+                {
+                    "source_protocol": "modbus",
+                    "source_system": "hvac-controller-04",
+                    "workspace_id": "89078ab2-12e4-4fa7-a3cc-1afd2137d473",
+                    "signal_type": "compressor_overheat",
+                    "severity": "high",
+                    "payload": {
+                        "unit_id": 12,
+                        "function_code": 3,
+                        "registers": [850],
+                        "exception_code": 2
+                    }
+                },
+                {
+                    "source_protocol": "webhook",
+                    "source_system": "auth-gateway",
+                    "workspace_id": "89078ab2-12e4-4fa7-a3cc-1afd2137d473",
+                    "signal_type": "brute_force_detected",
+                    "severity": "critical",
+                    "payload": {
+                        "ip_address": "198.51.100.42",
+                        "failed_attempts": 45,
+                        "user_agent": "Mozilla/5.0"
+                    }
+                },
+                {
+                    "source_protocol": "mqtt",
+                    "source_system": "power-meter-3b",
+                    "workspace_id": "89078ab2-12e4-4fa7-a3cc-1afd2137d473",
+                    "signal_type": "voltage_sag",
+                    "severity": "warning",
+                    "payload": {
+                        "topic": "telemetry/power/sag",
+                        "voltage": 185.4,
+                        "phase": "A"
+                    }
+                }
+            ]
+        }
+    }
 
 
-class CanonicalEdgeMessage(BaseModel):
-    message_id: str
-    source_protocol: str
-    source_system: str
-    workspace_id: str
-    signal_type: str
-    payload: Dict[str, Any]
-    severity: str
-    timestamp: str
-    correlation_id: str
-    normalized_fields: Dict[str, Any]
+class CanonicalEdgeResponse(BaseModel):
+    accepted: bool = Field(..., description="Indicates if the event was accepted for processing")
+    normalized: bool = Field(..., description="Indicates if standard normalizations were successfully applied")
+    event_id: str = Field(..., description="Unique generated message identifier")
+    correlation_id: str = Field(..., description="Traceability correlation ID for log mapping")
+    canonical_message: str = Field(..., description="Human-readable summary of signal processing results")
+    audit_status: str = Field(..., description="Durable audit logging status: persisted | not_configured | failed")
+    security_event_status: str = Field(..., description="High/critical alarm escalation status: persisted | not_configured | failed")
+    routing_status: str = Field(..., description="Veklom run flow dispatcher status: routed | logged_only | not_configured")
+    warnings: List[str] = Field(default_factory=list, description="Non-blocking warning messages encountered during parsing")
 
 
 # ---------------------------------------------------------------------------
@@ -71,23 +129,20 @@ def normalize_payload(payload: Dict[str, Any], protocol: str) -> Dict[str, Any]:
     if not payload:
         return normalized
 
+    protocol = protocol.lower()
+
     if protocol == "snmp":
-        # Standard SNMP: OIDs, varbinds, trap_oid, agent_ip
-        # e.g., payload = {"trap_oid": "1.3.6.1.6.3.1.1.5.3", "varbinds": {"1.3.6.1.2.1.2.2.1.8.1": 2}}
         varbinds = payload.get("varbinds") or payload.get("variables") or {}
         trap_oid = payload.get("trap_oid") or payload.get("oid")
         
-        # Check varbinds first, or fall back to sys_status/sys_descr
         metric = None
         if varbinds:
-            # Get the first varbind value as metric
             metric = list(varbinds.values())[0] if isinstance(varbinds, dict) else varbinds
         else:
             metric = payload.get("value") or payload.get("oid_value")
             
         normalized["metric_value"] = metric
         
-        # In SNMP traps, a status code (like ifOperStatus) of 2 (down) or trap linkDown (1.3.6.1.6.3.1.1.5.3) is critical
         is_link_down = trap_oid in ("1.3.6.1.6.3.1.1.5.3", "linkDown")
         has_error_status = payload.get("error_status", 0) != 0
         has_critical_vars = any(
@@ -104,8 +159,6 @@ def normalize_payload(payload: Dict[str, Any], protocol: str) -> Dict[str, Any]:
         }
         
     elif protocol == "modbus":
-        # Standard Modbus: registers, coils, unit_id, function_code, exception_code
-        # e.g., payload = {"unit_id": 1, "registers": [234, 12], "function_code": 3, "exception_code": None}
         registers = payload.get("registers") or payload.get("coil_value") or payload.get("coils")
         fc = payload.get("function_code") or payload.get("fc")
         exception = payload.get("exception_code") or payload.get("exception")
@@ -124,13 +177,10 @@ def normalize_payload(payload: Dict[str, Any], protocol: str) -> Dict[str, Any]:
         }
         
     elif protocol == "opc_ua":
-        # Standard OPC UA: node_id, node_value, status_code, server_timestamp
-        # e.g., payload = {"node_id": "ns=2;s=Device1.Temp", "node_value": 45.2, "status_code": "0x00000000"}
         val = payload.get("node_value") or payload.get("value")
         status_code = str(payload.get("status_code") or payload.get("status") or "0x00000000").lower()
         
         normalized["metric_value"] = val
-        # Status code beginning with 0x8 represents Bad status in OPC UA specifications
         is_bad_status = status_code.startswith("0x8") or "bad" in status_code
         normalized["warning"] = is_bad_status or "error" in status_code
         normalized["raw_status"] = "bad_status" if is_bad_status else "good"
@@ -141,7 +191,6 @@ def normalize_payload(payload: Dict[str, Any], protocol: str) -> Dict[str, Any]:
         }
         
     else:
-        # Standard HTTP webhooks and generic formats
         normalized["metric_value"] = payload.get("value") or payload.get("metric")
         normalized["warning"] = "alert" in str(payload).lower() or payload.get("status") in ("fail", "error", "degraded")
         normalized["raw_status"] = payload.get("status") or "unknown"
@@ -160,7 +209,12 @@ def normalize_payload(payload: Dict[str, Any], protocol: str) -> Dict[str, Any]:
 async def verify_edge_api_key(
     x_edge_api_key: Optional[str] = Header(None, alias="X-Edge-Api-Key")
 ) -> str:
-    """Verifies that the incoming request carries a valid Edge API Key."""
+    """Verifies that the incoming request carries a valid Edge API Key. Fails closed."""
+    if not settings.EDGE_API_KEY or settings.EDGE_API_KEY.strip() == "":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Edge Ingestion authentication is not configured in this environment (failed closed)."
+        )
     if not x_edge_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -175,10 +229,10 @@ async def verify_edge_api_key(
 
 
 # ---------------------------------------------------------------------------
-# Webhook Ingest Endpoint
+# Webhook Ingest Endpoint (Production-Safe & Fully Compliant)
 # ---------------------------------------------------------------------------
 
-@router.post("/input/webhook", response_model=CanonicalEdgeMessage)
+@router.post("/input/webhook", response_model=CanonicalEdgeResponse)
 async def ingest_webhook_event(
     payload: LegacyWebhookPayload,
     x_key: str = Depends(verify_edge_api_key),
@@ -192,42 +246,34 @@ async def ingest_webhook_event(
     valid_protocols = {"snmp", "modbus", "mqtt", "opc_ua", "webhook", "polling"}
     if payload.source_protocol.lower() not in valid_protocols:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Unsupported protocol '{payload.source_protocol}'. Must be one of: {', '.join(valid_protocols)}"
         )
 
     # 2. Strict Severity Validation
-    valid_severities = {"info", "warning", "medium", "high", "critical"}
+    valid_severities = {"info", "low", "medium", "warning", "high", "critical"}
     if payload.severity.lower() not in valid_severities:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Unsupported severity '{payload.severity}'. Must be one of: {', '.join(valid_severities)}"
         )
 
     msg_id = str(uuid.uuid4())
     correlation_id = payload.correlation_id or f"corr_{msg_id[:8]}"
-    now_str = datetime.now(timezone.utc).isoformat()
     
     # 3. Normalize legacy payload
     norm_fields = normalize_payload(payload.payload, payload.source_protocol)
-    
-    canonical_msg = CanonicalEdgeMessage(
-        message_id=msg_id,
-        source_protocol=payload.source_protocol.lower(),
-        source_system=payload.source_system,
-        workspace_id=payload.workspace_id,
-        signal_type=payload.signal_type,
-        payload=payload.payload,
-        severity=payload.severity.lower(),
-        timestamp=now_str,
-        correlation_id=correlation_id,
-        normalized_fields=norm_fields
-    )
 
-    # 4. Audit logging
+    audit_status = "not_configured"
+    security_event_status = "not_configured"
+    routing_status = "not_configured"
+    warnings = []
+
+    # 4. Audit logging via existing db models
     try:
+        from backend.db.models.security import AuditLog
         audit_log = AuditLog(
-            workspace_id=payload.workspace_id,
+            workspace_id=payload.workspace_id or "default",
             action=f"edge.ingest.{payload.source_protocol}",
             resource_type="edge_event",
             resource_id=msg_id,
@@ -240,14 +286,17 @@ async def ingest_webhook_event(
             }
         )
         db.add(audit_log)
+        audit_status = "persisted"
     except Exception as e:
-        logger.error(f"Failed to write edge audit log: {e}")
+        logger.error(f"Failed to create edge audit log model: {e}")
+        audit_status = "failed"
 
     # 5. Security escalation for high/critical events
     if payload.severity.lower() in ("high", "critical"):
         try:
+            from backend.db.models.security import SecurityEvent
             sec_event = SecurityEvent(
-                workspace_id=payload.workspace_id,
+                workspace_id=payload.workspace_id or "default",
                 event_type="edge_alert_escalation",
                 threat_type="legacy_system_anomaly",
                 severity=payload.severity.lower(),
@@ -260,58 +309,117 @@ async def ingest_webhook_event(
                 }
             )
             db.add(sec_event)
+            security_event_status = "persisted"
         except Exception as e:
-            logger.error(f"Failed to write edge security event: {e}")
+            logger.error(f"Failed to create edge security event model: {e}")
+            security_event_status = "failed"
 
-    # 6. Commit DB changes
-    await db.commit()
-
-    # 7. Route to Veklom Run workflow if severity is warning, high or critical
-    if payload.severity.lower() in ("warning", "medium", "high", "critical"):
+    # 6. Commit Database Updates
+    if audit_status == "persisted" or security_event_status == "persisted":
         try:
+            await db.commit()
+        except Exception as e:
+            logger.error(f"Failed to commit DB transaction: {e}")
+            if audit_status == "persisted":
+                audit_status = "failed"
+            if security_event_status == "persisted":
+                security_event_status = "failed"
+
+    # 7. Route to Veklom Run workflow if severity is high or critical
+    if payload.severity.lower() in ("high", "critical"):
+        try:
+            from backend.services.orchestrator import RunOrchestrator
+            from backend.db.models.run import VeklomRun
             orchestrator = RunOrchestrator(db)
             intent_payload = {
                 "goal": f"Normalize and handle legacy industrial edge signal: {payload.signal_type}",
-                "edge_signal": canonical_msg.model_dump(),
-                "escalated": payload.severity.lower() in ("high", "critical")
+                "edge_signal": {
+                    "message_id": msg_id,
+                    "source_protocol": payload.source_protocol,
+                    "source_system": payload.source_system,
+                    "signal_type": payload.signal_type,
+                    "severity": payload.severity,
+                },
+                "escalated": True
             }
-            # Create asynchronous execution plan
+            # Create asynchronous execution plan using the actual run model
             await orchestrator.create_run(
-                workspace_id=payload.workspace_id,
-                tenant_id=payload.workspace_id,
+                workspace_id=payload.workspace_id or "default",
+                tenant_id=payload.tenant_id or payload.workspace_id or "default",
                 actor_id="system_edge_connector",
                 intent=intent_payload
             )
-            logger.info(f"Routed edge signal {msg_id} into Veklom Run queue")
+            routing_status = "routed"
         except Exception as e:
-            logger.error(f"Failed to route edge signal into runs queue: {e}")
+            logger.error(f"Failed to route edge signal into Veklom runs queue: {e}")
+            routing_status = "failed"
+    else:
+        routing_status = "logged_only"
 
-    return canonical_msg
+    # Generate standard canonical success message
+    canonical_message = f"Veklom Ingestion: successfully accepted {payload.source_protocol} signal from {payload.source_system} (severity: {payload.severity})."
+
+    return CanonicalEdgeResponse(
+        accepted=True,
+        normalized=True,
+        event_id=msg_id,
+        correlation_id=correlation_id,
+        canonical_message=canonical_message,
+        audit_status=audit_status,
+        security_event_status=security_event_status,
+        routing_status=routing_status,
+        warnings=warnings
+    )
 
 
 # ---------------------------------------------------------------------------
-# Stubs & Connectors status (All SNMP/Modbus/OPC/MQTT disabled by default)
+# Connector Status Protocol Stubs (Safe, Ingest-Only, Disabled by Default)
 # ---------------------------------------------------------------------------
 
 @router.get("/connectors/status")
 async def get_connectors_status(x_key: str = Depends(verify_edge_api_key)):
     """Inquires the operational status of all legacy industrial protocols."""
     return {
-        "webhook_connector": {"status": "active", "features": ["http_ingestion", "canonical_normalization"]},
+        "webhook_connector": {
+            "status": "active",
+            "supported": True,
+            "write_control": False,
+            "ingestion_only": True,
+            "no_network_polling_starts_automatically": True
+        },
         "mqtt_connector": {
             "status": "enabled" if settings.EDGE_MQTT_ENABLED else "disabled",
-            "info": "MQTT broker listener scaffolding."
+            "supported": settings.EDGE_MQTT_ENABLED,
+            "write_control": False,
+            "ingestion_only": True,
+            "no_network_polling_starts_automatically": True
         },
         "snmp_connector": {
             "status": "enabled" if settings.EDGE_SNMP_ENABLED else "disabled",
-            "info": "SNMP Trap listener module."
+            "supported": settings.EDGE_SNMP_ENABLED,
+            "write_control": False,
+            "ingestion_only": True,
+            "no_network_polling_starts_automatically": True
         },
         "modbus_connector": {
             "status": "enabled" if settings.EDGE_MODBUS_ENABLED else "disabled",
-            "info": "Modbus TCP master poll gateway."
+            "supported": settings.EDGE_MODBUS_ENABLED,
+            "write_control": False,
+            "ingestion_only": True,
+            "no_network_polling_starts_automatically": True
         },
         "opc_ua_connector": {
             "status": "enabled" if settings.EDGE_OPC_ENABLED else "disabled",
-            "info": "OPC UA client telemetry client."
+            "supported": settings.EDGE_OPC_ENABLED,
+            "write_control": False,
+            "ingestion_only": True,
+            "no_network_polling_starts_automatically": True
+        },
+        "polling_connector": {
+            "status": "enabled" if settings.EDGE_POLLING_ENABLED else "disabled",
+            "supported": settings.EDGE_POLLING_ENABLED,
+            "write_control": False,
+            "ingestion_only": True,
+            "no_network_polling_starts_automatically": True
         }
     }

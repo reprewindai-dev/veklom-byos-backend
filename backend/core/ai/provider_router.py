@@ -551,6 +551,15 @@ async def run_completion_for_tenant(
                 continue
 
     # Sovereign Demo Fallback instead of failing, allowing a fully operational playground experience
+    model_requested = (body.get("model") or "").lower()
+    provider_requested = (body.get("provider") or "").lower()
+    is_sovereign_target = any(k in model_requested for k in ("sovereign", "llama3", "qwen", "mixtral", "deepseek", "bge", "cohere", "whisper"))
+    if (model_requested and not is_sovereign_target) or (provider_requested and provider_requested not in ("ollama", "sovereign")):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Selected model '{body.get('model')}' is unavailable in this environment. Provide your own API key in workspace settings or choose an available sovereign model."
+        )
+
     try:
         messages = normalize_messages(body)
         user_prompt = messages[-1]["content"] if messages else "Hello"

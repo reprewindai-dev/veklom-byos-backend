@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ──────────────────────────────────────────────────────────────────────
+   VEKLOM theme tokens — locked to veklom.com brand:
+   warm amber primary on near-black sovereign surfaces with subtle grid.
+   ────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces — light mode (neutral mirror; product is dark-first) */
+  --background: 30 8% 98%;
+  --foreground: 30 6% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 30 6% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 30 6% 10%;
+
+  --primary: 32 88% 56%;
+  --primary-foreground: 30 8% 8%;
+  --secondary: 30 8% 92%;
+  --secondary-foreground: 30 6% 14%;
+  --muted: 30 8% 94%;
+  --muted-foreground: 30 5% 38%;
+  --accent: 30 8% 92%;
+  --accent-foreground: 30 6% 14%;
+  --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 30 8% 89%;
+  --input: 30 8% 88%;
+  --ring: 32 88% 56%;
+
+  --success: 162 78% 42%;
+  --warn: 38 92% 50%;
+  --info: 188 86% 50%;
+
+  --sidebar: 30 8% 96%;
+  --sidebar-foreground: 30 6% 14%;
+  --sidebar-border: 30 8% 90%;
+  --sidebar-accent: 30 8% 92%;
+
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Geist", "Inter", system-ui, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: 30 8% 5%;
+  --foreground: 30 12% 96%;
+  --card: 30 8% 7%;
+  --card-foreground: 30 12% 96%;
+  --popover: 30 8% 9%;
+  --popover-foreground: 30 12% 96%;
+
+  --primary: 32 88% 60%; /* veklom.com amber */
+  --primary-foreground: 30 12% 8%;
+  --secondary: 30 6% 14%;
+  --secondary-foreground: 30 12% 92%;
+  --muted: 30 6% 12%;
+  --muted-foreground: 30 6% 62%;
+  --accent: 30 6% 14%;
+  --accent-foreground: 30 12% 92%;
+  --destructive: 0 72% 56%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 30 6% 14%;
+  --input: 30 6% 18%;
+  --ring: 32 88% 60%;
+
+  --success: 162 72% 50%;
+  --warn: 38 92% 58%;
+  --info: 188 86% 56%;
+
+  --sidebar: 30 9% 6%;
+  --sidebar-foreground: 30 10% 92%;
+  --sidebar-border: 30 6% 12%;
+  --sidebar-accent: 30 6% 12%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    font-feature-settings: "ss01", "cv11";
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  /* Sovereign grid backdrop — never noisy */
+  body.grid-bg::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.35) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.35) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse at center top, black 30%, transparent 80%);
+    pointer-events: none;
+    z-index: 0;
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .text-eyebrow {
+    @apply font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .frame {
+    @apply rounded-xl border bg-card;
+    box-shadow:
+      inset 0 1px 0 hsl(var(--foreground) / 0.04),
+      0 1px 2px 0 hsl(0 0% 0% / 0.5);
+  }
+  .frame-quiet {
+    @apply rounded-lg border bg-card/50;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] whitespace-nowrap;
+  }
+
+  .live-dot {
+    position: relative;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: hsl(var(--success));
+  }
+  .live-dot::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--success) / 0.5);
+    animation: live-ring 2.4s ease-out infinite;
+  }
+  @keyframes live-ring {
+    0% {
+      transform: scale(0.6);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1.6);
+      opacity: 0;
+    }
+  }
+
+  .hover-elevate {
+    position: relative;
+    z-index: 0;
+  }
+  .hover-elevate::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    z-index: 9999;
+  }
+  .hover-elevate:hover::after {
+    background-color: hsl(var(--foreground) / 0.04);
+  }
+  .border.hover-elevate::after {
+    inset: -1px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+  }
+}

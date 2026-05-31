@@ -386,10 +386,11 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
     # Call real AI completion
     from backend.core.ai.provider_router import run_completion
     
+    selected_model_id = session_context.get("model", body.get("model", "qwen2.5:3b"))
     t0 = __import__("time").monotonic()
     try:
         result = await run_completion({
-            "model": session_context.get("model", body.get("model", "qwen2.5:3b")),
+            "model": selected_model_id,
             "messages": [{"role": "user", "content": message}],
             "system": session_context.get("system_prompt", ""),
         }, stream=False)
@@ -405,7 +406,7 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
         "id": f"msg_{datetime.now(timezone.utc).timestamp()}",
         "role": "assistant",
         "content": content,
-        "model": data.get("model", session_context.get("model", "unknown")),
+        "model": data.get("model", selected_model_id),
         "provider": result.provider,
         "usage": {
             "prompt_tokens": usage.get("prompt_tokens", 0),

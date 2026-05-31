@@ -138,6 +138,20 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
             continue
 
     # Sovereign Demo Fallback for non-configured envs
+    # CRITICAL AUDIT FIX: If a specific model/provider is requested but unavailable,
+    # do not silently fallback. Show a clear error instead.
+    model_requested = (body.get("model") or "").lower()
+    provider_requested = (body.get("provider") or "").lower()
+    
+    # If the user explicitly requested something other than veklom-llama or standard local models
+    # and we have errors, do not silently fallback.
+    is_sovereign_target = any(k in model_requested for k in ("sovereign", "llama3", "qwen", "mixtral", "deepseek", "bge", "cohere", "whisper"))
+    if (model_requested and not is_sovereign_target) or (provider_requested and provider_requested not in ("ollama", "sovereign")):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Selected model '{body.get('model')}' is unavailable in this environment. Choose an available sovereign model."
+        )
+
     try:
         messages = normalize_messages(body)
         user_prompt = messages[-1]["content"] if messages else "Hello"
@@ -154,7 +168,7 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
             f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
         )
         
-        mock_payload = _openai_response("sovereign", "veklom-llama3-70b", response_content)
+        mock_payload = _openai_response("sovereign", body.get("model", "veklom-llama3-70b"), response_content)
         mock_payload["usage"] = {"prompt_tokens": 120, "completion_tokens": 150, "total_tokens": 270}
         
         return CompletionResult("sovereign", mock_payload)

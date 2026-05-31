@@ -25,7 +25,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/login", "/signup", "/api/v1/complaints",
             "/config.js", "/base-attribution.js", "/auth-gate.js", "/addons-inject.js", "/overview-live.js",
             "/workspace-enhance.js", "/pipeline-live.js", "/playground-live.js", "/user-identity-inject.js", "/copilot-widget.js",
-            "/command-center", "/gpc", "/terminal", "/marketplace", "/docs",
+            "/command-center", "/control-plane-next", "/gpc", "/terminal", "/marketplace", "/docs",
             "/uptime", "/legal", "/license", "/vendor-agreement", "/irongrid", "/api/v1/webhooks", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
             "/apple-touch-icon.png", "/og-image.png", "/twitter-card.png",

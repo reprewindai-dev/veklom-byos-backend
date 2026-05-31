@@ -185,6 +185,7 @@ class Settings(BaseSettings):
     EDGE_WEBHOOK_HMAC_SECRET: str = ""
     
     # Redis for webhook idempotency cache
+    X402_TEST_PROOF_MODE: bool = False
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_ENABLED: bool = True
 

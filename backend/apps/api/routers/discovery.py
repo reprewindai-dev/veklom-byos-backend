@@ -16,6 +16,7 @@ import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from backend.core.config.settings import settings
 
 router = APIRouter(tags=["discovery"])
 
@@ -144,64 +145,49 @@ async def agent_json():
 @router.get("/.well-known/x402.json")
 async def x402_json():
     treasury = get_treasury_address()
-    routes = []
-    route_map = {
-        "/api/v1/ai/inference":        "ai_inference",
-        "/api/v1/ai/chat":             "ai_chat",
-        "/api/v1/gpc/compile":         "gpc_compile",
-        "/api/v1/gpc/intent-to-plan":  "gpc_intent_to_plan",
-        "/api/v1/gpc/runs":            "gpc_run",
-        "/api/v1/pipelines/trigger":   "pipeline_trigger",
-        "/api/v1/runtime/jobs":        "runtime_job",
-        "/api/v1/evidence/export":     "evidence_export",
-        "/api/v1/compliance/report":   "compliance_report",
-        "/api/v1/marketplace/acquire": "marketplace_acquire",
-    }
-    for path, key in route_map.items():
-        p = VEKLOM_PRICING[key]
-        micro = int(p["price_usdc"] * 1_000_000)  # USDC has 6 decimals
-        routes.append({
-            "path": path,
-            "name": p["name"],
-            "price_usdc": p["price_usdc"],
-            "unit": p["unit"],
-            "payment": {
-                "scheme": "exact",
-                "network": VEKLOM_NETWORK,
-                "asset": VEKLOM_USDC_ADDRESS,
-                "pay_to": treasury,
-                "amount_micro_usdc": micro,
-                "max_timeout_seconds": 300,
-                "description": f"Veklom {p['name']} — governed AI execution",
-            }
-        })
+    missing_config = []
+    if not treasury or treasury == "0x0000000000000000000000000000000000000001":
+        missing_config.append("VEKLOM_TREASURY_ADDRESS")
+    
+    is_enabled = len(missing_config) == 0
+    protected_routes = [
+        "/api/v1/ai/inference",
+        "/api/v1/ai/chat",
+        "/api/v1/gpc/compile",
+        "/api/v1/gpc/intent-to-plan",
+        "/api/v1/gpc/runs",
+        "/api/v1/pipelines/trigger",
+        "/api/v1/runtime/jobs",
+        "/api/v1/evidence/export",
+        "/api/v1/compliance/report",
+        "/api/v1/marketplace/acquire",
+        "/api/v1/x402/protected-test"
+    ]
 
     return JSONResponse({
-        "x402_version": 1,
-        "provider": "Veklom Sovereign AI Hub",
+        "enabled": is_enabled,
+        "x402_version": "1.0.0",
+        "accepted_assets": [
+            {"asset": VEKLOM_USDC_ADDRESS, "symbol": "USDC", "decimals": 6}
+        ],
         "network": VEKLOM_NETWORK,
-        "asset": VEKLOM_USDC_ADDRESS,
-        "treasury": treasury,
-        "currency": "USDC",
-        # P0-3: x402 on-chain settlement is fully active.
-        # Real payment path: On-chain USDC verification (Base mainnet) or Stripe wallet reserve.
-        "payment_mode": "live",
-        "payment_mode_note": (
-            "x402 micropayment settlement is fully live. "
-            "On-chain USDC verification is active on the Base mainnet network. "
-            "To make paid calls: pay the exact amount of USDC to the treasury address "
-            "and send the transaction hash in the X-Payment-Proof header. "
-            "Alternatively, authenticate with a Bearer JWT backed by your Stripe reserve."
-        ),
-        "routes": routes,
-        "free_trial": {
+        "chain_id": 8453,
+        "pay_to": treasury,
+        "protected_routes": protected_routes,
+        "proof_header_name": "X-Payment-Proof",
+        "challenge_ttl_seconds": 300,
+        "replay_protection": {
             "enabled": True,
-            "requests_per_day": 5,
-            "routes": ["/api/v1/ai/inference", "/api/v1/gpc/compile"],
-            "note": "5 free governed calls/day per IP. Upgrade for unlimited access.",
+            "backend": "redis"
         },
-        "docs": f"{VEKLOM_AGENT_BASE}/docs",
-        "contact": "api@veklom.com",
+        "receipt_support": {
+            "enabled": True
+        },
+        "verification_support": {
+            "enabled": True
+        },
+        "missing_config": missing_config,
+        "environment_mode": settings.APP_ENV
     }, headers={"Access-Control-Allow-Origin": "*"})
 
 

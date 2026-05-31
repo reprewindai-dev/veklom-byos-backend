@@ -520,7 +520,8 @@ from backend.apps.api.routers import (
     webhook,
     runs,
     smoke,
-    edge
+    edge,
+    x402
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -589,6 +590,9 @@ app.include_router(webhook.router, prefix="/api/v1")
 
 # Edge Legacy & Webhook Ingestion Ingress
 app.include_router(edge.router, prefix="/api/v1")
+
+# x402 Payment & Verification Ingress
+app.include_router(x402.router, prefix="/api/v1")
 
 # UACP Service - dual-adapter architecture (HTTP service + library shim)
 app.include_router(uacp_http_router, prefix="/api/v1")

@@ -8,6 +8,8 @@ import {
   Lock, 
   Layers 
 } from 'lucide-react';
+import { QuantumTerminal } from '../pages/Terminal/QuantumTerminal';
+import { VeklomTerminal } from '../pages/Terminal/VeklomTerminal';
 
 export const CommandCenter: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'stats' | 'quantum' | 'veklom'>('stats');
@@ -200,30 +202,14 @@ export const CommandCenter: React.FC = () => {
         {/* Tab 2: Quantum Terminal IFrame */}
         {activeTab === 'quantum' && (
           <div className="w-full h-full rounded-xl overflow-hidden border border-purple-500/20 bg-black relative flex flex-col justify-between shadow-[0_0_20px_rgba(147,51,234,0.1)]">
-            <div className="h-6 bg-neutral-900 border-b border-purple-500/10 px-3 flex items-center justify-between font-mono text-[9px] text-purple-400 uppercase tracking-wider">
-              <span>ESTABLISHING SECURE SSH TUNNEL...</span>
-              <span>HOST: LOCAL-QUANTUM-TERMINAL</span>
-            </div>
-            <iframe
-              src="/command-center/quantum-terminal/"
-              className="flex-1 w-full border-none bg-black"
-              title="Quantum Terminal"
-            />
+            <QuantumTerminal />
           </div>
         )}
 
         {/* Tab 3: Veklom Terminal IFrame */}
         {activeTab === 'veklom' && (
           <div className="w-full h-full rounded-xl overflow-hidden border border-emerald-500/20 bg-black relative flex flex-col justify-between shadow-[0_0_20px_rgba(16,185,129,0.1)]">
-            <div className="h-6 bg-neutral-900 border-b border-emerald-500/10 px-3 flex items-center justify-between font-mono text-[9px] text-emerald-400 uppercase tracking-wider">
-              <span>ESTABLISHING SECURE SSH TUNNEL...</span>
-              <span>HOST: LOCAL-VEKLOM-TERMINAL</span>
-            </div>
-            <iframe
-              src="/command-center/veklom-terminal/"
-              className="flex-1 w-full border-none bg-black"
-              title="Veklom Terminal"
-            />
+            <VeklomTerminal />
           </div>
         )}
 

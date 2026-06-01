@@ -601,6 +601,10 @@ app.include_router(uacp_http_router, prefix="/api/v1")
 from backend.apps.api.routers import integrations
 app.include_router(integrations.router, prefix="/api/v1")
 
+# Fax Connector Integrations (Hospitals, Legal, Government, Financial Services)
+from backend.apps.api.routers import fax
+app.include_router(fax.router, prefix="/api/v1")
+
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(admin_billing.router, prefix="/api/v1")

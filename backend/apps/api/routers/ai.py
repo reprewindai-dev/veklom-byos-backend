@@ -121,12 +121,12 @@ async def list_models(user=Depends(get_current_user)):
             - `cost_per_1k_input` (float): Cost in USD per 1,000 input tokens.
     """
     return [
-        {"id": "gpt-4o", "provider": "openai", "name": "GPT-4o", "context_window": 128000, "cost_per_1k_input": 0.005},
+        {"id": "llama3.2:latest", "provider": "ollama", "name": "Ollama Llama 3.2 3B", "context_window": 32768, "cost_per_1k_input": 0.0},
         {"id": "gpt-4o-mini", "provider": "openai", "name": "GPT-4o Mini", "context_window": 128000, "cost_per_1k_input": 0.00015},
         {"id": "llama-3.1-8b-instant", "provider": "groq", "name": "Groq Llama 3.1 8B Instant", "context_window": 131072, "cost_per_1k_input": 0.00005},
         {"id": "meta-llama/Llama-3.1-8B-Instruct:fastest", "provider": "huggingface", "name": "Hugging Face Llama 3.1 8B", "context_window": 131072, "cost_per_1k_input": 0.0001},
         {"id": "gemini-2.5-flash", "provider": "gemini", "name": "Gemini 2.5 Flash", "context_window": 1000000, "cost_per_1k_input": 0.0003},
-        {"id": "llama3.2:latest", "provider": "ollama", "name": "Ollama Llama 3.2 3B", "context_window": 32768, "cost_per_1k_input": 0.0},
+        {"id": "gpt-4o", "provider": "openai", "name": "GPT-4o", "context_window": 128000, "cost_per_1k_input": 0.005},
     ]
 
 

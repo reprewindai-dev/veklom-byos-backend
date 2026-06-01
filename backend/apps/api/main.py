@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import sentry_sdk
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -969,14 +969,149 @@ async def sitemap_xml():
 
 @app.post("/api/v1/feedback")
 @app.post("/api/v1/feedback/")
-async def submit_feedback(body: dict):
-    category = str(body.get("category", "feedback")).strip()[:64]
-    subject = str(body.get("subject", "")).strip()[:255]
-    feedback_body = str(body.get("body", "")).strip()[:4096]
+async def submit_feedback(
+    request: Request,
+    category: str = Query(None),
+    subject: str = Query(None),
+    body: str = Query(None)
+):
+    from typing import Optional
+    from fastapi import Query
+    from fastapi.responses import JSONResponse
+    
+    json_data = {}
+    try:
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            json_data = await request.json()
+    except Exception:
+        pass
+
+    cat = (category or json_data.get("category") or "feedback").strip()[:64]
+    subj = (subject or json_data.get("subject") or "No Subject").strip()[:255]
+    feedback_body = (body or json_data.get("body") or "").strip()[:4096]
+
     if not feedback_body:
         return JSONResponse(status_code=422, content={"detail": "body is required"})
-    print(f"[feedback] category={category} subject={subject!r} body={feedback_body[:80]!r}")
+
+    print(f"[feedback] category={cat} subject={subj!r} body={feedback_body[:80]!r}")
+
+    # Send email notification to Admin/Founder via Resend
+    from backend.core.utils.email import send_email_via_resend
+    from backend.core.config.settings import settings
+
+    admin_email = settings.ADMIN_EMAIL or "founder@veklom.com"
+    email_subject = f"[Veklom Feedback] {cat.upper()}: {subj}"
+    email_html = f"""
+    <h3>New Feedback Received</h3>
+    <p><strong>Category:</strong> {cat}</p>
+    <p><strong>Subject:</strong> {subj}</p>
+    <p><strong>Message:</strong></p>
+    <div style="background:#f4f4f4;padding:15px;border-radius:5px;white-space:pre-wrap;">{feedback_body}</div>
+    <br>
+    <hr>
+    <p style="font-size:0.8em;color:#777;">Sent automatically by Veklom Sovereign AI Hub backend.</p>
+    """
+    await send_email_via_resend(to_email=admin_email, subject=email_subject, html_content=email_html)
+
     return {"submitted": True, "message": "Thank you for your feedback."}
+
+
+# ---------------------------------------------------------------------------
+# Contact form — routes landing page "Talk to Sales" / contact submissions
+# ---------------------------------------------------------------------------
+
+@app.post("/api/v1/contact")
+@app.post("/api/v1/contact/")
+async def submit_contact(request: Request):
+    """Handle contact/sales inquiry form submissions from the landing page.
+    Emails sales@veklom.com and sends a confirmation to the submitter.
+    """
+    from fastapi.responses import JSONResponse
+    from backend.core.utils.email import send_email_via_resend
+    from backend.core.config.settings import settings
+
+    json_data = {}
+    try:
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            json_data = await request.json()
+        else:
+            form = await request.form()
+            json_data = dict(form)
+    except Exception:
+        pass
+
+    name = (json_data.get("name") or "").strip()[:128]
+    email = (json_data.get("email") or "").strip()[:255]
+    company = (json_data.get("company") or "").strip()[:128]
+    message = (json_data.get("message") or "").strip()[:4096]
+    inquiry_type = (json_data.get("type") or json_data.get("inquiry_type") or "general").strip()[:64]
+
+    if not email or "@" not in email:
+        return JSONResponse(status_code=422, content={"detail": "A valid email address is required."})
+    if not message:
+        return JSONResponse(status_code=422, content={"detail": "Message is required."})
+
+    print(f"[contact] from={email!r} name={name!r} company={company!r} type={inquiry_type!r}")
+
+    # --- Notify sales@veklom.com ---
+    sales_email = "sales@veklom.com"
+    sales_html = f"""
+    <div style="font-family:Inter,Arial,sans-serif;max-width:640px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
+      <div style="text-align:center;margin-bottom:28px;">
+        <span style="font-size:22px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
+        <span style="color:#64748b;font-size:13px;display:block;margin-top:4px;">New Sales Inquiry</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+        <tr><td style="padding:8px 0;color:#94a3b8;width:110px;">Name</td><td style="padding:8px 0;color:#f8fafc;font-weight:600;">{name or "—"}</td></tr>
+        <tr><td style="padding:8px 0;color:#94a3b8;">Email</td><td style="padding:8px 0;"><a href="mailto:{email}" style="color:#a78bfa;">{email}</a></td></tr>
+        <tr><td style="padding:8px 0;color:#94a3b8;">Company</td><td style="padding:8px 0;color:#f8fafc;">{company or "—"}</td></tr>
+        <tr><td style="padding:8px 0;color:#94a3b8;">Type</td><td style="padding:8px 0;color:#a78bfa;text-transform:capitalize;">{inquiry_type}</td></tr>
+      </table>
+      <div style="background:#1e293b;border-radius:8px;padding:20px;margin-bottom:24px;">
+        <p style="color:#94a3b8;font-size:13px;margin:0 0 8px;">Message:</p>
+        <p style="color:#e2e8f0;line-height:1.7;white-space:pre-wrap;margin:0;">{message}</p>
+      </div>
+      <p style="color:#475569;font-size:12px;text-align:center;">Received via veklom.com contact form</p>
+    </div>
+    """
+    await send_email_via_resend(
+        to_email=sales_email,
+        subject=f"[Sales Inquiry] {inquiry_type.title()} from {name or email}",
+        html_content=sales_html,
+    )
+
+    # --- Send confirmation to submitter ---
+    confirm_html = f"""
+    <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
+      <div style="text-align:center;margin-bottom:32px;">
+        <span style="font-size:24px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
+      </div>
+      <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">We received your message</h2>
+      <p style="color:#94a3b8;line-height:1.7;">
+        Hi {name or "there"},<br><br>
+        Thanks for reaching out! Our team will review your inquiry and get back to you within 1&ndash;2 business days.
+      </p>
+      <div style="background:#1e293b;border-radius:8px;padding:18px;margin:24px 0;">
+        <p style="color:#64748b;font-size:12px;margin:0 0 6px;">Your message:</p>
+        <p style="color:#cbd5e1;font-size:14px;line-height:1.6;white-space:pre-wrap;margin:0;">{message[:500]}{"..." if len(message) > 500 else ""}</p>
+      </div>
+      <p style="color:#94a3b8;line-height:1.7;">In the meantime, you can <a href="https://veklom.com/signup" style="color:#a78bfa;">create a free account</a> and explore the platform.</p>
+      <hr style="border:none;border-top:1px solid #1e293b;margin:28px 0;">
+      <p style="color:#475569;font-size:12px;text-align:center;">Veklom &mdash; Sovereign AI Runtime Infrastructure &bull; <a href="mailto:sales@veklom.com" style="color:#7c3aed;">sales@veklom.com</a></p>
+    </div>
+    """
+    import asyncio
+    asyncio.create_task(
+        send_email_via_resend(
+            to_email=email,
+            subject="We received your Veklom inquiry",
+            html_content=confirm_html,
+        )
+    )
+
+    return {"submitted": True, "message": "Thank you! We'll be in touch within 1-2 business days."}
 
 
 # /llms.txt is now served by discovery.router (see backend/apps/api/routers/discovery.py)

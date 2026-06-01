@@ -355,7 +355,7 @@
           <span class="model-tag">Zero cloud tax</span>
           <span class="model-tag">Enterprise SLA</span>
         </div>
-        <a href="mailto:sales@veklom.com" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Talk to Sales</a>
+        <button onclick="openContactModal('enterprise')" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Talk to Sales</button>
       </div>
     </div>
   </div>
@@ -435,7 +435,7 @@
         <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Enterprises</div>
         <h3 style="font-size:1rem;margin-bottom:8px;">Use the governance layer</h3>
         <p style="font-size:0.85rem;color:var(--text-secondary);">SOC2, HIPAA, GDPR. SHA-256 audit evidence. Kill switches. BYOS. Sovereign EU nodes.</p>
-        <a href="mailto:sales@veklom.com" style="font-size:0.8rem;color:var(--primary);text-decoration:none;margin-top:12px;display:block;">Talk to sales &rarr;</a>
+        <button onclick="openContactModal('enterprise')" style="font-size:0.8rem;color:var(--primary);text-decoration:none;margin-top:12px;display:block;background:none;border:none;cursor:pointer;padding:0;">Talk to sales &rarr;</button>
       </div>
     </div>
   </div>
@@ -713,7 +713,7 @@
           <li>Procurement & security review</li>
           <li>Custom SLA</li>
         </ul>
-        <a href="mailto:sales@veklom.com" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Talk to Sales →</a>
+        <button onclick="openContactModal('sovereign')" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Talk to Sales &rarr;</button>
       </div>
     </div>
   </div>
@@ -818,5 +818,97 @@
   type="text/javascript"
   src="https://app.termly.io/resource-blocker/REPLACE_ME_TERMLY_ID"
 ></script>
+
+<!-- Contact / Sales Modal -->
+<div id="contact-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+  <div style="background:#0f0f13;border:1px solid rgba(124,58,237,0.35);border-radius:16px;padding:40px;max-width:480px;width:90%;position:relative;box-shadow:0 24px 80px rgba(0,0,0,0.6);">
+    <button onclick="closeContactModal()" style="position:absolute;top:16px;right:16px;background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    <div style="text-align:center;margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Talk to Sales</span>
+      <p style="color:#64748b;font-size:13px;margin-top:6px;">We'll reply within 1-2 business days.</p>
+    </div>
+    <form id="contact-form" style="display:flex;flex-direction:column;gap:14px;">
+      <input id="ct-name" placeholder="Your name" style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input id="ct-email" type="email" placeholder="Work email *" required style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input id="ct-company" placeholder="Company" style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input type="hidden" id="ct-type" value="general">
+      <textarea id="ct-message" rows="4" placeholder="Tell us about your use case, team size, or timeline..." style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;resize:vertical;"></textarea>
+      <button type="submit" id="ct-submit" class="btn btn-primary" style="justify-content:center;padding:13px;font-size:15px;">Send Message &rarr;</button>
+      <div id="ct-result" style="text-align:center;font-size:14px;display:none;"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openContactModal(type) {
+  document.getElementById('contact-modal').style.display = 'flex';
+  document.getElementById('ct-type').value = type || 'general';
+  document.getElementById('ct-result').style.display = 'none';
+  document.getElementById('ct-result').textContent = '';
+  document.getElementById('ct-submit').disabled = false;
+  document.getElementById('ct-submit').textContent = 'Send Message →';
+  document.body.style.overflow = 'hidden';
+}
+function closeContactModal() {
+  document.getElementById('contact-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.getElementById('contact-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeContactModal();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeContactModal();
+});
+document.getElementById('contact-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('ct-submit');
+  const result = document.getElementById('ct-result');
+  const email = document.getElementById('ct-email').value.trim();
+  const message = document.getElementById('ct-message').value.trim();
+  if (!email || !message) {
+    result.style.display = 'block';
+    result.style.color = '#f87171';
+    result.textContent = 'Please fill in your email and message.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  result.style.display = 'none';
+  try {
+    const res = await fetch('/api/v1/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('ct-name').value.trim(),
+        email: email,
+        company: document.getElementById('ct-company').value.trim(),
+        message: message,
+        type: document.getElementById('ct-type').value
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      result.style.color = '#34d399';
+      result.textContent = data.message || 'Sent! We\'ll be in touch soon.';
+      result.style.display = 'block';
+      btn.textContent = '✓ Sent';
+      setTimeout(closeContactModal, 2800);
+    } else {
+      result.style.color = '#f87171';
+      result.textContent = data.detail || 'Something went wrong. Please try again.';
+      result.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Send Message →';
+    }
+  } catch(err) {
+    result.style.color = '#f87171';
+    result.textContent = 'Network error. Please email sales@veklom.com directly.';
+    result.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Send Message →';
+  }
+});
+</script>
+
 </body>
 </html>

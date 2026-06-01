@@ -41,7 +41,8 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/runtime/jobs", "/api/v1/evidence/export", "/api/v1/compliance/report",
             "/api/v1/marketplace/acquire", "/api/v1/audit/verify", "/api/v1/webhook", "/api/v1/x402",
             "/api/v1/ai/complete", "/api/v1/playground/inference", "/api/v1/playground/sessions",
-            "/api/v1/playground/tools", "/api/v1/playground/prompts", "/api/v1/connectors/fax"
+            "/api/v1/playground/tools", "/api/v1/playground/prompts", "/api/v1/connectors/fax",
+            "/api/v1/contact", "/api/v1/feedback"
         )
         
         if path == "/" or any(path.startswith(prefix) for prefix in public_prefixes):
@@ -49,8 +50,10 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             
         auth_header = request.headers.get("Authorization")
         api_key_header = request.headers.get("X-API-Key")
+        # Cookie fallback — fixes session hydration race on page loads after login
+        cookie_token = request.cookies.get("access_token")
         
-        if not auth_header and not api_key_header:
+        if not auth_header and not api_key_header and not cookie_token:
             return JSONResponse(status_code=401, content={"detail": "Missing authentication credentials"})
             
         try:
@@ -62,6 +65,10 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
                 if not api_key_header.startswith("byos_"):
                     return JSONResponse(status_code=401, content={"detail": "Invalid API Key format"})
                 request.state.api_key = api_key_header
+            elif cookie_token:
+                # Accept HttpOnly cookie set on login/register
+                payload = verify_token(cookie_token, enforce_replay=False)
+                request.state.user_id = payload.get("sub")
         except Exception as e:
             return JSONResponse(status_code=401, content={"detail": f"Invalid credentials: {str(e)}"})
             

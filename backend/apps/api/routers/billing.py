@@ -20,17 +20,21 @@ from backend.db.models.security import KillSwitchState
 router = APIRouter(tags=["Billing"])
 
 
-# Plan catalog — matches the UI (community/growth/sovereign/enterprise)
+# Plan catalog — matches the landing page at veklom.com (source of truth)
+# Frontend tier keys: free / starter / pro / sovereign / enterprise
 PLAN_AMOUNTS = {
-    # New UI plan names
-    "community": {"amount": 0, "monthly": 0, "name": "Veklom Community", "description": "Free tier — 15 governed runs"},
-    "growth": {"amount": 29900, "monthly": 29900, "name": "Veklom Growth", "description": "$299/mo — 5 deployments, Routing controls, Audit retention 30d"},
-    "sovereign": {"amount": 79900, "monthly": 79900, "name": "Veklom Sovereign", "description": "$799/mo — Unlimited deployments, HIPAA/SOC2 packs, Audit retention 1yr"},
-    "enterprise": {"amount": 0, "monthly": 0, "name": "Veklom Enterprise", "description": "Custom pricing — SAML/SCIM/SSO, Custom regions, Procurement-ready"},
-    # Legacy plan names (keep for backward compat)
-    "founding": {"amount": 39500, "monthly": 39500, "name": "Veklom Founding Activation + Reserve", "description": "Founding activation"},
-    "standard": {"amount": 79500, "monthly": 79500, "name": "Veklom Standard Activation + Reserve", "description": "Standard activation"},
-    "regulated": {"amount": 250000, "monthly": 250000, "name": "Veklom Regulated Activation + Reserve", "description": "Regulated activation"},
+    # Primary tier keys (match frontend + landing page)
+    "free":       {"amount": 0,      "monthly": 0,      "name": "Free Evaluation",    "description": "Free tier — 15 governed runs, no card required"},
+    "starter":    {"amount": 39500,  "monthly": 0,      "name": "Founding",           "description": "$395 one-time activation + $150 min reserve"},
+    "pro":        {"amount": 79500,  "monthly": 0,      "name": "Standard",           "description": "$795 one-time activation + $300 min reserve"},
+    "sovereign":  {"amount": 250000, "monthly": 0,      "name": "Regulated / Enterprise", "description": "$2,500+ private terms + $2,500 min reserve"},
+    "enterprise": {"amount": 0,      "monthly": 0,      "name": "Enterprise Custom",  "description": "Custom pricing — SAML/SCIM/SSO, Custom regions, Procurement-ready"},
+    # Legacy aliases (backward compat — keep for existing DB records)
+    "community":  {"amount": 0,      "monthly": 0,      "name": "Veklom Community",   "description": "Free tier — 15 governed runs"},
+    "growth":     {"amount": 29900,  "monthly": 29900,  "name": "Veklom Growth",      "description": "$299/mo — 5 deployments, Routing controls, Audit retention 30d"},
+    "founding":   {"amount": 39500,  "monthly": 39500,  "name": "Veklom Founding Activation + Reserve", "description": "Founding activation"},
+    "standard":   {"amount": 79500,  "monthly": 79500,  "name": "Veklom Standard Activation + Reserve", "description": "Standard activation"},
+    "regulated":  {"amount": 250000, "monthly": 250000, "name": "Veklom Regulated Activation + Reserve", "description": "Regulated activation"},
 }
 
 
@@ -150,11 +154,118 @@ async def wallet_usage_stats(user=Depends(get_current_user)):
 # --- Subscriptions ---
 @router.get("/subscriptions/plans")
 async def subscription_plans():
-    # Tailored to match Veklom executive audit checklist requirements
+    """Return plan catalog matching veklom.com landing page pricing (source of truth).
+
+    Plan IDs map to the frontend tier constants:
+      free → Free, starter → Starter, pro → Pro,
+      sovereign → Sovereign, enterprise → Enterprise.
+
+    Pricing model: one-time activation + minimum operating reserve.
+    Per-call costs deducted from reserve (Playground $0.25, Compare $0.75, etc.).
+    """
     return [
-        {"id": "team", "name": "Team", "price": "12000/mo", "features": ["Full governed execution", "Standard limits"]},
-        {"id": "business", "name": "Business", "price": "35000/mo", "features": ["Priority Support", "High throughput"]},
-        {"id": "enterprise", "name": "Enterprise", "price": "custom", "features": ["Dedicated enclave", "SLA guarantees"]},
+        {
+            "id": "free",
+            "plan_id": "free",
+            "tier": "free",
+            "name": "Free Evaluation",
+            "price": 0,
+            "price_label": "$0",
+            "period": "No card required",
+            "features": [
+                "15 governed Playground runs",
+                "3 compare runs",
+                "20 policy tests",
+                "2 watermarked exports",
+                "BYOK provider testing",
+                "Tools browsing",
+            ],
+            "bullets": [
+                "15 governed Playground runs",
+                "3 compare runs",
+                "20 policy tests",
+                "2 watermarked exports",
+                "BYOK provider testing",
+                "Tools browsing",
+            ],
+        },
+        {
+            "id": "starter",
+            "plan_id": "founding",
+            "tier": "starter",
+            "name": "Founding",
+            "price": 395,
+            "price_label": "$395",
+            "period": "One-time activation + $150 min reserve",
+            "features": [
+                "Playground run — $0.25",
+                "Compare run — $0.75",
+                "UACP compile — $1.50",
+                "Pipeline test — $0.25",
+                "Endpoint test — $0.50",
+                "BYOK Gov Calls — $6/1,000",
+                "Managed Gov Calls — $12/1,000",
+            ],
+            "bullets": [
+                "Playground run — $0.25",
+                "Compare run — $0.75",
+                "UACP compile — $1.50",
+                "Pipeline test — $0.25",
+                "Endpoint test — $0.50",
+                "BYOK Gov Calls — $6/1,000",
+                "Managed Gov Calls — $12/1,000",
+            ],
+        },
+        {
+            "id": "pro",
+            "plan_id": "standard",
+            "tier": "pro",
+            "name": "Standard",
+            "price": 795,
+            "price_label": "$795",
+            "period": "One-time activation + $300 min reserve",
+            "features": [
+                "Playground run — $0.40",
+                "Compare run — $1.20",
+                "UACP compile — $2.00",
+                "Pipeline test — $0.40",
+                "Endpoint test — $0.80",
+                "BYOK Gov Calls — $8/1,000",
+                "Managed Gov Calls — $16/1,000",
+            ],
+            "bullets": [
+                "Playground run — $0.40",
+                "Compare run — $1.20",
+                "UACP compile — $2.00",
+                "Pipeline test — $0.40",
+                "Endpoint test — $0.80",
+                "BYOK Gov Calls — $8/1,000",
+                "Managed Gov Calls — $16/1,000",
+            ],
+        },
+        {
+            "id": "sovereign",
+            "plan_id": "regulated",
+            "tier": "sovereign",
+            "name": "Regulated / Enterprise",
+            "price": 2500,
+            "price_label": "$2,500+",
+            "period": "Private terms + $2,500 min reserve",
+            "features": [
+                "BYOK Gov Calls — $10/1,000",
+                "Managed Gov Calls — $20/1,000",
+                "Private deployment",
+                "Procurement & security review",
+                "Custom SLA",
+            ],
+            "bullets": [
+                "BYOK Gov Calls — $10/1,000",
+                "Managed Gov Calls — $20/1,000",
+                "Private deployment",
+                "Procurement & security review",
+                "Custom SLA",
+            ],
+        },
     ]
 
 

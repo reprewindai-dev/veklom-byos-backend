@@ -67,10 +67,15 @@ VEKLOM_TREASURY_DEFAULT = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
 VEKLOM_USDC_ADDR  = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
 
 
+import re
+
+def is_valid_evm_address(addr: str) -> bool:
+    return bool(re.match(r"^0x[a-fA-F0-9]{40}$", addr))
+
 def get_treasury_address() -> str:
     raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
-    if not raw or raw == "0x0000000000000000000000000000000000000001":
-        return VEKLOM_TREASURY_DEFAULT
+    if not raw or raw == "0x0000000000000000000000000000000000000001" or not is_valid_evm_address(raw):
+        return ""
     return raw
 
 VEKLOM_TREASURY = get_treasury_address()
@@ -385,6 +390,10 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         route_cfg = _get_route_config(path)
         if route_cfg is None:
             return await call_next(request)
+
+        current_treasury = get_treasury_address()
+        if not current_treasury:
+            return _build_402_response(path, method, route_cfg, detail="treasury_configuration_invalid")
 
         request.state.x402_error = "missing_payment_proof"
 

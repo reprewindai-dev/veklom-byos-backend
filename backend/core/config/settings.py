@@ -177,6 +177,7 @@ class Settings(BaseSettings):
     
     # Edge Ingestion
     EDGE_API_KEY: str = "veklom_edge_dev_key"
+    FAX_WEBHOOK_SECRET: str = "veklom_fax_webhook_secret_fallback"
     EDGE_MQTT_ENABLED: bool = False
     EDGE_SNMP_ENABLED: bool = False
     EDGE_MODBUS_ENABLED: bool = False

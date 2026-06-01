@@ -191,7 +191,7 @@ async def subscription_plans():
         },
         {
             "id": "starter",
-            "plan_id": "founding",
+            "plan_id": "starter",
             "tier": "starter",
             "name": "Founding",
             "price": 395,
@@ -218,7 +218,7 @@ async def subscription_plans():
         },
         {
             "id": "pro",
-            "plan_id": "standard",
+            "plan_id": "pro",
             "tier": "pro",
             "name": "Standard",
             "price": 795,
@@ -245,7 +245,7 @@ async def subscription_plans():
         },
         {
             "id": "sovereign",
-            "plan_id": "regulated",
+            "plan_id": "sovereign",
             "tier": "sovereign",
             "name": "Regulated / Enterprise",
             "price": 2500,
@@ -270,25 +270,58 @@ async def subscription_plans():
 
 
 @router.get("/subscriptions/current")
-async def current_subscription(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Return the real active subscription from the DB, or an honest empty state."""
-    ws_id = user.workspace_id or ""
-    sub = (await db.execute(
-        select(Subscription)
-        .where(
-            Subscription.workspace_id == ws_id,
-            Subscription.status.in_(["active", "trialing"]),
-        )
-        .order_by(Subscription.created_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-    if sub:
-        return {
-            "plan": sub.plan,
-            "status": sub.status,
-            "current_period_end": sub.current_period_end.isoformat() if getattr(sub, "current_period_end", None) else None,
-            "stripe_subscription_id": getattr(sub, "stripe_subscription_id", None),
-        }
+async def current_subscription(request: Request, db: AsyncSession = Depends(get_db)):
+    """Return the real active subscription from the DB, or an honest empty state.
+    Bypasses 401 to prevent frontend SWR infinite retry loops on unauthenticated/loading state.
+    """
+    from backend.core.security.auth import verify_token
+    from backend.db.models.user import User
+
+    token = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.cookies.get("access_token") or request.cookies.get("token")
+
+    user = None
+    if token:
+        try:
+            payload = verify_token(token, enforce_replay=False)
+            user_id = payload.get("sub")
+            if user_id:
+                result = await db.execute(select(User).where(User.id == user_id))
+                user = result.scalar_one_or_none()
+        except Exception:
+            pass
+
+    if user:
+        ws_id = user.workspace_id or ""
+        sub = (await db.execute(
+            select(Subscription)
+            .where(
+                Subscription.workspace_id == ws_id,
+                Subscription.status.in_(["active", "trialing"]),
+            )
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if sub:
+            plan_id = (sub.plan or "").lower()
+            normalization = {
+                "community": "free",
+                "founding": "starter",
+                "standard": "pro",
+                "regulated": "sovereign",
+                "enterprise": "enterprise"
+            }
+            normalized_plan = normalization.get(plan_id, plan_id)
+            return {
+                "plan": normalized_plan,
+                "status": sub.status,
+                "current_period_end": sub.current_period_end.isoformat() if getattr(sub, "current_period_end", None) else None,
+                "stripe_subscription_id": getattr(sub, "stripe_subscription_id", None),
+            }
     return {
         "plan": "free",
         "status": "none",

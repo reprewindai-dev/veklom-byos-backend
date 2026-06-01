@@ -1,3 +1,7 @@
+import os
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["REDIS_ENABLED"] = "False"
+
 import pytest
 import json
 import uuid

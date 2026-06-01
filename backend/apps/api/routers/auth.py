@@ -708,7 +708,15 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
             .limit(1)
         )).scalar_one_or_none()
         if active_sub and active_sub.plan:
-            real_plan = active_sub.plan
+            plan_id = (active_sub.plan or "").lower()
+            normalization = {
+                "community": "free",
+                "founding": "starter",
+                "standard": "pro",
+                "regulated": "sovereign",
+                "enterprise": "enterprise"
+            }
+            real_plan = normalization.get(plan_id, plan_id)
 
     # Add workspace data
     workspace_data = None

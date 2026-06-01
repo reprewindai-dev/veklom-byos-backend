@@ -1,5 +1,8 @@
-import pytest
 import os
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["REDIS_ENABLED"] = "False"
+
+import pytest
 import uuid
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient

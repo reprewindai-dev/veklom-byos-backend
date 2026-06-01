@@ -1,3 +1,7 @@
+import os
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["REDIS_ENABLED"] = "False"
+
 import pytest
 import uuid
 from fastapi.testclient import TestClient
@@ -33,6 +37,9 @@ async def test_fax_connector_workflow(mock_user):
     from backend.core.security.auth import get_current_user
     app.dependency_overrides[get_current_user] = lambda: mock_user
 
+    # Import settings to get the secret for signing
+    from backend.core.config.settings import settings
+
     try:
         # 1. Ingest Inbound Fax via Webhook
         inbound_payload = {
@@ -41,7 +48,32 @@ async def test_fax_connector_workflow(mock_user):
             "document_url": "https://storage.veklom.com/faxes/patient_clinical_intake_form.pdf"
         }
         
-        response = client.post("/api/v1/connectors/fax/inbound", json=inbound_payload)
+        # Test 1a: Missing key (header) -> 401 Unauthorized
+        response_missing = client.post("/api/v1/connectors/fax/inbound", json=inbound_payload)
+        assert response_missing.status_code == 401
+
+        # Test 1b: Invalid key (header) -> 403 Forbidden
+        response_invalid = client.post(
+            "/api/v1/connectors/fax/inbound", 
+            json=inbound_payload, 
+            headers={"X-Fax-Signature": "invalid_secret_key"}
+        )
+        assert response_invalid.status_code == 403
+
+        # Test 1c: Malformed payload with valid key -> 422 Unprocessable Entity (FastAPI validation)
+        response_malformed = client.post(
+            "/api/v1/connectors/fax/inbound", 
+            json={"sender_number": "only_one_field"}, 
+            headers={"X-Fax-Signature": settings.FAX_WEBHOOK_SECRET}
+        )
+        assert response_malformed.status_code in (400, 422)
+
+        # Test 1d: Valid signed webhook -> 201 Created
+        response = client.post(
+            "/api/v1/connectors/fax/inbound", 
+            json=inbound_payload,
+            headers={"X-Fax-Signature": settings.FAX_WEBHOOK_SECRET}
+        )
         assert response.status_code == 201
         data = response.json()
         assert data["fax_id"].startswith("fax_in_")

@@ -1685,3 +1685,62 @@ def _spend_breakdown(total: float) -> list[dict]:
         }
         for label, percent in categories
     ]
+
+
+# ---------------------------------------------------------------------------
+# Onboarding — vertical selection
+# ---------------------------------------------------------------------------
+ALLOWED_VERTICALS = [
+    "healthcare_hospital",
+    "finance_banking",
+    "insurance",
+    "enterprise",
+    "compliance_governance",
+    "developer_ai",
+]
+
+
+@router.post("/onboarding/vertical")
+async def set_onboarding_vertical(
+    body: dict,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Select the industry vertical during onboarding."""
+    vertical = body.get("vertical")
+    if vertical not in ALLOWED_VERTICALS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid vertical '{vertical}'. Must be one of: {ALLOWED_VERTICALS}",
+        )
+
+    workspace_id = user.workspace_id or "default"
+    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    workspace.industry = vertical
+    await db.commit()
+
+    return {
+        "status": "vertical_selected",
+        "vertical": vertical,
+        "redirect": "/control-plane-next/",
+    }
+
+
+@router.get("/onboarding/vertical")
+async def get_onboarding_vertical(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return current vertical and available options."""
+    workspace_id = user.workspace_id or "default"
+    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result.scalar_one_or_none()
+
+    return {
+        "vertical": workspace.industry if workspace else None,
+        "verticals_available": ALLOWED_VERTICALS,
+    }

@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -111,6 +111,7 @@ def simulate_ocr_and_classification(document_url: str) -> tuple[str, str, str]:
 @router.post("/inbound", response_model=FaxResponse, status_code=status.HTTP_201_CREATED)
 async def inbound_fax_webhook(
     body: InboundFaxWebhook,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -118,6 +119,17 @@ async def inbound_fax_webhook(
     Performs secure PDF/TIFF ingestion, OCR extraction, document classification,
     and seals the execution in the audit evidence ledger.
     """
+    signature = request.headers.get("X-Fax-Signature") or request.headers.get("X-Fax-Gateway-Token")
+    if not signature:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing webhook authentication header"
+        )
+    if signature != settings.FAX_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook signature or gateway token"
+        )
     fax_id = f"fax_in_{uuid.uuid4().hex[:12]}"
     evidence_id = f"evd_{uuid.uuid4().hex[:16]}"
     

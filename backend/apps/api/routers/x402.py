@@ -24,14 +24,16 @@ router = APIRouter(prefix="/x402", tags=["x402 Payment"])
 VEKLOM_TREASURY_DEFAULT = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
 VEKLOM_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
 
+import re
+
+def is_valid_evm_address(addr: str) -> bool:
+    return bool(re.match(r"^0x[a-fA-F0-9]{40}$", addr))
 
 def get_treasury_address() -> str:
-    raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip() if "os" in globals() else ""
-    if not raw:
-        import os
-        raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
-    if not raw or raw == "0x0000000000000000000000000000000000000001":
-        return VEKLOM_TREASURY_DEFAULT
+    import os
+    raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    if not raw or raw == "0x0000000000000000000000000000000000000001" or not is_valid_evm_address(raw):
+        return ""
     return raw
 
 
@@ -98,15 +100,12 @@ class EvidenceVerifyResponse(BaseModel):
 async def get_x402_config():
     """Returns deterministic configuration discovery for x402."""
     missing_config = []
-    raw_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip() if "os" in globals() else ""
-    if not raw_treasury:
-        import os
-        raw_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    import os
+    raw_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
     
-    if not raw_treasury or raw_treasury == "0x0000000000000000000000000000000000000001":
+    if not raw_treasury or raw_treasury == "0x0000000000000000000000000000000000000001" or not is_valid_evm_address(raw_treasury):
         missing_config.append("VEKLOM_TREASURY_ADDRESS")
 
-    # Verify if Edge or general app configuration elements are missing
     is_enabled = len(missing_config) == 0
     treasury = get_treasury_address()
 

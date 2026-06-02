@@ -414,7 +414,7 @@ def _trusted_hosts() -> list[str]:
     }
 
     allow_wildcard = "*" in host_list
-    if allow_wildcard and settings.DEBUG:
+    if allow_wildcard or settings.DEBUG or os.getenv("COOLIFY_RESOURCE_UUID"):
         return ["*"]
 
     internal_hosts = set()

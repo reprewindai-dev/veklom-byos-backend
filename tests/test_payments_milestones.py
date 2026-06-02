@@ -389,3 +389,112 @@ async def test_review_reward_and_robot_badge(client, auth_headers):
         item = await db.scalar(select(MarketplaceListing).where(MarketplaceListing.id == "ls_clinical_rag"))
         badges = item.config_json.get("badges", [])
         assert "Robot Reviewed: 4.9★" in badges
+
+
+@pytest.mark.asyncio
+async def test_marketplace_automated_pricing_milestones(client, auth_headers):
+    # Seed workspace, user, and listing
+    async with async_session() as db:
+        ws = Workspace(id=MockUser.workspace_id, name="Test WS", slug="mock-ws-id", is_active=True)
+        usr = User(
+            id=MockUser.id,
+            email=MockUser.email,
+            full_name="Tester",
+            hashed_password="",
+            role="OWNER",
+            status="active",
+            is_active=True,
+            workspace_id=MockUser.workspace_id
+        )
+        db.add_all([ws, usr])
+        
+        listing = MarketplaceListing(
+            id="ls_clinical_rag",
+            vendor_id="veklom_native",
+            name="Clinical RAG",
+            description="HIPAA RAG",
+            category="rag_templates",
+            price=1000.0,
+            pricing_model="monthly",
+            status="published",
+            downloads=0,
+            config_json={"vendor_slug": "veklom_native", "target_price": 1000.0}
+        )
+        db.add(listing)
+        await db.commit()
+
+    # 1. 0 downloads (trust building stage) -> should be 20% = $200.00
+    res1 = client.get("/api/v1/marketplace/listings/ls_clinical_rag", headers=auth_headers)
+    assert res1.status_code == 200
+    assert res1.json()["price"] == 200.0
+    
+    # 2. 20 downloads (early adoption stage) -> should be 50% = $500.00
+    async with async_session() as db:
+        item = await db.scalar(select(MarketplaceListing).where(MarketplaceListing.id == "ls_clinical_rag"))
+        item.downloads = 20
+        await db.commit()
+
+    res2 = client.get("/api/v1/marketplace/listings/ls_clinical_rag", headers=auth_headers)
+    assert res2.status_code == 200
+    assert res2.json()["price"] == 500.0
+
+    # 3. 120 downloads (mature target stage) -> should be 100% = $1000.00
+    async with async_session() as db:
+        item = await db.scalar(select(MarketplaceListing).where(MarketplaceListing.id == "ls_clinical_rag"))
+        item.downloads = 120
+        await db.commit()
+
+    res3 = client.get("/api/v1/marketplace/listings/ls_clinical_rag", headers=auth_headers)
+    assert res3.status_code == 200
+    assert res3.json()["price"] == 1000.0
+
+
+@pytest.mark.asyncio
+async def test_marketplace_density_pricing_calibration(client, auth_headers):
+    # Seed workspace, user, and 5 listings in the same category
+    async with async_session() as db:
+        ws = Workspace(id=MockUser.workspace_id, name="Test WS", slug="mock-ws-id", is_active=True)
+        usr = User(
+            id=MockUser.id,
+            email=MockUser.email,
+            full_name="Tester",
+            hashed_password="",
+            role="OWNER",
+            status="active",
+            is_active=True,
+            workspace_id=MockUser.workspace_id
+        )
+        db.add_all([ws, usr])
+        
+        # Add 5 generic listings to generic_tools category to trigger dime-a-dozen calibration (density >= 5 -> 60%)
+        for i in range(1, 6):
+            listing = MarketplaceListing(
+                id=f"ls_tool_{i}",
+                vendor_id="veklom_native",
+                name=f"Generic Tool {i}",
+                description=f"Description {i}",
+                category="generic_tools",
+                price=1000.0,
+                pricing_model="monthly",
+                status="published",
+                downloads=120 if i == 1 else 0,  # 120 downloads on the first tool to reach 100% milestone factor
+                config_json={"vendor_slug": "veklom_native", "target_price": 1000.0}
+            )
+            db.add(listing)
+        await db.commit()
+
+    # Query the first tool
+    res = client.get("/api/v1/marketplace/listings/ls_tool_1", headers=auth_headers)
+    assert res.status_code == 200
+    data = res.json()
+    
+    # 100% milestone * 60% density multiplier = 600.0
+    assert data["price"] == 600.0
+    assert data["target_price"] == 1000.0
+    assert data["density_multiplier"] == 0.60
+    assert data["category_density"] == 5
+    assert data["is_rare"] is False
+    assert data["sovereign_baseline_premium"] is True
+    assert "Target Price ($1000.00) * Milestone Factor (100%) * Density Multiplier (60%)" in data["pricing_formula"]
+
+

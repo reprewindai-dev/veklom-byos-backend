@@ -60,7 +60,7 @@ def choose_provider(worker_id: str, task_type: str, risk: str, context_tokens: i
 # ---------------------------------------------------------------------------
 
 async def _call_ollama(prompt: str, model: Optional[str] = None) -> tuple[str, float]:
-    base = getattr(settings, "LLM_BASE_URL", "http://host.docker.internal:11434")
+    base = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
     m = model or getattr(settings, "LLM_MODEL_DEFAULT", "qwen2.5:3b")
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:

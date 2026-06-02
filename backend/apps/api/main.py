@@ -61,15 +61,27 @@ has_valid_endpoint = OTEL_ENDPOINT and "NEED_FROM" not in OTEL_ENDPOINT
 has_valid_headers = OTEL_HEADERS and "NEED_FROM" not in OTEL_HEADERS and "=" in OTEL_HEADERS
 
 if has_valid_endpoint and has_valid_headers:
-    provider = TracerProvider()
-    processor = BatchSpanProcessor(
-        OTLPSpanExporter(
-            endpoint=OTEL_ENDPOINT,
-            headers=OTEL_HEADERS,
+    try:
+        # Clean the endpoint: the gRPC OTLPSpanExporter expects the base host (with optional port)
+        # and fails if paths like '/otlp' or '/v1/traces' (which are meant for HTTP) are included.
+        grpc_endpoint = OTEL_ENDPOINT
+        if grpc_endpoint.endswith("/otlp"):
+            grpc_endpoint = grpc_endpoint[:-5]
+        elif grpc_endpoint.endswith("/v1/traces"):
+            grpc_endpoint = grpc_endpoint[:-10]
+
+        provider = TracerProvider()
+        processor = BatchSpanProcessor(
+            OTLPSpanExporter(
+                endpoint=grpc_endpoint,
+                headers=OTEL_HEADERS,
+            )
         )
-    )
-    provider.add_span_processor(processor)
-    trace.set_tracer_provider(provider)
+        provider.add_span_processor(processor)
+        trace.set_tracer_provider(provider)
+        print(f"[otel] initialized OTLP gRPC span exporter to {grpc_endpoint}")
+    except Exception as e:
+        print(f"[otel] WARNING: Failed to initialize OTLP gRPC exporter: {type(e).__name__}: {e}")
 
 
 @asynccontextmanager

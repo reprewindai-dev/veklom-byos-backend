@@ -383,6 +383,10 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         method = request.method
 
+        # Test-mode bypass — set X402_DISABLED=true to skip all payment enforcement
+        if os.environ.get("X402_DISABLED", "").lower() in ("1", "true", "yes"):
+            return await call_next(request)
+
         # Skip OPTIONS and free routes
         if method == "OPTIONS" or _is_free_route(path):
             return await call_next(request)

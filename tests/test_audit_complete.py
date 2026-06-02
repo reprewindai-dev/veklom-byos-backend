@@ -28,6 +28,7 @@ from backend.db.models.workspace import Workspace
 from backend.db.models.billing import Subscription, BudgetRule, WalletTransaction
 from backend.db.models.security import KillSwitchState
 from backend.db.models.ai import ExecutionLog
+from backend.db.models.provider import ProviderKey, ProviderRoutingLog
 from backend.core.config.settings import settings
 
 
@@ -71,6 +72,8 @@ async def _init_tables(*extra_tables):
         BudgetRule.__table__,
         ExecutionLog.__table__,
         WalletTransaction.__table__,
+        ProviderKey.__table__,
+        ProviderRoutingLog.__table__,
     ]
     for t in extra_tables:
         if t not in tables:

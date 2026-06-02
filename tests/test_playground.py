@@ -1,6 +1,8 @@
 import os
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["REDIS_ENABLED"] = "False"
+os.environ["VEKLOM_TREASURY_ADDRESS"] = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+os.environ["X402_DISABLED"] = "true"
 
 import pytest
 import uuid
@@ -14,6 +16,7 @@ from backend.db.models.workspace import Workspace
 from backend.db.models.security import KillSwitchState
 from backend.db.models.billing import BudgetRule, Subscription, WalletTransaction
 from backend.db.models.ai import ExecutionLog
+from backend.db.models.provider import ProviderKey, ProviderRoutingLog
 from backend.core.security.auth import get_current_user, create_access_token
 
 @pytest.fixture
@@ -31,15 +34,21 @@ def mock_user():
 
 @pytest.mark.asyncio
 async def test_playground_openai_fallback(mock_user):
-    # Initialize the database schema for the test
+    # Initialize only required tables to avoid JSONB compilation errors on decision_frames in SQLite
+    tables = [
+        User.__table__,
+        Workspace.__table__,
+        KillSwitchState.__table__,
+        BudgetRule.__table__,
+        ExecutionLog.__table__,
+        WalletTransaction.__table__,
+        ProviderKey.__table__,
+        ProviderRoutingLog.__table__,
+    ]
     async with engine.begin() as conn:
         await conn.run_sync(lambda sync_conn: Base.metadata.create_all(
             bind=sync_conn,
-            tables=[
-                User.__table__, Workspace.__table__, Subscription.__table__,
-                KillSwitchState.__table__, BudgetRule.__table__, ExecutionLog.__table__,
-                WalletTransaction.__table__
-            ]
+            tables=tables,
         ))
 
     # Mock DB seeding

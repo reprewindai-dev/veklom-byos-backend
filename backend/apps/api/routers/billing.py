@@ -152,8 +152,72 @@ async def wallet_usage_stats(user=Depends(get_current_user)):
 
 
 # --- Subscriptions ---
+async def get_milestone_pricing(db: AsyncSession) -> dict:
+    from backend.db.models.workspace import Workspace
+    try:
+        from sqlalchemy import func
+        ws_count = await db.scalar(select(func.count(Workspace.id)).where(Workspace.is_active == True)) or 0
+    except Exception:
+        ws_count = 0
+
+    if ws_count <= 50:
+        return {
+            "level": 1,
+            "starter_price": 395,
+            "starter_reserve": 150,
+            "starter_run": 0.25,
+            "starter_run_compare": 0.75,
+            "starter_run_compile": 1.50,
+            "starter_run_pipeline": 0.25,
+            "starter_run_endpoint": 0.50,
+            "pro_price": 795,
+            "pro_reserve": 300,
+            "pro_run": 0.40,
+            "pro_run_compare": 1.20,
+            "pro_run_compile": 2.00,
+            "pro_run_pipeline": 0.40,
+            "pro_run_endpoint": 0.80,
+        }
+    elif ws_count <= 250:
+        return {
+            "level": 2,
+            "starter_price": 495,
+            "starter_reserve": 150,
+            "starter_run": 0.35,
+            "starter_run_compare": 1.05,
+            "starter_run_compile": 2.10,
+            "starter_run_pipeline": 0.35,
+            "starter_run_endpoint": 0.70,
+            "pro_price": 995,
+            "pro_reserve": 300,
+            "pro_run": 0.55,
+            "pro_run_compare": 1.65,
+            "pro_run_compile": 2.75,
+            "pro_run_pipeline": 0.55,
+            "pro_run_endpoint": 1.10,
+        }
+    else:
+        return {
+            "level": 3,
+            "starter_price": 595,
+            "starter_reserve": 150,
+            "starter_run": 0.50,
+            "starter_run_compare": 1.50,
+            "starter_run_compile": 3.00,
+            "starter_run_pipeline": 0.50,
+            "starter_run_endpoint": 1.00,
+            "pro_price": 1195,
+            "pro_reserve": 300,
+            "pro_run": 0.75,
+            "pro_run_compare": 2.25,
+            "pro_run_compile": 3.75,
+            "pro_run_pipeline": 0.75,
+            "pro_run_endpoint": 1.50,
+        }
+
+
 @router.get("/subscriptions/plans")
-async def subscription_plans():
+async def subscription_plans(db: AsyncSession = Depends(get_db)):
     """Return plan catalog matching veklom.com landing page pricing (source of truth).
 
     Plan IDs map to the frontend tier constants:
@@ -163,6 +227,7 @@ async def subscription_plans():
     Pricing model: one-time activation + minimum operating reserve.
     Per-call costs deducted from reserve (Playground $0.25, Compare $0.75, etc.).
     """
+    rates = await get_milestone_pricing(db)
     return [
         {
             "id": "free",
@@ -194,24 +259,24 @@ async def subscription_plans():
             "plan_id": "starter",
             "tier": "starter",
             "name": "Founding",
-            "price": 395,
-            "price_label": "$395",
-            "period": "One-time activation + $150 min reserve",
+            "price": rates["starter_price"],
+            "price_label": f"${rates['starter_price']}",
+            "period": f"One-time activation + ${rates['starter_reserve']} min reserve",
             "features": [
-                "Playground run — $0.25",
-                "Compare run — $0.75",
-                "UACP compile — $1.50",
-                "Pipeline test — $0.25",
-                "Endpoint test — $0.50",
+                f"Playground run — ${rates['starter_run']:.2f}",
+                f"Compare run — ${rates['starter_run_compare']:.2f}",
+                f"UACP compile — ${rates['starter_run_compile']:.2f}",
+                f"Pipeline test — ${rates['starter_run_pipeline']:.2f}",
+                f"Endpoint test — ${rates['starter_run_endpoint']:.2f}",
                 "BYOK Gov Calls — $6/1,000",
                 "Managed Gov Calls — $12/1,000",
             ],
             "bullets": [
-                "Playground run — $0.25",
-                "Compare run — $0.75",
-                "UACP compile — $1.50",
-                "Pipeline test — $0.25",
-                "Endpoint test — $0.50",
+                f"Playground run — ${rates['starter_run']:.2f}",
+                f"Compare run — ${rates['starter_run_compare']:.2f}",
+                f"UACP compile — ${rates['starter_run_compile']:.2f}",
+                f"Pipeline test — ${rates['starter_run_pipeline']:.2f}",
+                f"Endpoint test — ${rates['starter_run_endpoint']:.2f}",
                 "BYOK Gov Calls — $6/1,000",
                 "Managed Gov Calls — $12/1,000",
             ],
@@ -221,24 +286,24 @@ async def subscription_plans():
             "plan_id": "pro",
             "tier": "pro",
             "name": "Standard",
-            "price": 795,
-            "price_label": "$795",
-            "period": "One-time activation + $300 min reserve",
+            "price": rates["pro_price"],
+            "price_label": f"${rates['pro_price']}",
+            "period": f"One-time activation + ${rates['pro_reserve']} min reserve",
             "features": [
-                "Playground run — $0.40",
-                "Compare run — $1.20",
-                "UACP compile — $2.00",
-                "Pipeline test — $0.40",
-                "Endpoint test — $0.80",
+                f"Playground run — ${rates['pro_run']:.2f}",
+                f"Compare run — ${rates['pro_run_compare']:.2f}",
+                f"UACP compile — ${rates['pro_run_compile']:.2f}",
+                f"Pipeline test — ${rates['pro_run_pipeline']:.2f}",
+                f"Endpoint test — ${rates['pro_run_endpoint']:.2f}",
                 "BYOK Gov Calls — $8/1,000",
                 "Managed Gov Calls — $16/1,000",
             ],
             "bullets": [
-                "Playground run — $0.40",
-                "Compare run — $1.20",
-                "UACP compile — $2.00",
-                "Pipeline test — $0.40",
-                "Endpoint test — $0.80",
+                f"Playground run — ${rates['pro_run']:.2f}",
+                f"Compare run — ${rates['pro_run_compare']:.2f}",
+                f"UACP compile — ${rates['pro_run_compile']:.2f}",
+                f"Pipeline test — ${rates['pro_run_pipeline']:.2f}",
+                f"Endpoint test — ${rates['pro_run_endpoint']:.2f}",
                 "BYOK Gov Calls — $8/1,000",
                 "Managed Gov Calls — $16/1,000",
             ],
@@ -267,6 +332,7 @@ async def subscription_plans():
             ],
         },
     ]
+
 
 
 @router.get("/subscriptions/current")

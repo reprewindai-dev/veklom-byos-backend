@@ -724,6 +724,123 @@ async def review_listing(body: dict, user=Depends(get_current_user)):
     return {"id": body.get("listing_id", ""), "status": body.get("action", "approved")}
 
 
+@router.post("/marketplace/listings/{listing_id}/review")
+@router.post("/listings/{listing_id}/review")
+async def add_marketplace_review(
+    listing_id: str,
+    body: dict,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Submit a review for a marketplace listing.
+    
+    If submitted by a human user (body.get("is_robot") is False):
+      - We award them with a $5.00 Workspace Operating Reserve credit,
+        capped at 5 reviews ($25.00) per workspace per calendar month.
+    
+    If submitted by a robot (body.get("is_robot") is True):
+      - We append a "Robot Review" quality badge directly to the listing's datasheet.
+      
+    All reviews are saved securely in the compliance AuditLog table.
+    """
+    from backend.db.models.marketplace import MarketplaceListing
+    from backend.db.models.billing import WalletTransaction
+    from backend.db.models.security import AuditLog
+    from fastapi import HTTPException as _HTTPException
+    import uuid as _uuid
+    
+    await _ensure_catalog_seeded(db)
+    
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalars().first()
+    if not listing:
+        raise _HTTPException(status_code=404, detail="Listing not found")
+        
+    rating = float(body.get("rating", 5.0))
+    comment = str(body.get("comment", ""))
+    is_robot = bool(body.get("is_robot", False))
+    
+    reward_awarded = False
+    reward_amount = 0.0
+    
+    if not is_robot:
+        # Check review reward limits: capped at 5 reviews ($25.00) per workspace per month
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Count current month human reviews for this workspace
+        review_count_res = await db.execute(
+            select(AuditLog).where(
+                AuditLog.workspace_id == (user.workspace_id or "default"),
+                AuditLog.resource_type == "marketplace_review",
+                AuditLog.created_at >= month_start
+            )
+        )
+        existing_reviews = review_count_res.scalars().all()
+        # Filter for non-robot reviews
+        human_review_count = sum(1 for r in existing_reviews if not (r.details or {}).get("is_robot", False))
+        
+        if human_review_count < 5:
+            # Credit $5.00 to their reserve balance
+            reward_amount = 5.00
+            credit_tx = WalletTransaction(
+                user_id=user.id,
+                workspace_id=user.workspace_id or "default",
+                amount=reward_amount,
+                tx_type="topup",  # use topup type so it adds to reserve balance
+                description=f"Marketplace Review Reward: {listing.name}"
+            )
+            db.add(credit_tx)
+            reward_awarded = True
+    else:
+        # It's a robot review! Programmatically append badge to listing.config_json["badges"]
+        cfg = listing.config_json or {}
+        badges = cfg.get("badges", [])
+        badge_text = f"Robot Reviewed: {rating:.1f}★"
+        
+        # Avoid duplicate badge texts
+        if badge_text not in badges:
+            badges.append(badge_text)
+            cfg["badges"] = badges
+            # Flag listing as modified
+            from sqlalchemy.orm.attributes import flag_modified
+            listing.config_json = cfg
+            flag_modified(listing, "config_json")
+            db.add(listing)
+
+    # Save the review in AuditLog as a marketplace_review action for high security & hash chaining
+    review_id = str(_uuid.uuid4())
+    audit_entry = AuditLog(
+        id=review_id,
+        user_id=user.id,
+        workspace_id=user.workspace_id or "default",
+        action="marketplace_review",
+        resource_type="marketplace_review",
+        resource_id=norm_id,
+        details={
+            "rating": rating,
+            "comment": comment,
+            "is_robot": is_robot,
+            "user_email": user.email
+        }
+    )
+    db.add(audit_entry)
+    await db.commit()
+    
+    return {
+        "status": "success",
+        "review_id": review_id,
+        "listing_id": norm_id,
+        "reward_awarded": reward_awarded,
+        "reward_amount": reward_amount,
+        "is_robot": is_robot
+    }
+
+
+
 @router.patch("/marketplace/listings/{listing_id}")
 async def update_listing(listing_id: str, body: dict, user=Depends(get_current_user)):
     return {"id": listing_id, "message": "Listing updated", **body}
@@ -785,6 +902,54 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
     ))
     if existing.scalars().first():
         return {"id": listing_id, "status": "already_installed", "message": "This listing is already installed in your workspace"}
+
+    # --- Billing Verification ---
+    if listing.price > 0.0:
+        # Check wallet balance
+        from backend.db.models.billing import WalletTransaction
+        from sqlalchemy import func
+        balance = await db.scalar(
+            _select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+            .where(WalletTransaction.workspace_id == target)
+        ) or 0.0
+        
+        if balance < listing.price:
+            raise _HTTPException(
+                status_code=402,
+                detail=f"Insufficient reserve balance. This product costs ${listing.price:.2f} but your workspace operating reserve balance is only ${balance:.2f}."
+            )
+        
+        # Deduct from user's operating reserve wallet
+        debit_tx = WalletTransaction(
+            user_id=user.id,
+            workspace_id=target,
+            amount=-listing.price,
+            tx_type="debit",
+            description=f"Purchase Marketplace Asset: {listing.name}"
+        )
+        db.add(debit_tx)
+
+        # Distribute / wash funds
+        vendor_slug = (listing.config_json or {}).get("vendor_slug", "veklom_native")
+        is_native = (vendor_slug == "veklom_native" or not vendor_slug)
+
+        if not is_native:
+            # Look up the Vendor associated with the vendor_id
+            v_res = await db.execute(_select(Vendor).where(Vendor.id == listing.vendor_id))
+            vendor = v_res.scalars().first()
+            if not vendor:
+                v_res = await db.execute(_select(Vendor).where(Vendor.user_id == listing.vendor_id))
+                vendor = v_res.scalars().first()
+
+            if vendor:
+                # Apply developer fee structures: first $2,500 is 0% platform fee, 10% fee thereafter
+                if (vendor.total_revenue or 0.0) < 2500.0:
+                    earnings = listing.price
+                else:
+                    earnings = listing.price * 0.90  # 10% platform fee deducted
+
+                vendor.total_revenue = (vendor.total_revenue or 0.0) + earnings
+                db.add(vendor)
 
     # Create InstalledAsset record
     asset = InstalledAsset(
@@ -1030,8 +1195,11 @@ async def create_vendor(body: dict, user=Depends(get_current_user), db: AsyncSes
 
 
 @router.post("/vendors/onboard")
-async def onboard_vendor(body: dict, user=Depends(get_current_user)):
-    return {"status": "onboarding_started", "stripe_url": "https://connect.stripe.com/placeholder"}
+async def onboard_vendor(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.apps.api.routers.x402 import generate_onboarding_express
+    res = await generate_onboarding_express(user, db)
+    return {"status": "onboarding_started", "stripe_url": res.stripe_url, "account_id": res.account_id}
+
 
 
 @router.get("/vendors/me/listings")

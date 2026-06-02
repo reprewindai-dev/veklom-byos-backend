@@ -9,7 +9,7 @@ import socket
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 import sentry_sdk
 from fastapi import FastAPI, Request, Query
@@ -70,11 +70,20 @@ if has_valid_endpoint and has_valid_headers:
         elif grpc_endpoint.endswith("/v1/traces"):
             grpc_endpoint = grpc_endpoint[:-10]
 
+        # Standard OTLP gRPC endpoint for Grafana Cloud requires port 443 explicitly
+        # If no port is specified in the host, append :443 so it doesn't default to 4317
+        parsed = urlparse(grpc_endpoint)
+        if parsed.netloc and ":" not in parsed.netloc:
+            grpc_endpoint = f"{parsed.scheme}://{parsed.netloc}:443{parsed.path}"
+
+        # URL-decode headers to convert any '%20' back to real spaces (Basic Auth needs Basic MTY1...)
+        decoded_headers = unquote(OTEL_HEADERS)
+
         provider = TracerProvider()
         processor = BatchSpanProcessor(
             OTLPSpanExporter(
                 endpoint=grpc_endpoint,
-                headers=OTEL_HEADERS,
+                headers=decoded_headers,
             )
         )
         provider.add_span_processor(processor)

@@ -233,3 +233,125 @@ async def x402_protected_test(body: X402ProtectedTestRequest):
         status="completed",
         message="Verification E2E Success: Your payment proof is completely valid."
     )
+
+
+# ---------------------------------------------------------------------------
+# Developer Stripe Onboarding Endpoints
+# ---------------------------------------------------------------------------
+
+from backend.core.security.auth import get_current_user
+from fastapi.responses import RedirectResponse
+
+class OnboardingExpressResponse(BaseModel):
+    status: str
+    stripe_url: str
+    account_id: str
+
+@router.post("/onboarding/express", response_model=OnboardingExpressResponse)
+@router.get("/onboarding/express", response_model=OnboardingExpressResponse)
+async def generate_onboarding_express(
+    user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Generates a Stripe Connect Express onboarding URL."""
+    # Check if Stripe is configured
+    stripe_ready = False
+    key = settings.STRIPE_SECRET_KEY.strip() if settings.STRIPE_SECRET_KEY else ""
+    if key and not key.lower().startswith("need_from") and "your-" not in key.lower():
+        stripe_ready = True
+
+    # Look up or create Vendor record for the user
+    from backend.db.models.marketplace import Vendor
+    result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
+    vendor = result.scalars().first()
+    if not vendor:
+        vendor = Vendor(
+            user_id=user.id,
+            business_name=f"{getattr(user, 'full_name', '') or user.email}'s Enclave",
+            status="pending",
+            onboarding_complete=False
+        )
+        db.add(vendor)
+        await db.commit()
+        await db.refresh(vendor)
+
+    account_id = vendor.stripe_account_id or ""
+
+    if stripe_ready:
+        import stripe
+        stripe.api_key = key
+        try:
+            # If we don't have an account ID, create a new express account
+            if not account_id:
+                account = stripe.Account.create(
+                    type="express",
+                    capabilities={"card_payments": {"requested": True}, "transfers": {"requested": True}},
+                    business_profile={"name": vendor.business_name}
+                )
+                account_id = account.id
+                vendor.stripe_account_id = account_id
+                await db.commit()
+                await db.refresh(vendor)
+            
+            # Generate Account Link
+            account_link = stripe.AccountLink.create(
+                account=account_id,
+                refresh_url=f"{settings.API_BASE_URL}/api/v1/x402/onboarding/callback?status=refresh&account_id={account_id}&user_id={user.id}",
+                return_url=f"{settings.API_BASE_URL}/api/v1/x402/onboarding/callback?status=success&account_id={account_id}&user_id={user.id}",
+                type="account_onboarding",
+            )
+            return OnboardingExpressResponse(
+                status="onboarding_started",
+                stripe_url=account_link.url,
+                account_id=account_id
+            )
+        except Exception as e:
+            logger.error(f"Stripe AccountLink creation failed: {e}")
+            # Fall back to mock link if Stripe call fails
+            pass
+
+    # Fallback to local mock onboarding
+    if not account_id:
+        account_id = f"acct_mock_{user.id}"
+        vendor.stripe_account_id = account_id
+        await db.commit()
+        await db.refresh(vendor)
+        
+    mock_url = f"{settings.API_BASE_URL}/api/v1/x402/onboarding/callback?status=success&account_id={account_id}&user_id={user.id}"
+    return OnboardingExpressResponse(
+        status="onboarding_started",
+        stripe_url=mock_url,
+        account_id=account_id
+    )
+
+
+@router.get("/onboarding/callback")
+async def onboarding_callback(
+    status: str,
+    account_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Callback for developer onboarding, updates the developer profile."""
+    from backend.db.models.marketplace import Vendor
+
+    # Find the vendor record
+    result = await db.execute(select(Vendor).where(Vendor.user_id == user_id))
+    vendor = result.scalars().first()
+    if not vendor:
+        # Try finding by account ID if user_id doesn't match
+        result = await db.execute(select(Vendor).where(Vendor.stripe_account_id == account_id))
+        vendor = result.scalars().first()
+
+    if vendor:
+        if status == "success":
+            vendor.onboarding_complete = True
+            vendor.status = "approved"
+            if not vendor.stripe_account_id:
+                vendor.stripe_account_id = account_id
+            await db.commit()
+
+    # Redirect user back to settings or marketplace
+    redirect_target = f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/settings"
+    return RedirectResponse(url=redirect_target)
+

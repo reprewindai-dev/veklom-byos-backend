@@ -462,4 +462,77 @@ Terminal shows the real run
 * **Tenant Workspace**: Playground, Models, Marketplace, Pipelines, Deployments, Vault, Compliance, Monitoring, Billing, Team, Settings, safe optional terminal, evidence exports.
 
 
+***
+
+## 14. Onchain / Base / Agentic Trading Module
+
+Veklom should include an onchain trading and treasury lane.
+
+Do not keep agentic trading completely separate from Veklom.
+Include it as a governed workspace module, with marketplace extensions and tiered execution rights.
+
+Positioning:
+Veklom is not trying to copy Base App.
+Veklom uses Base/onchain rails as wallet, discovery, and settlement infrastructure.
+Veklom owns agent governance, risk caps, approvals, evidence, terminal visibility, marketplace modules, and run history.
+
+Feature names:
+- Onchain Ops
+- Trading Agents
+- Treasury Agents
+- Base Connector
+- Wallet Execution Lane
+- Agentic Trading Lab
+
+Tiering:
+Free:
+- watch mode
+- paper trading
+- simulated portfolio
+- demo signals
+- no real execution
+
+Founding:
+- wallet connection
+- approve-each-trade mode
+- capped real trades
+- evidence per trade
+- no default leverage
+
+Standard:
+- Bounded autopilot
+- strategy modules
+- portfolio rules
+- kill switch
+- daily loss/spend caps
+- allowed asset lists
+- marketplace trading packs
+
+Regulated / Premium:
+- governed treasury
+- entity wallets
+- approval chains
+- audit exports
+- compliance evidence
+- private/BYOS executor
+- policy packs
+
+Backroom:
+- full founder trading lab
+- agent experiments
+- strategy testing
+- marketplace triage for trading modules
+- internal risk/capital guard
+
+Execution rule:
+Agents may propose, simulate, and execute trades only inside configured risk boundaries.
+Every real trade must create a VeklomRun.
+Every VeklomRun must include policy decision, risk check, cost/fee/slippage data, approval state, transaction result, and evidence record.
+
+Never allow unrestricted blind wallet execution.
+Never market guaranteed returns.
+Never let agents directly hold raw credentials.
+Use wallet signing, server-side execution adapters, proxy controls, spending caps, and kill switches.
+
+
 

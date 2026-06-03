@@ -238,7 +238,6 @@ async def export_data(user=Depends(get_current_user)):
     return {"export_url": "/exports/data.json", "status": "generated"}
 
 
-# --- Extract ---
-@router.post("/extract")
-async def extract_data(body: dict, user=Depends(get_current_user)):
-    return {"extracted": body.get("type", ""), "data": {}}
+# NOTE: /extract is intentionally NOT defined here. The real handler lives in
+# upload.py (it extracts structured data from content); this stub previously
+# shadowed it because the admin router is registered before the upload router.

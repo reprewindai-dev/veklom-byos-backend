@@ -1,0 +1,265 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:b5c00a0b-6be2-4af1-9830-af07d42e095e",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-06-03T16:47:46Z",
+    "tools": [
+      {
+        "vendor": "Veklom",
+        "name": "generate_sbom.py",
+        "version": "1.0"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "name": "veklom-byos-backend",
+      "version": "1.0",
+      "description": "Veklom Sovereign AI Hub backend (FastAPI).",
+      "bom-ref": "veklom-byos-backend"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "fastapi",
+      "bom-ref": "pypi:fastapi",
+      "purl": "pkg:pypi/fastapi@0.115.12",
+      "version": "0.115.12"
+    },
+    {
+      "type": "library",
+      "name": "uvicorn",
+      "bom-ref": "pypi:uvicorn",
+      "purl": "pkg:pypi/uvicorn@0.34.3",
+      "version": "0.34.3",
+      "properties": [
+        {
+          "name": "pip:extras",
+          "value": "standard"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "sqlalchemy",
+      "bom-ref": "pypi:sqlalchemy",
+      "purl": "pkg:pypi/sqlalchemy@2.0.41",
+      "version": "2.0.41",
+      "properties": [
+        {
+          "name": "pip:extras",
+          "value": "asyncio"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "alembic",
+      "bom-ref": "pypi:alembic",
+      "purl": "pkg:pypi/alembic@1.16.1",
+      "version": "1.16.1"
+    },
+    {
+      "type": "library",
+      "name": "asyncpg",
+      "bom-ref": "pypi:asyncpg",
+      "purl": "pkg:pypi/asyncpg@0.30.0",
+      "version": "0.30.0"
+    },
+    {
+      "type": "library",
+      "name": "aiosqlite",
+      "bom-ref": "pypi:aiosqlite",
+      "purl": "pkg:pypi/aiosqlite@0.21.0",
+      "version": "0.21.0"
+    },
+    {
+      "type": "library",
+      "name": "pydantic",
+      "bom-ref": "pypi:pydantic",
+      "purl": "pkg:pypi/pydantic@2.11.4",
+      "version": "2.11.4"
+    },
+    {
+      "type": "library",
+      "name": "pydantic-settings",
+      "bom-ref": "pypi:pydantic-settings",
+      "purl": "pkg:pypi/pydantic-settings@2.9.1",
+      "version": "2.9.1"
+    },
+    {
+      "type": "library",
+      "name": "python-jose",
+      "bom-ref": "pypi:python-jose",
+      "purl": "pkg:pypi/python-jose@3.5.0",
+      "version": "3.5.0",
+      "properties": [
+        {
+          "name": "pip:extras",
+          "value": "cryptography"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "passlib",
+      "bom-ref": "pypi:passlib",
+      "purl": "pkg:pypi/passlib@1.7.4",
+      "version": "1.7.4",
+      "properties": [
+        {
+          "name": "pip:extras",
+          "value": "bcrypt"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "python-multipart",
+      "bom-ref": "pypi:python-multipart",
+      "purl": "pkg:pypi/python-multipart@0.0.27",
+      "version": "0.0.27"
+    },
+    {
+      "type": "library",
+      "name": "httpx",
+      "bom-ref": "pypi:httpx",
+      "purl": "pkg:pypi/httpx@0.28.1",
+      "version": "0.28.1"
+    },
+    {
+      "type": "library",
+      "name": "redis",
+      "bom-ref": "pypi:redis",
+      "purl": "pkg:pypi/redis@6.2.0",
+      "version": "6.2.0"
+    },
+    {
+      "type": "library",
+      "name": "stripe",
+      "bom-ref": "pypi:stripe",
+      "purl": "pkg:pypi/stripe@12.2.0",
+      "version": "12.2.0"
+    },
+    {
+      "type": "library",
+      "name": "python-dotenv",
+      "bom-ref": "pypi:python-dotenv",
+      "purl": "pkg:pypi/python-dotenv@1.1.0",
+      "version": "1.1.0"
+    },
+    {
+      "type": "library",
+      "name": "jinja2",
+      "bom-ref": "pypi:jinja2",
+      "purl": "pkg:pypi/jinja2@3.1.6",
+      "version": "3.1.6"
+    },
+    {
+      "type": "library",
+      "name": "aiofiles",
+      "bom-ref": "pypi:aiofiles",
+      "purl": "pkg:pypi/aiofiles@24.1.0",
+      "version": "24.1.0"
+    },
+    {
+      "type": "library",
+      "name": "boto3",
+      "bom-ref": "pypi:boto3",
+      "purl": "pkg:pypi/boto3@1.34.14",
+      "version": "1.34.14"
+    },
+    {
+      "type": "library",
+      "name": "numpy",
+      "bom-ref": "pypi:numpy",
+      "purl": "pkg:pypi/numpy@1.26.4",
+      "version": "1.26.4"
+    },
+    {
+      "type": "library",
+      "name": "sentry-sdk",
+      "bom-ref": "pypi:sentry-sdk",
+      "purl": "pkg:pypi/sentry-sdk@2.19.2",
+      "version": "2.19.2",
+      "properties": [
+        {
+          "name": "pip:extras",
+          "value": "fastapi"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pyasn1",
+      "bom-ref": "pypi:pyasn1",
+      "purl": "pkg:pypi/pyasn1@0.6.3",
+      "version": "0.6.3"
+    },
+    {
+      "type": "library",
+      "name": "wheel",
+      "bom-ref": "pypi:wheel",
+      "purl": "pkg:pypi/wheel@0.46.2",
+      "version": "0.46.2"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-api",
+      "bom-ref": "pypi:opentelemetry-api",
+      "purl": "pkg:pypi/opentelemetry-api",
+      "version": ">=1.20.0"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-sdk",
+      "bom-ref": "pypi:opentelemetry-sdk",
+      "purl": "pkg:pypi/opentelemetry-sdk",
+      "version": ">=1.20.0"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-exporter-otlp-proto-grpc",
+      "bom-ref": "pypi:opentelemetry-exporter-otlp-proto-grpc",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc",
+      "version": ">=1.20.0"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-instrumentation-fastapi",
+      "bom-ref": "pypi:opentelemetry-instrumentation-fastapi",
+      "purl": "pkg:pypi/opentelemetry-instrumentation-fastapi",
+      "version": ">=0.45b0"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-instrumentation-httpx",
+      "bom-ref": "pypi:opentelemetry-instrumentation-httpx",
+      "purl": "pkg:pypi/opentelemetry-instrumentation-httpx",
+      "version": ">=0.45b0"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-instrumentation-asyncpg",
+      "bom-ref": "pypi:opentelemetry-instrumentation-asyncpg",
+      "purl": "pkg:pypi/opentelemetry-instrumentation-asyncpg",
+      "version": ">=0.45b0"
+    },
+    {
+      "type": "library",
+      "name": "posthog",
+      "bom-ref": "pypi:posthog",
+      "purl": "pkg:pypi/posthog",
+      "version": ">=3.0.0"
+    },
+    {
+      "type": "library",
+      "name": "web3",
+      "bom-ref": "pypi:web3",
+      "purl": "pkg:pypi/web3@6.11.3",
+      "version": "6.11.3"
+    }
+  ]
+}

@@ -216,18 +216,9 @@ async def predict_cost(body: dict, user=Depends(get_current_user), db: AsyncSess
     }
 
 
-@router.post("/transcribe")
-async def transcribe(user=Depends(get_current_user)):
-    """
-    Return a placeholder transcription payload instructing the caller to upload audio for processing.
-    
-    Returns:
-        dict: A payload with:
-            - `text` (str): Placeholder transcription message.
-            - `language` (str): Language code, default `"en"`.
-            - `duration_seconds` (int): Audio duration in seconds; `0` for the placeholder.
-    """
-    return {"text": "Transcription placeholder - upload audio for processing.", "language": "en", "duration_seconds": 0}
+# NOTE: /transcribe is intentionally NOT defined here. The real handler lives in
+# upload.py (it processes uploaded audio); this stub previously shadowed it
+# because the ai router is registered before the upload router.
 
 
 # ---------------------------------------------------------------------------

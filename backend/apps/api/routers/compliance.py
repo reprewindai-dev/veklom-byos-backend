@@ -3,13 +3,14 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.core.privacy import pii as pii_engine
 from backend.db.models.security import AuditLog, ComplianceCheck
 
 router = APIRouter(tags=["Compliance"])
@@ -484,44 +485,14 @@ async def compliance_report(body: dict = None, user=Depends(get_current_user)):
 # --- Privacy ---
 @router.post("/privacy/detect-pii")
 async def detect_pii(body: dict, user=Depends(get_current_user)):
-    text = body.get("text", "")
-    has_pii = "@" in text or "SSN" in text or "phone" in text.lower() or "555" in text
-    pii_types = []
-    if "@" in text:
-        pii_types.append("email")
-    if "555" in text or "phone" in text.lower():
-        pii_types.append("phone")
-    if "SSN" in text:
-        pii_types.append("ssn")
-        
-    return {
-        "has_pii": has_pii,
-        "pii_types": pii_types,
-        "count": len(pii_types)
-    }
+    """Detect PII using the regex engine (email, phone, ssn, credit_card, ip, dob, name)."""
+    return pii_engine.detect(body.get("text", ""))
 
 
 @router.post("/privacy/mask-pii")
 async def mask_pii(body: dict, user=Depends(get_current_user)):
-    text = body.get("text", "")
-    strategy = body.get("strategy", "redact")
-    
-    masked = text
-    found = []
-    if "@" in text:
-        masked = masked.replace("john@example.com", "[EMAIL]")
-        found.append("email")
-    if "SSN: 123-45-6789" in text:
-        masked = masked.replace("SSN: 123-45-6789", "[REDACTED]")
-        found.append("ssn")
-    if "John Smith" in text:
-        masked = masked.replace("John Smith", "[NAME]")
-        found.append("name")
-        
-    return {
-        "masked_text": masked,
-        "pii_found": found
-    }
+    """Mask detected PII. Strategies: redact, hash, replace, partial."""
+    return pii_engine.mask(body.get("text", ""), body.get("strategy", "redact"))
 
 
 @router.get("/privacy/export")

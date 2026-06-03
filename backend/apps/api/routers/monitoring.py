@@ -9,11 +9,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.db.models.ai import ExecutionLog
 
 router = APIRouter(tags=["Monitoring"])
 
@@ -585,14 +586,51 @@ async def ingest_telemetry(body: dict, user=Depends(get_current_user)):
 # --- Explain ---
 @router.get("/explain/cost")
 @router.post("/explain/cost")
-async def explain_cost(user=Depends(get_current_user)):
-    return {"explanation": "Cost is driven by token usage × per-model rate. Hetzner-primary routes are 3–5× cheaper than AWS burst.", "top_driver": "inference", "tip": "Route short tasks to Llama 3.1 70B on Hetzner primary.", "breakdown": {"inference": 0.64, "embeddings": 0.13, "storage": 0.09, "compute": 0.14}}
+async def explain_cost(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Explain cost from real execution_logs: per-provider spend breakdown."""
+    ws = user.workspace_id or ""
+    rows = (await db.execute(
+        select(ExecutionLog.provider, func.sum(ExecutionLog.cost), func.count())
+        .where(ExecutionLog.workspace_id == ws)
+        .group_by(ExecutionLog.provider)
+    )).all()
+    breakdown = {(p or "unknown"): round(float(c or 0.0), 6) for p, c, _ in rows}
+    samples = sum(int(n or 0) for _, _, n in rows)
+    total = round(sum(breakdown.values()), 6)
+    top_driver = max(breakdown, key=breakdown.get) if breakdown else None
+    return {
+        "explanation": (
+            f"Cost is driven by token usage \u00d7 per-provider rate across {samples} execution(s). "
+            + (f"'{top_driver}' is the largest cost driver." if top_driver else "No executions recorded yet.")
+        ),
+        "total_cost_usd": total,
+        "top_driver": top_driver,
+        "breakdown": breakdown,
+        "samples": samples,
+    }
 
 
 @router.get("/explain/routing")
 @router.post("/explain/routing")
-async def explain_routing(user=Depends(get_current_user)):
-    return {"explanation": "Routing selects the cheapest capable model that passes policy. Hetzner primary is tried first; AWS burst activates when Hetzner utilisation exceeds 80%.", "strategy": "cost_quality_balanced", "fallback_active": False, "current_split": {"hetzner": 0.88, "aws": 0.12}}
+async def explain_routing(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Explain routing from real execution_logs: actual provider split."""
+    ws = user.workspace_id or ""
+    rows = (await db.execute(
+        select(ExecutionLog.provider, func.count())
+        .where(ExecutionLog.workspace_id == ws)
+        .group_by(ExecutionLog.provider)
+    )).all()
+    total = sum(int(n or 0) for _, n in rows)
+    split = {(p or "unknown"): round(int(n or 0) / total, 4) for p, n in rows} if total else {}
+    return {
+        "explanation": (
+            "Routing selects the cheapest capable provider that passes policy; "
+            "the split below reflects actual recorded executions."
+        ),
+        "strategy": "cost_quality_balanced",
+        "total_executions": total,
+        "current_split": split,
+    }
 
 
 # --- Status ---

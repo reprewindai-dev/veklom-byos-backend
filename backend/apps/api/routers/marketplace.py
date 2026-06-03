@@ -609,9 +609,12 @@ async def _ensure_catalog_seeded(db: AsyncSession) -> None:
 @router.get("/marketplace/listings")
 async def list_marketplace(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _ensure_catalog_seeded(db)
+    from sqlalchemy import func
+    counts_res = await db.execute(select(MarketplaceListing.category, func.count(MarketplaceListing.id)).where(MarketplaceListing.status == "published").group_by(MarketplaceListing.category))
+    category_counts = {cat: count for cat, count in counts_res.all()}
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.status == "published").limit(50))
     items = result.scalars().all()
-    return [_listing_dict(i) for i in items]
+    return [_listing_dict(i, category_counts=category_counts) for i in items]
 
 
 @router.get("/marketplace/tools")
@@ -641,9 +644,12 @@ async def list_marketplace_tools(
 
 @router.get("/listings")
 async def list_listings(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    counts_res = await db.execute(select(MarketplaceListing.category, func.count(MarketplaceListing.id)).where(MarketplaceListing.status == "published").group_by(MarketplaceListing.category))
+    category_counts = {cat: count for cat, count in counts_res.all()}
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.status == "published").limit(50))
     items = result.scalars().all()
-    return [_listing_dict(i) for i in items]
+    return [_listing_dict(i, category_counts=category_counts) for i in items]
 
 
 def normalize_listing_id(listing_id: str) -> str:
@@ -663,17 +669,23 @@ def normalize_listing_id(listing_id: str) -> str:
 async def get_listing_short(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _ensure_catalog_seeded(db)
     norm_id = normalize_listing_id(listing_id)
+    from sqlalchemy import func
+    counts_res = await db.execute(select(MarketplaceListing.category, func.count(MarketplaceListing.id)).where(MarketplaceListing.status == "published").group_by(MarketplaceListing.category))
+    category_counts = {cat: count for cat, count in counts_res.all()}
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
     listing = result.scalars().first()
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    return _listing_dict(listing)
+    return _listing_dict(listing, category_counts=category_counts)
 
 
 @router.get("/marketplace/listings/{listing_id}")
 async def get_listing(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _ensure_catalog_seeded(db)
     norm_id = normalize_listing_id(listing_id)
+    from sqlalchemy import func
+    counts_res = await db.execute(select(MarketplaceListing.category, func.count(MarketplaceListing.id)).where(MarketplaceListing.status == "published").group_by(MarketplaceListing.category))
+    category_counts = {cat: count for cat, count in counts_res.all()}
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
     listing = result.scalars().first()
     if not listing:
@@ -686,7 +698,7 @@ async def get_listing(listing_id: str, user=Depends(get_current_user), db: Async
         price_usd=listing.price
     )
     
-    return _listing_dict(listing)
+    return _listing_dict(listing, category_counts=category_counts)
 
 
 @router.post("/marketplace/listings")
@@ -722,6 +734,123 @@ async def submit_listing(body: dict, user=Depends(get_current_user)):
 @router.post("/listings/review")
 async def review_listing(body: dict, user=Depends(get_current_user)):
     return {"id": body.get("listing_id", ""), "status": body.get("action", "approved")}
+
+
+@router.post("/marketplace/listings/{listing_id}/review")
+@router.post("/listings/{listing_id}/review")
+async def add_marketplace_review(
+    listing_id: str,
+    body: dict,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Submit a review for a marketplace listing.
+    
+    If submitted by a human user (body.get("is_robot") is False):
+      - We award them with a $5.00 Workspace Operating Reserve credit,
+        capped at 5 reviews ($25.00) per workspace per calendar month.
+    
+    If submitted by a robot (body.get("is_robot") is True):
+      - We append a "Robot Review" quality badge directly to the listing's datasheet.
+      
+    All reviews are saved securely in the compliance AuditLog table.
+    """
+    from backend.db.models.marketplace import MarketplaceListing
+    from backend.db.models.billing import WalletTransaction
+    from backend.db.models.security import AuditLog
+    from fastapi import HTTPException as _HTTPException
+    import uuid as _uuid
+    
+    await _ensure_catalog_seeded(db)
+    
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalars().first()
+    if not listing:
+        raise _HTTPException(status_code=404, detail="Listing not found")
+        
+    rating = float(body.get("rating", 5.0))
+    comment = str(body.get("comment", ""))
+    is_robot = bool(body.get("is_robot", False))
+    
+    reward_awarded = False
+    reward_amount = 0.0
+    
+    if not is_robot:
+        # Check review reward limits: capped at 5 reviews ($25.00) per workspace per month
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Count current month human reviews for this workspace
+        review_count_res = await db.execute(
+            select(AuditLog).where(
+                AuditLog.workspace_id == (user.workspace_id or "default"),
+                AuditLog.resource_type == "marketplace_review",
+                AuditLog.created_at >= month_start
+            )
+        )
+        existing_reviews = review_count_res.scalars().all()
+        # Filter for non-robot reviews
+        human_review_count = sum(1 for r in existing_reviews if not (r.details or {}).get("is_robot", False))
+        
+        if human_review_count < 5:
+            # Credit $5.00 to their reserve balance
+            reward_amount = 5.00
+            credit_tx = WalletTransaction(
+                user_id=user.id,
+                workspace_id=user.workspace_id or "default",
+                amount=reward_amount,
+                tx_type="topup",  # use topup type so it adds to reserve balance
+                description=f"Marketplace Review Reward: {listing.name}"
+            )
+            db.add(credit_tx)
+            reward_awarded = True
+    else:
+        # It's a robot review! Programmatically append badge to listing.config_json["badges"]
+        cfg = listing.config_json or {}
+        badges = cfg.get("badges", [])
+        badge_text = f"Robot Reviewed: {rating:.1f}★"
+        
+        # Avoid duplicate badge texts
+        if badge_text not in badges:
+            badges.append(badge_text)
+            cfg["badges"] = badges
+            # Flag listing as modified
+            from sqlalchemy.orm.attributes import flag_modified
+            listing.config_json = cfg
+            flag_modified(listing, "config_json")
+            db.add(listing)
+
+    # Save the review in AuditLog as a marketplace_review action for high security & hash chaining
+    review_id = str(_uuid.uuid4())
+    audit_entry = AuditLog(
+        id=review_id,
+        user_id=user.id,
+        workspace_id=user.workspace_id or "default",
+        action="marketplace_review",
+        resource_type="marketplace_review",
+        resource_id=norm_id,
+        details={
+            "rating": rating,
+            "comment": comment,
+            "is_robot": is_robot,
+            "user_email": user.email
+        }
+    )
+    db.add(audit_entry)
+    await db.commit()
+    
+    return {
+        "status": "success",
+        "review_id": review_id,
+        "listing_id": norm_id,
+        "reward_awarded": reward_awarded,
+        "reward_amount": reward_amount,
+        "is_robot": is_robot
+    }
+
 
 
 @router.patch("/marketplace/listings/{listing_id}")
@@ -785,6 +914,54 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
     ))
     if existing.scalars().first():
         return {"id": listing_id, "status": "already_installed", "message": "This listing is already installed in your workspace"}
+
+    # --- Billing Verification ---
+    if listing.price > 0.0:
+        # Check wallet balance
+        from backend.db.models.billing import WalletTransaction
+        from sqlalchemy import func
+        balance = await db.scalar(
+            _select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+            .where(WalletTransaction.workspace_id == target)
+        ) or 0.0
+        
+        if balance < listing.price:
+            raise _HTTPException(
+                status_code=402,
+                detail=f"Insufficient reserve balance. This product costs ${listing.price:.2f} but your workspace operating reserve balance is only ${balance:.2f}."
+            )
+        
+        # Deduct from user's operating reserve wallet
+        debit_tx = WalletTransaction(
+            user_id=user.id,
+            workspace_id=target,
+            amount=-listing.price,
+            tx_type="debit",
+            description=f"Purchase Marketplace Asset: {listing.name}"
+        )
+        db.add(debit_tx)
+
+        # Distribute / wash funds
+        vendor_slug = (listing.config_json or {}).get("vendor_slug", "veklom_native")
+        is_native = (vendor_slug == "veklom_native" or not vendor_slug)
+
+        if not is_native:
+            # Look up the Vendor associated with the vendor_id
+            v_res = await db.execute(_select(Vendor).where(Vendor.id == listing.vendor_id))
+            vendor = v_res.scalars().first()
+            if not vendor:
+                v_res = await db.execute(_select(Vendor).where(Vendor.user_id == listing.vendor_id))
+                vendor = v_res.scalars().first()
+
+            if vendor:
+                # Apply developer fee structures: first $2,500 is 0% platform fee, 10% fee thereafter
+                if (vendor.total_revenue or 0.0) < 2500.0:
+                    earnings = listing.price
+                else:
+                    earnings = listing.price * 0.90  # 10% platform fee deducted
+
+                vendor.total_revenue = (vendor.total_revenue or 0.0) + earnings
+                db.add(vendor)
 
     # Create InstalledAsset record
     asset = InstalledAsset(
@@ -861,22 +1038,78 @@ async def listing_datasheet(listing_id: str, user=Depends(get_current_user), db:
     listing = result.scalar_one_or_none()
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
+        
+    from sqlalchemy import func
+    counts_res = await db.execute(select(MarketplaceListing.category, func.count(MarketplaceListing.id)).where(MarketplaceListing.status == "published").group_by(MarketplaceListing.category))
+    category_counts = {cat: count for cat, count in counts_res.all()}
+    
+    automated_price = get_automated_listing_price(listing, category_counts=category_counts)
     cfg = listing.config_json or {}
+    target_price = float(cfg.get("target_price", listing.price))
+    
     vendor = cfg.get("vendor_name", "Veklom Native")
     features = cfg.get("features", [])
     changelog = cfg.get("changelog", [])
     compatibility = cfg.get("compatibility", [])
     install = cfg.get("install_instructions", "See documentation.")
-    price_str = f"${listing.price:.2f}/{listing.pricing_model}" if listing.price else "Free"
+    
+    price_str = f"${automated_price:.2f}/{listing.pricing_model}" if automated_price else "Free"
     badges = " · ".join(cfg.get("badges", []))
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    cat_count = category_counts.get(listing.category, 1)
+    if cat_count <= 2:
+        density_text = f"Rare Niche Tool ({cat_count} in category)"
+        density_desc = "No competition discount applied. Baseline Sovereign premium value preserved."
+    elif cat_count == 3:
+        density_text = f"Moderate Category Density ({cat_count} in category)"
+        density_desc = "90% rarity adjustment applied to keep pricing fair and competitive."
+    elif cat_count == 4:
+        density_text = f"Elevated Category Density ({cat_count} in category)"
+        density_desc = "80% rarity adjustment applied to keep pricing fair and competitive."
+    else:
+        density_text = f"High Category Density (Dime-a-dozen: {cat_count} in category)"
+        density_desc = "60% density discount applied to guarantee reasonable pricing against category saturation."
+
+    installs = listing.downloads or 0
+    if installs <= 10:
+        milestone_text = f"Cold Start Discount ({installs} installs)"
+        milestone_desc = "20% milestone factor applied to build early adoption trust. Save 80% off mature price."
+    elif installs <= 50:
+        milestone_text = f"Early Adoption ({installs} installs)"
+        milestone_desc = "50% milestone factor applied. Save 50% off mature price."
+    elif installs <= 100:
+        milestone_text = f"Established Trust ({installs} installs)"
+        milestone_desc = "80% milestone factor applied. Save 20% off mature price."
+    else:
+        milestone_text = f"Mature Tool ({installs} installs)"
+        milestone_desc = "100% milestone factor applied. Mature target price reached."
 
     md = f"""# {listing.name}
 **Provider:** {vendor}  |  **Category:** {listing.category}  |  **Rating:** {listing.rating}/5  |  **Installs:** {listing.downloads}
 
-**Pricing:** {price_str}  |  **License:** {cfg.get('license_type', 'workspace-bound')}  |  **Build:** {cfg.get('build', 'signed')}
+**Active Dynamic Price:** {price_str}  |  **Mature Target Value:** ${target_price:.2f}/{listing.pricing_model}  
+**License:** {cfg.get('license_type', 'workspace-bound')}  |  **Build:** {cfg.get('build', 'signed')}
 
 **Compliance:** {badges or 'N/A'}  |  **Install method:** {cfg.get('install_method', 'container')}  |  **Deploy target:** {cfg.get('deploy_target', 'hetzner')}
+
+---
+
+## Dynamic Trust Pricing & Sovereign Fair Valuation
+
+This listing uses Veklom's **Autonomous Trust-Pricing & Rarity Engine**. To ensure fairness, prevent emotional overpricing, and encourage early adoption:
+
+* **Sovereign Baseline Premium:** Every tool listed in this marketplace passes through Veklom's **Sovereign UACP Security Gates** before inclusion, ensuring high quality, regional geo-fencing, and audit lineage.
+* **Rarity Calibration:** {density_text}. *({density_desc})*
+* **Trust Milestone Progress:** {milestone_text}. *({milestone_desc})*
+
+**Dynamic Pricing Formula:**
+```
+Mature Target Value (${target_price:.2f}) 
+  * Milestone Adoption Factor ({installs} installs -> {installs <= 10 and '20' or installs <= 50 and '50' or installs <= 100 and '80' or '100'}%)
+  * Category Rarity Factor ({cat_count} tools -> {cat_count <= 2 and '100' or cat_count == 3 and '90' or cat_count == 4 and '80' or '60'}%)
+  = Active Price (${automated_price:.2f})
+```
 
 ---
 
@@ -935,7 +1168,6 @@ async def listing_datasheet(listing_id: str, user=Depends(get_current_user), db:
 *Generated by Veklom Marketplace · {now}*
 *Listing ID: {listing_id}*
 """
-
     filename = f"{listing_id}-datasheet.md"
     return PlainTextResponse(
         content=md,
@@ -1030,15 +1262,21 @@ async def create_vendor(body: dict, user=Depends(get_current_user), db: AsyncSes
 
 
 @router.post("/vendors/onboard")
-async def onboard_vendor(body: dict, user=Depends(get_current_user)):
-    return {"status": "onboarding_started", "stripe_url": "https://connect.stripe.com/placeholder"}
+async def onboard_vendor(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.apps.api.routers.x402 import generate_onboarding_express
+    res = await generate_onboarding_express(user, db)
+    return {"status": "onboarding_started", "stripe_url": res.stripe_url, "account_id": res.account_id}
+
 
 
 @router.get("/vendors/me/listings")
 async def my_listings(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    counts_res = await db.execute(select(MarketplaceListing.category, func.count(MarketplaceListing.id)).where(MarketplaceListing.status == "published").group_by(MarketplaceListing.category))
+    category_counts = {cat: count for cat, count in counts_res.all()}
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.vendor_id == user.id))
     listings = result.scalars().all()
-    return [_listing_dict(l) for l in listings]
+    return [_listing_dict(l, category_counts=category_counts) for l in listings]
 
 
 @router.get("/vendors/{vendor_id}")
@@ -1113,14 +1351,85 @@ async def plugin_docs(plugin_id: str, user=Depends(get_current_user)):
     }
 
 
-def _listing_dict(l: MarketplaceListing) -> dict:
+def get_automated_listing_price(l: MarketplaceListing, category_counts: dict | None = None) -> float:
+    # If the listing is marked free, it remains free
+    if l.price == 0.0 or l.pricing_model == "free":
+        return 0.0
+        
     cfg = l.config_json or {}
+    target_price = float(cfg.get("target_price", l.price))
+    if target_price <= 0.0:
+        return l.price
+        
+    installs = l.downloads or 0
+    
+    # Milestone scale:
+    # 0 - 10 installs: 20% of target price (trust building stage)
+    if installs <= 10:
+        factor = 0.20
+    # 11 - 50 installs: 50% of target price (early adoption)
+    elif installs <= 50:
+        factor = 0.50
+    # 51 - 100 installs: 80% of target price (established trust)
+    elif installs <= 100:
+        factor = 0.80
+    # > 100 installs: 100% of target price
+    else:
+        factor = 1.00
+        
+    cat_count = 1
+    if category_counts and l.category in category_counts:
+        cat_count = category_counts[l.category]
+        
+    # Density / Rarity calibration
+    if cat_count <= 2:
+        density_multiplier = 1.00
+    elif cat_count == 3:
+        density_multiplier = 0.90
+    elif cat_count == 4:
+        density_multiplier = 0.80
+    else:
+        density_multiplier = 0.60
+        
+    calculated = round(target_price * factor * density_multiplier, 2)
+    return calculated
+
+
+def _listing_dict(l: MarketplaceListing, category_counts: dict | None = None) -> dict:
+    cfg = l.config_json or {}
+    
+    installs = l.downloads or 0
+    if installs <= 10:
+        factor = 0.20
+    elif installs <= 50:
+        factor = 0.50
+    elif installs <= 100:
+        factor = 0.80
+    else:
+        factor = 1.00
+        
+    cat_count = 1
+    if category_counts and l.category in category_counts:
+        cat_count = category_counts[l.category]
+        
+    if cat_count <= 2:
+        density_multiplier = 1.00
+    elif cat_count == 3:
+        density_multiplier = 0.90
+    elif cat_count == 4:
+        density_multiplier = 0.80
+    else:
+        density_multiplier = 0.60
+        
+    automated_price = get_automated_listing_price(l, category_counts=category_counts)
+    target_price = float(cfg.get("target_price", l.price))
+    
     return {
         "id": l.id,
         "name": l.name,
         "description": l.description,
         "category": l.category,
-        "price": l.price,
+        "price": automated_price,
         "pricing_model": l.pricing_model,
         "status": l.status,
         "downloads": l.downloads,
@@ -1143,7 +1452,14 @@ def _listing_dict(l: MarketplaceListing) -> dict:
         "github_url": cfg.get("github_url", ""),
         "docs_url": cfg.get("docs_url", ""),
         "pip_install": cfg.get("pip_install", ""),
+        "target_price": target_price,
+        "density_multiplier": density_multiplier,
+        "category_density": cat_count,
+        "is_rare": cat_count <= 2,
+        "sovereign_baseline_premium": True,
+        "pricing_formula": f"Target Price (${target_price:.2f}) * Milestone Factor ({factor * 100:.0f}%) * Density Multiplier ({density_multiplier * 100:.0f}%)" if target_price > 0.0 and l.pricing_model != "free" else "Free",
     }
+
 
 
 def _source_marketplace_tools() -> list[dict]:

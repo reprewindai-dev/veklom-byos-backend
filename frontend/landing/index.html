@@ -41,7 +41,7 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Veklom Sovereign AI Hub",
-  "description": "Veklom is an API-native governed execution layer for humans, developers, enterprises, and autonomous agents. Humans use the workspace. Developers use the API. Agents use paid routes via x402 (USDC on Base). Enterprises use the governance and evidence layer.",
+  "description": "Veklom is an API-native governed execution layer for teams, developers, enterprise, and autonomous agents. Teams use the workspace. Developers use the API. Agents use paid routes via x402 (USDC on Base). Enterprise uses the governance and evidence layer.",
   "url": "https://veklom.com",
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Web",
@@ -79,7 +79,7 @@
   "name": "Veklom",
   "url": "https://veklom.com",
   "logo": "https://veklom.com/static/branding/veklom-wordmark.png",
-  "description": "Veklom is an API-native governed execution layer. Humans use the workspace. Developers use the API. Agents use paid routes via x402. Enterprises use the governance and evidence layer (SOC2, HIPAA, GDPR, audit evidence, kill switches).",
+  "description": "Veklom is an API-native governed execution layer. Teams use the workspace. Developers use the API. Agents use paid routes via x402. Enterprise uses the governance and evidence layer (SOC2, HIPAA, GDPR, audit evidence, kill switches).",
   "contactPoint": {
     "@type": "ContactPoint",
     "email": "founder@company.com",
@@ -191,10 +191,10 @@
       <span style="padding:10px 20px;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.4);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);font-weight:600;">Proof</span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:32px;">
-      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Humans &rarr; Workspace</span>
+      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Teams &rarr; Workspace</span>
       <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Developers &rarr; API</span>
       <span style="padding:6px 14px;border:1px solid var(--orange-500);border-radius:999px;font-size:0.8rem;color:var(--orange-500);">Agents &rarr; Paid Routes (x402)</span>
-      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Enterprises &rarr; Governance Layer</span>
+      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Enterprise &rarr; Governance Layer</span>
     </div>
     <div class="hero-cta">
       <a href="/signup" class="btn btn-primary" style="padding: 14px 32px;" onclick="if(window.posthog) window.posthog.capture('hero_cta_click', { page: 'home' });">Start Free Eval</a>
@@ -355,7 +355,7 @@
           <span class="model-tag">Zero cloud tax</span>
           <span class="model-tag">Enterprise SLA</span>
         </div>
-        <a href="mailto:sales@veklom.com" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Talk to Sales</a>
+        <button onclick="openContactModal('enterprise')" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Talk to Sales</button>
       </div>
     </div>
   </div>
@@ -407,37 +407,276 @@
       </div>
     </div>
 
-    <!-- Four tier cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-top:48px;">
-      <div class="card" style="padding:24px;border-color:rgba(255,255,255,0.1);">
-        <div style="font-size:1.5rem;margin-bottom:12px;">&#128100;</div>
-        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Humans</div>
-        <h3 style="font-size:1rem;margin-bottom:8px;">Use the workspace</h3>
-        <p style="font-size:0.85rem;color:var(--text-secondary);">Playground, Command Center, Monitoring, Vault, Compliance &mdash; full governed UI.</p>
-        <a href="/workspace/" style="font-size:0.8rem;color:var(--primary);text-decoration:none;margin-top:12px;display:block;">Open workspace &rarr;</a>
-      </div>
-      <div class="card" style="padding:24px;border-color:rgba(255,255,255,0.1);">
-        <div style="font-size:1.5rem;margin-bottom:12px;">&#128187;</div>
-        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Developers</div>
-        <h3 style="font-size:1rem;margin-bottom:8px;">Use the API</h3>
-        <p style="font-size:0.85rem;color:var(--text-secondary);">Bearer JWT. REST + SSE. OpenAPI at <code style="font-size:0.8rem;">/openapi.json</code>. MCP at <code style="font-size:0.8rem;">/mcp/sse</code>.</p>
-        <a href="/openapi.json" style="font-size:0.8rem;color:var(--primary);text-decoration:none;margin-top:12px;display:block;">View OpenAPI &rarr;</a>
-      </div>
-      <div class="card" style="padding:24px;border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.04);">
-        <div style="font-size:1.5rem;margin-bottom:12px;">&#129302;</div>
-        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--orange-500);margin-bottom:8px;">Agents</div>
-        <h3 style="font-size:1rem;margin-bottom:8px;">Use the paid routes</h3>
-        <p style="font-size:0.85rem;color:var(--text-secondary);">No sign-up. x402 per-call micropayments (USDC on Base). Budget caps. Kill switches. Evidence receipts.</p>
-        <a href="/.well-known/x402.json" style="font-size:0.8rem;color:var(--orange-500);text-decoration:none;margin-top:12px;display:block;">Read x402 config &rarr;</a>
-      </div>
-      <div class="card" style="padding:24px;border-color:rgba(255,255,255,0.1);">
-        <div style="font-size:1.5rem;margin-bottom:12px;">&#127963;</div>
-        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Enterprises</div>
-        <h3 style="font-size:1rem;margin-bottom:8px;">Use the governance layer</h3>
-        <p style="font-size:0.85rem;color:var(--text-secondary);">SOC2, HIPAA, GDPR. SHA-256 audit evidence. Kill switches. BYOS. Sovereign EU nodes.</p>
-        <a href="mailto:sales@veklom.com" style="font-size:0.8rem;color:var(--primary);text-decoration:none;margin-top:12px;display:block;">Talk to sales &rarr;</a>
-      </div>
+    <!-- Audience pills styling -->
+    <style>
+      .audience-pills-container {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 48px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+      .audience-pill {
+        padding: 10px 24px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .audience-pill:hover {
+        border-color: rgba(255, 255, 255, 0.25);
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-primary);
+      }
+      .audience-pill.active {
+        border-color: hsl(24, 95%, 53%);
+        background: hsla(24, 95%, 53%, 0.12);
+        color: hsl(24, 95%, 53%);
+        box-shadow: 0 0 20px hsla(24, 95%, 53%, 0.2);
+        text-shadow: 0 0 10px hsla(24, 95%, 53%, 0.2);
+      }
+      .audience-panel {
+        display: none;
+        opacity: 0;
+        transform: translateY(10px);
+        transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .audience-panel.active {
+        display: block;
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .audience-panel-card {
+        background: rgba(15, 15, 20, 0.6);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 40px;
+        max-width: 960px;
+        margin: 0 auto;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      }
+      .audience-panel-grid {
+        display: grid;
+        grid-template-columns: 1.25fr 1fr;
+        gap: 40px;
+        align-items: center;
+      }
+      @media (max-width: 768px) {
+        .audience-panel-grid {
+          grid-template-columns: 1fr;
+          gap: 24px;
+        }
+        .audience-panel-card {
+          padding: 24px;
+        }
+      }
+      .feature-chips-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0 0;
+      }
+      .feature-chip {
+        padding: 6px 12px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 0.8rem;
+        font-family: var(--font-mono);
+        color: var(--text-secondary);
+        transition: all 0.2s ease;
+      }
+      .feature-chip:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.12);
+        color: var(--text-primary);
+      }
+    </style>
+
+    <!-- Homepage audience pills -->
+    <div class="audience-pills-container">
+      <button class="audience-pill active" onclick="switchAudience('teams')" id="pill-teams">Teams</button>
+      <button class="audience-pill" onclick="switchAudience('developers')" id="pill-developers">Developers</button>
+      <button class="audience-pill" onclick="switchAudience('agents')" id="pill-agents">Agents</button>
+      <button class="audience-pill" onclick="switchAudience('enterprise')" id="pill-enterprise">Enterprise</button>
     </div>
+
+    <!-- Audience Panels -->
+    <div style="margin-top: 16px; min-height: 380px;">
+      
+      <!-- Panel: Teams -->
+      <div class="audience-panel active" id="panel-teams">
+        <div class="audience-panel-card" style="border-color: hsla(24, 95%, 53%, 0.25); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 0 12px hsla(24, 95%, 53%, 0.05);">
+          <div class="audience-panel-grid">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-500); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>👤</span> governed workspace
+              </div>
+              <h3 style="font-size: 1.85rem; line-height: 1.25; margin-bottom: 16px; font-weight: 800; color: #fff;">Give your team a governed AI workspace.</h3>
+              <p style="font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+                Use the Playground, Marketplace, Pipelines, Monitoring Wall, Compliance Wall, Govern UI, and Terminal in one control plane. Explore everything in Free, then unlock production execution when your team is ready.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/signup" class="btn btn-primary" style="padding: 12px 24px;">Start Free Evaluation</a>
+                <a href="/workspace" class="btn btn-secondary" style="padding: 12px 24px;">Explore Workspace</a>
+              </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 24px;">
+              <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.05em;">Workspace Focus Area</div>
+              <div class="feature-chips-container">
+                <span class="feature-chip">Workspace</span>
+                <span class="feature-chip">Playground</span>
+                <span class="feature-chip">Team Command Center</span>
+                <span class="feature-chip">Monitoring Wall</span>
+                <span class="feature-chip">Compliance Wall</span>
+                <span class="feature-chip">Govern UI</span>
+                <span class="feature-chip">Marketplace</span>
+                <span class="feature-chip">Evidence</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Developers -->
+      <div class="audience-panel" id="panel-developers">
+        <div class="audience-panel-card">
+          <div class="audience-panel-grid">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-500); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>💻</span> build & deploy
+              </div>
+              <h3 style="font-size: 1.85rem; line-height: 1.25; margin-bottom: 16px; font-weight: 800; color: #fff;">Veklom as the governed build/deploy layer.</h3>
+              <p style="font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+                Connect to secure endpoints, deploy code hooks, and evaluate agent integrity at build time. Route model calls dynamically and run compliance gating as a GitHub action or pre-commit hook.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/terminal" class="btn btn-primary" style="padding: 12px 24px;">Open Developer Terminal</a>
+                <a href="/openapi.json" class="btn btn-secondary" style="padding: 12px 24px;">View API / Docs</a>
+              </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 24px;">
+              <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.05em;">Developer Focus Area</div>
+              <div class="feature-chips-container">
+                <span class="feature-chip">APIs</span>
+                <span class="feature-chip">Terminal</span>
+                <span class="feature-chip">Pipelines</span>
+                <span class="feature-chip">GitHub/repo risk gates</span>
+                <span class="feature-chip">Model routing</span>
+                <span class="feature-chip">x402</span>
+                <span class="feature-chip">MCP</span>
+                <span class="feature-chip">CLI</span>
+                <span class="feature-chip">Deploy previews</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Agents -->
+      <div class="audience-panel" id="panel-agents">
+        <div class="audience-panel-card" style="border-color: hsla(24, 95%, 53%, 0.25); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 0 12px hsla(24, 95%, 53%, 0.05);">
+          <div class="audience-panel-grid">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-500); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>🤖</span> agent runtime
+              </div>
+              <h3 style="font-size: 1.85rem; line-height: 1.25; margin-bottom: 16px; font-weight: 800; color: #fff;">Runtime and arbitration layer for governed agents.</h3>
+              <p style="font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+                Equip agents with real-time wallet reserves, verify capabilities before tool execution, and enforce cryptographic safety gates. Arbitration and validation run natively in ArbiterOS.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/terminal" class="btn btn-primary" style="padding: 12px 24px;">See Agent Runtime</a>
+                <a href="#v3-blackbox" class="btn btn-secondary" style="padding: 12px 24px;">View Governance Flow</a>
+              </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 24px;">
+              <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.05em;">Agent Focus Area</div>
+              <div class="feature-chips-container">
+                <span class="feature-chip">UACP4 Agent Artibus</span>
+                <span class="feature-chip">ArbiterOS</span>
+                <span class="feature-chip">SEKED</span>
+                <span class="feature-chip">SAIQ</span>
+                <span class="feature-chip">Safe execution</span>
+                <span class="feature-chip">Policy gates</span>
+                <span class="feature-chip">Approvals</span>
+                <span class="feature-chip">Evidence</span>
+                <span class="feature-chip">Spend controls</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Enterprise -->
+      <div class="audience-panel" id="panel-enterprise">
+        <div class="audience-panel-card">
+          <div class="audience-panel-grid">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-500); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>🏢</span> sovereign governance
+              </div>
+              <h3 style="font-size: 1.85rem; line-height: 1.25; margin-bottom: 16px; font-weight: 800; color: #fff;">Sovereign governance and compliance platform.</h3>
+              <p style="font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+                Deploy in private clouds (BYOS) or dedicated nodes. Retain full custody of keys, configure SAML/SCIM, govern policy catalogs across entities, and export cryptographic audit trails.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button onclick="openContactModal('enterprise')" class="btn btn-primary" style="padding: 12px 24px;">Request Regulated Access</button>
+                <a href="/legal/security" class="btn btn-secondary" style="padding: 12px 24px;">View Trust Layer</a>
+              </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 24px;">
+              <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.05em;">Enterprise Focus Area</div>
+              <div class="feature-chips-container">
+                <span class="feature-chip">UACP6</span>
+                <span class="feature-chip">Consent catalogs</span>
+                <span class="feature-chip">Audit chain</span>
+                <span class="feature-chip">Regulated evidence</span>
+                <span class="feature-chip">BYOS/Private deployment</span>
+                <span class="feature-chip">SAML/SCIM</span>
+                <span class="feature-chip">Model registry</span>
+                <span class="feature-chip">Compliance exports</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Script for Audience Switching -->
+    <script>
+      function switchAudience(type) {
+        const panels = document.querySelectorAll('.audience-panel');
+        const pills = document.querySelectorAll('.audience-pill');
+        
+        panels.forEach(p => {
+          p.classList.remove('active');
+          p.style.display = 'none';
+        });
+        pills.forEach(pill => {
+          pill.classList.remove('active');
+        });
+        
+        const targetPanel = document.getElementById('panel-' + type);
+        const targetPill = document.getElementById('pill-' + type);
+        
+        if (targetPanel && targetPill) {
+          targetPanel.style.display = 'block';
+          // force reflow to play transition smoothly
+          targetPanel.offsetHeight;
+          targetPanel.classList.add('active');
+          targetPill.classList.add('active');
+        }
+      }
+    </script>
   </div>
 </section>
 
@@ -713,7 +952,7 @@
           <li>Procurement & security review</li>
           <li>Custom SLA</li>
         </ul>
-        <a href="mailto:sales@veklom.com" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Talk to Sales →</a>
+        <button onclick="openContactModal('sovereign')" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Talk to Sales &rarr;</button>
       </div>
     </div>
   </div>
@@ -818,5 +1057,97 @@
   type="text/javascript"
   src="https://app.termly.io/resource-blocker/REPLACE_ME_TERMLY_ID"
 ></script>
+
+<!-- Contact / Sales Modal -->
+<div id="contact-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+  <div style="background:#0f0f13;border:1px solid rgba(124,58,237,0.35);border-radius:16px;padding:40px;max-width:480px;width:90%;position:relative;box-shadow:0 24px 80px rgba(0,0,0,0.6);">
+    <button onclick="closeContactModal()" style="position:absolute;top:16px;right:16px;background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    <div style="text-align:center;margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Talk to Sales</span>
+      <p style="color:#64748b;font-size:13px;margin-top:6px;">We'll reply within 1-2 business days.</p>
+    </div>
+    <form id="contact-form" style="display:flex;flex-direction:column;gap:14px;">
+      <input id="ct-name" placeholder="Your name" style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input id="ct-email" type="email" placeholder="Work email *" required style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input id="ct-company" placeholder="Company" style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input type="hidden" id="ct-type" value="general">
+      <textarea id="ct-message" rows="4" placeholder="Tell us about your use case, team size, or timeline..." style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;resize:vertical;"></textarea>
+      <button type="submit" id="ct-submit" class="btn btn-primary" style="justify-content:center;padding:13px;font-size:15px;">Send Message &rarr;</button>
+      <div id="ct-result" style="text-align:center;font-size:14px;display:none;"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openContactModal(type) {
+  document.getElementById('contact-modal').style.display = 'flex';
+  document.getElementById('ct-type').value = type || 'general';
+  document.getElementById('ct-result').style.display = 'none';
+  document.getElementById('ct-result').textContent = '';
+  document.getElementById('ct-submit').disabled = false;
+  document.getElementById('ct-submit').textContent = 'Send Message →';
+  document.body.style.overflow = 'hidden';
+}
+function closeContactModal() {
+  document.getElementById('contact-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.getElementById('contact-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeContactModal();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeContactModal();
+});
+document.getElementById('contact-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('ct-submit');
+  const result = document.getElementById('ct-result');
+  const email = document.getElementById('ct-email').value.trim();
+  const message = document.getElementById('ct-message').value.trim();
+  if (!email || !message) {
+    result.style.display = 'block';
+    result.style.color = '#f87171';
+    result.textContent = 'Please fill in your email and message.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  result.style.display = 'none';
+  try {
+    const res = await fetch('/api/v1/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('ct-name').value.trim(),
+        email: email,
+        company: document.getElementById('ct-company').value.trim(),
+        message: message,
+        type: document.getElementById('ct-type').value
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      result.style.color = '#34d399';
+      result.textContent = data.message || 'Sent! We\'ll be in touch soon.';
+      result.style.display = 'block';
+      btn.textContent = '✓ Sent';
+      setTimeout(closeContactModal, 2800);
+    } else {
+      result.style.color = '#f87171';
+      result.textContent = data.detail || 'Something went wrong. Please try again.';
+      result.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Send Message →';
+    }
+  } catch(err) {
+    result.style.color = '#f87171';
+    result.textContent = 'Network error. Please email sales@veklom.com directly.';
+    result.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Send Message →';
+  }
+});
+</script>
+
 </body>
 </html>

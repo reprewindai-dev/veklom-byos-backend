@@ -44,6 +44,7 @@
 
     <h2>4. Accounts and Security</h2>
     <p>To access certain Services you must create a Workspace and provide accurate, current, and complete information. You are responsible for safeguarding credentials and all activity under your Workspace. Notify security@veklom.com immediately of unauthorized access. Trial API keys are subject to usage limits. Production API keys carry the capabilities of your tier. BYOK credentials are never stored by Veklom and are used in-memory only during a Governed Execution session.</p>
+    <p><strong>Self-Custodial Wallets, Recovery Phrases, and Passkeys:</strong> If you use a self-custodial smart wallet (such as a Smart Wallet or EOA) to access the Services, you are solely responsible for the retention and security of your twelve-word recovery phrase, recovery keys, and unique digital or hardware credentials (such as iCloud and Google Passkeys, or hardware devices like Yubikeys) tied to your wallet ("Passkeys"). Anyone who has access to your Recovery Phrase or Passkeys can access your digital assets. If your Recovery Phrase is compromised, you should immediately move your assets to an uncompromised wallet. If you lose your Recovery Phrase or Passkeys, you will lose access to your digital assets. Veklom does not store, backup, or manage, and is not responsible for the security of your Recovery Phrase or Passkeys. You agree to hold Veklom and its affiliates harmless for any losses arising from the loss or compromise of your credentials.</p>
     <p>Veklom may suspend, limit, or terminate any Workspace or account for violations, security or legal risk, non-payment, fraud, abuse, or other reasons at Veklom's discretion.</p>
 
     <h2>5. Bring Your Own Server (BYOS)</h2>
@@ -61,6 +62,7 @@
 
     <h2>9. Fees, Billing, and Payment</h2>
     <p>Certain Services require payment. By providing payment information, you authorize Veklom to charge you through Stripe in accordance with your selected plan. Fees are in USD unless stated otherwise. Subscription fees are charged in advance. Usage-based fees may be charged in arrears or deducted from prepaid credits. Veklom may change pricing with 30 days' written notice to existing subscribers. Fees are non-refundable except as required by law or written agreement.</p>
+    <p><strong>Onchain Transactions and Network Disclaimers:</strong> The Services enable payment and execution validation using onchain micropayments (including via the x402 Commerce Payments Protocol in USDC on the Base network). Onchain Transactions signed or authorized using your self-custodial wallet cannot be reversed once broadcast to the digital asset network. Once submitted, transactions remain in a pending state until confirmed by network operators. Veklom makes no guarantees that any Onchain Transaction will be confirmed. Veklom is not liable for losses resulting from network outages, forks, or excessive network congestion that causes transactions to remain pending or fail. You are solely responsible for paying any network/gas fees required to execute Onchain Transactions.</p>
 
     <h2>10. Intellectual Property</h2>
     <p>The Services, software, algorithms, interfaces, documentation, Audit Artifact formats, governance schemas, and brand elements are Veklom intellectual property. You retain ownership of Content you submit and grant Veklom a limited license to process it solely to provide the Services. Feedback may be used by Veklom without restriction or obligation.</p>
@@ -71,8 +73,16 @@
     <h2>12. Prohibited Use</h2>
     <p>You may not use the Services to violate law or third-party rights, transmit malicious code, gain unauthorized access, scrape without consent, circumvent governance or audit infrastructure, train competing AI models without permission, exploit minors, impersonate others, compete with Veklom's core products, or damage Veklom's reputation, systems, or provider relationships.</p>
 
-    <h2>13. Third-Party Services</h2>
+    <h2>13. Third-Party Services and Decentralized Protocols</h2>
     <p>The Services integrate with third-party cloud providers, AI model providers, payment processors, and tools. Your use of third-party services is governed by their own terms. Veklom is not responsible for their availability, accuracy, security, or practices.</p>
+    <p><strong>Decentralized Integrations:</strong> The Services also provide interfaces to interact with third-party decentralized networks and protocols that are not operated, owned, or controlled by Veklom:</p>
+    <ul>
+      <li><strong>Basenames Protocol:</strong> Basenames is an open-source, blockchain-based naming registry deployed via smart contracts on Base. You understand that domain registrations are governed by the Basenames protocol rules and may expire. Veklom cannot forcibly remove, modify, or interfere with Basenames registrations.</li>
+      <li><strong>Wallet Messaging (XMTP):</strong> Messaging services in the Workspace are enabled by the decentralized XMTP protocol. Messages sent via XMTP are end-to-end encrypted. Veklom does not store, decrypt, or have access to these messages.</li>
+      <li><strong>Farcaster Protocol:</strong> Access to Farcaster social streams allows communication through a decentralized protocol. Content published on Farcaster is publicly accessible and stored on the Farcaster network. While Veklom may moderate or hide Farcaster content within the Veklom application, Veklom cannot remove content from the Farcaster network itself.</li>
+      <li><strong>Zora Content Protocol:</strong> Tokenization of content is processed via Zora's content coin protocol. Swapping and minting are executed directly onchain, and you are not transacting with Veklom when using these features.</li>
+      <li><strong>DEX Aggregators:</strong> Swap functions are routed through third-party aggregator services (such as 1inch and ZeroEx) to optimize pricing. Your swaps are direct peer-to-peer smart contract interactions with these aggregators, not with Veklom.</li>
+    </ul>
 
     <h2>14. Warranty Disclaimer</h2>
     <p>The Services are provided "as is" and "as available" without warranty of any kind. Veklom disclaims warranties of merchantability, fitness for a particular purpose, title, non-infringement, accuracy, and uninterrupted or error-free operation.</p>

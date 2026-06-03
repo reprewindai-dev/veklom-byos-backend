@@ -9,7 +9,7 @@ test.describe('Home hero CTA @smoke', () => {
     expect(response?.status()).toBe(200);
 
     // Look for login or get started link
-    const cta = page.getByRole('link', { name: /Login|Get Started|Demo/i }).first();
+    const cta = page.getByRole('link', { name: /Sign In|Start Free Eval/i }).first();
     await expect(cta).toBeVisible();
 
     // Click and verify navigation

@@ -1,13 +1,16 @@
 """Team management routes — members, invitations, roles, SAML/SCIM, MFA."""
 
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.core.utils.email import send_email_via_resend
 from backend.db.models.user import User
 from backend.db.models.workspace import WorkspaceMember
 
@@ -91,7 +94,7 @@ async def list_invitations(user=Depends(get_current_user)):
 @router.post("/team/invitations")
 @router.post("/team/invite")
 async def send_invitation(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in ("OWNER", "ADMIN"):
+    if user.role not in ("OWNER", "ADMIN", "owner", "admin", "SUPER_ADMIN"):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     email = (body.get("email") or "").strip()
     role = (body.get("role") or "USER").upper()
@@ -101,6 +104,7 @@ async def send_invitation(body: dict, user=Depends(get_current_user), db: AsyncS
     ws = user.workspace_id or "default"
     now = _utcnow()
     inv_id = "inv_" + str(_uuid.uuid4())[:8]
+    invite_link = f"{getattr(settings, 'APP_BASE_URL', 'https://veklom.com')}/signup?invite={inv_id}&email={email}"
     invitation = {
         "id": inv_id,
         "email": email,
@@ -110,7 +114,8 @@ async def send_invitation(body: dict, user=Depends(get_current_user), db: AsyncS
         "workspace_id": ws,
         "created_at": now.isoformat(),
         "expires_at": (now.replace(day=now.day + 7) if now.day < 25 else now).isoformat(),
-        "message": f"Invitation sent to {email}. Email delivery requires SMTP configuration.",
+        "message": f"Invitation sent to {email}.",
+        "invite_link": invite_link,
     }
     _invitations.setdefault(ws, []).append(invitation)
     # Also try to provision user in DB
@@ -128,6 +133,37 @@ async def send_invitation(body: dict, user=Depends(get_current_user), db: AsyncS
             await db.commit()
     except Exception:
         pass
+
+    # Send invitation email via Resend
+    invited_by_name = getattr(user, 'full_name', None) or user.email
+    email_html = f"""
+    <div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
+      <div style="text-align:center;margin-bottom:32px;">
+        <span style="font-size:24px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
+      </div>
+      <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">You've been invited to join a workspace</h2>
+      <p style="color:#94a3b8;line-height:1.6;">
+        <strong style="color:#e2e8f0;">{invited_by_name}</strong> has invited you to collaborate on
+        the <strong style="color:#e2e8f0;">Veklom Sovereign AI Platform</strong> workspace.
+      </p>
+      <p style="color:#94a3b8;line-height:1.6;">Your role: <strong style="color:#a78bfa;">{role}</strong></p>
+      <div style="text-align:center;margin:32px 0;">
+        <a href="{invite_link}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
+          Accept Invitation &rarr;
+        </a>
+      </div>
+      <p style="color:#64748b;font-size:13px;">This invitation link expires in 7 days. If you did not expect this email, you can safely ignore it.</p>
+      <hr style="border:none;border-top:1px solid #1e293b;margin:24px 0;">
+      <p style="color:#475569;font-size:12px;text-align:center;">Veklom &mdash; Sovereign AI Runtime Infrastructure</p>
+    </div>
+    """
+    asyncio.create_task(
+        send_email_via_resend(
+            to_email=email,
+            subject=f"{invited_by_name} invited you to Veklom",
+            html_content=email_html,
+        )
+    )
     return invitation
 
 

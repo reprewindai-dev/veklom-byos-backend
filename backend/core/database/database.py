@@ -8,28 +8,43 @@ from sqlalchemy.orm import DeclarativeBase
 from backend.core.config.settings import settings
 
 db_url = settings.DATABASE_URL
+if not db_url or not db_url.strip():
+    print("WARNING: DATABASE_URL not set in environment. Falling back to in-memory SQLite.")
+    db_url = "sqlite+aiosqlite:///:memory:"
+
 try:
-    if not db_url or not db_url.strip():
-        print("WARNING: DATABASE_URL not set in environment. Falling back to in-memory SQLite.")
-        db_url = "sqlite+aiosqlite:///:memory:"
-    engine = create_async_engine(
-        db_url,
-        echo=settings.DEBUG,
-        future=True,
-        pool_size=20,
-        max_overflow=30,
-        pool_timeout=60,
-    )
+    if "sqlite" in db_url:
+        from sqlalchemy.pool import StaticPool
+        engine = create_async_engine(
+            db_url,
+            echo=settings.DEBUG,
+            future=True,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+    else:
+        engine = create_async_engine(
+            db_url,
+            echo=settings.DEBUG,
+            future=True,
+            pool_size=20,
+            max_overflow=30,
+            pool_timeout=60,
+        )
 except Exception as e:
     print(f"WARNING: Database engine creation failed: {e}. Falling back to in-memory SQLite.")
     db_url = "sqlite+aiosqlite:///:memory:"
+    from sqlalchemy.pool import StaticPool
     engine = create_async_engine(
         db_url,
         echo=settings.DEBUG,
         future=True,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
     )
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+print(f"DATABASE ENGINE INITIALIZED: ID={id(engine)}, URL={db_url}")
 
 
 class Base(DeclarativeBase):

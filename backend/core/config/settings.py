@@ -175,7 +175,19 @@ class Settings(BaseSettings):
     CHAIN_ID: int = 1
     USDC_ADDRESS: str = ""
     
+    # Edge Ingestion
+    EDGE_API_KEY: str = "veklom_edge_dev_key"
+    FAX_WEBHOOK_SECRET: str = "veklom_fax_webhook_secret_fallback"
+    EDGE_MQTT_ENABLED: bool = False
+    EDGE_SNMP_ENABLED: bool = False
+    EDGE_MODBUS_ENABLED: bool = False
+    EDGE_OPC_ENABLED: bool = False
+    EDGE_POLLING_ENABLED: bool = False
+    EDGE_WEBHOOK_HMAC_SECRET: str = ""
+    
     # Redis for webhook idempotency cache
+    X402_TEST_PROOF_MODE: bool = False
+    FLASHBLOCKS_RPC_URL: str = "https://mainnet.base.org"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_ENABLED: bool = True
 

@@ -1,8 +1,8 @@
 """Security routes — events, alerts, dashboard, kill switch, locker."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,15 +86,41 @@ async def security_dashboard(user=Depends(get_current_user)):
 
 
 @router.get("/security/stats")
-async def security_stats(user=Depends(get_current_user)):
+async def security_stats(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Real security stats aggregated from SecurityEvent rows for this workspace."""
+    ws = user.workspace_id or ""
+
+    async def _count(*conditions):
+        q = select(func.count()).select_from(SecurityEvent).where(SecurityEvent.workspace_id == ws)
+        for c in conditions:
+            q = q.where(c)
+        return (await db.execute(q)).scalar() or 0
+
+    total = await _count()
+    open_count = await _count(SecurityEvent.status == "open")
+    resolved = await _count(SecurityEvent.status == "resolved")
+    critical = await _count(func.lower(SecurityEvent.severity) == "critical")
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    last_24h = await _count(SecurityEvent.created_at >= since)
+
+    rows = (await db.execute(
+        select(SecurityEvent.threat_type, func.count())
+        .where(SecurityEvent.workspace_id == ws)
+        .group_by(SecurityEvent.threat_type)
+    )).all()
+    by_type = {(t or "unknown"): c for t, c in rows}
+
+    # Score starts at 100; penalize unresolved and critical events.
+    security_score = max(0, 100 - (open_count * 3) - (critical * 10))
+
     return {
-        "total": 142,
-        "open": 3,
-        "resolved": 139,
-        "critical": 0,
-        "last_24h": 2,
-        "by_type": { "brute_force": 12, "suspicious_login": 8 },
-        "security_score": 94
+        "total": total,
+        "open": open_count,
+        "resolved": resolved,
+        "critical": critical,
+        "last_24h": last_24h,
+        "by_type": by_type,
+        "security_score": security_score,
     }
 
 
@@ -132,24 +158,6 @@ async def update_alert(alert_id: str, body: dict, user=Depends(get_current_user)
         await db.commit()
         return {"id": ev.id, "status": ev.status, "updated": True}
     return {"id": alert_id, "updated": True}
-
-
-@router.post("/security/events")
-async def create_security_event(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    import uuid as _uuid
-    ev = SecurityEvent(
-        id=str(_uuid.uuid4()),
-        workspace_id=user.workspace_id or "",
-        event_type=body.get("event_type", "manual"),
-        severity=body.get("severity", "low"),
-        description=body.get("description", ""),
-        status="open",
-        user_id=user.id,
-    )
-    db.add(ev)
-    await db.commit()
-    await db.refresh(ev)
-    return _event_dict(ev)
 
 
 @router.get("/security/events/{event_id}")

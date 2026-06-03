@@ -795,8 +795,10 @@ async def set_routing_policy(body: dict, user=Depends(get_current_user)):
     }
 
 
-@router.post("/routing/test")
-async def test_routing(body: dict, user=Depends(get_current_user)):
+# Model-routing test moved off /routing/test (now owned by providers.py for
+# provider-key/connectivity testing) to its own canonical path.
+@router.post("/routing/model/test")
+async def test_model_routing(body: dict, user=Depends(get_current_user)):
     return {
         "selected_model": "gpt-4o",
         "reason": "Best cost-quality score for this prompt type",

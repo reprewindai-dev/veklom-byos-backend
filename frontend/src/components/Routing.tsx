@@ -87,7 +87,7 @@ export const Routing: React.FC = () => {
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await api('/routing/test', {
+      const result = await api('/routing/model/test', {
         method: 'POST',
         body: JSON.stringify({ prompt: testPrompt })
       });

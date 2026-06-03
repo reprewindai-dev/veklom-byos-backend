@@ -42,6 +42,7 @@ from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.middleware.x402 import VEKLOM_USDC_ADDR
 from backend.apps.api.routers.discovery import VEKLOM_TREASURY
+from backend.core.middleware.x402 import VEKLOM_TREASURY, VEKLOM_USDC_ADDR
 from backend.core.security.auth import get_current_user_or_api_key
 from backend.db.models.agentic_commerce import AgenticCheckoutSession
 from backend.db.models.billing import Subscription, WalletTransaction

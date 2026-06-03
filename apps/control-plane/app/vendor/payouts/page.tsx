@@ -11,36 +11,15 @@ import { useAuth } from "@/lib/auth-context";
 
 export default function VendorPayoutsPage() {
   const { me } = useAuth();
-  const status = useApi<any>("/api/v1/stripe/connect/status");
   const vendorId = (me as any)?.vendor_id || (me as any)?.org_id;
   const payouts = useApi<any>(vendorId ? `/api/v1/payouts/vendor/${vendorId}` : null);
   const [busy, setBusy] = useState(false);
 
-  const connected = !!(status.data?.connected || status.data?.charges_enabled);
-
   async function request() {
-    if (!connected) {
-      alert("Your Stripe account is not connected. Redirecting to Stripe onboarding...");
-      window.location.href = "/control-plane-next/vendor/stripe";
-      return;
-    }
-    const amountStr = prompt("Enter amount to payout:");
-    if (!amountStr) return;
-    const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-      alert("Invalid amount.");
-      return;
-    }
+    if (!confirm("Request a manual payout?")) return;
     setBusy(true);
-    try { 
-      await api("/api/v1/payouts/create", { body: { vendor_id: vendorId, amount } }); 
-      payouts.mutate(); 
-      alert("Payout request submitted successfully.");
-    } catch (e) {
-      alert((e as Error).message);
-    } finally { 
-      setBusy(false); 
-    }
+    try { await api("/api/v1/payouts/create", { body: { vendor_id: vendorId } }); payouts.mutate(); }
+    finally { setBusy(false); }
   }
 
   return (

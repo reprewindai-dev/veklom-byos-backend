@@ -295,37 +295,6 @@ async def lifespan(app: FastAPI):
         print(f"[startup] operator engine: WARNING — failed to start: {type(e).__name__}: {e}")
         traceback.print_exc()
 
-    # Deactivate and isolate internal test accounts
-    try:
-        from backend.db.models.user import User
-        from backend.core.database.database import async_session
-        from sqlalchemy import or_
-        async with async_session() as clean_session:
-            stmt = select(User).where(
-                or_(
-                    User.email.like("eval%"),
-                    User.email.like("smoke%"),
-                    User.email.like("%eval%"),
-                    User.email.like("%smoke%")
-                )
-            )
-            result = await clean_session.execute(stmt)
-            test_users = result.scalars().all()
-            deactivated_count = 0
-            for u in test_users:
-                if u.email.lower() == "reprewindai@gmail.com":
-                    continue
-                if u.is_active or u.role != "viewer" or u.status != "inactive":
-                    u.is_active = False
-                    u.role = "viewer"
-                    u.status = "inactive"
-                    deactivated_count += 1
-            if deactivated_count > 0:
-                await clean_session.commit()
-                print(f"[startup] auth: deactivated and isolated {deactivated_count} internal test/eval accounts")
-    except Exception as e:
-        print(f"[startup] auth: test account deactivation warning: {type(e).__name__}: {e}")
-
     yield
 
     # Graceful shutdown of plugins and operator workforce
@@ -425,20 +394,6 @@ from backend.core.security.middlewares import AgentTelemetryMiddleware, IPRateLi
 app.add_middleware(AgentTelemetryMiddleware)
 app.add_middleware(IPRateLimitMiddleware)
 
-
-@app.middleware("http")
-async def redirect_docs_subdomain(request: Request, call_next):
-    host = request.headers.get("host", "").lower()
-    if "docs.veklom.com" in host:
-        path = request.url.path
-        if path == "/" or not path:
-            path = "/docs/marketplace/README.md"
-        elif not path.startswith("/docs") and not path.startswith("/documentation"):
-            path = f"/docs{path}"
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=f"https://veklom.com{path}", status_code=301)
-    return await call_next(request)
-
 def _trusted_hosts() -> list[str]:
     raw_hosts = settings.ALLOWED_HOSTS
     if isinstance(raw_hosts, str):
@@ -450,7 +405,6 @@ def _trusted_hosts() -> list[str]:
         "veklom.com",
         "www.veklom.com",
         "api.veklom.com",
-        "docs.veklom.com",
         "localhost",
         "127.0.0.1",
         "0.0.0.0",
@@ -742,7 +696,6 @@ COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
 LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 OPERATOR_CENTER_DIR = FRONTEND_DIR / "operator-center"
-DOCS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "docs"
 
 
 def _mount_static():
@@ -768,9 +721,6 @@ def _mount_static():
         app.mount("/irongrid", StaticFiles(directory=str(IRONGRID_DIR), html=True), name="irongrid")
     if LOCKERPHYCER_DIR.exists():
         app.mount("/lockerphycer", StaticFiles(directory=str(LOCKERPHYCER_DIR), html=True), name="lockerphycer")
-    if DOCS_DIR.exists():
-        app.mount("/documentation", StaticFiles(directory=str(DOCS_DIR)), name="documentation")
-        app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

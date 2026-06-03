@@ -220,111 +220,6 @@
     const label = text.toLowerCase();
     const page = currentPage();
 
-    // ------ MARKETPLACE INSTALL / DOWNLOAD ------
-    if (label.indexOf("install ·") === 0 || label === "install on acme-prod" || label === "buy" || label.startsWith("buy ·") || label.startsWith("buy · $")) {
-      e.preventDefault(); e.stopPropagation();
-      const hash = location.hash || "";
-      const parts = hash.split("/");
-      const listingId = parts[parts.length - 1];
-      if (!listingId || !hash.includes("marketplace")) {
-        toast("Could not determine listing ID", "error");
-        return;
-      }
-      
-      btn.disabled = true;
-      const originalText = btn.textContent;
-      btn.textContent = "Installing...";
-      
-      try {
-        const res = await fetch(`${base}/listings/${listingId}/install`, {
-          method: "POST",
-          headers: authHeaders(),
-          credentials: "include"
-        });
-        
-        if (res.status === 402) {
-          const data = await res.json();
-          toast(data.detail || "Insufficient reserve balance.", "error");
-          navigate("#/billing");
-          return;
-        }
-        
-        if (!res.ok) {
-          const data = await res.json();
-          toast(data.detail || "Failed to install asset.", "error");
-          btn.disabled = false;
-          btn.textContent = originalText;
-          return;
-        }
-        
-        const data = await res.json();
-        toast(data.message || "Asset successfully installed to your workspace.", "ok");
-        btn.textContent = "Installed";
-      } catch (err) {
-        toast("Error: " + err.message, "error");
-        btn.disabled = false;
-        btn.textContent = originalText;
-      }
-      return;
-    }
-
-    if (label === "download datasheet") {
-      e.preventDefault(); e.stopPropagation();
-      const hash = location.hash || "";
-      const parts = hash.split("/");
-      const listingId = parts[parts.length - 1];
-      if (!listingId || !hash.includes("marketplace")) {
-        toast("Could not determine listing ID", "error");
-        return;
-      }
-      window.open(`/api/v1/listings/${listingId}/datasheet`, "_blank");
-      return;
-    }
-
-    // ------ BECOME A PROVIDER ------
-    if (label === "become a provider" || label.includes("become a provider")) {
-      e.preventDefault(); e.stopPropagation();
-      // Redirect to the control plane vendor onboarding
-      window.location.href = "/control-plane-next/vendor/onboarding";
-      return;
-    }
-
-    // ------ AUTO-GENERATE & PRICE ------
-    if (label === "auto-generate & price" || label.includes("auto-generate")) {
-      e.preventDefault(); e.stopPropagation();
-      btn.disabled = true;
-      const origText = btn.textContent;
-      btn.textContent = "Generating…";
-      try {
-        const formEl = btn.closest("form, div[class*='modal'], div[class*='dialog']") || btn.parentElement?.parentElement;
-        const nameInput = formEl?.querySelector("input[placeholder*='name'], input:first-of-type");
-        const catSelect = formEl?.querySelector("select");
-        const summaryInput = formEl?.querySelector("textarea, input[placeholder*='summary'], input[placeholder*='describe']");
-        const payload = {
-          name: nameInput?.value || "Untitled Asset",
-          category: catSelect?.value || "tool",
-          summary: summaryInput?.value || "",
-          publish: false
-        };
-        const res = await api("POST", "/marketplace/generate", payload);
-        if (res && res.listing) {
-          const l = res.listing;
-          toast(`Generated: ${l.name} — $${l.price || 0}/${l.pricing_model || "mo"}`, "ok");
-          // Populate form fields back if available
-          if (nameInput && l.name) nameInput.value = l.name;
-          if (summaryInput && l.description) summaryInput.value = l.description;
-        } else {
-          toast("Listing generated. Review the details below.", "ok");
-        }
-      } catch (err) {
-        toast("Generation failed: " + err.message, "error");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = origText;
-      }
-      return;
-    }
-
     // ------ USER DROPDOWN ------
     if (label === "security") {
       e.preventDefault(); e.stopPropagation();
@@ -1428,7 +1323,7 @@
     }
 
     // ------ COMPLIANCE ------
-    if (label === "export evidence" || label === "export audit package" || label === "export audit pkg" || label.includes("export audit")) {
+    if (label === "export audit package" || label === "export audit pkg" || label.includes("export audit")) {
       e.preventDefault(); e.stopPropagation();
       toast("Generating full audit package — downloading…", "ok");
       try {
@@ -1819,34 +1714,6 @@
   // Wire header icon buttons after React finishes first paint
   setTimeout(wireHeaderIcons, 1200);
   setTimeout(wireHeaderIcons, 3500);
-
-  // ------ [Demonstration Metric] labels for marketplace rating/installs ------
-  function tagDemoMetrics() {
-    if (!currentPage().includes("/marketplace")) return;
-    const DEMO_ATTR = "data-veklom-demo-tagged";
-    // Find text nodes matching "★ X.X" or "N,NNN installs" patterns
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-    const targets = [];
-    while (walker.nextNode()) {
-      const t = walker.currentNode;
-      const v = (t.textContent || "").trim();
-      if ((v.includes("installs") || v.includes("★")) && !t.parentElement?.getAttribute(DEMO_ATTR)) {
-        targets.push(t);
-      }
-    }
-    targets.forEach(t => {
-      const parent = t.parentElement;
-      if (!parent || parent.getAttribute(DEMO_ATTR)) return;
-      parent.setAttribute(DEMO_ATTR, "1");
-      const tag = document.createElement("span");
-      tag.textContent = " [Demonstration Metric]";
-      tag.style.cssText = "font-size:9px;color:#888;font-style:italic;margin-left:4px;";
-      parent.appendChild(tag);
-    });
-  }
-  setTimeout(tagDemoMetrics, 2000);
-  setTimeout(tagDemoMetrics, 5000);
-  window.addEventListener("hashchange", () => setTimeout(tagDemoMetrics, 800));
 
   // ------ GLOBAL SUPPORT / HELP SYSTEM ------
   const PAGE_HELP = {

@@ -967,63 +967,14 @@ async def resend_webhook(request: Request):
 
 
 # --- Payouts ---
-def _payouts_file():
-    import os
-    from pathlib import Path
-    d = Path(__file__).resolve().parent.parent.parent.parent / "backend" / "core"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / "payouts.json"
-
-def _load_payouts():
-    import json
-    f = _payouts_file()
-    if not f.exists():
-        return []
-    try:
-        with open(f, "r") as fh:
-            return json.load(fh)
-    except Exception:
-        return []
-
-def _save_payouts(payouts):
-    import json
-    f = _payouts_file()
-    try:
-        with open(f, "w") as fh:
-            json.dump(payouts, fh, indent=2)
-    except Exception:
-        pass
-
 @router.post("/payouts/create")
 async def create_payout(body: dict, user=Depends(get_current_user)):
-    import uuid
-    from datetime import datetime, timezone
-    vendor_id = body.get("vendor_id") or user.id
-    amount = body.get("amount", 0.0)
-    
-    payouts = _load_payouts()
-    po_id = f"po_{uuid.uuid4().hex[:8]}"
-    stripe_po_id = f"po_stripe_{uuid.uuid4().hex[:8]}"
-    
-    new_po = {
-        "id": po_id,
-        "payout_id": po_id,
-        "vendor_id": vendor_id,
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "amount": amount,
-        "status": "succeeded",
-        "stripe_payout_id": stripe_po_id
-    }
-    payouts.append(new_po)
-    _save_payouts(payouts)
-    return new_po
+    return {"payout_id": "po_placeholder", "amount": body.get("amount", 0), "status": "pending"}
 
 
 @router.get("/payouts/vendor/{vendor_id}")
 async def vendor_payouts(vendor_id: str, user=Depends(get_current_user)):
-    payouts = _load_payouts()
-    filtered = [p for p in payouts if p.get("vendor_id") == vendor_id]
-    return {"data": filtered}
+    return {"vendor_id": vendor_id, "total_earnings": 0, "pending": 0, "paid": 0, "payouts": []}
 
 
 # --- Orders ---

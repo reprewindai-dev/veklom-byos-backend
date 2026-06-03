@@ -417,4 +417,49 @@ Copy-Item ".\agents\skills\*" (Join-Path $OpenClawHome "skills") -Recurse -Force
 Write-Host "Veklom local operator build finalized."
 ```
 
+***
+
+## 13. System Components & Terminal Naming (Correction)
+
+Veklom enforces a clear structural boundary between product presentation, agent orchestration, and sovereign governance:
+
+### Core Architecture Splits
+1. **Veklom**: The product shell, marketplace, and tenant workspace.
+2. **UACP6 (Sovereign Governance Layer)**: Governs trust, consent, national/regulated workflows, compliance logs, identity checks, and integrity gates.
+3. **UACP4 (Agent Artibus / ArbiterOS)**: The agent arbitration layer. Governs instruction validation, SEKED state compilation, memory cycles, decision frames, and SAIQ environmental/cost/policy routing.
+4. **BYOS Backend**: The execution fabric (auth, tenants, billing, marketplace, model routing, tools/connectors execution).
+5. **Marketplace**: Packages all reusable/monetizable modules (policy/cost gates, terminal packs, compliance analyzers, evidence bundle exports).
+
+### Terminal Classifications
+Veklom maintains three distinct terminal interfaces, each with dedicated operator responsibilities:
+1. **PerplexTerminal v4.1 (Operator mobile terminal)**: Operator-facing visual cockpit displaying cognitive engine states, Zeno counterfactual speculation, Gladiator cognitive limits, and live MCP mesh topology.
+2. **UACP Quantum Context Terminal (Technical/API terminal)**: Serves as the embedded developer console and endpoint runner. Supports quick operations like `POST /autonomous/execute`, health probes, and Zeno capabilities.
+3. **Terminal 100 / Source-of-Truth Terminal (Canonical workspace terminal)**: Served at `/terminal` in production. Merges the visual strength of PerplexTerminal with the real endpoint execution of the Quantum Context Terminal, bridging command entries to real `VeklomRun` DB entities.
+
+### Corrected Execution Loop
+```text
+User / Agent intent
+  ↓
+Veklom Run created
+  ↓
+UACP4 Agent Artibus / ArbiterOS decides
+  ↓
+SEKED validates human/org state
+  ↓
+SAIQ routes by policy > water > latency > carbon > cost
+  ↓
+BYOS runtime executes
+  ↓
+UACP6 sovereign layer seals governance / consent / audit meaning
+  ↓
+Decision Frame + Evidence + Billing + Marketplace accounting
+  ↓
+Terminal shows the real run
+```
+
+### Workspace Component Splits
+* **Backroom Workspace (Founder/Operator Exclusive)**: Command Center, UACP6 governance ops, Product Studio, Marketplace Triage, internal 30-agent divisions, Capital-Guard, Hybrid-Forge, security engineering, FinOps, release readiness, production audit, wiring matrix.
+* **Tenant Workspace**: Playground, Models, Marketplace, Pipelines, Deployments, Vault, Compliance, Monitoring, Billing, Team, Settings, safe optional terminal, evidence exports.
+
+
 

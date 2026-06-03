@@ -27,7 +27,11 @@ export default function StripeConnectPage() {
           <div className="text-xl font-semibold mb-1">{connected ? "Connected" : "Not connected"}</div>
           <div className="text-ink-400 text-sm mb-4">{status.data?.charges_enabled ? "Charges enabled" : "Pending onboarding"}</div>
           {!connected && <Button onClick={onboard}>Start onboarding</Button>}
-          <pre className="text-xs bg-bg-900 p-3 rounded-md overflow-x-auto mt-6 text-left">{JSON.stringify(status.data, null, 2)}</pre>
+          <div className="flex justify-center mt-4">
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${connected ? "bg-accent-green/10 text-accent-green border border-accent-green/20" : "bg-bg-700 text-ink-400 border border-border"}`}>
+              {connected ? "Status: Connected" : "Status: Disconnected"}
+            </span>
+          </div>
         </Card>
       </TierGate>
     </Shell>

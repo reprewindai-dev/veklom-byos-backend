@@ -145,6 +145,10 @@ async def get_current_user(
 async def get_current_admin(user=Depends(get_current_user)):
     if (user.role or "").lower() not in ("admin", "super_admin", "owner"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    # Disable admin permissions for automated test/evaluation accounts
+    email = (user.email or "").lower()
+    if email.startswith("eval") or email.startswith("smoke"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access disabled for internal test accounts")
     return user
 
 
@@ -155,6 +159,10 @@ async def require_internal_operator(user=Depends(get_current_user)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="UACP Internal Operator access required"
         )
+    # Disable operator permissions for automated test/evaluation accounts
+    email = (user.email or "").lower()
+    if email.startswith("eval") or email.startswith("smoke"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operator access disabled for internal test accounts")
     return user
 
 

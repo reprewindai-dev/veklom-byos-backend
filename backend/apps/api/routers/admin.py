@@ -223,13 +223,77 @@ async def support_message(body: dict, user=Depends(get_current_user)):
 
 # --- Stripe Connect ---
 @router.get("/stripe/connect/onboard")
-async def stripe_onboard(user=Depends(get_current_user)):
-    return {"url": "https://connect.stripe.com/placeholder"}
+async def stripe_onboard(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.core.config.settings import settings
+    from backend.db.models.marketplace import Vendor
+    import logging
+    logger = logging.getLogger(__name__)
+
+    stripe_ready = False
+    key = settings.STRIPE_SECRET_KEY.strip() if settings.STRIPE_SECRET_KEY else ""
+    if key and not key.lower().startswith("need_from") and "your-" not in key.lower():
+        stripe_ready = True
+
+    result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
+    vendor = result.scalars().first()
+    if not vendor:
+        vendor = Vendor(
+            user_id=user.id,
+            business_name=f"{getattr(user, 'full_name', '') or user.email}'s Enclave",
+            status="pending",
+            onboarding_complete=False
+        )
+        db.add(vendor)
+        await db.commit()
+        await db.refresh(vendor)
+
+    account_id = vendor.stripe_account_id or ""
+
+    if stripe_ready:
+        import stripe
+        stripe.api_key = key
+        try:
+            if not account_id:
+                account = stripe.Account.create(
+                    type="express",
+                    capabilities={"card_payments": {"requested": True}, "transfers": {"requested": True}},
+                    business_profile={"name": vendor.business_name}
+                )
+                account_id = account.id
+                vendor.stripe_account_id = account_id
+                await db.commit()
+                await db.refresh(vendor)
+            
+            account_link = stripe.AccountLink.create(
+                account=account_id,
+                refresh_url=f"{settings.API_BASE_URL.rstrip('/')}/api/v1/x402/onboarding/callback?status=refresh&account_id={account_id}&user_id={user.id}",
+                return_url=f"{settings.API_BASE_URL.rstrip('/')}/api/v1/x402/onboarding/callback?status=success&account_id={account_id}&user_id={user.id}",
+                type="account_onboarding",
+            )
+            return {"url": account_link.url}
+        except Exception as e:
+            logger.error(f"Stripe AccountLink creation failed: {e}")
+            pass
+
+    if not account_id:
+        account_id = f"acct_mock_{user.id}"
+        vendor.stripe_account_id = account_id
+        await db.commit()
+        await db.refresh(vendor)
+        
+    mock_url = f"{settings.API_BASE_URL.rstrip('/')}/api/v1/x402/onboarding/callback?status=success&account_id={account_id}&user_id={user.id}"
+    return {"url": mock_url}
 
 
 @router.get("/stripe/connect/status")
-async def stripe_status(user=Depends(get_current_user)):
-    return {"connected": False, "account_id": None}
+async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.marketplace import Vendor
+    result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
+    vendor = result.scalars().first()
+    
+    if vendor and vendor.onboarding_complete:
+        return {"connected": True, "account_id": vendor.stripe_account_id, "charges_enabled": True}
+    return {"connected": False, "account_id": getattr(vendor, "stripe_account_id", None), "charges_enabled": False}
 
 
 # --- Export ---

@@ -396,7 +396,7 @@ async def onboarding_callback(
             await db.commit()
 
     # Redirect user back to settings or marketplace
-    redirect_target = f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/settings"
+    redirect_target = f"{settings.FRONTEND_URL.rstrip('/')}/control-plane-next/vendor/stripe/"
     return RedirectResponse(url=redirect_target)
 
 

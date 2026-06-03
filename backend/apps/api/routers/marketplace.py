@@ -56,7 +56,7 @@ _CATALOG = [
                 {"version": "1.2.0", "date": "2026-01-10", "notes": "PGVector 0.6 support; chunking strategy v2"},
             ],
             "github_url": "https://github.com/reprewindai-dev/veklom-byos-backend",
-            "docs_url": "https://docs.veklom.com/marketplace/clinical-rag",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -96,7 +96,7 @@ _CATALOG = [
                 {"version": "2.0.0", "date": "2026-02-15", "notes": "Complete rewrite; NER model upgraded to v3"},
             ],
             "github_url": "https://github.com/reprewindai-dev/veklom-byos-backend",
-            "docs_url": "https://docs.veklom.com/marketplace/legal-redactor",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -136,7 +136,7 @@ _CATALOG = [
                 {"version": "2.0.0", "date": "2025-12-01", "notes": "Qwen 2.0 INT4 initial release"},
             ],
             "github_url": "https://github.com/QwenLM/Qwen2.5",
-            "docs_url": "https://docs.veklom.com/marketplace/qwen-72b",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -177,7 +177,7 @@ _CATALOG = [
                 {"version": "4.0.0", "date": "2026-01-15", "notes": "Initial v4 release; v3.2.1 mappings removed"},
             ],
             "github_url": "https://github.com/reprewindai-dev/veklom-byos-backend",
-            "docs_url": "https://docs.veklom.com/marketplace/pci-dss-v4",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -217,7 +217,7 @@ _CATALOG = [
                 {"version": "3.0.0", "date": "2026-01-20", "notes": "Rewritten on SCIM 2.0 protocol"},
             ],
             "github_url": "",
-            "docs_url": "https://docs.veklom.com/marketplace/okta-scim",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -259,7 +259,7 @@ _CATALOG = [
                 {"version": "1.5.0", "date": "2025-11-15", "notes": "YAML format migration; version history"},
             ],
             "github_url": "",
-            "docs_url": "https://docs.veklom.com/marketplace/finance-prompts",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -301,7 +301,7 @@ _CATALOG = [
                 {"version": "1.0.0", "date": "2025-09-01", "notes": "Service launch"},
             ],
             "github_url": "",
-            "docs_url": "https://docs.veklom.com/marketplace/on-call",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -344,7 +344,7 @@ _CATALOG = [
                 {"version": "1.8.0", "date": "2025-11-01", "notes": "Auto-failover routing; in-flight redaction"},
             ],
             "github_url": "https://github.com/reprewindai-dev/veklom-byos-backend",
-            "docs_url": "https://docs.veklom.com/sdk/python",
+            "docs_url": "/documentation/marketplace/README.md",
             "pip_install": "pip install veklom-sdk",
         },
     },
@@ -387,7 +387,7 @@ _CATALOG = [
                 {"version": "1.2.0", "date": "2025-12-10", "notes": "PHI detector v2; watermark strength increased"},
             ],
             "github_url": "",
-            "docs_url": "https://docs.veklom.com/marketplace/medstx-triage",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -429,7 +429,7 @@ _CATALOG = [
                 {"version": "1.5.0", "date": "2026-02-01", "notes": "Schrems II assessment tool; DPA auto-generation"},
             ],
             "github_url": "https://github.com/reprewindai-dev/veklom-byos-backend",
-            "docs_url": "https://docs.veklom.com/marketplace/eu-sovereign",
+            "docs_url": "/documentation/marketplace/README.md",
         },
     },
     {
@@ -472,7 +472,7 @@ _CATALOG = [
                 {"version": "1.0.0", "date": "2025-09-01", "notes": "Initial release — carbon-aware routing for Hetzner fleets"},
             ],
             "github_url": "https://github.com/reprewindai-dev/veklom-byos-backend",
-            "docs_url": "https://docs.veklom.com/marketplace/co2router",
+            "docs_url": "/documentation/marketplace/README.md",
             "website": "https://co2router.com",
         },
     },
@@ -717,18 +717,50 @@ async def create_listing(body: dict, user=Depends(get_current_user), db: AsyncSe
 
 
 @router.post("/listings/create")
-async def create_listing_alt(body: dict, user=Depends(get_current_user)):
-    return {"id": "lst_new", "name": body.get("name", ""), "status": "draft"}
+async def create_listing_alt(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    listing = MarketplaceListing(
+        vendor_id=user.id,
+        name=body.get("name", "Untitled"),
+        description=body.get("description", ""),
+        category=body.get("category", "tool"),
+        price=body.get("price", 0),
+        status="draft",
+        downloads=0
+    )
+    db.add(listing)
+    await db.commit()
+    await db.refresh(listing)
+    return _listing_dict(listing)
 
 
 @router.patch("/listings/{listing_id}")
-async def update_listing_short(listing_id: str, body: dict, user=Depends(get_current_user)):
-    return {"id": listing_id, "updated": True, **body}
+async def update_listing_short(listing_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+    listing = result.scalars().first()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    for k, v in body.items():
+        if hasattr(listing, k):
+            setattr(listing, k, v)
+    await db.commit()
+    await db.refresh(listing)
+    return _listing_dict(listing)
 
 
 @router.post("/listings/submit")
-async def submit_listing(body: dict, user=Depends(get_current_user)):
-    return {"id": body.get("listing_id", ""), "status": "pending_review"}
+async def submit_listing(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    listing_id = body.get("listing_id")
+    if not listing_id:
+        raise HTTPException(status_code=400, detail="Missing listing_id")
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+    listing = result.scalars().first()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    listing.status = "submitted"
+    listing.compliance_status = "pending"
+    await db.commit()
+    await db.refresh(listing)
+    return _listing_dict(listing)
 
 
 @router.post("/listings/review")
@@ -1032,7 +1064,7 @@ async def list_installed(user=Depends(get_current_user), db: AsyncSession = Depe
 
 @router.get("/marketplace/listings/{listing_id}/datasheet")
 @router.get("/listings/{listing_id}/datasheet")
-async def listing_datasheet(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def listing_datasheet(listing_id: str, db: AsyncSession = Depends(get_db)):
     await _ensure_catalog_seeded(db)
     result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
     listing = result.scalar_one_or_none()

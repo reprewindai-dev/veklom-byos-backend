@@ -34,7 +34,10 @@ export default function BillingPage() {
                 { key: "date", header: "Date", render: (r) => r.date || r.created_at },
                 { key: "amount", header: "Amount", render: (r) => `$${r.amount ?? r.total ?? "0"}` },
                 { key: "status", header: "Status", render: (r) => r.status },
-                { key: "pdf", header: "", render: (r) => r.pdf_url ? <a className="text-brand-400 hover:underline text-xs" href={r.pdf_url} target="_blank" rel="noreferrer">PDF</a> : null, width: "80px" },
+                { key: "pdf", header: "", render: (r) => {
+                  const url = r.invoice_pdf || r.hosted_invoice_url || r.pdf_url;
+                  return url ? <a className="text-brand-400 hover:underline text-xs" href={url} target="_blank" rel="noreferrer">PDF</a> : null;
+                }, width: "80px" },
               ]}
             />
           }

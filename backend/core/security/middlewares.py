@@ -25,7 +25,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/login", "/signup", "/api/v1/complaints",
             "/config.js", "/base-attribution.js", "/auth-gate.js", "/addons-inject.js", "/overview-live.js",
             "/workspace-enhance.js", "/pipeline-live.js", "/playground-live.js", "/user-identity-inject.js", "/copilot-widget.js",
-            "/command-center", "/control-plane-next", "/gpc", "/terminal", "/marketplace", "/docs",
+            "/command-center", "/control-plane-next", "/gpc", "/terminal", "/marketplace", "/docs", "/documentation",
             "/uptime", "/legal", "/license", "/vendor-agreement", "/irongrid", "/api/v1/webhooks", "/api/v1/edge", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
             "/apple-touch-icon.png", "/og-image.png", "/twitter-card.png",
@@ -43,7 +43,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/ai/complete", "/api/v1/playground/inference", "/api/v1/playground/sessions",
             "/api/v1/playground/tools", "/api/v1/playground/prompts",
             "/api/v1/agentic_commerce/product_feed", "/api/v1/agentic_commerce/feed.csv",
-            "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback"
+            "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback", "/api/v1/listings"
         )
         
         if path == "/" or any(path.startswith(prefix) for prefix in public_prefixes):

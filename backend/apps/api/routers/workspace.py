@@ -38,6 +38,35 @@ async def workspace_status_data(user=Depends(get_current_user)):
     }
 
 
+from pydantic import BaseModel
+
+class EntitlementCheckRequest(BaseModel):
+    action: str
+
+
+@router.get("/entitlements/check")
+async def check_workspace_entitlement(
+    action: str,
+    user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Check if the user/workspace is entitled to execute a given action."""
+    from backend.core.security.entitlements import get_entitlement_decision
+    return await get_entitlement_decision(user, action, db)
+
+
+@router.post("/entitlements/check")
+async def check_workspace_entitlement_post(
+    body: EntitlementCheckRequest,
+    user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Check if the user/workspace is entitled to execute a given action via POST."""
+    from backend.core.security.entitlements import get_entitlement_decision
+    return await get_entitlement_decision(user, body.action, db)
+
+
+
 # --- Search ---
 @router.get("/search")
 async def workspace_search(q: str = "", user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):

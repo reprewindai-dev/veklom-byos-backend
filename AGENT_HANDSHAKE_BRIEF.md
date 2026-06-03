@@ -281,3 +281,140 @@ Homepage audience pills:
 - **Backroom “Command Center”** = founder/operator-only internal control room.
 - Do not expose founder-only backroom controls to tenants just because the homepage says Command Center.
 
+
+***
+
+## 12. Product Entitlement Architecture (Action-Locking, Tiers, Reserve & Local Operator Layout)
+
+Veklom implements a **tier + reserve + marketplace add-on model** rather than an "everything is subscription" setup. The workspace features remain visible, navigation is open, previews are sandboxed, and only active mutation/execution actions are gated.
+
+### 1. Entitlement Decision Structure
+
+The backend entitlement service evaluates every gated action and returns:
+
+```typescript
+type EntitlementDecision = {
+  canView: boolean;
+  canPreview: boolean;
+  canExecute: boolean;
+
+  currentTier: "free" | "founding" | "standard" | "regulated";
+  requiredTier?: "founding" | "standard" | "regulated";
+
+  gateType:
+    | "quota_gate"
+    | "feature_gate"
+    | "marketplace_gate"
+    | "risk_gate"
+    | "reserve_gate";
+
+  action: string;
+  reason: string;
+
+  benefits: string[];
+  bestFor: string[];
+
+  recommendedUpgrade?: {
+    tier: "founding" | "standard" | "regulated";
+    headline: string;
+    cta: string;
+  };
+
+  marketplaceAlternative?: {
+    moduleId: string;
+    name: string;
+    price: string;
+    note: string;
+  };
+
+  usageContext?: {
+    freeRunsUsed: number;
+    freeRunsLimit: number;
+    attemptedFeatureCount: number;
+    estimatedRunCost?: number;
+  };
+};
+```
+
+### 2. Tier Access and Quota Matrix
+
+- **Free Evaluation ($0, no card)**:
+  - 1 workspace, 1 user, 15 governed runs, 3 compare runs, 20 dry-run pipeline tests, 2 signed sandbox exports, marketplace browsing, live governance demo, playground access, basic model-routing/monitoring/billing previews.
+  - Quotas: Hard-gated at 15 runs. Quota Gate fires showing upgrade path to Founding, Standalone Module purchase, or Regulated inquiry.
+- **Founding Activation ($395 activation + $100–$150 minimum reserve)**:
+  - production workspace, paid governed runs, saved prompts, GitHub connection, basic marketplace installs, safe terminal, API key creation, pipeline test/deploy, evidence packages à la carte, limited supervised agents (1 active agent/session at a time under human approval).
+- **Standard ($795 activation + $250–$300 minimum reserve)**:
+  - team workspace, production deployments, vault/compliance/monitoring/billing fully active, advanced marketplace installs, repo-risk/cost/policy gates included or discounted, scheduled pipelines, multi-agent workflows (limited concurrent agents).
+- **Regulated (From $2,500 + regulated reserve)**:
+  - UACP6 governance, SEKED human/org approval state, consent catalogs, auditor bundles, regulated evidence, SAML/SCIM, BYOS/private deployment, custom policy packs, regulated model registry, governed agent workforce with approval chains, dedicated onboarding/support.
+
+### 3. Action-Gate Mapping
+
+Only gate mutation/execution actions:
+- `production_run`: requires `founding`
+- `deploy` (production deployment / publish endpoint): requires `standard` (can also purchase "deploy-gate" standalone for $79/mo)
+- `install_module`: requires `founding`
+- `export_signed_evidence`: requires `regulated` (can also purchase "auditor-bundle" standalone for $299/mo)
+- `create_api_key`: requires `founding`
+- `activate_agent`: requires `founding` (can also purchase "agent-packs" standalone for $49/mo)
+- `add_secret`: requires `standard`
+- `invite_team_member`: requires `standard`
+- `schedule_pipeline`: requires `standard`
+- `execute_terminal_command`: requires `standard`
+- `regulated_compliance_action`: requires `regulated`
+
+### 4. Stripe Implementation
+- **Tier activation**: Founding / Standard / Regulated checkout (pricing-plan setups combining recurring and usage-based charges).
+- **Reserve funding**: USD-denominated operating reserve.
+- **Marketplace purchases**: Module purchase, vendor payouts (Stripe Connect with NET-14 payouts and standard 12% / preferred 8% / founding 0% platform fee structures).
+
+### 5. Local Operator Build Script (`veklom-finalize-local.ps1`)
+
+Local machine operator directories (`.openclaw`, `.npm-global`, `.expo`, `.docker`) live under `%USERPROFILE%` as local build-runner infrastructure, keeping real containers, Hetzner, Coolify, and future BYOS installs clean:
+
+```powershell
+$UserRoot = $env:USERPROFILE
+
+$OpenClawHome = $env:OPENCLAW_HOME
+if (-not $OpenClawHome) { $OpenClawHome = Join-Path $UserRoot ".openclaw" }
+
+$NpmGlobal = $env:NPM_CONFIG_PREFIX
+if (-not $NpmGlobal) { $NpmGlobal = Join-Path $UserRoot ".npm-global" }
+
+$ExpoHome = $env:EXPO_HOME
+if (-not $ExpoHome) { $ExpoHome = Join-Path $UserRoot ".expo" }
+
+$DockerConfig = $env:DOCKER_CONFIG
+if (-not $DockerConfig) { $DockerConfig = Join-Path $UserRoot ".docker" }
+
+$VeklomHome = Join-Path $UserRoot ".veklom"
+$BackroomHome = Join-Path $VeklomHome "backroom"
+$MarketplaceHome = Join-Path $VeklomHome "marketplace"
+$TerminalHome = Join-Path $VeklomHome "terminal"
+
+$dirs = @(
+  $OpenClawHome,
+  $NpmGlobal,
+  $ExpoHome,
+  $DockerConfig,
+  $VeklomHome,
+  $BackroomHome,
+  $MarketplaceHome,
+  $TerminalHome
+)
+
+foreach ($d in $dirs) {
+  if (-not (Test-Path $d)) {
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+  }
+}
+
+# Copy only safe artifacts.
+Copy-Item ".\dist\terminal\*" $TerminalHome -Recurse -Force -ErrorAction SilentlyContinue
+Copy-Item ".\marketplace\catalog.json" $MarketplaceHome -Force -ErrorAction SilentlyContinue
+Copy-Item ".\agents\skills\*" (Join-Path $OpenClawHome "skills") -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host "Veklom local operator build finalized."
+```
+
+

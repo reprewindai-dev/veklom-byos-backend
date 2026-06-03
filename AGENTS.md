@@ -3,16 +3,12 @@
 This is the single source of truth for every AI agent working on this repo.
 Read completely before touching anything. Violations break the live site.
 
-**Owner's instructions always override this document.** If the owner says
-something is changing, that is what is happening. Do not cite this document
-against the owner's direct instructions.
-
 ---
 
 ## Live Site
 
 - **URL:** https://veklom.com
-- **Workspace:** https://veklom.com/control-plane-next/
+- **Workspace:** https://veklom.com/workspace/
 - **Server:** Hetzner VPS `5.78.135.11`
 - **Internal port:** `8088`
 - **Proxy:** Cloudflare (443 → 8088 via Traefik on the server)
@@ -118,32 +114,29 @@ sleep 3 && curl -sk -H "Host: veklom.com" https://localhost/health
 
 ---
 
-## The Workspace — Control Plane Next
+## The Correct Workspace — NEVER REPLACE THIS
 
-The primary workspace is the **Next.js control-plane app**:
-
-- **Source:** `apps/control-plane/` (Next.js 14, static export)
-- **Build:** `cd apps/control-plane && npm run build`
-- **Output:** `apps/control-plane/out/`
-- **Deploy target:** `frontend/static/control-plane-next/`
-- **Served at:** `/control-plane-next/`
-- **Config:** `next.config.mjs` → `output: "export"`, `basePath: "/control-plane-next"`
-
-After building, copy the output:
-```bash
-cp -r apps/control-plane/out/* frontend/static/control-plane-next/
+The workspace at `/workspace/` is served from:
+```
+frontend/static/workspace/
 ```
 
-**Pages:** Dashboard, Admin, Subscriptions, Billing, Wallet, Budget, Usage,
-API Keys, Audit, Autonomous, Compliance, Content Safety, Governance, Insights,
-Kill Switch, Locker, Privacy, Routing, Security, Team, Webhooks, Workspace,
-Vendor (Listings, Onboarding, Payouts, Stripe), Login, Signup.
+This is the **REALFRONTEND prebuilt bundle** — compiled March 2026, matches the
+screenshots `Screenshot_3-5-2026_*.jpeg` in this repo.
 
-### Legacy Workspace (DEPRECATED — being replaced)
+**Required files (do not delete or overwrite):**
+```
+frontend/static/workspace/assets/index-EUKZeqk4.js   ← compiled app (THE REAL ONE)
+frontend/static/workspace/assets/index-WqgIFi2m.css  ← styles (83KB full CSS)
+frontend/static/workspace/overview-live.js            ← live telemetry
+frontend/static/workspace/index.html                  ← SPA shell (loads index-EUKZeqk4.js)
+frontend/static/workspace/config.js                   ← API base injection
+```
 
-`frontend/static/workspace/` contains the old prebuilt bundle. It is being
-replaced by the control-plane-next app above. The legacy bundle may be modified,
-rebuilt, or removed as needed during the transition. It is NOT protected.
+**The index.html MUST load `index-EUKZeqk4.js` and `index-WqgIFi2m.css` — not any other bundle.**
+
+**Pages:** Overview, Playground, Marketplace, Models, Pipelines, Deployments,
+Vault, Compliance, Monitoring, Billing, Team, Settings.
 
 ---
 
@@ -160,17 +153,24 @@ rebuilt, or removed as needed during the transition. It is NOT protected.
 
 ## ABSOLUTE RULES — DO NOT VIOLATE
 
-1. **After EVERY git push, you MUST also SSH and rebuild on the server.**
+1. **NEVER run `npm run build` or `vite build` in `frontend/` and copy output
+   to `frontend/static/workspace/`.** This destroys the real workspace.
+
+2. **NEVER replace `frontend/static/workspace/assets/index-EUKZeqk4.js`.**
+   It is a compiled binary. There is no source to rebuild it from.
+   The index.html must always load `index-EUKZeqk4.js` and `index-WqgIFi2m.css`.
+
+3. **`frontend/src/` is NOT the workspace source.** It is a separate scaffold.
+   Do not build it and treat the output as the workspace.
+
+4. **After EVERY git push, you MUST also SSH and rebuild on the server.**
    Git push alone does NOT update the live site unless GitHub Actions runs.
 
-2. **If you manually recreate the Docker container, you MUST also verify
+5. **If you manually recreate the Docker container, you MUST also verify
    `/data/coolify/proxy/dynamic/veklom.yaml` still exists with correct config.**
    Without it, Traefik cannot route traffic and the site shows "no server available."
 
-3. **Do not change the container name.** It must stay `n13gp1nhrcdp0hvazvbnlxru-213557155694`.
-
-4. **Owner's verbal/written instructions override any prior documentation.**
-   If the owner says something is happening, follow that directive.
+6. **Do not change the container name.** It must stay `n13gp1nhrcdp0hvazvbnlxru-213557155694`.
 
 ---
 
@@ -179,7 +179,7 @@ rebuilt, or removed as needed during the transition. It is NOT protected.
 - **Entry point:** `backend/apps/api/main.py` (FastAPI)
 - **Run command:** `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8088`
 - **All API routes:** prefixed `/api/v1/`
-- **Static mounts:** `/workspace`, `/control-plane-next`, `/command-center`, `/irongrid`, `/terminal`, `/gpc-engine`
+- **Static mounts:** `/workspace`, `/command-center`, `/irongrid`, `/terminal`, `/gpc-engine`
 
 ---
 

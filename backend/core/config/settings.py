@@ -187,6 +187,7 @@ class Settings(BaseSettings):
     
     # Redis for webhook idempotency cache
     X402_TEST_PROOF_MODE: bool = False
+    FLASHBLOCKS_RPC_URL: str = "https://mainnet.base.org"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_ENABLED: bool = True
 

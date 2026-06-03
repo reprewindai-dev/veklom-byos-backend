@@ -18,6 +18,7 @@ import hashlib
 import hmac
 import os
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -67,18 +68,61 @@ VEKLOM_TREASURY_DEFAULT = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
 VEKLOM_USDC_ADDR  = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
 
 
-import re
-
 def is_valid_evm_address(addr: str) -> bool:
     return bool(re.match(r"^0x[a-fA-F0-9]{40}$", addr))
 
+_basename_cache = {}
+
+def resolve_basename(name: str) -> str:
+    name_lower = name.strip().lower()
+    if not (name_lower.endswith(".base.eth") or name_lower.endswith(".base")):
+        return ""
+        
+    if name_lower in _basename_cache:
+        return _basename_cache[name_lower]
+        
+    if settings.X402_TEST_PROOF_MODE and (name_lower == "veklom.base.eth" or name_lower == "veklom.base"):
+        return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+
+    label = name_lower.split(".")[0]
+    try:
+        from web3 import Web3
+        token_id = int.from_bytes(Web3.keccak(text=label), byteorder="big")
+        
+        contract_address = "0x03c4738ee98ae44591e1a4a4f3cab6641d95dd9a"
+        abi = [{
+            "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+            "name": "ownerOf",
+            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+            "stateMutability": "view",
+            "type": "function"
+        }]
+        
+        rpc_url = settings.FLASHBLOCKS_RPC_URL or "https://mainnet.base.org"
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        contract = w3.eth.contract(address=Web3.to_checksum_address(contract_address), abi=abi)
+        owner = contract.functions.ownerOf(token_id).call()
+        if owner and is_valid_evm_address(owner):
+            _basename_cache[name_lower] = owner
+            return owner
+    except Exception as e:
+        logger.warning(f"Basename resolution failed for {name}: {e}")
+        if name_lower == "veklom.base.eth" or name_lower == "veklom.base":
+            return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+        
+    return ""
+
 def get_treasury_address() -> str:
     raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
-    if not raw or raw == "0x0000000000000000000000000000000000000001" or not is_valid_evm_address(raw):
+    if not raw or raw == "0x0000000000000000000000000000000000000001":
         return ""
-    return raw
-
-VEKLOM_TREASURY = get_treasury_address()
+    if is_valid_evm_address(raw):
+        return raw
+    if raw.endswith(".base.eth") or raw.endswith(".base"):
+        resolved = resolve_basename(raw)
+        if resolved and is_valid_evm_address(resolved):
+            return resolved
+    return ""
 
 # In-memory free-trial counter: { ip_day_key → count }
 _free_usage: dict[str, int] = {}
@@ -133,7 +177,7 @@ async def create_and_persist_receipt(
         "network": "base",
         "chain_id": 8453,
         "payer": request.client.host if request.client else "unknown",
-        "pay_to": VEKLOM_TREASURY,
+        "pay_to": get_treasury_address(),
         "proof_hash": proof_hash,
         "tx_hash": tx_hash,
         "policy_decision": "passed",
@@ -179,14 +223,14 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
         "currency": "USDC",
         "network": "base",
         "chain_id": 8453,
-        "pay_to": VEKLOM_TREASURY,
+        "pay_to": get_treasury_address(),
         "route": path,
         "method": method,
         "expires_at": expires_at,
         "proof_header_name": "X-Payment-Proof",
         "payment_requirements": {
             "asset_contract": VEKLOM_USDC_ADDR,
-            "destination": VEKLOM_TREASURY,
+            "destination": get_treasury_address(),
             "minimum_amount_micro_usdc": int(route_config["price_usdc"] * 1_000_000)
         },
         "replay_protection": {
@@ -206,7 +250,7 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
         "X-Payment-Price-USDC": str(route_config["price_usdc"]),
         "X-Payment-Network": "base",
         "X-Payment-Asset": VEKLOM_USDC_ADDR,
-        "X-Payment-Address": VEKLOM_TREASURY,
+        "X-Payment-Address": get_treasury_address(),
         "X-Payment-Scheme": "x402",
         "X-Veklom-Upgrade": "https://veklom.com/pricing",
         "Access-Control-Allow-Origin": "*",
@@ -245,6 +289,56 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
         return False
 
     proof_str = proof.strip()
+
+    # B1. Base Commerce Payments Integration (Shopify-aligned)
+    if proof_str.startswith("xpay_"):
+        try:
+            from sqlalchemy import select
+            from backend.core.database.database import get_db_session
+            from backend.db.models.security import AuditLog
+
+            async with get_db_session() as db:
+                result = await db.execute(
+                    select(AuditLog).where(
+                        AuditLog.resource_type == "x402_payment",
+                        AuditLog.resource_id == proof_str
+                    )
+                )
+                log_entry = result.scalar_one_or_none()
+                if log_entry:
+                    details = log_entry.details or {}
+                    status = details.get("status")
+                    if status in ("authorized", "captured", "charged"):
+                        # Replay protection check
+                        redis_key = f"x402_tx:{proof_str}"
+                        if settings.APP_ENV == "production" and redis_client.is_fallback:
+                            request.state.x402_error = "replay_storage_unavailable"
+                            return False
+                        
+                        already_used = await redis_client.get(redis_key)
+                        if already_used:
+                            request.state.x402_error = "replay_detected"
+                            return False
+                        
+                        required_amount = route_config["price_usdc"]
+                        authorized_amount = details.get("amount", 0.0)
+                        if authorized_amount >= required_amount:
+                            await redis_client.set(redis_key, "used", ex=604800)
+                            logger.info(f"[x402] Multi-stage payment {proof_str} verified successfully!")
+                            return True
+                        else:
+                            request.state.x402_error = "insufficient_payment"
+                            return False
+                    else:
+                        request.state.x402_error = "invalid_transaction"
+                        return False
+        except Exception as exc:
+            logger.error(f"[x402] Error verifying multi-stage payment: {exc}")
+            request.state.x402_error = "replay_storage_unavailable"
+            return False
+
+        request.state.x402_error = "invalid_transaction"
+        return False
 
     # A. Test Proof Mode (Only active if enabled by environment settings and not production)
     if settings.X402_TEST_PROOF_MODE:
@@ -290,14 +384,16 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
         request.state.x402_error = "replay_detected"
         return False
 
-    # C. Mainnet JSON-RPC on Base
-    rpc_endpoints = [
+    # C. Mainnet JSON-RPC on Base (incorporating Flashblocks-aware RPC first)
+    rpc_endpoints = [settings.FLASHBLOCKS_RPC_URL] if getattr(settings, "FLASHBLOCKS_RPC_URL", "") else []
+    rpc_endpoints.extend([
         "https://mainnet.base.org",
         "https://base.llamarpc.com",
         "https://base-rpc.publicnode.com"
-    ]
+    ])
 
     tx_receipt = None
+    rpc_url_used = None
     async with httpx.AsyncClient(timeout=5.0) as client:
         for rpc_url in rpc_endpoints:
             try:
@@ -312,6 +408,7 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
                     data = res.json()
                     if "result" in data and data["result"] is not None:
                         tx_receipt = data["result"]
+                        rpc_url_used = rpc_url
                         break
             except Exception as e:
                 logger.warning(f"[x402] RPC check failed on {rpc_url}: {e}")
@@ -329,11 +426,42 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
         request.state.x402_error = "invalid_transaction"
         return False
 
+    # D. Flashblocks-aware required confirmations count set to 0
+    required_confirmations = 0
+    confirmations = 0
+    if tx_receipt.get("blockNumber") and rpc_url_used:
+        try:
+            tx_block = int(tx_receipt["blockNumber"], 16) if isinstance(tx_receipt["blockNumber"], str) else int(tx_receipt["blockNumber"])
+            # Fetch latest block from same RPC
+            latest_block = 0
+            async with httpx.AsyncClient(timeout=2.0) as block_client:
+                rpc_payload = {
+                    "jsonrpc": "2.0",
+                    "method": "eth_blockNumber",
+                    "params": [],
+                    "id": 2
+                }
+                res = await block_client.post(rpc_url_used, json=rpc_payload)
+                if res.status_code == 200:
+                    data = res.json()
+                    if "result" in data:
+                        latest_block = int(data["result"], 16) if isinstance(data["result"], str) else int(data["result"])
+            if latest_block >= tx_block:
+                confirmations = latest_block - tx_block
+        except Exception as block_err:
+            logger.warning(f"[x402] Failed to calculate confirmations: {block_err}")
+            confirmations = 0
+            
+    if confirmations < required_confirmations:
+        logger.warning(f"[x402] Insufficient confirmations: expected={required_confirmations}, found={confirmations}")
+        request.state.x402_error = "invalid_transaction"
+        return False
+
     # Parse transfer logs to verify destination and amount in USDC on Base
     usdc_contract = VEKLOM_USDC_ADDR.lower()
     transfer_event_sig = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
     expected_amount = int(route_config["price_usdc"] * 1_000_000)
-    treasury_addr = VEKLOM_TREASURY.lower().strip()
+    treasury_addr = get_treasury_address().lower().strip()
 
     logs = tx_receipt.get("logs", [])
     actual_amount = 0

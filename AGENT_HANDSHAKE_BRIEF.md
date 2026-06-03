@@ -204,3 +204,80 @@ The backend applies UACP policy gates, routes to the correct provider, returns g
 | CORS error in browser | Frontend domain not in `CORS_ORIGINS` | Add domain to Coolify env var, redeploy |
 | API routes 404 | Port 8088 not forwarded | Coolify must forward 80/443 → 8088 |
 | Empty AI responses | Provider key missing | Add `OPENAI_API_KEY` / `GEMINI_API_KEY` in Coolify env |
+
+***
+
+## 11. Landing page audience pills correction
+
+On the public homepage, the audience/persona pills must be:
+
+1. Teams
+2. Developers
+3. Agents
+4. Enterprise
+
+Do not use “Humans” as the landing page audience label.
+
+Use “Teams” instead.
+
+Reason:
+“Humans” sounds abstract and cold. “Teams” is clearer, more commercial, and better matches the product motion: workspace, collaboration, governance, monitoring, compliance, and shared execution.
+
+Important:
+Only replace the public landing page persona/audience label “Humans” with “Teams.”
+Do not remove technical uses of “human” where it is correct, such as:
+- human approval
+- human-in-the-loop
+- human/operator state
+- SEKED human state
+- human review gates
+
+### Homepage Structure
+
+Homepage audience pills:
+
+#### Teams
+- Default selected pill.
+- Shows Veklom as the governed AI workspace for real teams.
+- Focus: workspace, playground, team command center, monitoring wall, compliance wall, Govern UI, billing/reserve, marketplace, evidence.
+- CTA: Start Free Evaluation
+- Secondary CTA: Explore Workspace
+
+#### Developers
+- Shows Veklom as the governed build/deploy layer.
+- Focus: APIs, terminal, pipelines, GitHub/repo risk gates, model routing, x402, MCP, CLI, deploy previews.
+- CTA: Open Developer Terminal
+- Secondary CTA: View API / Docs
+
+#### Agents
+- Shows Veklom as the runtime and arbitration layer for governed agents.
+- Focus: UACP4 Agent Artibus, ArbiterOS, SEKED, SAIQ, safe execution, policy gates, approvals, evidence, spend controls.
+- CTA: See Agent Runtime
+- Secondary CTA: View Governance Flow
+
+#### Enterprise
+- Shows Veklom as the sovereign governance and compliance platform.
+- Focus: UACP6, consent catalogs, audit chain, regulated evidence, BYOS/private deployment, SAML/SCIM, model registry, compliance exports.
+- CTA: Request Regulated Access
+- Secondary CTA: View Trust Layer
+
+### Copy Direction
+
+#### Teams pill copy
+- **Headline**: Give your team a governed AI workspace.
+- **Body**: Use the Playground, Marketplace, Pipelines, Monitoring Wall, Compliance Wall, Govern UI, and Terminal in one control plane. Explore everything in Free, then unlock production execution when your team is ready.
+- **Feature chips**:
+  - Workspace
+  - Playground
+  - Team Command Center
+  - Monitoring Wall
+  - Compliance Wall
+  - Govern UI
+  - Marketplace
+  - Evidence
+
+### Important Distinction
+- **Public landing “Team Command Center”** = tenant-facing workspace overview/control surface.
+- **Backroom “Command Center”** = founder/operator-only internal control room.
+- Do not expose founder-only backroom controls to tenants just because the homepage says Command Center.
+

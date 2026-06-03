@@ -727,6 +727,14 @@ def _mount_static():
     # Do NOT mount landing directory - it will be served by catch-all route
 
 
+@app.get("/workspace")
+@app.get("/workspace/")
+async def redirect_workspace_root(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"/control-plane-next/{query_str}", status_code=307)
+
+
 _mount_static()
 
 
@@ -1203,14 +1211,6 @@ async def _serve_frontend(request):
     elif static_index.exists():
         return FileResponse(str(static_index))
     return HTMLResponse(content=_fallback_html(), status_code=200)
-
-
-@app.get("/workspace")
-@app.get("/workspace/")
-async def redirect_workspace_root(request: Request):
-    from fastapi.responses import RedirectResponse
-    query_str = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"/control-plane-next/{query_str}", status_code=307)
 
 
 @app.get("/terminal")

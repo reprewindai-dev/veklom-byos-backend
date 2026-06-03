@@ -108,16 +108,14 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
             registered = sorted(Base.metadata.tables.keys())
             print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")
-            # Verify a subset that every endpoint depends on.  If any are
-            # missing AFTER create_all, the DB is misconfigured and we want
-            # the log to scream.
-            from sqlalchemy import text
+            from sqlalchemy import inspect
             critical = ("users", "execution_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
-            check = await conn.execute(text(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema='public' AND table_name = ANY(:names)"
-            ), {"names": list(critical)})
-            present = {r[0] for r in check}
+            
+            def get_present_tables(sync_conn):
+                return inspect(sync_conn).get_table_names()
+            
+            present_tables = await conn.run_sync(get_present_tables)
+            present = set(present_tables)
             missing = [t for t in critical if t not in present]
             if missing:
                 print(f"[startup] db: WARNING — critical tables missing after create_all: {missing}")

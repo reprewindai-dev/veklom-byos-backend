@@ -81,37 +81,36 @@ async def test_playground_openai_fallback(mock_user):
         db.add_all([ws, usr, wt])
         await db.commit()
 
-    client = TestClient(app)
+    with TestClient(app) as client:
+        # Mock auth dependency
+        app.dependency_overrides[get_current_user] = lambda: mock_user
 
-    # Mock auth dependency
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+        # Generate token
+        token = create_access_token(data={"sub": mock_user.id})
+        headers = {"Authorization": f"Bearer {token}"}
 
-    # Generate token
-    token = create_access_token(data={"sub": mock_user.id})
-    headers = {"Authorization": f"Bearer {token}"}
+        # Force OpenAI key to be absent in settings
+        with patch("backend.core.config.settings.settings.OPENAI_API_KEY", ""):
+            # Request completion for gpt-4o (which requires OpenAI API key)
+            payload = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": "How's the weather?"}]
+            }
+            
+            # Test completion route
+            response = client.post("/api/v1/ai/complete", json=payload, headers=headers)
+            assert response.status_code == 200
+            data = response.json()
+            assert "[Sovereign Fallback - OpenAI API Key Not Configured. Using Local Enclave]" in data["response_text"]
+            assert data["provider"] == "sovereign"
+            assert data["model"] == "Veklom-Llama3-Sovereign-v1"
 
-    # Force OpenAI key to be absent in settings
-    with patch("backend.core.config.settings.settings.OPENAI_API_KEY", ""):
-        # Request completion for gpt-4o (which requires OpenAI API key)
-        payload = {
-            "model": "gpt-4o",
-            "messages": [{"role": "user", "content": "How's the weather?"}]
-        }
-        
-        # Test completion route
-        response = client.post("/api/v1/ai/complete", json=payload, headers=headers)
-        assert response.status_code == 200
-        data = response.json()
-        assert "[Sovereign Fallback - OpenAI API Key Not Configured. Using Local Enclave]" in data["response_text"]
-        assert data["provider"] == "sovereign"
-        assert data["model"] == "Veklom-Llama3-Sovereign-v1"
-
-        # Test inference route
-        response_inf = client.post("/api/v1/ai/inference", json=payload, headers=headers)
-        assert response_inf.status_code == 200
-        data_inf = response_inf.json()
-        assert "[Sovereign Fallback - OpenAI API Key Not Configured. Using Local Enclave]" in data_inf["response_text"]
-        assert data_inf["provider"] == "sovereign"
-        assert data_inf["model"] == "Veklom-Llama3-Sovereign-v1"
+            # Test inference route
+            response_inf = client.post("/api/v1/ai/inference", json=payload, headers=headers)
+            assert response_inf.status_code == 200
+            data_inf = response_inf.json()
+            assert "[Sovereign Fallback - OpenAI API Key Not Configured. Using Local Enclave]" in data_inf["response_text"]
+            assert data_inf["provider"] == "sovereign"
+            assert data_inf["model"] == "Veklom-Llama3-Sovereign-v1"
 
     app.dependency_overrides.clear()

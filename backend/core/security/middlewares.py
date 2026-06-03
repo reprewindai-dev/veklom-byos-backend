@@ -41,6 +41,9 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/runtime/jobs", "/api/v1/evidence/export", "/api/v1/compliance/report",
             "/api/v1/marketplace/acquire", "/api/v1/audit/verify", "/api/v1/webhook", "/api/v1/x402",
             "/api/v1/ai/complete", "/api/v1/playground/inference", "/api/v1/playground/sessions",
+            "/api/v1/playground/tools", "/api/v1/playground/prompts",
+            "/api/v1/agentic_commerce/product_feed", "/api/v1/agentic_commerce/feed.csv",
+            "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback"
             "/api/v1/playground/tools", "/api/v1/playground/prompts", "/api/v1/connectors/fax",
             "/api/v1/contact", "/api/v1/feedback"
             "/api/v1/playground/tools", "/api/v1/playground/prompts",

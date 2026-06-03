@@ -483,6 +483,7 @@ async def internal_error(request: Request, exc):
 from backend.apps.api.routers import (
     admin,
     agents,
+    agentic_commerce,
     ai,
     auth,
     evaluations,
@@ -574,6 +575,9 @@ app.include_router(monitoring.router, prefix="/api/v1")
 
 # Marketplace, vendors, listings, plugins
 app.include_router(marketplace.router, prefix="/api/v1")
+
+# Agentic Commerce (ACP/ACS) — sell every revenue rail through AI agents
+app.include_router(agentic_commerce.router, prefix="/api/v1")
 
 # Pipelines, deployments, routing, autonomous, edge/canary
 app.include_router(pipelines.router, prefix="/api/v1")

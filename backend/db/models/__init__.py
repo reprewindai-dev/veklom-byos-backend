@@ -27,6 +27,7 @@ from backend.db.models.internal_operators import (
 )
 from backend.db.models.telemetry import AgentCall
 from backend.db.models.run import VeklomRun
+from backend.db.models.agentic_commerce import AgenticCheckoutSession
 
 __all__ = [
     # existing
@@ -39,6 +40,7 @@ __all__ = [
     "AssetReview",
     "AgentCall",
     "VeklomRun",
+    "AgenticCheckoutSession",
     "MarketplaceListing", "Pipeline", "PipelineRun", "Deployment", "Vendor",
     # UACP V3 institutional ownership
     "Account", "AgentUser", "Agent", "AgentSkill",

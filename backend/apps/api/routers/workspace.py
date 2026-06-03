@@ -38,6 +38,35 @@ async def workspace_status_data(user=Depends(get_current_user)):
     }
 
 
+from pydantic import BaseModel
+
+class EntitlementCheckRequest(BaseModel):
+    action: str
+
+
+@router.get("/entitlements/check")
+async def check_workspace_entitlement(
+    action: str,
+    user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Check if the user/workspace is entitled to execute a given action."""
+    from backend.core.security.entitlements import get_entitlement_decision
+    return await get_entitlement_decision(user, action, db)
+
+
+@router.post("/entitlements/check")
+async def check_workspace_entitlement_post(
+    body: EntitlementCheckRequest,
+    user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Check if the user/workspace is entitled to execute a given action via POST."""
+    from backend.core.security.entitlements import get_entitlement_decision
+    return await get_entitlement_decision(user, body.action, db)
+
+
+
 # --- Search ---
 @router.get("/search")
 async def workspace_search(q: str = "", user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -1685,3 +1714,62 @@ def _spend_breakdown(total: float) -> list[dict]:
         }
         for label, percent in categories
     ]
+
+
+# ---------------------------------------------------------------------------
+# Onboarding — vertical selection
+# ---------------------------------------------------------------------------
+ALLOWED_VERTICALS = [
+    "healthcare_hospital",
+    "finance_banking",
+    "insurance",
+    "enterprise",
+    "compliance_governance",
+    "developer_ai",
+]
+
+
+@router.post("/onboarding/vertical")
+async def set_onboarding_vertical(
+    body: dict,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Select the industry vertical during onboarding."""
+    vertical = body.get("vertical")
+    if vertical not in ALLOWED_VERTICALS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid vertical '{vertical}'. Must be one of: {ALLOWED_VERTICALS}",
+        )
+
+    workspace_id = user.workspace_id or "default"
+    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    workspace.industry = vertical
+    await db.commit()
+
+    return {
+        "status": "vertical_selected",
+        "vertical": vertical,
+        "redirect": "/control-plane-next/",
+    }
+
+
+@router.get("/onboarding/vertical")
+async def get_onboarding_vertical(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return current vertical and available options."""
+    workspace_id = user.workspace_id or "default"
+    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result.scalar_one_or_none()
+
+    return {
+        "vertical": workspace.industry if workspace else None,
+        "verticals_available": ALLOWED_VERTICALS,
+    }

@@ -103,6 +103,7 @@ def main() -> int:
         runner.check(client, "pricing", "GET", "/api/v1/pricing", [200], json_required=True)
 
         runner.check(client, "workspace_page", "GET", "/workspace/", [200])
+        runner.check(client, "control_plane_page", "GET", "/control-plane-next/", [200])
         runner.check(client, "terminal_page", "GET", "/terminal", [200])
         runner.check(client, "operator_center", "GET", "/operator-center/", [200, 401, 404])
         runner.check(client, "gpc_engine", "GET", "/gpc-engine/", [200, 403, 404])

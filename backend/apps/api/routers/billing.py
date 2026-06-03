@@ -20,17 +20,21 @@ from backend.db.models.security import KillSwitchState
 router = APIRouter(tags=["Billing"])
 
 
-# Plan catalog — matches the UI (community/growth/sovereign/enterprise)
+# Plan catalog — matches the landing page at veklom.com (source of truth)
+# Frontend tier keys: free / starter / pro / sovereign / enterprise
 PLAN_AMOUNTS = {
-    # New UI plan names
-    "community": {"amount": 0, "monthly": 0, "name": "Veklom Community", "description": "Free tier — 15 governed runs"},
-    "growth": {"amount": 29900, "monthly": 29900, "name": "Veklom Growth", "description": "$299/mo — 5 deployments, Routing controls, Audit retention 30d"},
-    "sovereign": {"amount": 79900, "monthly": 79900, "name": "Veklom Sovereign", "description": "$799/mo — Unlimited deployments, HIPAA/SOC2 packs, Audit retention 1yr"},
-    "enterprise": {"amount": 0, "monthly": 0, "name": "Veklom Enterprise", "description": "Custom pricing — SAML/SCIM/SSO, Custom regions, Procurement-ready"},
-    # Legacy plan names (keep for backward compat)
-    "founding": {"amount": 39500, "monthly": 39500, "name": "Veklom Founding Activation + Reserve", "description": "Founding activation"},
-    "standard": {"amount": 79500, "monthly": 79500, "name": "Veklom Standard Activation + Reserve", "description": "Standard activation"},
-    "regulated": {"amount": 250000, "monthly": 250000, "name": "Veklom Regulated Activation + Reserve", "description": "Regulated activation"},
+    # Primary tier keys (match frontend + landing page)
+    "free":       {"amount": 0,      "monthly": 0,      "name": "Free Evaluation",    "description": "Free tier — 15 governed runs, no card required"},
+    "starter":    {"amount": 39500,  "monthly": 0,      "name": "Founding",           "description": "$395 one-time activation + $150 min reserve"},
+    "pro":        {"amount": 79500,  "monthly": 0,      "name": "Standard",           "description": "$795 one-time activation + $300 min reserve"},
+    "sovereign":  {"amount": 250000, "monthly": 0,      "name": "Regulated / Enterprise", "description": "$2,500+ private terms + $2,500 min reserve"},
+    "enterprise": {"amount": 0,      "monthly": 0,      "name": "Enterprise Custom",  "description": "Custom pricing — SAML/SCIM/SSO, Custom regions, Procurement-ready"},
+    # Legacy aliases (backward compat — keep for existing DB records)
+    "community":  {"amount": 0,      "monthly": 0,      "name": "Veklom Community",   "description": "Free tier — 15 governed runs"},
+    "growth":     {"amount": 29900,  "monthly": 29900,  "name": "Veklom Growth",      "description": "$299/mo — 5 deployments, Routing controls, Audit retention 30d"},
+    "founding":   {"amount": 39500,  "monthly": 39500,  "name": "Veklom Founding Activation + Reserve", "description": "Founding activation"},
+    "standard":   {"amount": 79500,  "monthly": 79500,  "name": "Veklom Standard Activation + Reserve", "description": "Standard activation"},
+    "regulated":  {"amount": 250000, "monthly": 250000, "name": "Veklom Regulated Activation + Reserve", "description": "Regulated activation"},
 }
 
 
@@ -148,36 +152,242 @@ async def wallet_usage_stats(user=Depends(get_current_user)):
 
 
 # --- Subscriptions ---
+async def get_milestone_pricing(db: AsyncSession) -> dict:
+    from backend.db.models.workspace import Workspace
+    try:
+        from sqlalchemy import func
+        ws_count = await db.scalar(select(func.count(Workspace.id)).where(Workspace.is_active == True)) or 0
+    except Exception:
+        ws_count = 0
+
+    if ws_count <= 50:
+        return {
+            "level": 1,
+            "starter_price": 395,
+            "starter_reserve": 150,
+            "starter_run": 0.25,
+            "starter_run_compare": 0.75,
+            "starter_run_compile": 1.50,
+            "starter_run_pipeline": 0.25,
+            "starter_run_endpoint": 0.50,
+            "pro_price": 795,
+            "pro_reserve": 300,
+            "pro_run": 0.40,
+            "pro_run_compare": 1.20,
+            "pro_run_compile": 2.00,
+            "pro_run_pipeline": 0.40,
+            "pro_run_endpoint": 0.80,
+        }
+    elif ws_count <= 250:
+        return {
+            "level": 2,
+            "starter_price": 495,
+            "starter_reserve": 150,
+            "starter_run": 0.35,
+            "starter_run_compare": 1.05,
+            "starter_run_compile": 2.10,
+            "starter_run_pipeline": 0.35,
+            "starter_run_endpoint": 0.70,
+            "pro_price": 995,
+            "pro_reserve": 300,
+            "pro_run": 0.55,
+            "pro_run_compare": 1.65,
+            "pro_run_compile": 2.75,
+            "pro_run_pipeline": 0.55,
+            "pro_run_endpoint": 1.10,
+        }
+    else:
+        return {
+            "level": 3,
+            "starter_price": 595,
+            "starter_reserve": 150,
+            "starter_run": 0.50,
+            "starter_run_compare": 1.50,
+            "starter_run_compile": 3.00,
+            "starter_run_pipeline": 0.50,
+            "starter_run_endpoint": 1.00,
+            "pro_price": 1195,
+            "pro_reserve": 300,
+            "pro_run": 0.75,
+            "pro_run_compare": 2.25,
+            "pro_run_compile": 3.75,
+            "pro_run_pipeline": 0.75,
+            "pro_run_endpoint": 1.50,
+        }
+
+
 @router.get("/subscriptions/plans")
-async def subscription_plans():
-    # Tailored to match Veklom executive audit checklist requirements
+async def subscription_plans(db: AsyncSession = Depends(get_db)):
+    """Return plan catalog matching veklom.com landing page pricing (source of truth).
+
+    Plan IDs map to the frontend tier constants:
+      free → Free, starter → Starter, pro → Pro,
+      sovereign → Sovereign, enterprise → Enterprise.
+
+    Pricing model: one-time activation + minimum operating reserve.
+    Per-call costs deducted from reserve (Playground $0.25, Compare $0.75, etc.).
+    """
+    rates = await get_milestone_pricing(db)
     return [
-        {"id": "team", "name": "Team", "price": "12000/mo", "features": ["Full governed execution", "Standard limits"]},
-        {"id": "business", "name": "Business", "price": "35000/mo", "features": ["Priority Support", "High throughput"]},
-        {"id": "enterprise", "name": "Enterprise", "price": "custom", "features": ["Dedicated enclave", "SLA guarantees"]},
+        {
+            "id": "free",
+            "plan_id": "free",
+            "tier": "free",
+            "name": "Free Evaluation",
+            "price": 0,
+            "price_label": "$0",
+            "period": "No card required",
+            "features": [
+                "15 governed Playground runs",
+                "3 compare runs",
+                "20 policy tests",
+                "2 watermarked exports",
+                "BYOK provider testing",
+                "Tools browsing",
+            ],
+            "bullets": [
+                "15 governed Playground runs",
+                "3 compare runs",
+                "20 policy tests",
+                "2 watermarked exports",
+                "BYOK provider testing",
+                "Tools browsing",
+            ],
+        },
+        {
+            "id": "starter",
+            "plan_id": "starter",
+            "tier": "starter",
+            "name": "Founding",
+            "price": rates["starter_price"],
+            "price_label": f"${rates['starter_price']}",
+            "period": f"One-time activation + ${rates['starter_reserve']} min reserve",
+            "features": [
+                f"Playground run — ${rates['starter_run']:.2f}",
+                f"Compare run — ${rates['starter_run_compare']:.2f}",
+                f"UACP compile — ${rates['starter_run_compile']:.2f}",
+                f"Pipeline test — ${rates['starter_run_pipeline']:.2f}",
+                f"Endpoint test — ${rates['starter_run_endpoint']:.2f}",
+                "BYOK Gov Calls — $6/1,000",
+                "Managed Gov Calls — $12/1,000",
+            ],
+            "bullets": [
+                f"Playground run — ${rates['starter_run']:.2f}",
+                f"Compare run — ${rates['starter_run_compare']:.2f}",
+                f"UACP compile — ${rates['starter_run_compile']:.2f}",
+                f"Pipeline test — ${rates['starter_run_pipeline']:.2f}",
+                f"Endpoint test — ${rates['starter_run_endpoint']:.2f}",
+                "BYOK Gov Calls — $6/1,000",
+                "Managed Gov Calls — $12/1,000",
+            ],
+        },
+        {
+            "id": "pro",
+            "plan_id": "pro",
+            "tier": "pro",
+            "name": "Standard",
+            "price": rates["pro_price"],
+            "price_label": f"${rates['pro_price']}",
+            "period": f"One-time activation + ${rates['pro_reserve']} min reserve",
+            "features": [
+                f"Playground run — ${rates['pro_run']:.2f}",
+                f"Compare run — ${rates['pro_run_compare']:.2f}",
+                f"UACP compile — ${rates['pro_run_compile']:.2f}",
+                f"Pipeline test — ${rates['pro_run_pipeline']:.2f}",
+                f"Endpoint test — ${rates['pro_run_endpoint']:.2f}",
+                "BYOK Gov Calls — $8/1,000",
+                "Managed Gov Calls — $16/1,000",
+            ],
+            "bullets": [
+                f"Playground run — ${rates['pro_run']:.2f}",
+                f"Compare run — ${rates['pro_run_compare']:.2f}",
+                f"UACP compile — ${rates['pro_run_compile']:.2f}",
+                f"Pipeline test — ${rates['pro_run_pipeline']:.2f}",
+                f"Endpoint test — ${rates['pro_run_endpoint']:.2f}",
+                "BYOK Gov Calls — $8/1,000",
+                "Managed Gov Calls — $16/1,000",
+            ],
+        },
+        {
+            "id": "sovereign",
+            "plan_id": "sovereign",
+            "tier": "sovereign",
+            "name": "Regulated / Enterprise",
+            "price": 2500,
+            "price_label": "$2,500+",
+            "period": "Private terms + $2,500 min reserve",
+            "features": [
+                "BYOK Gov Calls — $10/1,000",
+                "Managed Gov Calls — $20/1,000",
+                "Private deployment",
+                "Procurement & security review",
+                "Custom SLA",
+            ],
+            "bullets": [
+                "BYOK Gov Calls — $10/1,000",
+                "Managed Gov Calls — $20/1,000",
+                "Private deployment",
+                "Procurement & security review",
+                "Custom SLA",
+            ],
+        },
     ]
 
 
+
 @router.get("/subscriptions/current")
-async def current_subscription(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Return the real active subscription from the DB, or an honest empty state."""
-    ws_id = user.workspace_id or ""
-    sub = (await db.execute(
-        select(Subscription)
-        .where(
-            Subscription.workspace_id == ws_id,
-            Subscription.status.in_(["active", "trialing"]),
-        )
-        .order_by(Subscription.created_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-    if sub:
-        return {
-            "plan": sub.plan,
-            "status": sub.status,
-            "current_period_end": sub.current_period_end.isoformat() if getattr(sub, "current_period_end", None) else None,
-            "stripe_subscription_id": getattr(sub, "stripe_subscription_id", None),
-        }
+async def current_subscription(request: Request, db: AsyncSession = Depends(get_db)):
+    """Return the real active subscription from the DB, or an honest empty state.
+    Bypasses 401 to prevent frontend SWR infinite retry loops on unauthenticated/loading state.
+    """
+    from backend.core.security.auth import verify_token
+    from backend.db.models.user import User
+
+    token = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.cookies.get("access_token") or request.cookies.get("token")
+
+    user = None
+    if token:
+        try:
+            payload = verify_token(token, enforce_replay=False)
+            user_id = payload.get("sub")
+            if user_id:
+                result = await db.execute(select(User).where(User.id == user_id))
+                user = result.scalar_one_or_none()
+        except Exception:
+            pass
+
+    if user:
+        ws_id = user.workspace_id or ""
+        sub = (await db.execute(
+            select(Subscription)
+            .where(
+                Subscription.workspace_id == ws_id,
+                Subscription.status.in_(["active", "trialing"]),
+            )
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if sub:
+            plan_id = (sub.plan or "").lower()
+            normalization = {
+                "community": "free",
+                "founding": "starter",
+                "standard": "pro",
+                "regulated": "sovereign",
+                "enterprise": "enterprise"
+            }
+            normalized_plan = normalization.get(plan_id, plan_id)
+            return {
+                "plan": normalized_plan,
+                "status": sub.status,
+                "current_period_end": sub.current_period_end.isoformat() if getattr(sub, "current_period_end", None) else None,
+                "stripe_subscription_id": getattr(sub, "stripe_subscription_id", None),
+            }
     return {
         "plan": "free",
         "status": "none",

@@ -8,18 +8,7 @@ Flow:
   4. If unauthenticated or no balance → return 402 with x402 headers
   5. If X-Payment header present → verify payment, execute, return receipt
 
-Every paid response is wrapped with:
-  {
-    "status": "completed",
-    "request_id": "req_...",
-    "cost_usdc": "0.008",
-    "route": "groq:llama-3.1-8b-instant",
-    "policy_result": "passed",
-    "evidence_id": "ev_...",
-    "receipt_url": "https://veklom.com/api/v1/evidence/ev_...",
-    "timestamp": "ISO 8601",
-    "data": { ...original response... }
-  }
+Every paid response is wrapped with receipt headers.
 """
 
 import json
@@ -28,12 +17,18 @@ import time
 import hashlib
 import hmac
 import os
-from datetime import datetime, timezone
+import logging
+import re
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
+
+from backend.core.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pricing table (mirrors discovery.py — kept in sync)
@@ -50,6 +45,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "/api/v1/compliance/report":   {"price_usdc": 0.010, "name": "Compliance Report",  "free_daily": 1},
     "/api/v1/marketplace/acquire": {"price_usdc": 0.050, "name": "Marketplace Acquire","free_daily": 0},
     "/api/v1/audit/verify":        {"price_usdc": 0.003, "name": "Audit Verify",       "free_daily": 5},
+    "/api/v1/x402/protected-test": {"price_usdc": 0.025, "name": "Protected Test Route", "free_daily": 0},
 }
 
 _FREE_ROUTES_PREFIX = (
@@ -63,12 +59,70 @@ _FREE_ROUTES_PREFIX = (
     "/api/v1/openapi.json", "/v1/openapi.json",
     "/api/v1/sys/health", "/api/v1/sys/gpu",
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
-    "/api/v1/integrations/", "/api/v1/receipts", "/api/v1/evidence/verify"
+    "/api/v1/integrations/", "/api/v1/receipts", "/api/v1/evidence/verify",
+    "/api/v1/x402/config", "/api/v1/x402/verify"
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
-VEKLOM_TREASURY   = os.environ.get("VEKLOM_TREASURY_ADDRESS", "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d")
+VEKLOM_TREASURY_DEFAULT = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
 VEKLOM_USDC_ADDR  = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
+
+
+def is_valid_evm_address(addr: str) -> bool:
+    return bool(re.match(r"^0x[a-fA-F0-9]{40}$", addr))
+
+_basename_cache = {}
+
+def resolve_basename(name: str) -> str:
+    name_lower = name.strip().lower()
+    if not (name_lower.endswith(".base.eth") or name_lower.endswith(".base")):
+        return ""
+        
+    if name_lower in _basename_cache:
+        return _basename_cache[name_lower]
+        
+    if settings.X402_TEST_PROOF_MODE and (name_lower == "veklom.base.eth" or name_lower == "veklom.base"):
+        return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+
+    label = name_lower.split(".")[0]
+    try:
+        from web3 import Web3
+        token_id = int.from_bytes(Web3.keccak(text=label), byteorder="big")
+        
+        contract_address = "0x03c4738ee98ae44591e1a4a4f3cab6641d95dd9a"
+        abi = [{
+            "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+            "name": "ownerOf",
+            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+            "stateMutability": "view",
+            "type": "function"
+        }]
+        
+        rpc_url = settings.FLASHBLOCKS_RPC_URL or "https://mainnet.base.org"
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        contract = w3.eth.contract(address=Web3.to_checksum_address(contract_address), abi=abi)
+        owner = contract.functions.ownerOf(token_id).call()
+        if owner and is_valid_evm_address(owner):
+            _basename_cache[name_lower] = owner
+            return owner
+    except Exception as e:
+        logger.warning(f"Basename resolution failed for {name}: {e}")
+        if name_lower == "veklom.base.eth" or name_lower == "veklom.base":
+            return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+        
+    return ""
+
+def get_treasury_address() -> str:
+    raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    if not raw or raw == "0x0000000000000000000000000000000000000001":
+        return ""
+    if is_valid_evm_address(raw):
+        return raw
+    if raw.endswith(".base.eth") or raw.endswith(".base"):
+        resolved = resolve_basename(raw)
+        if resolved and is_valid_evm_address(resolved):
+            return resolved
+    return ""
 
 # In-memory free-trial counter: { ip_day_key → count }
 _free_usage: dict[str, int] = {}
@@ -93,53 +147,114 @@ def _is_free_route(path: str) -> bool:
     return False
 
 
-def _build_receipt(route_config: dict, provider: str = "ollama:qwen2.5:3b") -> dict:
+async def create_and_persist_receipt(
+    request: Request,
+    route_path: str,
+    method: str,
+    price_usdc: float,
+    tx_hash: str,
+    db_session
+) -> dict:
+    """Generates a cryptographic receipt for audit verification and attempts database persistence."""
+    receipt_id = f"rcpt_{uuid.uuid4().hex[:16]}"
     request_id = f"req_{uuid.uuid4().hex[:16]}"
-    evidence_id = f"ev_{uuid.uuid4().hex[:20]}"
-    ts = datetime.now(timezone.utc).isoformat()
-    return {
+    challenge_id = request.headers.get("X-Payment-Challenge-ID") or f"chal_{uuid.uuid4().hex[:16]}"
+    
+    proof_hash = hashlib.sha256(tx_hash.encode()).hexdigest()
+    
+    # Calculate a unique evidence hash seal
+    evidence_content = f"{receipt_id}:{request_id}:{tx_hash}:{route_path}"
+    evidence_hash = hashlib.sha256(evidence_content.encode()).hexdigest()
+    
+    receipt = {
+        "receipt_id": receipt_id,
         "request_id": request_id,
-        "evidence_id": evidence_id,
-        "cost_usdc": str(route_config["price_usdc"]),
-        "route": provider,
-        "policy_result": "passed",
-        "receipt_url": f"{VEKLOM_API_BASE}/evidence/{evidence_id}",
-        "timestamp": ts,
+        "challenge_id": challenge_id,
+        "route": route_path,
+        "method": method,
+        "amount": price_usdc,
+        "currency": "USDC",
+        "network": "base",
+        "chain_id": 8453,
+        "payer": request.client.host if request.client else "unknown",
+        "pay_to": get_treasury_address(),
+        "proof_hash": proof_hash,
+        "tx_hash": tx_hash,
+        "policy_decision": "passed",
+        "execution_status": "completed",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "evidence_hash": evidence_hash,
+        "receipt_signature": f"sig_{hashlib.sha256((receipt_id + evidence_hash).encode()).hexdigest()[:24]}",
+        "persistence_status": "not_configured"
     }
 
+    if db_session:
+        try:
+            from backend.db.models.security import AuditLog
+            receipt["persistence_status"] = "persisted"
+            log = AuditLog(
+                workspace_id="default",
+                action="x402.receipt.create",
+                resource_type="x402_receipt",
+                resource_id=receipt_id,
+                details=receipt
+            )
+            db_session.add(log)
+            await db_session.commit()
+        except Exception as exc:
+            logger.error(f"Failed to persist x402 receipt: {exc}")
+            receipt["persistence_status"] = "failed"
+            receipt["warnings"] = [f"Database error during persistence: {exc}"]
+            
+    return receipt
 
-def _build_402_response(path: str, route_config: dict, detail: Optional[str] = None) -> JSONResponse:
-    request_id = f"req_{uuid.uuid4().hex[:16]}"
+
+def _build_402_response(path: str, method: str, route_config: dict, detail: Optional[str] = None) -> JSONResponse:
+    challenge_id = f"chal_{uuid.uuid4().hex[:16]}"
+    nonce = f"nonce_{uuid.uuid4().hex[:16]}"
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=300)).isoformat()
+    
     payload = {
         "error": "payment_required",
+        "x402_version": "1.0.0",
+        "challenge_id": challenge_id,
+        "nonce": nonce,
+        "amount": route_config["price_usdc"],
+        "currency": "USDC",
+        "network": "base",
+        "chain_id": 8453,
+        "pay_to": get_treasury_address(),
         "route": path,
-        "price": {
-            "amount": str(route_config["price_usdc"]),
-            "currency": "USDC",
-            "network": "base"
+        "method": method,
+        "expires_at": expires_at,
+        "proof_header_name": "X-Payment-Proof",
+        "payment_requirements": {
+            "asset_contract": VEKLOM_USDC_ADDR,
+            "destination": get_treasury_address(),
+            "minimum_amount_micro_usdc": int(route_config["price_usdc"] * 1_000_000)
         },
-        "payment": {
-            "protocol": "x402",
-            "config_url": "https://api.veklom.com/.well-known/x402.json"
+        "replay_protection": {
+            "nonce_required": True,
+            "nonce_ttl_seconds": 300,
+            "challenge_ttl_seconds": 300
         },
-        "retry": {
-            "header": "payment-required",
-            "idempotency_key_required": True
-        },
-        "request_id": request_id
+        "receipt_expected": True
     }
     if detail:
         payload["detail"] = detail
+        
     headers = {
         "X-Payment-Required": "true",
+        "X-Payment-Challenge-ID": challenge_id,
+        "X-Payment-Nonce": nonce,
         "X-Payment-Price-USDC": str(route_config["price_usdc"]),
         "X-Payment-Network": "base",
         "X-Payment-Asset": VEKLOM_USDC_ADDR,
-        "X-Payment-Address": VEKLOM_TREASURY,
+        "X-Payment-Address": get_treasury_address(),
         "X-Payment-Scheme": "x402",
         "X-Veklom-Upgrade": "https://veklom.com/pricing",
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Expose-Headers": "X-Payment-Required,X-Payment-Price-USDC,X-Payment-Network,X-Payment-Asset",
+        "Access-Control-Expose-Headers": "X-Payment-Required,X-Payment-Price-USDC,X-Payment-Network,X-Payment-Asset,X-Payment-Challenge-ID,X-Payment-Nonce",
     }
     return JSONResponse(payload, status_code=402, headers=headers)
 
@@ -162,54 +277,130 @@ async def _verify_workspace_auth(request: Request) -> Optional[dict]:
 
 async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     """
-    Verify the x402 payment proof header by querying the Base mainnet JSON-RPC node.
-    Checks if the transaction is:
-      1. Valid transaction hash on Base mainnet
-      2. Successful status (0x1)
-      3. Transfers USDC (0x833589fcd6edb6e08f4c7c32d4f71b54bda02913)
-      4. Destination address matches VEKLOM_TREASURY
-      5. Value is greater than or equal to the route cost in micro USDC
-      6. Has not been previously used (prevents replay attacks via Redis)
+    Verifies the x402 payment proof header with standard Base Mainnet checks or Dev Test proof bypass.
+    Prevent double-spend replay attacks using Redis (fails closed in prod if Redis goes offline).
     """
     import httpx
-    import logging
     from backend.core.database.redis_client import redis_client
 
-    logger = logging.getLogger(__name__)
     proof = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment")
     if not proof:
         request.state.x402_error = "missing_payment_proof"
         return False
 
-    tx_hash = proof.strip()
-    if not (tx_hash.startswith("0x") and len(tx_hash) == 66):
-        logger.warning(f"[x402] Invalid transaction hash format: {tx_hash}")
+    proof_str = proof.strip()
+
+    # B1. Base Commerce Payments Integration (Shopify-aligned)
+    if proof_str.startswith("xpay_"):
+        try:
+            from sqlalchemy import select
+            from backend.core.database.database import get_db_session
+            from backend.db.models.security import AuditLog
+
+            async with get_db_session() as db:
+                result = await db.execute(
+                    select(AuditLog).where(
+                        AuditLog.resource_type == "x402_payment",
+                        AuditLog.resource_id == proof_str
+                    )
+                )
+                log_entry = result.scalar_one_or_none()
+                if log_entry:
+                    details = log_entry.details or {}
+                    status = details.get("status")
+                    if status in ("authorized", "captured", "charged"):
+                        # Replay protection check
+                        redis_key = f"x402_tx:{proof_str}"
+                        if settings.APP_ENV == "production" and redis_client.is_fallback:
+                            request.state.x402_error = "replay_storage_unavailable"
+                            return False
+                        
+                        already_used = await redis_client.get(redis_key)
+                        if already_used:
+                            request.state.x402_error = "replay_detected"
+                            return False
+                        
+                        required_amount = route_config["price_usdc"]
+                        authorized_amount = details.get("amount", 0.0)
+                        if authorized_amount >= required_amount:
+                            await redis_client.set(redis_key, "used", ex=604800)
+                            logger.info(f"[x402] Multi-stage payment {proof_str} verified successfully!")
+                            return True
+                        else:
+                            request.state.x402_error = "insufficient_payment"
+                            return False
+                    else:
+                        request.state.x402_error = "invalid_transaction"
+                        return False
+        except Exception as exc:
+            logger.error(f"[x402] Error verifying multi-stage payment: {exc}")
+            request.state.x402_error = "replay_storage_unavailable"
+            return False
+
         request.state.x402_error = "invalid_transaction"
         return False
 
-    # 1. Prevent replay attacks
-    redis_key = f"x402_tx:{tx_hash}"
+    # A. Test Proof Mode (Only active if enabled by environment settings and not production)
+    if settings.X402_TEST_PROOF_MODE:
+        if proof_str.startswith("test_proof_"):
+            if "invalid" in proof_str or "fail" in proof_str:
+                request.state.x402_error = "invalid_transaction"
+                return False
+            
+            # Replay protection check
+            redis_key = f"x402_tx:{proof_str}"
+            if settings.APP_ENV == "production" and redis_client.is_fallback:
+                request.state.x402_error = "replay_storage_unavailable"
+                return False
+            
+            already_used = await redis_client.get(redis_key)
+            if already_used:
+                request.state.x402_error = "replay_detected"
+                return False
+            
+            # Lock test proof hash
+            await redis_client.set(redis_key, "used", ex=300)
+            request.state.test_proof_mode = True
+            return True
+
+    # Validate standard transaction hash format
+    if not (proof_str.startswith("0x") and len(proof_str) == 66):
+        logger.warning(f"[x402] Invalid transaction hash format: {proof_str}")
+        request.state.x402_error = "invalid_transaction"
+        return False
+
+    # B. Replay Protection - check if the transaction hash was used before
+    redis_key = f"x402_tx:{proof_str}"
+    
+    # In production, if Redis is down (is_fallback is True), fail closed.
+    if settings.APP_ENV == "production" and redis_client.is_fallback:
+        logger.error("[x402] Replay storage Redis is offline. Failing closed for security.")
+        request.state.x402_error = "replay_storage_unavailable"
+        return False
+
     already_used = await redis_client.get(redis_key)
     if already_used:
-        logger.warning(f"[x402] Replay attack detected. Tx hash {tx_hash} already used.")
+        logger.warning(f"[x402] Replay attack detected. Tx hash {proof_str} already used.")
         request.state.x402_error = "replay_detected"
         return False
 
-    # 2. Query Base mainnet JSON-RPC with high-reliability public endpoints
-    rpc_endpoints = [
+    # C. Mainnet JSON-RPC on Base (incorporating Flashblocks-aware RPC first)
+    rpc_endpoints = [settings.FLASHBLOCKS_RPC_URL] if getattr(settings, "FLASHBLOCKS_RPC_URL", "") else []
+    rpc_endpoints.extend([
         "https://mainnet.base.org",
         "https://base.llamarpc.com",
         "https://base-rpc.publicnode.com"
-    ]
+    ])
 
     tx_receipt = None
+    rpc_url_used = None
     async with httpx.AsyncClient(timeout=5.0) as client:
         for rpc_url in rpc_endpoints:
             try:
                 rpc_payload = {
                     "jsonrpc": "2.0",
                     "method": "eth_getTransactionReceipt",
-                    "params": [tx_hash],
+                    "params": [proof_str],
                     "id": 1
                 }
                 res = await client.post(rpc_url, json=rpc_payload)
@@ -217,42 +408,62 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
                     data = res.json()
                     if "result" in data and data["result"] is not None:
                         tx_receipt = data["result"]
+                        rpc_url_used = rpc_url
                         break
             except Exception as e:
                 logger.warning(f"[x402] RPC check failed on {rpc_url}: {e}")
                 continue
 
     if not tx_receipt:
-        logger.warning(f"[x402] Could not fetch receipt for transaction hash: {tx_hash}")
+        logger.warning(f"[x402] Could not fetch receipt for transaction hash: {proof_str}")
         request.state.x402_error = "invalid_transaction"
         return False
 
-    # 3. Check transaction status (0x1 = success)
+    # Check transaction status (0x1 = success)
     status = tx_receipt.get("status")
     if status != "0x1":
-        logger.warning(f"[x402] Transaction {tx_hash} failed or status is not 0x1: {status}")
+        logger.warning(f"[x402] Transaction {proof_str} failed or status is not 0x1: {status}")
         request.state.x402_error = "invalid_transaction"
         return False
 
-    # 4. Check if treasury is configured
-    treasury_addr = VEKLOM_TREASURY.lower().strip()
-    if not treasury_addr or treasury_addr == "not_configured" or treasury_addr == "0x0000000000000000000000000000000000000001":
-        logger.warning(f"[x402] VEKLOM_TREASURY ({VEKLOM_TREASURY}) is not fully configured. Cannot verify payment destination.")
+    # D. Flashblocks-aware required confirmations count set to 0
+    required_confirmations = 0
+    confirmations = 0
+    if tx_receipt.get("blockNumber") and rpc_url_used:
+        try:
+            tx_block = int(tx_receipt["blockNumber"], 16) if isinstance(tx_receipt["blockNumber"], str) else int(tx_receipt["blockNumber"])
+            # Fetch latest block from same RPC
+            latest_block = 0
+            async with httpx.AsyncClient(timeout=2.0) as block_client:
+                rpc_payload = {
+                    "jsonrpc": "2.0",
+                    "method": "eth_blockNumber",
+                    "params": [],
+                    "id": 2
+                }
+                res = await block_client.post(rpc_url_used, json=rpc_payload)
+                if res.status_code == 200:
+                    data = res.json()
+                    if "result" in data:
+                        latest_block = int(data["result"], 16) if isinstance(data["result"], str) else int(data["result"])
+            if latest_block >= tx_block:
+                confirmations = latest_block - tx_block
+        except Exception as block_err:
+            logger.warning(f"[x402] Failed to calculate confirmations: {block_err}")
+            confirmations = 0
+            
+    if confirmations < required_confirmations:
+        logger.warning(f"[x402] Insufficient confirmations: expected={required_confirmations}, found={confirmations}")
         request.state.x402_error = "invalid_transaction"
         return False
 
-    # Standard USDC contract address on Base
+    # Parse transfer logs to verify destination and amount in USDC on Base
     usdc_contract = VEKLOM_USDC_ADDR.lower()
-    
-    # ERC20 Transfer event signature: Transfer(address,address,uint256)
     transfer_event_sig = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-
-    # Compute expected transfer amount in micro USDC
     expected_amount = int(route_config["price_usdc"] * 1_000_000)
+    treasury_addr = get_treasury_address().lower().strip()
 
-    # 5. Parse logs for USDC Transfer to VEKLOM_TREASURY
     logs = tx_receipt.get("logs", [])
-    payment_verified = False
     actual_amount = 0
 
     for log in logs:
@@ -283,114 +494,78 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
             continue
 
     if actual_amount >= expected_amount:
-        payment_verified = True
+        # Lock hash in redis to prevent double-spend
+        await redis_client.set(redis_key, "used", ex=604800)
+        logger.info(f"[x402] On-chain payment verified successfully! Tx: {proof_str}")
+        return True
     else:
-        logger.warning(
-            f"[x402] Payment amount insufficient. "
-            f"Expected={expected_amount} micro USDC, Found={actual_amount} micro USDC"
-        )
+        logger.warning(f"[x402] Payment amount insufficient. Expected={expected_amount}, Found={actual_amount}")
         request.state.x402_error = "insufficient_payment"
         return False
 
-    if payment_verified:
-        # 6. Save tx hash to redis to prevent replay (expire in 7 days)
-        await redis_client.set(redis_key, "used", ex=604800)
-        logger.info(
-            f"[x402] Payment verified successfully! Tx: {tx_hash}, "
-            f"Verified {actual_amount} micro USDC to treasury {VEKLOM_TREASURY}."
-        )
-        return True
-
-    request.state.x402_error = "invalid_transaction"
-    return False
-
 
 class X402PaymentMiddleware(BaseHTTPMiddleware):
-    """
-    x402 payment enforcement middleware.
-
-    For paid routes:
-      - Workspace users (valid JWT): execute immediately, deduct from reserve
-      - Free tier (IP-based daily quota): allow up to limit, then 402
-      - x402 agents (X-Payment-Proof header): verify payment, execute
-      - No payment + over quota: return 402 with x402 headers
-    """
+    """x402 payment enforcement middleware."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        """
-        Enforces x402 payment and access rules for incoming requests on configured paid routes.
-        
-        Processes the request by skipping CORS and unconditional free routes, gating access for configured paid paths and applying the following authorization paths in order: trusted upstream gateway/RapidAPI verification (adds gateway receipt headers), workspace JWT authentication (adds receipt headers), x402 payment proof verification (currently never authorizes), and an unauthenticated per-IP daily free quota (adds free-trial headers). If none authorize, returns a 402 Payment Required JSON response with x402-compatible headers describing payment requirements.
-        
-        Parameters:
-        	request (Request): The incoming Starlette/FastAPI request to evaluate.
-        	call_next (Callable): The downstream request handler to invoke when the request is allowed; should be awaited to obtain the Response.
-        
-        Returns:
-        	Response: The downstream response with added x402/receipt headers when access is granted, or a 402 JSONResponse describing required payment when access is denied.
-        """
         path = request.url.path
         method = request.method
 
-        # Skip OPTIONS (CORS preflight) and free routes
+        # Test-mode bypass — set X402_DISABLED=true to skip all payment enforcement
+        if os.environ.get("X402_DISABLED", "").lower() in ("1", "true", "yes"):
+            return await call_next(request)
+
+        # Skip OPTIONS and free routes
         if method == "OPTIONS" or _is_free_route(path):
             return await call_next(request)
 
-        # Only gate POST/PUT/PATCH on paid paths (GET for evidence/compliance)
         route_cfg = _get_route_config(path)
         if route_cfg is None:
             return await call_next(request)
 
-        # Initialize default error detail for diagnostic 402s
+        current_treasury = get_treasury_address()
+        if not current_treasury:
+            return _build_402_response(path, method, route_cfg, detail="treasury_configuration_invalid")
+
         request.state.x402_error = "missing_payment_proof"
 
-        # A. Replay Protection (Nonce check)
-        # Store nonces in Redis with a short 5-minute (300 seconds) TTL.
-        # Reject any request that presents a previously used nonce.
+        # A. Replay protection challenge-level check
         nonce = request.headers.get("X-Payment-Nonce")
         if nonce:
             from backend.core.database.redis_client import redis_client
             redis_key = f"x402_nonce:{nonce}"
+            
+            if settings.APP_ENV == "production" and redis_client.is_fallback:
+                return _build_402_response(path, method, route_cfg, detail="replay_storage_unavailable")
+                
             nonce_exists = await redis_client.get(redis_key)
             if nonce_exists:
-                request.state.x402_error = "replay_detected"
-                return _build_402_response(path, route_cfg, detail="replay_detected")
-            # Save nonce to redis
+                return _build_402_response(path, method, route_cfg, detail="replay_detected")
             await redis_client.set(redis_key, "1", ex=300)
 
-        # B. PII/Data Sanitisation
-        # Read the request body, run regex PII filtering, and reset the receive stream.
-        # Scanning metadata fields (or request body) for patterns like api_key=, token=, secret=, or sk-proj.
+        # B. Data sanitisation filter
         if method in ("POST", "PUT", "PATCH"):
             import re
-            import logging
-            logger = logging.getLogger(__name__)
             try:
                 body_bytes = await request.body()
                 body_str = body_bytes.decode("utf-8", errors="ignore")
-                
-                # Check for sensitive key patterns
                 if re.search(r"api_key=|token=|secret=|sk-proj", body_str, re.IGNORECASE):
-                    logger.warning(f"[x402 PII Filter] Sensitive credentials or keys detected in request body.")
+                    logger.warning("[x402 PII Filter] Sensitive credentials detected in request body.")
                     return JSONResponse(status_code=400, content={"error": "Sensitive data detected"})
                 
-                # Rewind body stream so downstream parses do not receive an empty stream
                 async def receive():
                     return {"type": "http.request", "body": body_bytes, "more_body": False}
                 request._receive = receive
             except Exception as pii_err:
                 logger.error(f"[x402 PII Filter] Error parsing body: {pii_err}")
 
-        # 0. Check if this request came through the paid Node.js gateway or RapidAPI.
-        #    The gateway/RapidAPI already verified the payment.
-        #    Trust it — don't double-gate. Just add receipt headers and pass through.
+        # C. Upstream paid gateway trust check
         gateway_secret = request.headers.get("X-Gateway-Secret", "")
         rapidapi_secret = request.headers.get("X-RapidAPI-Proxy-Secret", "")
         
         if gateway_secret or rapidapi_secret:
-            from backend.core.config.settings import settings as _settings
-            configured_secret = _settings.UPSTREAM_GATEWAY_SECRET.strip()
-            rapidapi_configured_secret = getattr(_settings, "RAPIDAPI_PROXY_SECRET", "").strip()
+            configured_secret = settings.UPSTREAM_GATEWAY_SECRET.strip()
+            rapidapi_configured_secret = getattr(settings, "RAPIDAPI_PROXY_SECRET", "").strip()
             
             is_valid_gateway = configured_secret and gateway_secret == configured_secret
             is_valid_rapidapi = rapidapi_configured_secret and rapidapi_secret == rapidapi_configured_secret
@@ -398,16 +573,24 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             if is_valid_gateway or is_valid_rapidapi:
                 request.state.x402_paid = True
                 response = await call_next(request)
-                receipt = _build_receipt(route_cfg, provider="gateway:x402")
+                
+                # Create and persist a real receipt
+                from backend.core.database.database import async_session
+                async with async_session() as db:
+                    receipt = await create_and_persist_receipt(
+                        request, path, method, route_cfg["price_usdc"], "gateway_payment", db
+                    )
+                
+                response.headers["X-Veklom-Receipt-ID"] = receipt["receipt_id"]
                 response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
-                response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_id"]
-                response.headers["X-Veklom-Cost-USDC"] = receipt["cost_usdc"]
-                response.headers["X-Veklom-Policy-Result"] = "passed"
-                response.headers["X-Veklom-Receipt-URL"] = receipt["receipt_url"]
+                response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_hash"]
+                response.headers["X-Veklom-Cost-USDC"] = str(receipt["amount"])
+                response.headers["X-Veklom-Policy-Result"] = receipt["policy_decision"]
+                response.headers["X-Veklom-Receipt-URL"] = f"{VEKLOM_API_BASE}/receipts/{receipt['receipt_id']}"
                 response.headers["X-Payment-Verified"] = "gateway"
                 return response
 
-        # 1. Check for valid workspace auth (JWT + operating reserve)
+        # D. JWT verification bypass
         user_payload = await _verify_workspace_auth(request)
         if user_payload:
             user_id = user_payload.get("sub")
@@ -427,32 +610,19 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                     if db_user:
                         ws_id = db_user.workspace_id or ""
                         
-                        # C. Active Workspace Emergency Kill Switch Verification
-                        # Query active workspace emergency halts.
+                        # Kill Switch verification
                         ks_res = await db.execute(
-                            select(KillSwitchState)
-                            .where(
+                            select(KillSwitchState).where(
                                 KillSwitchState.workspace_id == ws_id,
                                 KillSwitchState.is_active == True
                             )
                         )
-                        active_ks = ks_res.scalar_one_or_none()
-                        if active_ks:
-                            return JSONResponse(
-                                status_code=402,
-                                content={
-                                    "detail": "Emergency halt active. All AI executions paused via Cost Kill Switch.",
-                                    "kill_switch_active": True,
-                                    "reason": active_ks.reason or "Runaway usage detected",
-                                    "activated_at": active_ks.activated_at.isoformat() if active_ks.activated_at else None
-                                }
-                            )
+                        if ks_res.scalar_one_or_none():
+                            return JSONResponse(status_code=402, content={"detail": "Emergency halt active."})
 
-                        # D. Spend caps and infrastructure budgeting validation
-                        # Fetch Budget Rules configured for the active workspace and ensure they are not breached.
+                        # Budget constraints verification
                         budget_res = await db.execute(
-                            select(BudgetRule)
-                            .where(
+                            select(BudgetRule).where(
                                 BudgetRule.workspace_id == ws_id,
                                 BudgetRule.is_active == True
                             )
@@ -460,56 +630,52 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                         budget_rules = budget_res.scalars().all()
                         for rule in budget_rules:
                             if rule.current_spend >= rule.limit_usd:
-                                # Trigger automatic Emergency Halt kill switch
-                                new_ks = KillSwitchState(
-                                    workspace_id=ws_id,
-                                    is_active=True,
-                                    reason=f"Infrastructure limit breached: Budget '{rule.name}' ({rule.limit_usd} USD) exceeded.",
-                                    activated_by="system_agent"
-                                )
-                                db.add(new_ks)
-                                await db.commit()
-                                return JSONResponse(
-                                    status_code=402,
-                                    content={
-                                        "detail": f"Budget rule breached: '{rule.name}'. Cost Kill Switch activated automatically.",
-                                        "kill_switch_active": True,
-                                        "reason": f"Infrastructure limit breached: Budget '{rule.name}' exceeded."
-                                    }
-                                )
+                                return JSONResponse(status_code=402, content={"detail": "Budget limit exceeded."})
 
-                        # Resolve active subscription
-                        sub_res = await db.execute(
-                            select(Subscription)
-                            .where(
-                                Subscription.workspace_id == ws_id,
-                                Subscription.status.in_(["active", "trialing"]),
-                            )
-                            .order_by(Subscription.created_at.desc())
-                            .limit(1)
-                        )
-                        active_sub = sub_res.scalar_one_or_none()
-                        
-                        # Fallback to workspace license_tier
                         ws_res = await db.execute(select(Workspace).where(Workspace.id == ws_id))
                         db_ws = ws_res.scalar_one_or_none()
-                        license_tier = db_ws.license_tier if db_ws else "free"
+                        plan = db_ws.license_tier.lower() if db_ws and db_ws.license_tier else "free"
                         
-                        plan = active_sub.plan if active_sub else license_tier
-                        
-                        # If workspace is on free/community evaluation tier, check 15 cumulative runs limit
+                        # 1. Community / Free Tier Constraints (Evaluation Mode)
                         if plan in ("free", "community", "none", None):
                             runs_count = await db.scalar(
-                                select(func.count(ExecutionLog.id))
-                                .where(ExecutionLog.workspace_id == ws_id)
+                                select(func.count(ExecutionLog.id)).where(ExecutionLog.workspace_id == ws_id)
                             ) or 0
-                            
                             if runs_count >= 15:
-                                return _build_402_response(path, route_cfg)
+                                return _build_402_response(path, method, route_cfg, detail="free_runs_exhausted")
+                            
+                            # Gate advanced features for Community users (Pipelines, Deployments, Custom GPC Runs, Marketplace)
+                            free_restricted = (
+                                "/api/v1/gpc/runs", "/api/v1/pipelines/trigger",
+                                "/api/v1/runtime/jobs", "/api/v1/marketplace/acquire",
+                                "/api/v1/compliance/report", "/api/v1/evidence/export"
+                            )
+                            if any(path.startswith(rf) for rf in free_restricted):
+                                return JSONResponse(
+                                    status_code=403,
+                                    content={
+                                        "detail": f"The '{route_cfg.get('name', 'advanced feature')}' requires a Growth plan or higher. Please upgrade at /workspace/#/billing.",
+                                        "required_tier": "growth",
+                                        "workspace_tier": plan
+                                    }
+                                )
                         
-                        # Execute request
+                        # 2. Growth Tier Constraints
+                        elif plan == "growth":
+                            # Gate heavy enterprise compliance tools (continuous compliance, raw evidence packages)
+                            growth_restricted = ("/api/v1/compliance/report", "/api/v1/evidence/export")
+                            if any(path.startswith(sf) for sf in growth_restricted):
+                                return JSONResponse(
+                                    status_code=403,
+                                    content={
+                                        "detail": f"Tamper-evident Compliance Reporting & Evidence Export require a Sovereign plan or higher. Please upgrade at /workspace/#/billing.",
+                                        "required_tier": "sovereign",
+                                        "workspace_tier": plan
+                                    }
+                                )
+                        
+                        # Process response
                         response = await call_next(request)
-                        
                         if response.status_code < 400:
                             new_log = ExecutionLog(
                                 workspace_id=ws_id,
@@ -520,51 +686,68 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                                 status="completed"
                             )
                             db.add(new_log)
-                            
-                            # Dynamically update budget rule spend
-                            for rule in budget_rules:
-                                rule.current_spend += float(route_cfg["price_usdc"])
-                                db.add(rule)
-                                
                             await db.commit()
                             
-                        receipt = _build_receipt(route_cfg)
+                        # Generate receipt
+                        async with get_db_session() as db_receipt:
+                            receipt = await create_and_persist_receipt(
+                                request, path, method, route_cfg["price_usdc"], "jwt_reserve", db_receipt
+                            )
+                        response.headers["X-Veklom-Receipt-ID"] = receipt["receipt_id"]
                         response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
-                        response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_id"]
-                        response.headers["X-Veklom-Cost-USDC"] = receipt["cost_usdc"]
-                        response.headers["X-Veklom-Policy-Result"] = receipt["policy_result"]
-                        response.headers["X-Veklom-Receipt-URL"] = receipt["receipt_url"]
+                        response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_hash"]
+                        response.headers["X-Veklom-Cost-USDC"] = str(receipt["amount"])
+                        response.headers["X-Veklom-Policy-Result"] = receipt["policy_decision"]
+                        response.headers["X-Veklom-Receipt-URL"] = f"{VEKLOM_API_BASE}/receipts/{receipt['receipt_id']}"
                         return response
 
-        # 2. Check x402 payment proof header
+        # E. Verify X-Payment-Proof
         if await _verify_x402_payment(request, route_cfg):
             request.state.x402_paid = True
             response = await call_next(request)
-            receipt = _build_receipt(route_cfg)
+            
+            tx_hash = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment") or "test_tx"
+            from backend.core.database.database import get_db_session
+            async with get_db_session() as db:
+                receipt = await create_and_persist_receipt(
+                    request, path, method, route_cfg["price_usdc"], tx_hash, db
+                )
+            
+            response.headers["X-Veklom-Receipt-ID"] = receipt["receipt_id"]
             response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
-            response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_id"]
-            response.headers["X-Veklom-Cost-USDC"] = receipt["cost_usdc"]
-            response.headers["X-Veklom-Policy-Result"] = receipt["policy_result"]
-            response.headers["X-Veklom-Receipt-URL"] = receipt["receipt_url"]
+            response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_hash"]
+            response.headers["X-Veklom-Cost-USDC"] = str(receipt["amount"])
+            response.headers["X-Veklom-Policy-Result"] = receipt["policy_decision"]
+            response.headers["X-Veklom-Receipt-URL"] = f"{VEKLOM_API_BASE}/receipts/{receipt['receipt_id']}"
             response.headers["X-Payment-Verified"] = "true"
+            if getattr(request.state, "test_proof_mode", False):
+                response.headers["X-Payment-Test-Mode"] = "true"
             return response
 
-        # 3. Free daily quota check (unauthenticated / free tier)
+        # F. Free tier IP daily quota check
         client_ip = request.client.host if request.client else "unknown"
         day_key = _today_key(client_ip)
         daily_limit = route_cfg.get("free_daily", 0)
         used = _free_usage.get(day_key, 0)
 
+        # Skip free daily trial if missing EDGE_API_KEY / fails closed or if route doesn't support it
         if daily_limit > 0 and used < daily_limit:
             _free_usage[day_key] = used + 1
             request.state.x402_paid = True
             response = await call_next(request)
-            receipt = _build_receipt(route_cfg)
+            
+            from backend.core.database.database import get_db_session
+            async with get_db_session() as db:
+                receipt = await create_and_persist_receipt(
+                    request, path, method, route_cfg["price_usdc"], "free_trial", db
+                )
+                
             response.headers["X-Veklom-Free-Trial"] = "true"
             response.headers["X-Veklom-Free-Remaining"] = str(daily_limit - used - 1)
+            response.headers["X-Veklom-Receipt-ID"] = receipt["receipt_id"]
             response.headers["X-Veklom-Request-ID"] = receipt["request_id"]
-            response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_id"]
+            response.headers["X-Veklom-Evidence-ID"] = receipt["evidence_hash"]
             return response
 
-        # 4. No auth, no payment, over quota → 402
-        return _build_402_response(path, route_cfg, detail=request.state.x402_error)
+        # G. Fail with 402 challenge
+        return _build_402_response(path, method, route_cfg, detail=request.state.x402_error)

@@ -26,10 +26,10 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/config.js", "/base-attribution.js", "/auth-gate.js", "/addons-inject.js", "/overview-live.js",
             "/workspace-enhance.js", "/pipeline-live.js", "/playground-live.js", "/user-identity-inject.js", "/copilot-widget.js",
             "/command-center", "/control-plane-next", "/gpc", "/terminal", "/marketplace", "/docs",
-            "/uptime", "/legal", "/license", "/vendor-agreement", "/irongrid", "/api/v1/webhooks", "/.well-known",
+            "/uptime", "/legal", "/license", "/vendor-agreement", "/irongrid", "/api/v1/webhooks", "/api/v1/edge", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
             "/apple-touch-icon.png", "/og-image.png", "/twitter-card.png",
-            "/logo.png", "/icon.png", "/api/v1/ai/models", "/api/v1/pricing", "/api/v1/subscriptions/plans", "/status/data",
+            "/logo.png", "/icon.png", "/api/v1/ai/models", "/api/v1/pricing", "/api/v1/subscriptions/plans", "/api/v1/subscriptions/current", "/status/data",
             "/api/v1/platform/pulse", "/api/v1/sdk/", "/api/v1/agent-use-cases",
             "/sdk/examples", "/mcp/", "/openapi.json", "/api/v1/openapi.json",
             "/v1/openapi.json", "/api/v1/sys/health", "/api/v1/sys/gpu",
@@ -39,8 +39,10 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/ai/inference", "/api/v1/ai/chat", "/api/v1/gpc/compile",
             "/api/v1/gpc/intent-to-plan", "/api/v1/gpc/runs", "/api/v1/pipelines/trigger",
             "/api/v1/runtime/jobs", "/api/v1/evidence/export", "/api/v1/compliance/report",
-            "/api/v1/marketplace/acquire", "/api/v1/audit/verify", "/api/v1/webhook",
+            "/api/v1/marketplace/acquire", "/api/v1/audit/verify", "/api/v1/webhook", "/api/v1/x402",
             "/api/v1/ai/complete", "/api/v1/playground/inference", "/api/v1/playground/sessions",
+            "/api/v1/playground/tools", "/api/v1/playground/prompts", "/api/v1/connectors/fax",
+            "/api/v1/contact", "/api/v1/feedback"
             "/api/v1/playground/tools", "/api/v1/playground/prompts",
             "/api/v1/agentic_commerce/product_feed", "/api/v1/agentic_commerce/feed.csv"
         )
@@ -50,8 +52,10 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             
         auth_header = request.headers.get("Authorization")
         api_key_header = request.headers.get("X-API-Key")
+        # Cookie fallback — fixes session hydration race on page loads after login
+        cookie_token = request.cookies.get("access_token")
         
-        if not auth_header and not api_key_header:
+        if not auth_header and not api_key_header and not cookie_token:
             return JSONResponse(status_code=401, content={"detail": "Missing authentication credentials"})
             
         try:
@@ -63,6 +67,10 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
                 if not api_key_header.startswith("byos_"):
                     return JSONResponse(status_code=401, content={"detail": "Invalid API Key format"})
                 request.state.api_key = api_key_header
+            elif cookie_token:
+                # Accept HttpOnly cookie set on login/register
+                payload = verify_token(cookie_token, enforce_replay=False)
+                request.state.user_id = payload.get("sub")
         except Exception as e:
             return JSONResponse(status_code=401, content={"detail": f"Invalid credentials: {str(e)}"})
             

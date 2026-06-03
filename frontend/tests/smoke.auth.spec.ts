@@ -17,16 +17,19 @@ test.describe('Protected Endpoints Security @smoke', () => {
     expect([401, 403]).toContain(response.status());
   });
   
-  test('Navigating to workspace without auth redirects to login', async ({ page }) => {
+  test('Navigating to workspace without auth does not block navigation (open sandbox)', async ({ page }) => {
     // Clear cookies/storage to ensure unauthenticated state
     await page.context().clearCookies();
+    await page.goto(`${BASE_URL}/workspace/`);
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
     const response = await page.goto(`${BASE_URL}/workspace/`);
     
-    // Depending on the frontend router, it might redirect to /login
-    await page.waitForURL(/.*(login|signup).*/, { timeout: 5000 }).catch(() => {});
-    
-    // Check if we are on login or get a 401/403
+    // In Veklom's open-navigation model, unauthenticated users can access the workspace shell (status 200)
+    expect(response?.status()).toBe(200);
     const url = page.url();
-    expect(url).toMatch(/.*(login|signup|401|unauthorized).*/i);
+    expect(url).toContain('/workspace');
   });
 });

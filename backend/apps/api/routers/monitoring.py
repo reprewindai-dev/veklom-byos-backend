@@ -7,7 +7,7 @@ import uuid as _uuid_mod
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,7 +68,10 @@ async def monitoring_metrics(user=Depends(get_current_user)):
 
 
 @router.get("/monitoring/metrics/history")
-async def monitoring_metrics_history(range: str = "24h", user=Depends(get_current_user)):
+async def monitoring_metrics_history(
+    range_param: str = Query("24h", alias="range"),
+    user=Depends(get_current_user)
+):
     now = datetime.now(timezone.utc)
     points = []
     for i in range(24):
@@ -82,7 +85,7 @@ async def monitoring_metrics_history(range: str = "24h", user=Depends(get_curren
             "hetzner_percent": 80 + (i % 5) * 2,
             "aws_percent": 20 - (i % 5) * 2,
         })
-    return {"range": range, "points": points, "updated_at": now.isoformat()}
+    return {"range": range_param, "points": points, "updated_at": now.isoformat()}
 
 
 @router.post("/monitoring/metrics/record")

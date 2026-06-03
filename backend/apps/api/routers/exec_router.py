@@ -16,6 +16,8 @@ from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user, get_current_user_or_api_key
 from backend.core.ai.provider_router import run_completion, stream_completion
+from backend.core.llm.circuit_breaker import CircuitBreaker
+from backend.core.memory.conversation import ConversationMemory
 from backend.db.models.ai import ExecutionLog, AIAuditLog
 
 router = APIRouter(tags=["LLM Inference Engine"])
@@ -52,9 +54,6 @@ async def exec_prompt(
     messages.append({"role": "user", "content": body.prompt})
     
     # 4. Circuit Breaker & Fallback
-    from backend.core.llm.circuit_breaker import CircuitBreaker
-    from backend.core.memory.conversation import ConversationMemory
-    
     cb = CircuitBreaker("ollama")
     cb_state = await cb.get_state()
     

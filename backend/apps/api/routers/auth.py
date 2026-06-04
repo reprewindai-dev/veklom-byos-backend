@@ -920,10 +920,10 @@ async def logout(request: Request, db: AsyncSession = Depends(get_db)):
         "auth_token", "veklom_session", "token"
     ]
     
-    domain = ".veklom.com" if not settings.ENVIRONMENT == "development" else None
+    domain = ".veklom.com" if not settings.APP_ENV == "development" else None
     
     for cookie in cookies_to_clear:
-        resp.delete_cookie(cookie, path="/", domain=domain, samesite="lax", secure=not settings.ENVIRONMENT == "development")
+        resp.delete_cookie(cookie, path="/", domain=domain, samesite="lax", secure=not settings.APP_ENV == "development")
         resp.delete_cookie(cookie, path="/") # Also delete without domain to be safe
 
     return resp

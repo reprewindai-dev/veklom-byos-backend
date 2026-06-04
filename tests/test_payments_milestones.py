@@ -498,3 +498,68 @@ async def test_marketplace_density_pricing_calibration(client, auth_headers):
     assert "Target Price ($1000.00) * Milestone Factor (100%) * Density Multiplier (60%)" in data["pricing_formula"]
 
 
+@pytest.mark.asyncio
+async def test_vendor_pending_stripe_cannot_publish_paid(async_session, auth_headers):
+    # 4. vendor pending Stripe status cannot publish paid listing
+    from httpx import AsyncClient
+    from backend.apps.api.main import app
+    from backend.db.models.marketplace import Vendor, MarketplaceListing
+    
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        # Create a paid listing
+        resp = await client.post("/api/v1/marketplace/listings/create", json={
+            "id": "ls_test_paid_publish",
+            "name": "Test Paid Listing",
+            "price": 99.99,
+            "category": "tool",
+            "short_description": "A paid tool",
+            "developer_name": "Test Vendor"
+        }, headers=auth_headers)
+        
+        # Publish should fail with 403
+        resp = await client.post("/api/v1/marketplace/listings/ls_test_paid_publish/submit", headers=auth_headers)
+        assert resp.status_code == 403
+        data = resp.json()
+        assert "Stripe Connect onboarding must be completed" in data.get("detail", "")
+
+@pytest.mark.asyncio
+async def test_paid_marketplace_acquire_requires_payment(async_session, auth_headers):
+    # 5. paid marketplace acquire without existing entitlement returns checkout/payment-required, not installed
+    from httpx import AsyncClient
+    from backend.apps.api.main import app
+    
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        # First ensure the user has completed workspace onboarding
+        await client.post("/api/v1/workspaces", json={"name": "Test Workspace", "industry": "technology"}, headers=auth_headers)
+        
+        # Create paid listing
+        await client.post("/api/v1/marketplace/listings/create", json={
+            "id": "ls_test_acquire_paid",
+            "name": "Test Paid Acquire",
+            "price": 49.99,
+            "category": "tool",
+            "short_description": "Paid tool",
+            "developer_name": "Test Vendor"
+        }, headers=auth_headers)
+        
+        # Attempt to install without payment
+        resp = await client.post("/api/v1/marketplace/listings/ls_test_acquire_paid/install", json={}, headers=auth_headers)
+        assert resp.status_code == 402
+        data = resp.json()
+        assert data.get("requires_payment") is True
+        assert "checkout_url" in data
+        assert data.get("price") == "49.99"
+        assert data.get("currency") == "usd"
+
+@pytest.mark.asyncio
+async def test_stale_billing_string_not_in_current_payload(async_session, auth_headers):
+    # 6. old /workspace/#/billing string is not present in /subscriptions/current payload
+    from httpx import AsyncClient
+    from backend.apps.api.main import app
+    
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        resp = await client.get("/api/v1/subscriptions/current", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.text
+        assert "/workspace#/billing" not in data
+        assert "/control-plane-next/billing/" in data

@@ -51,8 +51,8 @@ def _stripe_client():
 
 
 def _success_cancel_urls() -> tuple[str, str]:
-    frontend = settings.FRONTEND_URL.rstrip("/") or "https://veklom.com"
-    return f"{frontend}/workspace#/billing?checkout=success", f"{frontend}/workspace#/billing?checkout=cancelled"
+    frontend = settings.FRONTEND_URL.rstrip('/')
+    return f"{frontend}/control-plane-next/billing/?checkout=success", f"{frontend}/control-plane-next/billing/?checkout=cancelled"
 
 
 def _checkout_amount(amount_usd: float | int) -> int:
@@ -386,7 +386,7 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
     # Check if Stripe is configured, else fallback gracefully for demo/testing
     if not _stripe_ready():
         return {
-            "url": f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing?checkout=success&plan={plan_id}"
+            "url": f"{settings.FRONTEND_URL.rstrip('/')}/control-plane-next/billing/?checkout=success&plan={plan_id}"
         }
 
     try:
@@ -425,7 +425,7 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
         return {"url": session.url}
     except Exception:
         return {
-            "url": f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing?checkout=success&plan_id={plan_id}"
+            "url": f"{settings.FRONTEND_URL.rstrip('/')}/control-plane-next/billing/?checkout=success&plan_id={plan_id}"
         }
 
 
@@ -433,7 +433,7 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
 @router.post("/subscriptions/portal")
 async def subscription_portal(body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     body = body or {}
-    return_url = body.get("return_url", f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing")
+    return_url = body.get("return_url", f"{settings.FRONTEND_URL.rstrip('/')}/control-plane-next/billing/")
     
     if not _stripe_ready():
         return {"url": return_url}

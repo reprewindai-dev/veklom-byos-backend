@@ -358,8 +358,8 @@ async def generate_onboarding_express(
             # Generate Account Link
             account_link = stripe.AccountLink.create(
                 account=account_id,
-                refresh_url=f"{settings.API_BASE_URL}/api/v1/x402/onboarding/callback?status=refresh&account_id={account_id}&user_id={user.id}",
-                return_url=f"{settings.API_BASE_URL}/api/v1/x402/onboarding/callback?status=success&account_id={account_id}&user_id={user.id}",
+                refresh_url="https://veklom.com/control-plane-next/vendor/stripe",
+                return_url="https://veklom.com/control-plane-next/vendor/stripe",
                 type="account_onboarding",
             )
             return OnboardingExpressResponse(
@@ -369,22 +369,10 @@ async def generate_onboarding_express(
             )
         except Exception as e:
             logger.error(f"Stripe AccountLink creation failed: {e}")
-            # Fall back to mock link if Stripe call fails
-            pass
+            raise HTTPException(status_code=500, detail=f"Stripe AccountLink creation failed: {e}")
 
-    # Fallback to local mock onboarding
-    if not account_id:
-        account_id = f"acct_mock_{user.id}"
-        vendor.stripe_account_id = account_id
-        await db.commit()
-        await db.refresh(vendor)
-        
-    mock_url = f"{settings.API_BASE_URL}/api/v1/x402/onboarding/callback?status=success&account_id={account_id}&user_id={user.id}"
-    return OnboardingExpressResponse(
-        status="onboarding_started",
-        stripe_url=mock_url,
-        account_id=account_id
-    )
+    # Stripe is not ready
+    raise HTTPException(status_code=503, detail="Stripe integration is not configured")
 
 
 @router.get("/onboarding/callback")

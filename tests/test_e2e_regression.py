@@ -155,3 +155,20 @@ def test_compliance_report(api_client):
     """Test GET /api/v1/compliance/report"""
     resp = api_client.get(f"{API_BASE}/compliance/report")
     assert resp.status_code in [200, 401, 403]
+
+def test_unauthenticated_subscriptions_current(api_client):
+    # 1. unauthenticated /subscriptions/current returns auth error
+    resp = api_client.get(f"{API_BASE}/subscriptions/current")
+    assert resp.status_code == 401
+
+def test_unauthenticated_stripe_connect_status(api_client):
+    # 2. unauthenticated /stripe/connect/status returns auth error
+    resp = api_client.get(f"{API_BASE}/stripe/connect/status")
+    assert resp.status_code == 401
+
+def test_unauthenticated_stripe_connect_onboard(api_client):
+    # 3. unauthenticated /stripe/connect/onboard returns auth error
+    resp = api_client.get(f"{API_BASE}/stripe/connect/onboard")
+    assert resp.status_code == 401
+
+

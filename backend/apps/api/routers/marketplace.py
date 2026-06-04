@@ -769,11 +769,43 @@ async def submit_listing(listing_id: str, body: dict = None, user=Depends(get_cu
     v_res = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
     vendor = v_res.scalars().first()
     
+    if listing.price > 0.0:
+        # Check Stripe Connect status for paid listings
+        is_active = False
+        if vendor and vendor.stripe_account_id:
+            import os
+            import stripe
+            key = os.getenv("STRIPE_SECRET_KEY")
+            if key:
+                stripe.api_key = key
+                try:
+                    account = stripe.Account.retrieve(vendor.stripe_account_id)
+                    is_active = account.charges_enabled and account.details_submitted
+                except Exception:
+                    pass
+                    
+        if not is_active:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "Stripe Connect onboarding must be completed before publishing paid marketplace listings.",
+                    "action": "complete_stripe_connect",
+                    "onboarding_url": "/api/v1/stripe/connect/onboard"
+                }
+            )
+            
     if not vendor or vendor.status != "approved":
         if listing.price > 0.0:
-            raise HTTPException(
-                status_code=403, 
-                detail="Vendors cannot publish paid listings until approved/payout-ready. Please complete vendor onboarding."
+            # We already handled paid above, but just in case
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "Stripe Connect onboarding must be completed before publishing paid marketplace listings.",
+                    "action": "complete_stripe_connect",
+                    "onboarding_url": "/api/v1/stripe/connect/onboard"
+                }
             )
         else:
             # Free listings can be published immediately or go to pending review
@@ -967,8 +999,9 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
     from fastapi import HTTPException as _HTTPException
 
     body = body or {}
-    # Always use the authenticated user's workspace_id - never trust client-supplied workspace_id
-    target = user.workspace_id or "default"
+    if not user.workspace_id:
+        raise _HTTPException(status_code=400, detail="No active workspace found. Please complete workspace onboarding.")
+    target = user.workspace_id
 
     await _ensure_catalog_seeded(db)
 
@@ -991,10 +1024,52 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
     # --- Billing Verification ---
     if listing.price > 0.0:
         payment_method = body.get("payment_method")
-        if payment_method not in ["stripe_checkout", "stripe_acp", "x402"]:
-            raise _HTTPException(
+        
+        if not payment_method:
+            checkout_url = None
+            try:
+                import stripe
+                import os
+                from backend.core.config.settings import settings
+                key = os.getenv("STRIPE_SECRET_KEY")
+                if key:
+                    stripe.api_key = key
+                    amount = int(round(listing.price * 100))
+                    session = stripe.checkout.Session.create(
+                        mode="payment",
+                        customer_email=user.email,
+                        success_url=f"https://veklom.com/control-plane-next/marketplace?install={norm_id}",
+                        cancel_url=f"https://veklom.com/control-plane-next/marketplace",
+                        metadata={"user_id": user.id, "workspace_id": target, "listing_id": norm_id, "type": "marketplace"},
+                        line_items=[{"quantity": 1, "price_data": {"currency": "usd", "unit_amount": amount, "product_data": {"name": listing.name}}}]
+                    )
+                    checkout_url = session.url
+            except Exception:
+                pass
+                
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
                 status_code=402,
-                detail="Payment required. Must provide a valid payment_method ('stripe_checkout', 'stripe_acp', 'x402') to install paid listings."
+                content={
+                    "requires_payment": True,
+                    "checkout_url": checkout_url or "",
+                    "listing_id": norm_id,
+                    "price": str(listing.price),
+                    "currency": "usd"
+                }
+            )
+
+        if payment_method not in ["stripe_checkout", "stripe_acp", "x402"]:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "requires_payment": True,
+                    "checkout_url": "",
+                    "listing_id": norm_id,
+                    "price": str(listing.price),
+                    "currency": "usd"
+                }
             )
             
         if payment_method == "stripe_checkout":
@@ -1333,11 +1408,16 @@ async def create_vendor(body: dict, user=Depends(get_current_user), db: AsyncSes
     return {"id": vendor.id, "status": "pending", "business_name": vendor.business_name}
 
 
-@router.post("/vendors/onboard")
-async def onboard_vendor(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@router.get("/stripe/connect/onboard")
+async def stripe_onboard(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.apps.api.routers.x402 import generate_onboarding_express
     res = await generate_onboarding_express(user, db)
-    return {"status": "onboarding_started", "stripe_url": res.stripe_url, "account_id": res.account_id}
+    return {
+        "url": res.stripe_url,
+        "account_id": res.account_id,
+        "status": "pending",
+        "return_url": "https://veklom.com/control-plane-next/vendor/stripe"
+    }
 
 @router.get("/stripe/connect/status")
 async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -1345,22 +1425,27 @@ async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depen
     result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
     vendor = result.scalar_one_or_none()
     if not vendor or not vendor.stripe_account_id:
-        return {"connected": False, "account_id": None}
+        return {"connected": False, "account_id": None, "status": "incomplete"}
     
     import os
     import stripe
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
     if not stripe.api_key:
-        return {"connected": False, "account_id": vendor.stripe_account_id}
+        return {"connected": False, "account_id": vendor.stripe_account_id, "status": "incomplete"}
         
     try:
         account = stripe.Account.retrieve(vendor.stripe_account_id)
+        is_active = account.charges_enabled and account.details_submitted
+        status = "active" if is_active else "restricted" if account.details_submitted else "pending"
         return {
-            "connected": account.charges_enabled,
-            "account_id": vendor.stripe_account_id
+            "connected": is_active,
+            "account_id": vendor.stripe_account_id,
+            "status": status,
+            "url": None,
+            "return_url": "https://veklom.com/control-plane-next/vendor/stripe"
         }
     except Exception as e:
-        return {"connected": False, "account_id": vendor.stripe_account_id, "error": str(e)}
+        return {"connected": False, "account_id": vendor.stripe_account_id, "status": "incomplete", "error": str(e)}
 
 
 @router.get("/vendors/me/listings")

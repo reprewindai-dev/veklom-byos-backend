@@ -53,6 +53,12 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -683,8 +689,85 @@ async def resend_verification(user=Depends(get_current_user), db: AsyncSession =
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to send verification email")
 
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    email = body.email.strip().lower()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        # Always return success to prevent email enumeration
+        return {"message": "If an account exists, a password reset email has been sent."}
+        
+    try:
+        import asyncio as _asyncio
+        from backend.core.utils.email import send_email_via_resend
+        from jose import jwt
+        reset_token = jwt.encode(
+            {"sub": user.id, "exp": datetime.utcnow() + timedelta(hours=1), "type": "password_reset"},
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM
+        )
+        # Using frontend URL instead of API URL for the email link
+        reset_url = f"https://veklom.com/control-plane-next/reset-password?token={reset_token}"
+        
+        reset_html = f"""
+        <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
+            <div style="text-align:center;margin-bottom:32px;">
+            <span style="font-size:24px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
+            </div>
+            <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">Reset Your Password</h2>
+            <p style="color:#94a3b8;line-height:1.7;">
+            We received a request to reset the password for your Veklom account.
+            </p>
+            <div style="text-align:center;margin:32px 0;">
+            <a href="{reset_url}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
+                Reset Password &rarr;
+            </a>
+            </div>
+            <p style="color:#94a3b8;line-height:1.7;font-size:13px;">If you didn't request this, you can safely ignore this email. This link will expire in 1 hour.</p>
+        </div>
+        """
+        _asyncio.create_task(
+            send_email_via_resend(
+                to_email=user.email,
+                subject="Reset your Veklom password",
+                html_content=reset_html,
+            )
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to queue reset password email: {e}")
+        
+    return {"message": "If an account exists, a password reset email has been sent."}
 
-@router.post("/login")
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    from jose import jwt, JWTError
+    try:
+        payload = jwt.decode(body.token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "password_reset":
+            raise HTTPException(status_code=400, detail="Invalid token type")
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+        
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user.hashed_password = get_password_hash(body.new_password)
+    
+    # Invalidate all existing sessions
+    import sqlalchemy
+    from backend.db.models.user import Session
+    await db.execute(sqlalchemy.delete(Session).where(Session.user_id == user.id))
+    await db.commit()
+    
+    return {"message": "Password has been successfully reset. All previous sessions have been revoked."}@router.post("/login")
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
     result = await db.execute(select(User).where(User.email == email))
@@ -801,8 +884,18 @@ async def signup(body: RegisterRequest, request: Request, db: AsyncSession = Dep
 
 
 @router.post("/logout")
-async def logout(user=Depends(get_current_user)):
-    return {"message": "Logged out successfully"}
+async def logout(request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    import sqlalchemy
+    access_token = request.cookies.get("access_token")
+    if access_token:
+        from backend.db.models.user import Session
+        await db.execute(sqlalchemy.delete(Session).where(Session.session_token == access_token))
+        await db.commit()
+    
+    resp = JSONResponse(content={"message": "Logged out successfully"})
+    resp.delete_cookie("access_token", secure=True, httponly=True, samesite="lax")
+    resp.delete_cookie("refresh_token", secure=True, httponly=True, samesite="lax")
+    return resp
 
 
 @router.post("/refresh")

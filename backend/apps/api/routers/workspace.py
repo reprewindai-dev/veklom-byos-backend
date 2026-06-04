@@ -78,69 +78,72 @@ async def workspace_search(q: str = "", user=Depends(get_current_user), db: Asyn
     q_lower = q.lower()
     results = []
 
-    # Search models
-    model_result = await db.execute(
-        select(ModelConfig).where(
-            ModelConfig.workspace_id == workspace_id,
-            ModelConfig.display_name.ilike(f"%{q}%")
-        ).limit(5)
-    )
-    for m in model_result.scalars():
-        results.append({
-            "type": "model",
-            "id": m.id,
-            "title": m.display_name,
-            "subtitle": m.provider,
-            "url": "#/models"
-        })
+    try:
+        # Search models
+        model_result = await db.execute(
+            select(ModelConfig).where(
+                ModelConfig.workspace_id == workspace_id,
+                ModelConfig.display_name.ilike(f"%{q}%")
+            ).limit(5)
+        )
+        for m in model_result.scalars():
+            results.append({
+                "type": "model",
+                "id": m.id,
+                "title": m.display_name,
+                "subtitle": m.provider,
+                "url": "#/models"
+            })
 
-    # Search deployments
-    deploy_result = await db.execute(
-        select(Deployment).where(
-            Deployment.workspace_id == workspace_id,
-            Deployment.name.ilike(f"%{q}%")
-        ).limit(5)
-    )
-    for d in deploy_result.scalars():
-        results.append({
-            "type": "deployment",
-            "id": d.id,
-            "title": d.name,
-            "subtitle": d.status,
-            "url": "#/deployments"
-        })
+        # Search deployments
+        deploy_result = await db.execute(
+            select(Deployment).where(
+                Deployment.workspace_id == workspace_id,
+                Deployment.name.ilike(f"%{q}%")
+            ).limit(5)
+        )
+        for d in deploy_result.scalars():
+            results.append({
+                "type": "deployment",
+                "id": d.id,
+                "title": d.name,
+                "subtitle": d.status,
+                "url": "#/deployments"
+            })
 
-    # Search pipelines
-    pipeline_result = await db.execute(
-        select(Pipeline).where(
-            Pipeline.workspace_id == workspace_id,
-            Pipeline.name.ilike(f"%{q}%")
-        ).limit(5)
-    )
-    for p in pipeline_result.scalars():
-        results.append({
-            "type": "pipeline",
-            "id": p.id,
-            "title": p.name,
-            "subtitle": p.status,
-            "url": "#/pipelines"
-        })
+        # Search pipelines
+        pipeline_result = await db.execute(
+            select(Pipeline).where(
+                Pipeline.workspace_id == workspace_id,
+                Pipeline.name.ilike(f"%{q}%")
+            ).limit(5)
+        )
+        for p in pipeline_result.scalars():
+            results.append({
+                "type": "pipeline",
+                "id": p.id,
+                "title": p.name,
+                "subtitle": p.status,
+                "url": "#/pipelines"
+            })
 
-    # Search audit logs
-    audit_result = await db.execute(
-        select(AuditLog).where(
-            AuditLog.workspace_id == workspace_id,
-            AuditLog.action.ilike(f"%{q}%")
-        ).limit(5)
-    )
-    for a in audit_result.scalars():
-        results.append({
-            "type": "audit",
-            "id": a.id,
-            "title": a.action,
-            "subtitle": a.resource_type or "workspace",
-            "url": "#/compliance"
-        })
+        # Search audit logs
+        audit_result = await db.execute(
+            select(AuditLog).where(
+                AuditLog.workspace_id == workspace_id,
+                AuditLog.action.ilike(f"%{q}%")
+            ).limit(5)
+        )
+        for a in audit_result.scalars():
+            results.append({
+                "type": "audit",
+                "id": a.id,
+                "title": a.action,
+                "subtitle": a.resource_type or "workspace",
+                "url": "#/compliance"
+            })
+    except SQLAlchemyError:
+        await db.rollback()
 
     return {"results": results[:20]}
 
@@ -153,31 +156,41 @@ async def monitoring_health(user=Depends(get_current_user), db: AsyncSession = D
     now = datetime.now(timezone.utc)
     last_5m = now - timedelta(minutes=5)
 
-    # Check recent execution logs for health
-    recent_execs = await db.scalar(
-        select(func.count()).select_from(ExecLog).where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= last_5m
-        )
-    ) or 0
+    recent_execs = 0
+    recent_errors = 0
+    recent_alerts = 0
+    db_status = "connected"
 
-    # Check for recent errors
-    recent_errors = await db.scalar(
-        select(func.count()).select_from(ExecLog).where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= last_5m,
-            ExecLog.status == "error"
-        )
-    ) or 0
+    try:
+        # Check recent execution logs for health
+        recent_execs = await db.scalar(
+            select(func.count()).select_from(ExecLog).where(
+                ExecLog.workspace_id == workspace_id,
+                ExecLog.created_at >= last_5m
+            )
+        ) or 0
 
-    # Check security events
-    recent_alerts = await db.scalar(
-        select(func.count()).select_from(SecurityEvent).where(
-            SecurityEvent.workspace_id == workspace_id,
-            SecurityEvent.created_at >= last_5m,
-            SecurityEvent.status != "resolved"
-        )
-    ) or 0
+        # Check for recent errors
+        recent_errors = await db.scalar(
+            select(func.count()).select_from(ExecLog).where(
+                ExecLog.workspace_id == workspace_id,
+                ExecLog.created_at >= last_5m,
+                ExecLog.status == "error"
+            )
+        ) or 0
+
+        # Check security events
+        recent_alerts = await db.scalar(
+            select(func.count()).select_from(SecurityEvent).where(
+                SecurityEvent.workspace_id == workspace_id,
+                SecurityEvent.created_at >= last_5m,
+                SecurityEvent.status != "resolved"
+            )
+        ) or 0
+    except SQLAlchemyError:
+        await db.rollback()
+        db_status = "disconnected"
+        recent_errors = 999  # Force unhealthy status
 
     status = "healthy"
     if recent_errors > 10 or recent_alerts > 5:
@@ -192,7 +205,7 @@ async def monitoring_health(user=Depends(get_current_user), db: AsyncSession = D
             "executions_last_5m": recent_execs,
             "errors_last_5m": recent_errors,
             "unresolved_alerts": recent_alerts,
-            "database": "connected",
+            "database": db_status,
             "region": "hetzner-fsn1"
         }
     }
@@ -205,55 +218,63 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
     now = datetime.now(timezone.utc)
     last_24h = now - timedelta(hours=24)
 
-    # Execution metrics
-    total_execs = await db.scalar(
-        select(func.count()).select_from(ExecLog).where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= last_24h
-        )
-    ) or 0
-
-    total_tokens = await db.scalar(
-        select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= last_24h
-        )
-    ) or 0
-
-    total_cost = await db.scalar(
-        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= last_24h
-        )
-    ) or 0.0
-
-    avg_latency = await db.scalar(
-        select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= last_24h
-        )
-    ) or 0
-
-    # Provider breakdown
+    total_execs = 0
+    total_tokens = 0
+    total_cost = 0.0
+    avg_latency = 0
     provider_breakdown = {}
-    provider_rows = await db.execute(
-        select(ExecLog.provider, func.count(), func.sum(ExecLog.total_tokens))
-        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
-        .group_by(ExecLog.provider)
-    )
-    for provider, count, tokens in provider_rows:
-        provider_breakdown[provider or "unknown"] = {
-            "count": count,
-            "tokens": int(tokens or 0)
-        }
+
+    try:
+        # Execution metrics
+        total_execs = await db.scalar(
+            select(func.count()).select_from(ExecLog).where(
+                ExecLog.workspace_id == workspace_id,
+                ExecLog.created_at >= last_24h
+            )
+        ) or 0
+
+        total_tokens = await db.scalar(
+            select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
+                ExecLog.workspace_id == workspace_id,
+                ExecLog.created_at >= last_24h
+            )
+        ) or 0
+
+        total_cost = await db.scalar(
+            select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
+                ExecLog.workspace_id == workspace_id,
+                ExecLog.created_at >= last_24h
+            )
+        ) or 0.0
+
+        avg_latency = await db.scalar(
+            select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
+                ExecLog.workspace_id == workspace_id,
+                ExecLog.created_at >= last_24h
+            )
+        ) or 0
+
+        # Provider breakdown
+        provider_rows = await db.execute(
+            select(ExecLog.provider, func.count(), func.sum(ExecLog.total_tokens))
+            .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
+            .group_by(ExecLog.provider)
+        )
+        for provider, count, tokens in provider_rows:
+            provider_breakdown[provider or "unknown"] = {
+                "count": count,
+                "tokens": int(tokens or 0)
+            }
+    except SQLAlchemyError:
+        await db.rollback()
 
     return {
-        "period": "24h",
         "executions": total_execs,
-        "tokens": total_tokens,
-        "cost_usd": round(total_cost, 4),
-        "avg_latency_ms": round(avg_latency, 2),
-        "provider_breakdown": provider_breakdown
+        "tokens": int(total_tokens),
+        "cost_usd": float(total_cost),
+        "avg_latency_ms": int(avg_latency),
+        "provider_breakdown": provider_breakdown,
+        "timestamp": now.isoformat()
     }
 
 

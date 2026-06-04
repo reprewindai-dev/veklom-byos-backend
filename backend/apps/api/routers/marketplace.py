@@ -748,14 +748,65 @@ async def update_listing_short(listing_id: str, body: dict, user=Depends(get_cur
     return {"id": listing_id, "updated": True, **body}
 
 
-@router.post("/listings/submit")
-async def submit_listing(body: dict, user=Depends(get_current_user)):
-    return {"id": body.get("listing_id", ""), "status": "pending_review"}
+@router.post("/listings/{listing_id}/submit")
+@router.post("/marketplace/listings/{listing_id}/submit")
+async def submit_listing(listing_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Submit a listing for review or publish it if vendor is approved."""
+    from backend.db.models.marketplace import MarketplaceListing
+    from backend.db.models.marketplace import Vendor
+    from fastapi import HTTPException
+    
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalars().first()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+        
+    if listing.vendor_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to submit this listing")
+        
+    # Check vendor status
+    v_res = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
+    vendor = v_res.scalars().first()
+    
+    if not vendor or vendor.status != "approved":
+        if listing.price > 0.0:
+            raise HTTPException(
+                status_code=403, 
+                detail="Vendors cannot publish paid listings until approved/payout-ready. Please complete vendor onboarding."
+            )
+        else:
+            # Free listings can be published immediately or go to pending review
+            listing.status = "published"
+            await db.commit()
+            return {"id": norm_id, "status": "published"}
+            
+    # If vendor is approved and payout-ready, publish it
+    listing.status = "published"
+    await db.commit()
+    return {"id": norm_id, "status": "published"}
 
-
-@router.post("/listings/review")
-async def review_listing(body: dict, user=Depends(get_current_user)):
-    return {"id": body.get("listing_id", ""), "status": body.get("action", "approved")}
+@router.post("/listings/{listing_id}/review")
+@router.post("/marketplace/listings/{listing_id}/review")
+async def admin_review_listing(listing_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Admin endpoint to approve/reject a listing."""
+    # Note: real admin check would go here
+    from backend.db.models.marketplace import MarketplaceListing
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalars().first()
+    if not listing:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Listing not found")
+        
+    action = body.get("action", "approved")
+    if action == "approved":
+        listing.status = "published"
+    else:
+        listing.status = "rejected"
+        
+    await db.commit()
+    return {"id": norm_id, "status": listing.status}
 
 
 @router.post("/marketplace/listings/{listing_id}/review")

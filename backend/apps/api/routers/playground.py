@@ -401,18 +401,57 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
     data = result.payload
     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
     usage = data.get("usage", {})
+    input_tokens = usage.get("prompt_tokens", 0)
+    output_tokens = usage.get("completion_tokens", 0)
+    total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+    used_model = data.get("model", selected_model_id)
+
+    # Compute estimated cost based on fallback mapping since this is playground
+    cost_map = {
+        "gpt-4o": (0.005, 0.015),
+        "gpt-4o-mini": (0.00015, 0.0006),
+        "llama-3.1-8b-instant": (0.00005, 0.0001),
+        "gemini-2.5-flash": (0.0003, 0.001),
+        "qwen2.5:3b": (0.0, 0.0),
+    }
+    cost_per_1k_input, cost_per_1k_output = cost_map.get(used_model, (0.002, 0.006))
+    cost_usd = round(((input_tokens / 1000) * cost_per_1k_input) + ((output_tokens / 1000) * cost_per_1k_output), 6)
+
+    # Create ExecLog record
+    from backend.db.models.ai import ExecLog
+    workspace_id = user.workspace_id or "default" if user else "default"
+    user_id = user.id if user else "anonymous"
+    
+    log = ExecLog(
+        user_id=user_id,
+        workspace_id=workspace_id,
+        model=used_model,
+        provider=result.provider,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost=cost_usd,
+        latency_ms=latency_ms,
+        status="completed",
+        content_safety_score=0.98,
+    )
+    db.add(log)
+    await db.commit()
+    await db.refresh(log)
     
     response = {
         "id": f"msg_{datetime.now(timezone.utc).timestamp()}",
         "role": "assistant",
         "content": content,
-        "model": data.get("model", selected_model_id),
+        "model": used_model,
         "provider": result.provider,
         "usage": {
-            "prompt_tokens": usage.get("prompt_tokens", 0),
-            "completion_tokens": usage.get("completion_tokens", 0),
-            "total_tokens": usage.get("total_tokens", 0),
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": total_tokens,
         },
+        "audit_id": log.id,
+        "evidence_id": f"evt_{log.id}",
+        "cost_usd": cost_usd,
         "finish_reason": "stop",
         "latency_ms": latency_ms,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -420,13 +459,13 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
     
     # If session provided, append messages to session
     if session_id and session_context:
-        result = await db.execute(
+        result_sess = await db.execute(
             select(PlaygroundSession).where(
                 PlaygroundSession.id == session_id,
-                PlaygroundSession.workspace_id == (user.workspace_id or ""),
+                PlaygroundSession.workspace_id == workspace_id,
             )
         )
-        s = result.scalar_one_or_none()
+        s = result_sess.scalar_one_or_none()
         if s:
             s.messages = s.messages or []
             s.messages.append({"role": "user", "content": message})

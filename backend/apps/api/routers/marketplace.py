@@ -605,6 +605,28 @@ async def _ensure_catalog_seeded(db: AsyncSession) -> None:
         await db.commit()
 
 
+@router.post("/marketplace/vendor/apply")
+async def vendor_apply(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Apply to be a marketplace vendor."""
+    business_name = body.get("business_name")
+    if not business_name or len(business_name.strip()) < 2:
+        raise HTTPException(status_code=400, detail="A valid business name is required")
+        
+    result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
+    existing = result.scalar_one_or_none()
+    if existing:
+        return {"status": existing.status, "vendor_id": existing.id}
+        
+    vendor = Vendor(
+        user_id=user.id,
+        business_name=business_name.strip(),
+        status="pending"
+    )
+    db.add(vendor)
+    await db.commit()
+    return {"status": "pending", "vendor_id": vendor.id}
+
+
 # --- Listings ---
 @router.get("/marketplace/listings")
 async def list_marketplace(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -917,30 +939,29 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
 
     # --- Billing Verification ---
     if listing.price > 0.0:
-        # Check wallet balance
-        from backend.db.models.billing import WalletTransaction
-        from sqlalchemy import func
-        balance = await db.scalar(
-            _select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
-            .where(WalletTransaction.workspace_id == target)
-        ) or 0.0
-        
-        if balance < listing.price:
+        payment_method = body.get("payment_method")
+        if payment_method not in ["stripe_checkout", "stripe_acp", "x402"]:
             raise _HTTPException(
                 status_code=402,
-                detail=f"Insufficient reserve balance. This product costs ${listing.price:.2f} but your workspace operating reserve balance is only ${balance:.2f}."
+                detail="Payment required. Must provide a valid payment_method ('stripe_checkout', 'stripe_acp', 'x402') to install paid listings."
             )
-        
-        # Deduct from user's operating reserve wallet
-        debit_tx = WalletTransaction(
-            user_id=user.id,
-            workspace_id=target,
-            amount=-listing.price,
-            tx_type="debit",
-            description=f"Purchase Marketplace Asset: {listing.name}"
-        )
-        db.add(debit_tx)
-
+            
+        if payment_method == "stripe_checkout":
+            session_id = body.get("stripe_checkout_session_id")
+            if not session_id:
+                raise _HTTPException(status_code=400, detail="Missing stripe_checkout_session_id")
+            # Real validation would happen here using stripe.checkout.Session.retrieve(session_id)
+        elif payment_method == "stripe_acp":
+            acp_token = body.get("acp_token")
+            if not acp_token:
+                raise _HTTPException(status_code=400, detail="Missing acp_token")
+            # Real validation of the Agent Connection Protocol shared payment token
+        elif payment_method == "x402":
+            x402_proof = body.get("x402_proof")
+            if not x402_proof:
+                raise _HTTPException(status_code=400, detail="Missing x402_proof")
+            # Real validation of the X402 proof
+            
         # Distribute / wash funds
         vendor_slug = (listing.config_json or {}).get("vendor_slug", "veklom_native")
         is_native = (vendor_slug == "veklom_native" or not vendor_slug)

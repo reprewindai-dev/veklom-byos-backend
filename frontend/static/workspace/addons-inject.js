@@ -56,27 +56,23 @@
 
   function isOwner() {
     var user = getUser();
-    if (!user) return false;
-    var role = (user.role || '').toUpperCase();
-    return role === 'OWNER' || role === 'SUPER_ADMIN';
+    return Boolean(user && user.capabilities && user.capabilities.platform_command_center === true);
   }
 
   function isPaid() {
     var user = getUser();
     if (!user) return false;
-    var role = (user.role || '').toUpperCase();
     var plan = (user.plan || '').toLowerCase();
-    // Owner/admin always get paid access; sovereign/pro plan users also qualify
-    return role === 'OWNER' || role === 'SUPER_ADMIN' || role === 'ADMIN'
-      || plan === 'sovereign' || plan === 'pro' || plan === 'founding'
-      || plan === 'standard' || plan === 'regulated';
+    // Use plan only, not role
+    return plan === 'sovereign' || plan === 'pro' || plan === 'founding'
+      || plan === 'standard' || plan === 'regulated' || plan === 'enterprise';
   }
 
   function isAdmin() {
     var user = getUser();
     if (!user) return false;
-    var role = (user.role || '').toUpperCase();
-    return role === 'OWNER' || role === 'SUPER_ADMIN' || role === 'ADMIN';
+    var role = (user.workspace_role || user.role || '').toUpperCase();
+    return role === 'OWNER' || role === 'ADMIN';
   }
 
   function getVisibleRoutes() {

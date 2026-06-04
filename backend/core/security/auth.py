@@ -112,7 +112,7 @@ async def get_current_user(
             email = "agent@veklom.com"
             workspace_id = "agent_workspace"
             plan = "pro"
-            role = "super_admin"
+            role = "agent"
             is_active = True
             status = "active"
         return MockAgentUser()
@@ -136,6 +136,11 @@ async def get_current_user(
         status_value = (user.status or "").upper()
         if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
+            
+        if status_value == "PENDING_VERIFICATION":
+            allowed_paths = ["/me", "/resend-verification", "/verify-email", "/logout", "/onboarding/vertical", "/config"]
+            if not any(request.url.path.endswith(p) for p in allowed_paths):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
 
         user.last_activity = datetime.utcnow()
         await db.commit()
@@ -193,7 +198,7 @@ async def get_current_user_optional(
             email = "agent@veklom.com"
             workspace_id = "agent_workspace"
             plan = "pro"
-            role = "super_admin"
+            role = "agent"
             is_active = True
             status = "active"
         return MockAgentUser()

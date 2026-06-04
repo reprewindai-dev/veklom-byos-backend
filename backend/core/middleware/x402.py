@@ -46,6 +46,11 @@ _PAID_ROUTES: dict[str, dict] = {
     "/api/v1/marketplace/acquire": {"price_usdc": 0.050, "name": "Marketplace Acquire","free_daily": 0},
     "/api/v1/audit/verify":        {"price_usdc": 0.003, "name": "Audit Verify",       "free_daily": 5},
     "/api/v1/x402/protected-test": {"price_usdc": 0.025, "name": "Protected Test Route", "free_daily": 0},
+    "/api/v1/x402/search":         {"price_usdc": 0.80,  "name": "Machine Search",       "free_daily": 0},
+    "/api/v1/x402/evaluate":       {"price_usdc": 0.80,  "name": "Machine Evaluate",     "free_daily": 0},
+    "/api/v1/x402/governance":     {"price_usdc": 0.80,  "name": "Machine Governance",   "free_daily": 0},
+    "/api/v1/x402/score":          {"price_usdc": 0.80,  "name": "Machine Score",        "free_daily": 0},
+    "/api/v1/x402/verify":         {"price_usdc": 0.80,  "name": "Machine Verify",       "free_daily": 0},
 }
 
 _FREE_ROUTES_PREFIX = (
@@ -64,7 +69,6 @@ _FREE_ROUTES_PREFIX = (
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
-VEKLOM_TREASURY_DEFAULT = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
 VEKLOM_USDC_ADDR  = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
 
 
@@ -82,7 +86,7 @@ def resolve_basename(name: str) -> str:
         return _basename_cache[name_lower]
         
     if settings.X402_TEST_PROOF_MODE and (name_lower == "veklom.base.eth" or name_lower == "veklom.base"):
-        return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+        return settings.VEKLOM_TREASURY_ADDRESS
 
     label = name_lower.split(".")[0]
     try:
@@ -108,12 +112,12 @@ def resolve_basename(name: str) -> str:
     except Exception as e:
         logger.warning(f"Basename resolution failed for {name}: {e}")
         if name_lower == "veklom.base.eth" or name_lower == "veklom.base":
-            return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+            return settings.VEKLOM_TREASURY_ADDRESS
         
     return ""
 
 def get_treasury_address() -> str:
-    raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    raw = settings.VEKLOM_TREASURY_ADDRESS.strip()
     if not raw or raw == "0x0000000000000000000000000000000000000001":
         return ""
     if is_valid_evm_address(raw):
@@ -343,6 +347,11 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     # A. Test Proof Mode (Only active if enabled by environment settings and not production)
     if settings.X402_TEST_PROOF_MODE:
         if proof_str.startswith("test_proof_"):
+            if settings.APP_ENV == "production":
+                logger.error("[x402] Test proof attempted in production mode. Failing closed.")
+                request.state.x402_error = "invalid_transaction"
+                return False
+
             if "invalid" in proof_str or "fail" in proof_str:
                 request.state.x402_error = "invalid_transaction"
                 return False

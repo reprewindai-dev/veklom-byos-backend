@@ -1,4 +1,4 @@
-"""Billing routes — wallet, subscriptions, budget, cost, payments, payouts."""
+"""Billing routes - wallet, subscriptions, budget, cost, payments, payouts."""
 
 import logging
 from datetime import datetime, timezone
@@ -20,18 +20,18 @@ from backend.db.models.security import KillSwitchState
 router = APIRouter(tags=["Billing"])
 
 
-# Plan catalog — matches the landing page at veklom.com (source of truth)
+# Plan catalog - matches the landing page at veklom.com (source of truth)
 # Frontend tier keys: free / starter / pro / sovereign / enterprise
 PLAN_AMOUNTS = {
     # Primary tier keys (match frontend + landing page)
-    "free":       {"amount": 0,      "monthly": 0,      "name": "Free Evaluation",    "description": "Free tier — 15 governed runs, no card required"},
+    "free":       {"amount": 0,      "monthly": 0,      "name": "Free Evaluation",    "description": "Free tier - 15 governed runs, no card required"},
     "starter":    {"amount": 39500,  "monthly": 0,      "name": "Founding",           "description": "$395 one-time activation + $150 min reserve"},
     "pro":        {"amount": 79500,  "monthly": 0,      "name": "Standard",           "description": "$795 one-time activation + $300 min reserve"},
     "sovereign":  {"amount": 250000, "monthly": 0,      "name": "Regulated / Enterprise", "description": "$2,500+ private terms + $2,500 min reserve"},
-    "enterprise": {"amount": 0,      "monthly": 0,      "name": "Enterprise Custom",  "description": "Custom pricing — SAML/SCIM/SSO, Custom regions, Procurement-ready"},
-    # Legacy aliases (backward compat — keep for existing DB records)
-    "community":  {"amount": 0,      "monthly": 0,      "name": "Veklom Community",   "description": "Free tier — 15 governed runs"},
-    "growth":     {"amount": 29900,  "monthly": 29900,  "name": "Veklom Growth",      "description": "$299/mo — 5 deployments, Routing controls, Audit retention 30d"},
+    "enterprise": {"amount": 0,      "monthly": 0,      "name": "Enterprise Custom",  "description": "Custom pricing - SAML/SCIM/SSO, Custom regions, Procurement-ready"},
+    # Legacy aliases (backward compat - keep for existing DB records)
+    "community":  {"amount": 0,      "monthly": 0,      "name": "Veklom Community",   "description": "Free tier - 15 governed runs"},
+    "growth":     {"amount": 29900,  "monthly": 29900,  "name": "Veklom Growth",      "description": "$299/mo - 5 deployments, Routing controls, Audit retention 30d"},
     "founding":   {"amount": 39500,  "monthly": 39500,  "name": "Veklom Founding Activation + Reserve", "description": "Founding activation"},
     "standard":   {"amount": 79500,  "monthly": 79500,  "name": "Veklom Standard Activation + Reserve", "description": "Standard activation"},
     "regulated":  {"amount": 250000, "monthly": 250000, "name": "Veklom Regulated Activation + Reserve", "description": "Regulated activation"},
@@ -263,22 +263,22 @@ async def subscription_plans(db: AsyncSession = Depends(get_db)):
             "price_label": f"${rates['starter_price']}",
             "period": f"One-time activation + ${rates['starter_reserve']} min reserve",
             "features": [
-                f"Playground run — ${rates['starter_run']:.2f}",
-                f"Compare run — ${rates['starter_run_compare']:.2f}",
-                f"UACP compile — ${rates['starter_run_compile']:.2f}",
-                f"Pipeline test — ${rates['starter_run_pipeline']:.2f}",
-                f"Endpoint test — ${rates['starter_run_endpoint']:.2f}",
-                "BYOK Gov Calls — $6/1,000",
-                "Managed Gov Calls — $12/1,000",
+                f"Playground run - ${rates['starter_run']:.2f}",
+                f"Compare run - ${rates['starter_run_compare']:.2f}",
+                f"UACP compile - ${rates['starter_run_compile']:.2f}",
+                f"Pipeline test - ${rates['starter_run_pipeline']:.2f}",
+                f"Endpoint test - ${rates['starter_run_endpoint']:.2f}",
+                "BYOK Gov Calls - $6/1,000",
+                "Managed Gov Calls - $12/1,000",
             ],
             "bullets": [
-                f"Playground run — ${rates['starter_run']:.2f}",
-                f"Compare run — ${rates['starter_run_compare']:.2f}",
-                f"UACP compile — ${rates['starter_run_compile']:.2f}",
-                f"Pipeline test — ${rates['starter_run_pipeline']:.2f}",
-                f"Endpoint test — ${rates['starter_run_endpoint']:.2f}",
-                "BYOK Gov Calls — $6/1,000",
-                "Managed Gov Calls — $12/1,000",
+                f"Playground run - ${rates['starter_run']:.2f}",
+                f"Compare run - ${rates['starter_run_compare']:.2f}",
+                f"UACP compile - ${rates['starter_run_compile']:.2f}",
+                f"Pipeline test - ${rates['starter_run_pipeline']:.2f}",
+                f"Endpoint test - ${rates['starter_run_endpoint']:.2f}",
+                "BYOK Gov Calls - $6/1,000",
+                "Managed Gov Calls - $12/1,000",
             ],
         },
         {
@@ -290,22 +290,22 @@ async def subscription_plans(db: AsyncSession = Depends(get_db)):
             "price_label": f"${rates['pro_price']}",
             "period": f"One-time activation + ${rates['pro_reserve']} min reserve",
             "features": [
-                f"Playground run — ${rates['pro_run']:.2f}",
-                f"Compare run — ${rates['pro_run_compare']:.2f}",
-                f"UACP compile — ${rates['pro_run_compile']:.2f}",
-                f"Pipeline test — ${rates['pro_run_pipeline']:.2f}",
-                f"Endpoint test — ${rates['pro_run_endpoint']:.2f}",
-                "BYOK Gov Calls — $8/1,000",
-                "Managed Gov Calls — $16/1,000",
+                f"Playground run - ${rates['pro_run']:.2f}",
+                f"Compare run - ${rates['pro_run_compare']:.2f}",
+                f"UACP compile - ${rates['pro_run_compile']:.2f}",
+                f"Pipeline test - ${rates['pro_run_pipeline']:.2f}",
+                f"Endpoint test - ${rates['pro_run_endpoint']:.2f}",
+                "BYOK Gov Calls - $8/1,000",
+                "Managed Gov Calls - $16/1,000",
             ],
             "bullets": [
-                f"Playground run — ${rates['pro_run']:.2f}",
-                f"Compare run — ${rates['pro_run_compare']:.2f}",
-                f"UACP compile — ${rates['pro_run_compile']:.2f}",
-                f"Pipeline test — ${rates['pro_run_pipeline']:.2f}",
-                f"Endpoint test — ${rates['pro_run_endpoint']:.2f}",
-                "BYOK Gov Calls — $8/1,000",
-                "Managed Gov Calls — $16/1,000",
+                f"Playground run - ${rates['pro_run']:.2f}",
+                f"Compare run - ${rates['pro_run_compare']:.2f}",
+                f"UACP compile - ${rates['pro_run_compile']:.2f}",
+                f"Pipeline test - ${rates['pro_run_pipeline']:.2f}",
+                f"Endpoint test - ${rates['pro_run_endpoint']:.2f}",
+                "BYOK Gov Calls - $8/1,000",
+                "Managed Gov Calls - $16/1,000",
             ],
         },
         {
@@ -317,15 +317,15 @@ async def subscription_plans(db: AsyncSession = Depends(get_db)):
             "price_label": "$2,500+",
             "period": "Private terms + $2,500 min reserve",
             "features": [
-                "BYOK Gov Calls — $10/1,000",
-                "Managed Gov Calls — $20/1,000",
+                "BYOK Gov Calls - $10/1,000",
+                "Managed Gov Calls - $20/1,000",
                 "Private deployment",
                 "Procurement & security review",
                 "Custom SLA",
             ],
             "bullets": [
-                "BYOK Gov Calls — $10/1,000",
-                "Managed Gov Calls — $20/1,000",
+                "BYOK Gov Calls - $10/1,000",
+                "Managed Gov Calls - $20/1,000",
                 "Private deployment",
                 "Procurement & security review",
                 "Custom SLA",
@@ -401,9 +401,9 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
     listing_id = body.get("listing_id")  # for marketplace installs
 
     if plan_id == "community":
-        return {"checkout_url": None, "message": "Community plan is free — no payment needed", "plan": "community"}
+        return {"checkout_url": None, "message": "Community plan is free - no payment needed", "plan": "community"}
     if plan_id == "enterprise":
-        return {"checkout_url": None, "message": "Enterprise pricing is custom — contact sales@veklom.com", "plan": "enterprise"}
+        return {"checkout_url": None, "message": "Enterprise pricing is custom - contact sales@veklom.com", "plan": "enterprise"}
 
     # Check if Stripe is configured, else fallback gracefully for demo/testing
     if not _stripe_ready():
@@ -542,7 +542,7 @@ async def list_invoices(user=Depends(get_current_user), db: AsyncSession = Depen
     invoices = result.scalars().all()
     if invoices:
         return [{"id": inv.id, "amount": inv.amount, "status": inv.status, "description": inv.description, "created_at": inv.created_at.isoformat() if inv.created_at else None} for inv in invoices]
-    # Synthetic fallback removed — return honest empty list instead of fake data.
+    # Synthetic fallback removed - return honest empty list instead of fake data.
     return []
 
 
@@ -617,22 +617,63 @@ async def billing_allocate(body: dict, user=Depends(get_current_user)):
 
 # --- Budget ---
 @router.get("/budget")
-async def list_budget_rules(budget_type: Optional[str] = "monthly", user=Depends(get_current_user)):
+async def list_budget_rules(budget_type: Optional[str] = "monthly", user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    from datetime import datetime, timezone
+    from backend.db.models.ai import ExecLog
+    
+    workspace_id = user.workspace_id or ""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    budget = await db.scalar(
+        select(BudgetRule.limit_usd).where(
+            BudgetRule.workspace_id == workspace_id,
+            BudgetRule.is_active == True
+        )
+    )
+    limit = budget if budget else 150.0
+
+    spend = await db.scalar(
+        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start)
+    ) or 0.0
+
     return {
-        "amount": "500.00",
-        "current_spend": "8.50",
-        "remaining": "491.50",
-        "percent_used": 1.7,
-        "forecast_exhaustion_date": "2026-06-30T00:00:00",
-        "alert_level": "ok"
+        "amount": round(float(limit), 2),
+        "current_spend": round(float(spend), 2),
+        "remaining": round(float(limit) - float(spend), 2),
+        "percent_used": round((float(spend) / float(limit)) * 100, 2) if limit > 0 else 0.0,
+        "forecast_exhaustion_date": None,
+        "alert_level": "ok" if float(spend) < limit * 0.9 else "warning"
     }
 
 
 @router.post("/budget")
-async def create_budget_rule(body: dict, user=Depends(get_current_user)):
+async def create_budget_rule(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    workspace_id = user.workspace_id or ""
+    amount = float(body.get("amount", 150.0))
+    
+    # Check if a budget rule already exists
+    result = await db.execute(select(BudgetRule).where(BudgetRule.workspace_id == workspace_id))
+    rule = result.scalar_one_or_none()
+    
+    if rule:
+        rule.limit_usd = amount
+        rule.is_active = True
+    else:
+        rule = BudgetRule(
+            workspace_id=workspace_id,
+            limit_usd=amount,
+            is_active=True
+        )
+        db.add(rule)
+        
+    await db.commit()
+    
     return {
         "budget_type": body.get("budget_type", "monthly"),
-        "amount": body.get("amount", "100.00"),
+        "amount": amount,
         "alert_thresholds": body.get("alert_thresholds", [50, 80, 95]),
         "status": "active"
     }

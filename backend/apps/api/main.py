@@ -748,9 +748,13 @@ _PAID_ROLES = {"OWNER", "SUPER_ADMIN", "ADMIN", "owner", "super_admin", "admin"}
 
 
 async def _get_user_from_request(request):
-    """Extract and verify JWT from Authorization header or cookie."""
+    """Extract and verify JWT from Authorization header or cookie, then fetch user."""
     from backend.core.security.auth import verify_token
-    from backend.core.database.database import get_db
+    from backend.core.database.database import get_db_session
+    from sqlalchemy import select
+    from backend.db.models.user import User
+    from backend.core.services.entitlements import get_workspace_plan
+    
     token = None
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -761,27 +765,163 @@ async def _get_user_from_request(request):
         return None
     try:
         payload = verify_token(token)
-        return payload
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        async with get_db_session() as db:
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if not user:
+                return None
+            plan = "free"
+            industry = "generic"
+            if user.workspace_id:
+                from backend.db.models.workspace import Workspace
+                ws_result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
+                workspace = ws_result.scalar_one_or_none()
+                if workspace:
+                    industry = workspace.industry or "generic"
+                
+                plan_val = await get_workspace_plan(db, user.workspace_id)
+                if plan_val:
+                    plan = plan_val.lower()
+                    normalization = {
+                        "community": "free",
+                        "founding": "starter",
+                        "standard": "pro",
+                        "regulated": "sovereign",
+                        "enterprise": "enterprise"
+                    }
+                    plan = normalization.get(plan, plan)
+            return {
+                "id": user.id,
+                "role": (user.role or "").upper(),
+                "is_superuser": bool(user.is_superuser),
+                "plan": plan,
+                "status": user.status,
+                "workspace_id": user.workspace_id,
+                "industry": industry
+            }
     except Exception:
         return None
 
+@app.middleware("http")
+async def force_https(request, call_next):
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    if settings.APP_ENV == "production" and proto != "https":
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(
+            url=str(request.url.replace(scheme="https")),
+            status_code=308
+        )
+    return await call_next(request)
 
 @app.middleware("http")
 async def enforce_route_access(request, call_next):
     """Enforce access control on protected static routes."""
     path = request.url.path
 
-    # GPC — paid plan required (sovereign / pro / founding / admin)
+    if path.startswith("/command-center"):
+        user = await _get_user_from_request(request)
+        allowed = False
+        if user:
+            # Command Center only loads for platform superusers
+            allowed = user.get("is_superuser") and user.get("role") == "SUPER_ADMIN"
+        if not allowed:
+            html = '<html><head><meta http-equiv="refresh" content="0;url=/workspace/#/overview"></head>'\
+                   '<body>Platform access required. <a href="/workspace/#/overview">Go to workspace</a></body></html>'
+            from starlette.responses import HTMLResponse
+            return HTMLResponse(html, status_code=403)
+
+    if path.startswith("/control-plane-next") and not path.endswith(".js") and not path.endswith(".css"):
+        if "/login" not in path and "/signup" not in path:
+            user = await _get_user_from_request(request)
+            if user:
+                from starlette.responses import HTMLResponse
+                if user.get("status") == "pending_verification":
+                    html = '''
+                    <html><head><title>Verify Email</title>
+                    <style>
+                    body { font-family: Inter, sans-serif; background: #0f0f13; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                    .card { background: #1e293b; padding: 40px; border-radius: 12px; text-align: center; max-width: 400px; }
+                    button { background: #7c3aed; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin-top: 20px; }
+                    </style>
+                    <script>
+                    async function resend() {
+                        const res = await fetch("/api/v1/auth/resend-verification", {method: "POST"});
+                        if (res.ok) alert("Email resent!"); else alert("Error resending");
+                    }
+                    </script>
+                    </head><body>
+                    <div class="card">
+                        <h2>Check Your Email</h2>
+                        <p style="color:#94a3b8">We sent a verification link to your email. You must verify your email before accessing the dashboard.</p>
+                        <button onclick="resend()">Resend Verification Email</button>
+                        <br><br><a href="/api/v1/auth/logout" style="color:#7c3aed">Logout</a>
+                    </div>
+                    <script>
+                    setInterval(async () => {
+                        const res = await fetch("/api/v1/auth/me");
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.status === "active") window.location.reload();
+                        }
+                    }, 5000);
+                    </script>
+                    </body></html>
+                    '''
+                    return HTMLResponse(html)
+                
+                if user.get("industry") == "generic":
+                    html = '''
+                    <html><head><title>Workspace Setup</title>
+                    <style>
+                    body { font-family: Inter, sans-serif; background: #0f0f13; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                    .card { background: #1e293b; padding: 40px; border-radius: 12px; max-width: 450px; width: 100%; }
+                    select, button { width: 100%; padding: 12px; border-radius: 6px; margin-top: 10px; box-sizing: border-box; }
+                    select { background: #0f0f13; color: white; border: 1px solid #334155; }
+                    button { background: #7c3aed; color: white; border: none; cursor: pointer; margin-top: 20px; font-weight: bold; }
+                    </style>
+                    </head><body>
+                    <div class="card">
+                        <h2>Workspace Setup</h2>
+                        <p style="color:#94a3b8">Select your industry vertical to configure compliance rules and available AI tools.</p>
+                        <form id="setupForm" onsubmit="event.preventDefault(); submitForm();">
+                            <label>Industry Vertical</label>
+                            <select id="industry">
+                                <option value="general">General / Technology</option>
+                                <option value="bank">Banking / Finance</option>
+                                <option value="hospital">Healthcare / Life Sciences</option>
+                                <option value="government">Government / Public Sector</option>
+                            </select>
+                            <button type="submit">Complete Setup</button>
+                        </form>
+                    </div>
+                    <script>
+                    async function submitForm() {
+                        const ind = document.getElementById("industry").value;
+                        const res = await fetch("/api/v1/workspace/config", {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({industry: ind})
+                        });
+                        if (res.ok) window.location.href = "/control-plane-next/";
+                        else alert("Error saving config");
+                    }
+                    </script>
+                    </body></html>
+                    '''
+                    return HTMLResponse(html)
+
+    # GPC — paid plan required (sovereign / pro / enterprise)
     if path.startswith("/gpc") or path.startswith("/gpc-engine"):
         if request.query_params.get("public_demo") == "1":
             return await call_next(request)
         user = await _get_user_from_request(request)
+        allowed = False
         if user:
-            role = user.get("role", "")
             plan = user.get("plan", "")
-            allowed = role in _PAID_ROLES or plan in _PAID_PLANS
-        else:
-            allowed = False
+            allowed = plan in _PAID_PLANS
         if not allowed:
             html = '<html><head><meta http-equiv="refresh" content="0;url=/workspace/#/billing"></head>'\
                    '<body>Paid plan required. <a href="/workspace/#/billing">Upgrade your plan</a></body></html>'
@@ -789,6 +929,7 @@ async def enforce_route_access(request, call_next):
             return HTMLResponse(html, status_code=403)
 
     response = await call_next(request)
+
     return response
 
 

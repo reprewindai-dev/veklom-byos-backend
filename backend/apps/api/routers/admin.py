@@ -223,13 +223,52 @@ async def support_message(body: dict, user=Depends(get_current_user)):
 
 # --- Stripe Connect ---
 @router.get("/stripe/connect/onboard")
-async def stripe_onboard(user=Depends(get_current_user)):
-    return {"url": "https://connect.stripe.com/placeholder"}
-
+async def stripe_onboard(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    import os
+    import stripe
+    from backend.db.models.marketplace import Vendor
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    if not stripe.api_key:
+        raise HTTPException(status_code=500, detail="Stripe is not configured")
+        
+    result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
+    vendor = result.scalar_one_or_none()
+    
+    if not vendor:
+        raise HTTPException(status_code=400, detail="You must apply as a vendor first")
+        
+    if not vendor.stripe_account_id:
+        account = stripe.Account.create(type="express", capabilities={"transfers": {"requested": True}})
+        vendor.stripe_account_id = account.id
+        await db.commit()
+        
+    account_link = stripe.AccountLink.create(
+        account=vendor.stripe_account_id,
+        refresh_url="https://veklom.com/control-plane-next/marketplace/vendor?stripe=refresh",
+        return_url="https://veklom.com/control-plane-next/marketplace/vendor?stripe=return",
+        type="account_onboarding",
+    )
+    return {"url": account_link.url}
 
 @router.get("/stripe/connect/status")
-async def stripe_status(user=Depends(get_current_user)):
-    return {"connected": False, "account_id": None}
+async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.marketplace import Vendor
+    result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
+    vendor = result.scalar_one_or_none()
+    if not vendor or not vendor.stripe_account_id:
+        return {"connected": False, "account_id": None}
+    
+    import os
+    import stripe
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    if not stripe.api_key:
+        return {"connected": False, "account_id": vendor.stripe_account_id}
+        
+    account = stripe.Account.retrieve(vendor.stripe_account_id)
+    return {
+        "connected": account.charges_enabled,
+        "account_id": vendor.stripe_account_id
+    }
 
 
 # --- Export ---

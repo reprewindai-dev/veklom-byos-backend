@@ -35,6 +35,11 @@ VEKLOM_PRICING = {
     "compliance_report":   {"price_usdc": 0.010, "unit": "per report",   "name": "Compliance Report"},
     "marketplace_acquire": {"price_usdc": 0.050, "unit": "per acquire",  "name": "Marketplace Acquire"},
     "audit_verify":        {"price_usdc": 0.003, "unit": "per verify",   "name": "Audit Verification"},
+    "x402_search":         {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Search"},
+    "x402_evaluate":       {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Evaluate"},
+    "x402_governance":     {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Governance"},
+    "x402_score":          {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Score"},
+    "x402_verify":         {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Verify"},
 }
 import os
 import logging as _logging
@@ -48,9 +53,10 @@ VEKLOM_API_BASE    = "https://api.veklom.com/api/v1"  # machine-facing API surfa
 VEKLOM_AGENT_BASE  = "https://api.veklom.com"   # where .well-known, mcp/sse, openapi.json live
 
 def get_treasury_address() -> str:
-    raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    from backend.core.config.settings import settings
+    raw = settings.VEKLOM_TREASURY_ADDRESS.strip()
     if not raw or raw == "0x0000000000000000000000000000000000000001":
-        return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+        return ""
     return raw
 
 class DynamicTreasury(str):
@@ -155,7 +161,8 @@ async def agent_json():
 async def x402_json():
     missing_config = []
     treasury = get_treasury_address()
-    raw_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    from backend.core.config.settings import settings
+    raw_treasury = settings.VEKLOM_TREASURY_ADDRESS.strip()
     if not raw_treasury or raw_treasury == "0x0000000000000000000000000000000000000001":
         missing_config.append("VEKLOM_TREASURY_ADDRESS")
     
@@ -171,7 +178,12 @@ async def x402_json():
         "/api/v1/evidence/export",
         "/api/v1/compliance/report",
         "/api/v1/marketplace/acquire",
-        "/api/v1/x402/protected-test"
+        "/api/v1/x402/protected-test",
+        "/api/v1/x402/search",
+        "/api/v1/x402/evaluate",
+        "/api/v1/x402/governance",
+        "/api/v1/x402/score",
+        "/api/v1/x402/verify"
     ]
 
     return JSONResponse({
@@ -538,6 +550,36 @@ async def machine_pricing():
                 "path": "/api/v1/marketplace/acquire",
                 "unit": "per_acquire",
                 "price": "0.050",
+                "free_trial_eligible": False
+            },
+            {
+                "path": "/api/v1/x402/search",
+                "unit": "per_request",
+                "price": "0.10",
+                "free_trial_eligible": False
+            },
+            {
+                "path": "/api/v1/x402/evaluate",
+                "unit": "per_request",
+                "price": "0.10",
+                "free_trial_eligible": False
+            },
+            {
+                "path": "/api/v1/x402/governance",
+                "unit": "per_request",
+                "price": "0.10",
+                "free_trial_eligible": False
+            },
+            {
+                "path": "/api/v1/x402/score",
+                "unit": "per_request",
+                "price": "0.10",
+                "free_trial_eligible": False
+            },
+            {
+                "path": "/api/v1/x402/verify",
+                "unit": "per_request",
+                "price": "0.10",
                 "free_trial_eligible": False
             }
         ]

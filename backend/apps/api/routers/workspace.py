@@ -359,13 +359,50 @@ async def billing_breakdown(user=Depends(get_current_user), db: AsyncSession = D
         )
     )
 
+    # Active users
+    result = await db.execute(
+        select(WorkspaceMember, User)
+        .join(User, WorkspaceMember.user_id == User.id)
+        .where(WorkspaceMember.workspace_id == workspace_id)
+    )
+    members = []
+    for wm, u in result.all():
+        members.append({
+            "id": u.id,
+            "email": u.email,
+            "role": wm.role,
+            "joined_at": wm.joined_at.isoformat() if wm.joined_at else None
+        })
+    if not any(m["id"] == user.id for m in members):
+        members.append({
+            "id": user.id,
+            "email": getattr(user, "email", "owner@example.com"),
+            "role": "owner",
+            "joined_at": now.isoformat()
+        })
+
+    # Usage subtotals
+    usage_result = await db.execute(
+        select(ExecLog.provider, func.sum(ExecLog.cost_usd).label("cost"))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start)
+        .group_by(ExecLog.provider)
+    )
+    subtotals = []
+    for provider, cost in usage_result.all():
+        subtotals.append({
+            "category": provider or "inference",
+            "amount_usd": round(float(cost or 0.0), 4)
+        })
+
     return {
         "period_start": month_start.isoformat(),
         "period_end": now.isoformat(),
         "spend_usd": round(spend, 4),
         "budget_limit_usd": budget if budget else 150.0,
         "remaining_usd": round((budget or 150.0) - spend, 4) if budget else None,
-        "utilization_pct": round((spend / (budget or 150.0)) * 100, 2) if budget else None
+        "utilization_pct": round((spend / (budget or 150.0)) * 100, 2) if budget else None,
+        "members": members,
+        "subtotals": subtotals
     }
 
 
@@ -808,6 +845,19 @@ async def update_settings(body: dict, user=Depends(get_current_user), db: AsyncS
             if "industry" in body: workspace.industry = body["industry"]
             await db.commit()
     return {"message": "Settings updated", "settings": settings}
+
+
+@router.get("/config")
+async def get_config(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Alias for /settings to support legacy frontend config calls."""
+    return await get_settings(user, db)
+
+
+@router.post("/config")
+async def update_config(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Alias for patching settings to support legacy frontend config calls."""
+    return await update_settings(body, user, db)
+
 
 
 @router.get("/integrations")

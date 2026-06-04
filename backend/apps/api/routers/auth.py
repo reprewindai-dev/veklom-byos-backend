@@ -514,7 +514,7 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
             full_name=body.full_name,
             role="SUPER_ADMIN" if is_founder else "admin",
             is_superuser=True if is_founder else False,
-            status="active",
+            status="pending_verification",
             workspace_id=workspace.id,
         )
         db.add(user)
@@ -536,48 +536,46 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         await db.commit()
         await db.refresh(user)
 
-        # Fire-and-forget welcome email via Resend
+        # Fire-and-forget verification email via Resend
         try:
             import asyncio as _asyncio
             from backend.core.utils.email import send_email_via_resend
+            from jose import jwt
+            verify_token = jwt.encode(
+                {"sub": user.id, "exp": datetime.utcnow() + timedelta(hours=24), "type": "email_verify"},
+                settings.SECRET_KEY,
+                algorithm=settings.ALGORITHM
+            )
+            verify_url = f"https://api.veklom.com/api/v1/auth/verify-email?token={verify_token}"
             display_name = full_name or email.split("@")[0]
-            welcome_html = f"""
+            verify_html = f"""
             <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
               <div style="text-align:center;margin-bottom:32px;">
                 <span style="font-size:24px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
               </div>
-              <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">Welcome to the Sovereign AI Platform</h2>
+              <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">Verify Your Email</h2>
               <p style="color:#94a3b8;line-height:1.7;">
                 Hi {display_name},<br><br>
-                Your account is ready. You now have access to the Veklom control plane &mdash; where AI infrastructure meets sovereign runtime governance.
+                Please verify your email address to access the Veklom control plane.
               </p>
               <div style="text-align:center;margin:32px 0;">
-                <a href="https://veklom.com/workspace/" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
-                  Open Workspace &rarr;
+                <a href="{verify_url}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
+                  Verify Email &rarr;
                 </a>
               </div>
-              <div style="background:#1e293b;border-radius:8px;padding:20px;margin-bottom:24px;">
-                <p style="color:#64748b;font-size:13px;margin:0 0 12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">What you can do now</p>
-                <ul style="color:#94a3b8;line-height:2;margin:0;padding-left:20px;font-size:14px;">
-                  <li>Run AI inference in the <strong style="color:#e2e8f0;">Playground</strong></li>
-                  <li>Deploy agents via the <strong style="color:#e2e8f0;">Pipelines</strong> module</li>
-                  <li>Browse sovereign models in the <strong style="color:#e2e8f0;">Marketplace</strong></li>
-                  <li>Monitor runtime health in <strong style="color:#e2e8f0;">Monitoring</strong></li>
-                </ul>
-              </div>
               <p style="color:#94a3b8;line-height:1.7;">Questions? Reply to this email or contact <a href="mailto:sales@veklom.com" style="color:#a78bfa;">sales@veklom.com</a>.</p>
-              <hr style="border:none;border-top:1px solid #1e293b;margin:28px 0;">
-              <p style="color:#475569;font-size:12px;text-align:center;">Veklom &mdash; Sovereign AI Runtime Infrastructure</p>
             </div>
             """
             _asyncio.create_task(
                 send_email_via_resend(
                     to_email=email,
-                    subject="Welcome to Veklom — your workspace is ready",
-                    html_content=welcome_html,
+                    subject="Verify your Veklom account",
+                    html_content=verify_html,
                 )
             )
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to queue verification email: {e}")
             pass  # Never block registration on email failure
 
         # Build response with tokens in body AND cookies (fixes session hydration race)
@@ -613,6 +611,77 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         error_detail = f"Registration error: {str(e)}\nTraceback: {traceback.format_exc()}"
         print(error_detail)
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+
+
+@router.get("/verify-email")
+async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+    """Verifies a user's email address from a JWT link."""
+    from jose import jwt, JWTError
+    from fastapi.responses import RedirectResponse
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = payload.get("sub")
+        token_type = payload.get("type")
+        if not user_id or token_type != "email_verify":
+            raise HTTPException(status_code=400, detail="Invalid token")
+            
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=400, detail="User not found")
+            
+        if user.status == "pending_verification":
+            user.status = "active"
+            await db.commit()
+            
+        return RedirectResponse(url="https://veklom.com/control-plane-next/login?verified=true", status_code=302)
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification token")
+
+@router.post("/resend-verification")
+async def resend_verification(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Resend the email verification link."""
+    if user.status != "pending_verification":
+        return {"message": "Email already verified"}
+        
+    try:
+        import asyncio as _asyncio
+        from backend.core.utils.email import send_email_via_resend
+        from jose import jwt
+        verify_token = jwt.encode(
+            {"sub": user.id, "exp": datetime.utcnow() + timedelta(hours=24), "type": "email_verify"},
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM
+        )
+        verify_url = f"https://api.veklom.com/api/v1/auth/verify-email?token={verify_token}"
+        display_name = user.full_name or user.email.split("@")[0]
+        verify_html = f"""
+        <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
+            <div style="text-align:center;margin-bottom:32px;">
+            <span style="font-size:24px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
+            </div>
+            <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">Verify Your Email</h2>
+            <p style="color:#94a3b8;line-height:1.7;">
+            Hi {display_name},<br><br>
+            Please verify your email address to access the Veklom control plane.
+            </p>
+            <div style="text-align:center;margin:32px 0;">
+            <a href="{verify_url}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
+                Verify Email &rarr;
+            </a>
+            </div>
+        </div>
+        """
+        _asyncio.create_task(
+            send_email_via_resend(
+                to_email=user.email,
+                subject="Verify your Veklom account",
+                html_content=verify_html,
+            )
+        )
+        return {"message": "Verification email resent"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to send verification email")
 
 
 @router.post("/login")
@@ -766,31 +835,17 @@ async def refresh(body: dict, db: AsyncSession = Depends(get_db)):
 async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Return the authenticated user's profile with workspace summary and capability flags.
-
-    Plan is read from the active Subscription row for the user's workspace.
-    Falls back to workspace.license_tier, then to the role-based default (free
-    for OWNER/ADMIN, sovereign for SUPER_ADMIN). The role-based fallback means
-    a self-registered OWNER always sees plan=free until a real Stripe subscription
-    is activated.
     """
-    from backend.db.models.billing import Subscription
+    from backend.core.services.entitlements import get_workspace_plan
 
     user_data = _user_dict(user)
 
     # Resolve real subscription plan from DB
-    real_plan = user_data.get("plan", "free")  # role-based default
+    real_plan = "free"
     if user.workspace_id:
-        active_sub = (await db.execute(
-            select(Subscription)
-            .where(
-                Subscription.workspace_id == user.workspace_id,
-                Subscription.status.in_(["active", "trialing"]),
-            )
-            .order_by(Subscription.created_at.desc())
-            .limit(1)
-        )).scalar_one_or_none()
-        if active_sub and active_sub.plan:
-            plan_id = (active_sub.plan or "").lower()
+        plan_id = await get_workspace_plan(db, user.workspace_id)
+        if plan_id:
+            plan_id = plan_id.lower()
             normalization = {
                 "community": "free",
                 "founding": "starter",
@@ -798,6 +853,8 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
                 "regulated": "sovereign",
                 "enterprise": "enterprise"
             }
+            real_plan = normalization.get(plan_id, plan_id)
+
             real_plan = normalization.get(plan_id, plan_id)
 
     # Add workspace data

@@ -75,6 +75,11 @@ _GOVERNED_CATALOG: dict[str, dict] = {
     "compliance_report":   {"price_usdc": 0.010, "unit": "per report",  "name": "Compliance Report",    "path": "/api/v1/compliance/report",   "free_daily": 1},
     "marketplace_acquire": {"price_usdc": 0.050, "unit": "per acquire", "name": "Marketplace Acquire",  "path": "/api/v1/marketplace/acquire", "free_daily": 0},
     "audit_verify":        {"price_usdc": 0.003, "unit": "per verify",  "name": "Audit Verification",   "path": "/api/v1/audit/verify",        "free_daily": 5},
+    "x402_search":         {"price_usdc": 0.10,  "unit": "per request", "name": "Machine Search",       "path": "/api/v1/x402/search",         "free_daily": 0},
+    "x402_evaluate":       {"price_usdc": 0.10,  "unit": "per request", "name": "Machine Evaluate",     "path": "/api/v1/x402/evaluate",       "free_daily": 0},
+    "x402_governance":     {"price_usdc": 0.10,  "unit": "per request", "name": "Machine Governance",   "path": "/api/v1/x402/governance",     "free_daily": 0},
+    "x402_score":          {"price_usdc": 0.10,  "unit": "per request", "name": "Machine Score",        "path": "/api/v1/x402/score",          "free_daily": 0},
+    "x402_verify":         {"price_usdc": 0.10,  "unit": "per request", "name": "Machine Verify",       "path": "/api/v1/x402/verify",         "free_daily": 0},
 }
 
 # ACP/ACS checkout-session lifecycle states.

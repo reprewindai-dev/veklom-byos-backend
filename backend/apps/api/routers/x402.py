@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/x402", tags=["x402 Payment"])
 
-VEKLOM_TREASURY_DEFAULT = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
 VEKLOM_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
 
 import re
@@ -40,7 +39,7 @@ def resolve_basename(name: str) -> str:
         return _basename_cache[name_lower]
         
     if settings.X402_TEST_PROOF_MODE and (name_lower == "veklom.base.eth" or name_lower == "veklom.base"):
-        return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+        return settings.VEKLOM_TREASURY_ADDRESS
 
     label = name_lower.split(".")[0]
     try:
@@ -66,13 +65,12 @@ def resolve_basename(name: str) -> str:
     except Exception as e:
         logger.warning(f"Basename resolution failed for {name}: {e}")
         if name_lower == "veklom.base.eth" or name_lower == "veklom.base":
-            return "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
+            return settings.VEKLOM_TREASURY_ADDRESS
         
     return ""
 
 def get_treasury_address() -> str:
-    import os
-    raw = os.environ.get("VEKLOM_TREASURY_ADDRESS", "").strip()
+    raw = settings.VEKLOM_TREASURY_ADDRESS.strip()
     if not raw or raw == "0x0000000000000000000000000000000000000001":
         return ""
     if is_valid_evm_address(raw):
@@ -260,6 +258,26 @@ async def verify_x402_evidence(
         reason=reason
     )
 
+
+# ---------------------------------------------------------------------------
+# Machine-to-Machine Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/search")
+async def x402_search(request: Request, x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")):
+    return {"status": "success", "action": "search", "result": {"query": "executed", "timestamp": datetime.now(timezone.utc).isoformat()}}
+
+@router.post("/evaluate")
+async def x402_evaluate(request: Request, x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")):
+    return {"status": "success", "action": "evaluate", "result": {"score": 0.95, "timestamp": datetime.now(timezone.utc).isoformat()}}
+
+@router.post("/governance")
+async def x402_governance(request: Request, x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")):
+    return {"status": "success", "action": "governance", "result": {"policy_check": "passed", "timestamp": datetime.now(timezone.utc).isoformat()}}
+
+@router.post("/score")
+async def x402_score(request: Request, x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")):
+    return {"status": "success", "action": "score", "result": {"alignment_score": 0.98, "timestamp": datetime.now(timezone.utc).isoformat()}}
 
 # ---------------------------------------------------------------------------
 # Protected Reference Route

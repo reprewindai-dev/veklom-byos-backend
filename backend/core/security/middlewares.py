@@ -30,7 +30,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/uptime", "/legal", "/license", "/vendor-agreement", "/irongrid", "/api/v1/webhooks", "/api/v1/edge", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
             "/apple-touch-icon.png", "/og-image.png", "/twitter-card.png",
-            "/logo.png", "/icon.png", "/api/v1/ai/models", "/api/v1/pricing", "/api/v1/subscriptions/plans", "/api/v1/subscriptions/current", "/status/data",
+            "/logo.png", "/icon.png", "/api/v1/ai/models", "/api/v1/pricing", "/api/v1/subscriptions/plans", "/status/data",
             "/api/v1/platform/pulse", "/api/v1/sdk/", "/api/v1/agent-use-cases",
             "/sdk/examples", "/mcp/", "/openapi.json", "/api/v1/openapi.json",
             "/v1/openapi.json", "/api/v1/sys/health", "/api/v1/sys/gpu",

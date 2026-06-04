@@ -139,7 +139,7 @@ async def topup_checkout(body: dict, user=Depends(get_current_user)):
             }
         ],
     )
-    return {"checkout_url": session.url, "session_id": session.id}
+    return {"url": session.url, "session_id": session.id}
 
 
 @router.get("/wallet/stats/usage")
@@ -336,79 +336,57 @@ async def subscription_plans(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/subscriptions/current")
-async def current_subscription(request: Request, db: AsyncSession = Depends(get_db)):
-    """Return the real active subscription from the DB, or an honest empty state.
-    Bypasses 401 to prevent frontend SWR infinite retry loops on unauthenticated/loading state.
-    """
-    from backend.core.security.auth import verify_token
-    from backend.db.models.user import User
-
-    token = None
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-    if not token:
-        token = request.cookies.get("access_token") or request.cookies.get("token")
-
-    user = None
-    if token:
-        try:
-            payload = verify_token(token, enforce_replay=False)
-            user_id = payload.get("sub")
-            if user_id:
-                result = await db.execute(select(User).where(User.id == user_id))
-                user = result.scalar_one_or_none()
-        except Exception:
-            pass
-
-    if user:
-        ws_id = user.workspace_id or ""
-        sub = (await db.execute(
-            select(Subscription)
-            .where(
-                Subscription.workspace_id == ws_id,
-                Subscription.status.in_(["active", "trialing"]),
-            )
-            .order_by(Subscription.created_at.desc())
-            .limit(1)
-        )).scalar_one_or_none()
-        if sub:
-            plan_id = (sub.plan or "").lower()
-            normalization = {
-                "community": "free",
-                "founding": "starter",
-                "standard": "pro",
-                "regulated": "sovereign",
-                "enterprise": "enterprise"
-            }
-            normalized_plan = normalization.get(plan_id, plan_id)
-            return {
-                "plan": normalized_plan,
-                "status": sub.status,
-                "current_period_end": sub.current_period_end.isoformat() if getattr(sub, "current_period_end", None) else None,
-                "stripe_subscription_id": getattr(sub, "stripe_subscription_id", None),
-            }
+async def current_subscription(user = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Return the real active subscription from the DB."""
+    ws_id = user.workspace_id or ""
+    sub = (await db.execute(
+        select(Subscription)
+        .where(
+            Subscription.workspace_id == ws_id,
+            Subscription.status.in_(["active", "trialing"]),
+        )
+        .order_by(Subscription.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    
+    if sub:
+        plan_id = (sub.plan or "").lower()
+        normalization = {
+            "community": "free",
+            "founding": "starter",
+            "standard": "pro",
+            "regulated": "sovereign",
+            "enterprise": "enterprise"
+        }
+        normalized_plan = normalization.get(plan_id, plan_id)
+        return {
+            "plan": normalized_plan,
+            "status": sub.status,
+            "current_period_end": sub.current_period_end.isoformat() if getattr(sub, "current_period_end", None) else None,
+            "stripe_subscription_id": getattr(sub, "stripe_subscription_id", None),
+        }
+        
     return {
         "plan": "free",
         "status": "none",
-        "note": "No active subscription. Visit /workspace/#/billing to upgrade.",
+        "note": "No active subscription. Visit /control-plane-next/billing/ to upgrade.",
     }
 
 
 @router.post("/subscriptions/checkout")
 async def subscription_checkout(body: dict, user=Depends(get_current_user)):
-    plan_id = (body.get("plan") or "agency").lower()
+    plan_id = (body.get("plan_id") or body.get("plan") or "agency").lower()
     listing_id = body.get("listing_id")  # for marketplace installs
 
     if plan_id == "community":
-        return {"checkout_url": None, "message": "Community plan is free - no payment needed", "plan": "community"}
+        return {"url": None, "message": "Community plan is free - no payment needed", "plan": "community"}
     if plan_id == "enterprise":
-        return {"checkout_url": None, "message": "Enterprise pricing is custom - contact sales@veklom.com", "plan": "enterprise"}
+        return {"url": None, "message": "Enterprise pricing is custom - contact sales@veklom.com", "plan": "enterprise"}
 
     # Check if Stripe is configured, else fallback gracefully for demo/testing
     if not _stripe_ready():
         return {
-            "checkout_url": f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing?checkout=success&plan={plan_id}"
+            "url": f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing?checkout=success&plan={plan_id}"
         }
 
     try:
@@ -417,7 +395,7 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
         amount = plan.get("monthly") or plan.get("amount") or 24900
         
         if amount == 0:
-            return {"checkout_url": None, "message": "This plan is free", "plan": plan_id}
+            return {"url": None, "message": "This plan is free", "plan": plan_id}
 
         if body.get("amount"):
             try: amount = int(round(float(body["amount"]) * 100))
@@ -444,11 +422,10 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
             session_params.pop("allow_promotion_codes", None)
             session = client.checkout.Session.create(**session_params)
             
-        return {"checkout_url": session.url}
+        return {"url": session.url}
     except Exception:
-        # Fallback to local success for demo
         return {
-            "checkout_url": f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing?checkout=success&plan={plan_id}"
+            "url": f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing?checkout=success&plan_id={plan_id}"
         }
 
 
@@ -459,7 +436,7 @@ async def subscription_portal(body: dict = None, user=Depends(get_current_user),
     return_url = body.get("return_url", f"{settings.FRONTEND_URL.rstrip('/')}/workspace#/billing")
     
     if not _stripe_ready():
-        return {"portal_url": return_url}
+        return {"url": return_url}
         
     client = _stripe_client()
     customer_id = getattr(user, "stripe_customer_id", None) or ""
@@ -474,13 +451,13 @@ async def subscription_portal(body: dict = None, user=Depends(get_current_user),
             user.stripe_customer_id = customer_id
             await db.commit()
         except Exception as e:
-            return {"portal_url": return_url, "error": str(e)}
+            return {"url": return_url, "error": str(e)}
             
     try:
         session = client.billing_portal.Session.create(customer=customer_id, return_url=return_url)
-        return {"portal_url": session.url}
+        return {"url": session.url}
     except Exception as e:
-        return {"portal_url": return_url, "error": str(e)}
+        return {"url": return_url, "error": str(e)}
 
 
 # --- Invoices ---

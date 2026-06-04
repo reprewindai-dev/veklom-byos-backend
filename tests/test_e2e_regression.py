@@ -24,8 +24,18 @@ def browser_context():
 
 def test_auth_login_api(api_client):
     # This will test the /auth/login backend schema
-    # Setup test user credentials via environment or fixtures
     pass
+
+def test_auth_logout_api(api_client):
+    """Test GET /api/v1/auth/logout idempotency and redirect"""
+    resp = api_client.get(f"{API_BASE}/auth/logout", allow_redirects=False)
+    assert resp.status_code in [302, 303], f"Expected 302/303, got {resp.status_code}"
+    assert "/control-plane-next/login" in resp.headers.get("Location", "")
+
+def test_auth_forgot_password_method(api_client):
+    """Test GET /api/v1/auth/forgot-password is 405"""
+    resp = api_client.get(f"{API_BASE}/auth/forgot-password")
+    assert resp.status_code == 405, f"Expected 405, got {resp.status_code}"
 
 def test_unverified_user_intercept(browser_context):
     page = browser_context.new_page()
@@ -88,11 +98,11 @@ def test_subscriptions_plans(api_client):
 
 def test_subscriptions_current(api_client):
     """Test GET /api/v1/subscriptions/current"""
-    # Without token, should return free tier and 200 OK
+    # Without token, should be rejected as auth-gated
     resp = api_client.get(f"{API_BASE}/subscriptions/current")
-    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    assert resp.status_code in [401, 403], f"Expected 401/403, got {resp.status_code}"
     data = resp.json()
-    assert "plan" in data
+    assert "detail" in data
 
 def test_marketplace_buyer_install_gating(api_client):
     """Test POST /api/v1/marketplace/listings/{listing_id}/install gating"""

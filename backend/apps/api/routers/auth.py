@@ -591,6 +591,9 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
             logging.error(f"Failed to queue verification email: {e}")
             pass  # Never block registration on email failure
 
+        if user.status == "pending_verification":
+            raise HTTPException(status_code=403, detail="Account created. Please check your email to verify your account before logging in.")
+
         # Build response with tokens in body AND cookies (fixes session hydration race)
         resp = JSONResponse(content={
             "access_token": access_token,
@@ -818,6 +821,9 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         )
         raise HTTPException(status_code=401, detail="Account is inactive")
 
+    if status_value == "PENDING_VERIFICATION":
+        raise HTTPException(status_code=403, detail="Please check your email to verify your account before logging in.")
+
     # Reset failed attempts and log login time
     user.failed_login_attempts = 0
     user.last_login = datetime.utcnow()
@@ -892,42 +898,34 @@ async def signup(body: RegisterRequest, request: Request, db: AsyncSession = Dep
 
 @router.post("/logout")
 @router.get("/logout")
-async def logout(request: Request, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
-    """Clear session cookies and invalidate token."""
-    if user:
-        token = request.cookies.get("access_token")
-        if token:
-            from backend.db.models.user import Session
-            result = await db.execute(select(Session).where(Session.session_token == token))
-            session_db = result.scalar_one_or_none()
-            if session_db:
-                await db.delete(session_db)
-                await db.commit()
+async def logout(request: Request, db: AsyncSession = Depends(get_db)):
+    """Clear session cookies and invalidate token. Idempotent and handles unauthenticated requests."""
+    token = request.cookies.get("access_token") or request.cookies.get("token")
+    if token:
+        from backend.db.models.user import Session
+        result = await db.execute(select(Session).where(Session.session_token == token))
+        session_db = result.scalar_one_or_none()
+        if session_db:
+            await db.delete(session_db)
+            await db.commit()
 
-    resp = JSONResponse(content={"message": "Logged out successfully"})
-    
-    # If it's a GET request, redirect to login
     if request.method == "GET":
         from fastapi.responses import RedirectResponse
-        resp = RedirectResponse(url="/control-plane-next/login", status_code=302)
+        resp = RedirectResponse(url="/control-plane-next/login/", status_code=302)
+    else:
+        resp = JSONResponse(content={"message": "Logged out successfully"})
         
-    resp.delete_cookie(
-        "access_token",
-        path="/",
-        domain=".veklom.com" if not settings.ENVIRONMENT == "development" else None,
-        samesite="lax",
-        secure=not settings.ENVIRONMENT == "development"
-    )
-    resp.delete_cookie(
-        "refresh_token",
-        path="/",
-        domain=".veklom.com" if not settings.ENVIRONMENT == "development" else None,
-        samesite="lax",
-        secure=not settings.ENVIRONMENT == "development"
-    )
-    # Also delete without domain to be safe
-    resp.delete_cookie("access_token", path="/")
-    resp.delete_cookie("refresh_token", path="/")
+    cookies_to_clear = [
+        "access_token", "refresh_token", "session", "session_id", 
+        "auth_token", "veklom_session", "token"
+    ]
+    
+    domain = ".veklom.com" if not settings.ENVIRONMENT == "development" else None
+    
+    for cookie in cookies_to_clear:
+        resp.delete_cookie(cookie, path="/", domain=domain, samesite="lax", secure=not settings.ENVIRONMENT == "development")
+        resp.delete_cookie(cookie, path="/") # Also delete without domain to be safe
+
     return resp
 
 

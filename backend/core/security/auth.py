@@ -117,10 +117,16 @@ async def get_current_user(
             status = "active"
         return MockAgentUser()
 
-    if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    token = None
+    if credentials is not None:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get("access_token")
 
-    payload = verify_token(credentials.credentials)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
+
+    payload = verify_token(token)
     user_id: Optional[str] = payload.get("sub")
 
     if user_id is None:
@@ -203,11 +209,17 @@ async def get_current_user_optional(
             status = "active"
         return MockAgentUser()
 
-    if credentials is None:
+    token = None
+    if credentials is not None:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get("access_token")
+
+    if not token:
         return _GUEST_USER
 
     try:
-        payload = verify_token(credentials.credentials)
+        payload = verify_token(token)
     except HTTPException:
         return _GUEST_USER
 

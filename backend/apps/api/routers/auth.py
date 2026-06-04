@@ -502,6 +502,12 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email already registered")
 
+        # Auto-generate workspace name if not provided
+        workspace_name = body.workspace_name.strip()
+        if not workspace_name:
+            display_name = body.full_name.strip() or email.split("@")[0]
+            workspace_name = f"{display_name}'s Workspace"
+
         # Create a workspace for this new user
         workspace = Workspace(
             name=workspace_name,
@@ -685,7 +691,7 @@ async def resend_verification(user=Depends(get_current_user), db: AsyncSession =
                 html_content=verify_html,
             )
         )
-        return {"message": "Verification email resent"}
+        return {"success": True, "message": "Verification email resent"}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to send verification email")
 
@@ -884,17 +890,43 @@ async def signup(body: RegisterRequest, request: Request, db: AsyncSession = Dep
 
 
 @router.post("/logout")
-async def logout(request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    import sqlalchemy
-    access_token = request.cookies.get("access_token")
-    if access_token:
-        from backend.db.models.user import Session
-        await db.execute(sqlalchemy.delete(Session).where(Session.session_token == access_token))
-        await db.commit()
-    
+@router.get("/logout")
+async def logout(request: Request, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
+    """Clear session cookies and invalidate token."""
+    if user:
+        token = request.cookies.get("access_token")
+        if token:
+            from backend.db.models.user import Session
+            result = await db.execute(select(Session).where(Session.session_token == token))
+            session_db = result.scalar_one_or_none()
+            if session_db:
+                await db.delete(session_db)
+                await db.commit()
+
     resp = JSONResponse(content={"message": "Logged out successfully"})
-    resp.delete_cookie("access_token", secure=True, httponly=True, samesite="lax")
-    resp.delete_cookie("refresh_token", secure=True, httponly=True, samesite="lax")
+    
+    # If it's a GET request, redirect to login
+    if request.method == "GET":
+        from fastapi.responses import RedirectResponse
+        resp = RedirectResponse(url="/control-plane-next/login", status_code=302)
+        
+    resp.delete_cookie(
+        "access_token",
+        path="/",
+        domain=".veklom.com" if not settings.ENVIRONMENT == "development" else None,
+        samesite="lax",
+        secure=not settings.ENVIRONMENT == "development"
+    )
+    resp.delete_cookie(
+        "refresh_token",
+        path="/",
+        domain=".veklom.com" if not settings.ENVIRONMENT == "development" else None,
+        samesite="lax",
+        secure=not settings.ENVIRONMENT == "development"
+    )
+    # Also delete without domain to be safe
+    resp.delete_cookie("access_token", path="/")
+    resp.delete_cookie("refresh_token", path="/")
     return resp
 
 

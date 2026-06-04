@@ -907,12 +907,14 @@ async def create_payment_intent(body: dict, user=Depends(get_current_user)):
 @router.post("/webhooks/stripe")
 @router.post("/subscriptions/webhook")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    if not _stripe_ready() or not settings.STRIPE_WEBHOOK_SECRET.strip().startswith("whsec_"):
+    import os
+    whsec = os.getenv("STRIPE_WEBHOOK_SECRET_LIVE") or os.getenv("STRIPE_WEBHOOK_SECRET") or settings.STRIPE_WEBHOOK_SECRET
+    if not _stripe_ready() or not whsec or not whsec.strip().startswith("whsec_"):
         raise HTTPException(status_code=503, detail="STRIPE_WEBHOOK_SECRET is not configured")
     payload = await request.body()
     signature = request.headers.get("stripe-signature", "")
     try:
-        event = stripe.Webhook.construct_event(payload, signature, settings.STRIPE_WEBHOOK_SECRET.strip())
+        event = stripe.Webhook.construct_event(payload, signature, whsec.strip())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid Stripe payload") from exc
     except stripe.SignatureVerificationError as exc:

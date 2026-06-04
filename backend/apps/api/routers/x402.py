@@ -343,8 +343,8 @@ async def generate_onboarding_express(
         import stripe
         stripe.api_key = key
         try:
-            # If we don't have an account ID, create a new express account
-            if not account_id:
+            # If we don't have an account ID or it's a mock, create a new express account
+            if not account_id or account_id.startswith("acct_mock_"):
                 account = stripe.Account.create(
                     type="express",
                     capabilities={"card_payments": {"requested": True}, "transfers": {"requested": True}},

@@ -1032,24 +1032,32 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
                 import os
                 from backend.core.config.settings import settings
                 key = os.getenv("STRIPE_SECRET_KEY")
-                if key:
-                    stripe.api_key = key
-                    amount = int(round(listing.price * 100))
-                    session = stripe.checkout.Session.create(
-                        mode="payment",
-                        customer_email=user.email,
-                        success_url=f"https://veklom.com/control-plane-next/marketplace?install={norm_id}",
-                        cancel_url=f"https://veklom.com/control-plane-next/marketplace",
-                        metadata={"user_id": user.id, "workspace_id": target, "listing_id": norm_id, "type": "marketplace"},
-                        line_items=[{"quantity": 1, "price_data": {"currency": "usd", "unit_amount": amount, "product_data": {"name": listing.name}}}]
-                    )
-                    checkout_url = session.url
-            except Exception:
-                pass
+                if not key:
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(status_code=503, content={"message": "Stripe checkout is not configured on this server. Please contact support."})
                 
+                stripe.api_key = key
+                amount = int(round(listing.price * 100))
+                session = stripe.checkout.Session.create(
+                    mode="payment",
+                    customer_email=user.email,
+                    success_url=f"https://veklom.com/control-plane-next/marketplace?install={norm_id}",
+                    cancel_url=f"https://veklom.com/control-plane-next/marketplace",
+                    metadata={"user_id": user.id, "workspace_id": target, "listing_id": norm_id, "type": "marketplace"},
+                    line_items=[{"quantity": 1, "price_data": {"currency": "usd", "unit_amount": amount, "product_data": {"name": listing.name}}}]
+                )
+                checkout_url = session.url
+            except Exception as e:
+                import logging
+                logging.getLogger("veklom").error(f"Stripe Checkout creation failed: {e}")
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=503,
+                    content={"message": "Stripe checkout is not configured on this server. Please contact support."}
+                )
             from fastapi.responses import JSONResponse
             return JSONResponse(
-                status_code=402,
+                status_code=200,
                 content={
                     "requires_payment": True,
                     "checkout_url": checkout_url or "",
@@ -1062,7 +1070,7 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
         if payment_method not in ["stripe_checkout", "stripe_acp", "x402"]:
             from fastapi.responses import JSONResponse
             return JSONResponse(
-                status_code=402,
+                status_code=400,
                 content={
                     "requires_payment": True,
                     "checkout_url": "",
@@ -1409,29 +1417,39 @@ async def create_vendor(body: dict, user=Depends(get_current_user), db: AsyncSes
 
 
 @router.get("/stripe/connect/onboard")
+@router.post("/stripe/connect/onboard")
 async def stripe_onboard(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.apps.api.routers.x402 import generate_onboarding_express
-    res = await generate_onboarding_express(user, db)
-    return {
-        "url": res.stripe_url,
-        "account_id": res.account_id,
-        "status": "pending",
-        "return_url": "https://veklom.com/control-plane-next/vendor/stripe"
-    }
+    try:
+        res = await generate_onboarding_express(user, db)
+        return {
+            "url": res.stripe_url,
+            "account_id": res.account_id,
+            "status": "pending",
+            "return_url": "https://veklom.com/control-plane-next/vendor/stripe"
+        }
+    except Exception as e:
+        import logging
+        from fastapi.responses import JSONResponse
+        logging.getLogger("veklom").error(f"Stripe Connect onboarding failed: {e}")
+        return JSONResponse(status_code=503, content={
+            "status": "configuration_error",
+            "message": "Stripe Connect platform setup is incomplete. Contact support."
+        })
 
 @router.get("/stripe/connect/status")
 async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.db.models.marketplace import Vendor
     result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
     vendor = result.scalar_one_or_none()
-    if not vendor or not vendor.stripe_account_id:
-        return {"connected": False, "account_id": None, "status": "incomplete"}
+    if not vendor or not vendor.stripe_account_id or vendor.stripe_account_id.startswith("acct_mock_"):
+        return {"connected": False, "status": "incomplete", "onboarding_url": "/api/v1/stripe/connect/onboard"}
     
     import os
     import stripe
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
     if not stripe.api_key:
-        return {"connected": False, "account_id": vendor.stripe_account_id, "status": "incomplete"}
+        return {"connected": False, "status": "incomplete", "onboarding_url": "/api/v1/stripe/connect/onboard"}
         
     try:
         account = stripe.Account.retrieve(vendor.stripe_account_id)
@@ -1439,13 +1457,22 @@ async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depen
         status = "active" if is_active else "restricted" if account.details_submitted else "pending"
         return {
             "connected": is_active,
-            "account_id": vendor.stripe_account_id,
             "status": status,
-            "url": None,
-            "return_url": "https://veklom.com/control-plane-next/vendor/stripe"
+            "charges_enabled": account.charges_enabled,
+            "payouts_enabled": account.payouts_enabled,
+            "details_submitted": account.details_submitted,
+            "onboarding_url": "/api/v1/stripe/connect/onboard"
         }
     except Exception as e:
-        return {"connected": False, "account_id": vendor.stripe_account_id, "status": "incomplete", "error": str(e)}
+        import logging
+        from fastapi.responses import JSONResponse
+        logging.getLogger("veklom").error(f"Stripe status check failed: {e}")
+        return JSONResponse(status_code=503, content={
+            "connected": False,
+            "status": "configuration_error",
+            "message": "Payment service unavailable. Contact support.",
+            "action": "contact_support"
+        })
 
 
 @router.get("/vendors/me/listings")

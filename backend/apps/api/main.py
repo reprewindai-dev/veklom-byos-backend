@@ -735,6 +735,14 @@ async def redirect_workspace_root(request: Request):
     return RedirectResponse(url=f"/control-plane-next/{query_str}", status_code=307)
 
 
+@app.get("/control-plane-next/subscription/")
+@app.get("/control-plane-next/subscription")
+async def redirect_subscription_to_billing(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"/control-plane-next/billing/{query_str}", status_code=307)
+
+
 _mount_static()
 
 

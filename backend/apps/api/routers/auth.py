@@ -23,6 +23,7 @@ from backend.core.database.database import get_db
 from backend.core.security.auth import (
     create_access_token,
     get_current_user,
+    get_current_user_optional,
     get_password_hash,
     verify_password,
     verify_token,

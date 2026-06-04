@@ -25,6 +25,14 @@ class MarketplaceListing(Base):
     config_json = Column(JSON, default=dict)
     downloads = Column(Integer, default=0)
     rating = Column(Float, default=0.0)
+    
+    # Phase 2 Inventory & Product rules
+    inventory_quantity = Column(Integer, default=-1) # -1 means unlimited
+    inventory_sold = Column(Integer, default=0)
+    inventory_reserved = Column(Integer, default=0)
+    inventory_status = Column(String(32), default="active")
+    version_identifier = Column(String(64), default="1.0.0")
+    
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -103,5 +111,6 @@ class Vendor(Base):
     status = Column(String(32), default="pending")
     onboarding_complete = Column(Boolean, default=False)
     total_revenue = Column(Float, default=0.0)
+    config_json = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

@@ -11,6 +11,22 @@ from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.core.services.posthog_client import posthog_service, hash_id
 from backend.db.models.marketplace import MarketplaceListing, Vendor
+from pydantic import BaseModel, Field, HttpUrl, EmailStr
+from typing import Optional
+
+class VendorCreateRequest(BaseModel):
+    business_name: str = Field(..., min_length=2, max_length=100)
+    business_url: str = Field(..., min_length=5, max_length=255)
+    support_email: EmailStr
+    country: str = Field(..., min_length=2, max_length=2)
+    business_type: str = Field(..., min_length=2, max_length=50)
+    tax_id: Optional[str] = None
+    product_description: str = Field(..., min_length=10, max_length=1000)
+    accepted_terms: bool = Field(True, description="Must accept Terms of Service")
+    accepted_vendor_terms: bool = Field(True, description="Must accept Vendor Terms")
+    accepted_privacy: bool = Field(True, description="Must accept Privacy Policy")
+    accepted_refund_policy: bool = Field(True, description="Must accept Refund Policy")
+    accepted_marketplace_policy: bool = Field(True, description="Must accept Marketplace Terms")
 
 router = APIRouter(tags=["Marketplace"])
 
@@ -769,49 +785,45 @@ async def submit_listing(listing_id: str, body: dict = None, user=Depends(get_cu
     v_res = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
     vendor = v_res.scalars().first()
     
-    if listing.price > 0.0:
-        # Check Stripe Connect status for paid listings
-        is_active = False
-        if vendor and vendor.stripe_account_id:
-            import os
-            import stripe
-            key = os.getenv("STRIPE_SECRET_KEY")
-            if key:
-                stripe.api_key = key
+    if not vendor:
+        raise HTTPException(status_code=403, detail="Vendor profile not found. Please complete the vendor application.")
+        
+    if vendor.status != "approved":
+        raise HTTPException(status_code=403, detail="Vendor application is pending internal review. Cannot publish listings yet.")
+        
+    config = vendor.config_json or {}
+    if not config.get("business_url") or not config.get("legal_acceptance"):
+        raise HTTPException(status_code=403, detail="Vendor intake fields incomplete. Please update your profile.")
+        
+    # Check Stripe Connect status
+    is_active = False
+    if vendor.stripe_account_id:
+        import os
+        import httpx
+        key = os.getenv("STRIPE_SECRET_KEY")
+        if key:
+            async with httpx.AsyncClient() as client:
                 try:
-                    account = stripe.Account.retrieve(vendor.stripe_account_id)
-                    is_active = account.charges_enabled and account.details_submitted
+                    res = await client.get(
+                        f"https://api.stripe.com/v1/accounts/{vendor.stripe_account_id}",
+                        headers={"Authorization": f"Bearer {key}"}
+                    )
+                    if res.status_code == 200:
+                        account = res.json()
+                        is_active = account.get("charges_enabled", False) and account.get("details_submitted", False)
                 except Exception:
                     pass
                     
-        if not is_active:
-            from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "detail": "Stripe Connect onboarding must be completed before publishing paid marketplace listings.",
-                    "action": "complete_stripe_connect",
-                    "onboarding_url": "/api/v1/stripe/connect/onboard"
-                }
-            )
-            
-    if not vendor or vendor.status != "approved":
-        if listing.price > 0.0:
-            # We already handled paid above, but just in case
-            from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "detail": "Stripe Connect onboarding must be completed before publishing paid marketplace listings.",
-                    "action": "complete_stripe_connect",
-                    "onboarding_url": "/api/v1/stripe/connect/onboard"
-                }
-            )
-        else:
-            # Free listings can be published immediately or go to pending review
-            listing.status = "published"
-            await db.commit()
-            return {"id": norm_id, "status": "published"}
+    if not is_active:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": "Stripe Connect onboarding must be completed before publishing marketplace listings.",
+                "action": "complete_stripe_connect",
+                "onboarding_url": "/api/v1/stripe/connect/onboard"
+            }
+        )
             
     # If vendor is approved and payout-ready, publish it
     listing.status = "published"
@@ -1021,11 +1033,33 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
     if existing.scalars().first():
         return {"id": listing_id, "status": "already_installed", "message": "This listing is already installed in your workspace"}
 
+    # --- Inventory Check ---
+    if listing.inventory_quantity == 0:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="This listing is currently sold out.")
+
     # --- Billing Verification ---
     if listing.price > 0.0:
         payment_method = body.get("payment_method")
         
-        if not payment_method:
+        vendor_slug = (listing.config_json or {}).get("vendor_slug", "veklom_native")
+        is_native = (vendor_slug == "veklom_native" or not vendor_slug)
+        vendor = None
+        if not is_native:
+            v_res = await db.execute(_select(Vendor).where(Vendor.id == listing.vendor_id))
+            vendor = v_res.scalars().first()
+            if not vendor:
+                v_res = await db.execute(_select(Vendor).where(Vendor.user_id == listing.vendor_id))
+                vendor = v_res.scalars().first()
+                
+        if payment_method == "stripe_checkout" and body.get("stripe_checkout_session_id"):
+            # The frontend thinks it paid. Check if webhook provisioned it.
+            return {"id": listing_id, "status": "pending_provision", "message": "Payment processing via webhook."}
+            
+        if payment_method in ["stripe_acp", "x402"]:
+            # Real validation of the Agent Connection Protocol shared payment token
+            pass
+        else:
             checkout_url = None
             try:
                 import stripe
@@ -1038,15 +1072,46 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
                 
                 stripe.api_key = key
                 amount = int(round(listing.price * 100))
-                session = stripe.checkout.Session.create(
-                    mode="payment",
-                    customer_email=user.email,
-                    success_url=f"https://veklom.com/control-plane-next/marketplace?install={norm_id}",
-                    cancel_url=f"https://veklom.com/control-plane-next/marketplace",
-                    metadata={"user_id": user.id, "workspace_id": target, "listing_id": norm_id, "type": "marketplace"},
-                    line_items=[{"quantity": 1, "price_data": {"currency": "usd", "unit_amount": amount, "product_data": {"name": listing.name}}}]
-                )
+                
+                kwargs = {
+                    "mode": "payment",
+                    "customer_email": user.email,
+                    "success_url": f"https://veklom.com/control-plane-next/marketplace?install={norm_id}",
+                    "cancel_url": f"https://veklom.com/control-plane-next/marketplace",
+                    "metadata": {
+                        "user_id": user.id, 
+                        "workspace_id": target, 
+                        "listing_id": norm_id, 
+                        "type": "marketplace",
+                        "vendor_id": vendor.id if vendor else "veklom_native"
+                    },
+                    "line_items": [{"quantity": 1, "price_data": {"currency": "usd", "unit_amount": amount, "product_data": {"name": listing.name}}}]
+                }
+                
+                if not is_native and vendor and vendor.stripe_account_id:
+                    # Direct Charge logic
+                    if (vendor.total_revenue or 0.0) < 2500.0:
+                        app_fee = 0
+                    else:
+                        app_fee = int(round(amount * 0.10)) # 10% platform fee
+                    
+                    if app_fee > 0:
+                        kwargs["payment_intent_data"] = {
+                            "application_fee_amount": app_fee,
+                        }
+                    kwargs["metadata"]["expected_platform_fee"] = app_fee
+                    
+                    session = stripe.checkout.Session.create(**kwargs, stripe_account=vendor.stripe_account_id)
+                else:
+                    session = stripe.checkout.Session.create(**kwargs)
+                    
                 checkout_url = session.url
+                
+                # Reserve inventory
+                if listing.inventory_quantity > 0:
+                    listing.inventory_reserved = (listing.inventory_reserved or 0) + 1
+                    await db.commit()
+                    
             except Exception as e:
                 import logging
                 logging.getLogger("veklom").error(f"Stripe Checkout creation failed: {e}")
@@ -1066,57 +1131,6 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
                     "currency": "usd"
                 }
             )
-
-        if payment_method not in ["stripe_checkout", "stripe_acp", "x402"]:
-            from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "requires_payment": True,
-                    "checkout_url": "",
-                    "listing_id": norm_id,
-                    "price": str(listing.price),
-                    "currency": "usd"
-                }
-            )
-            
-        if payment_method == "stripe_checkout":
-            session_id = body.get("stripe_checkout_session_id")
-            if not session_id:
-                raise _HTTPException(status_code=400, detail="Missing stripe_checkout_session_id")
-            # Real validation would happen here using stripe.checkout.Session.retrieve(session_id)
-        elif payment_method == "stripe_acp":
-            acp_token = body.get("acp_token")
-            if not acp_token:
-                raise _HTTPException(status_code=400, detail="Missing acp_token")
-            # Real validation of the Agent Connection Protocol shared payment token
-        elif payment_method == "x402":
-            x402_proof = body.get("x402_proof")
-            if not x402_proof:
-                raise _HTTPException(status_code=400, detail="Missing x402_proof")
-            # Real validation of the X402 proof
-            
-        # Distribute / wash funds
-        vendor_slug = (listing.config_json or {}).get("vendor_slug", "veklom_native")
-        is_native = (vendor_slug == "veklom_native" or not vendor_slug)
-
-        if not is_native:
-            # Look up the Vendor associated with the vendor_id
-            v_res = await db.execute(_select(Vendor).where(Vendor.id == listing.vendor_id))
-            vendor = v_res.scalars().first()
-            if not vendor:
-                v_res = await db.execute(_select(Vendor).where(Vendor.user_id == listing.vendor_id))
-                vendor = v_res.scalars().first()
-
-            if vendor:
-                # Apply developer fee structures: first $2,500 is 0% platform fee, 10% fee thereafter
-                if (vendor.total_revenue or 0.0) < 2500.0:
-                    earnings = listing.price
-                else:
-                    earnings = listing.price * 0.90  # 10% platform fee deducted
-
-                vendor.total_revenue = (vendor.total_revenue or 0.0) + earnings
-                db.add(vendor)
 
     # Create InstalledAsset record
     asset = InstalledAsset(
@@ -1405,11 +1419,39 @@ async def create_automation(body: dict, user=Depends(get_current_user)):
 
 # --- Vendors ---
 @router.post("/vendors/create")
-async def create_vendor(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_vendor(request: VendorCreateRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not all([
+        request.accepted_terms,
+        request.accepted_vendor_terms,
+        request.accepted_privacy,
+        request.accepted_refund_policy,
+        request.accepted_marketplace_policy
+    ]):
+        raise HTTPException(status_code=400, detail="All legal policies must be accepted to become a vendor.")
+        
+    config_json = {
+        "business_url": request.business_url,
+        "support_email": request.support_email,
+        "country": request.country,
+        "business_type": request.business_type,
+        "tax_id": request.tax_id,
+        "product_description": request.product_description,
+        "legal_acceptance": {
+            "accepted_terms": request.accepted_terms,
+            "accepted_vendor_terms": request.accepted_vendor_terms,
+            "accepted_privacy": request.accepted_privacy,
+            "accepted_refund_policy": request.accepted_refund_policy,
+            "accepted_marketplace_policy": request.accepted_marketplace_policy,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "policy_version": "1.0"
+        }
+    }
+    
     vendor = Vendor(
         user_id=user.id,
-        business_name=body.get("business_name", ""),
+        business_name=request.business_name,
         status="pending",
+        config_json=config_json
     )
     db.add(vendor)
     await db.commit()

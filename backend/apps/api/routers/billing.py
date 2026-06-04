@@ -925,19 +925,87 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         metadata = session.get("metadata", {})
         user_id = metadata.get("user_id")
         amount_total = session.get("amount_total") or 0
-        if user_id and amount_total:
-            ws_id = metadata.get("workspace_id") or ""
+        ws_id = metadata.get("workspace_id") or ""
+        type_ = metadata.get("type")
+        
+        # Marketplace Logic
+        if type_ == "marketplace" and user_id:
+            listing_id = metadata.get("listing_id")
+            from backend.db.models.marketplace import MarketplaceListing, Vendor, InstalledAsset
+            from backend.db.models.user import _uuid
+            
+            # 1. Idempotency Check
+            existing_asset = await db.execute(select(InstalledAsset).where(
+                InstalledAsset.workspace_id == ws_id,
+                InstalledAsset.listing_id == listing_id
+            ))
+            if existing_asset.scalars().first():
+                return {"status": "ok", "message": "Already provisioned"}
+                
+            listing_res = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+            listing = listing_res.scalars().first()
+            if not listing:
+                return {"status": "error", "message": "Listing not found"}
+                
+            # 2. Inventory and Revenue
+            if listing.inventory_quantity > 0:
+                listing.inventory_quantity -= 1
+                if listing.inventory_reserved > 0:
+                    listing.inventory_reserved -= 1
+            listing.inventory_sold = (listing.inventory_sold or 0) + 1
+            listing.downloads = (listing.downloads or 0) + 1
+            
+            vendor_id = metadata.get("vendor_id")
+            if vendor_id and vendor_id != "veklom_native":
+                vendor_res = await db.execute(select(Vendor).where(Vendor.id == vendor_id))
+                vendor = vendor_res.scalars().first()
+                if vendor:
+                    platform_fee = int(metadata.get("expected_platform_fee", 0))
+                    vendor.total_revenue = (vendor.total_revenue or 0.0) + ((amount_total - platform_fee) / 100.0)
+            
+            # 3. Provision Asset
+            asset = InstalledAsset(
+                id=str(_uuid.uuid4()),
+                workspace_id=ws_id,
+                listing_id=listing_id,
+                installed_by=user_id,
+                asset_type=listing.category,
+                name=listing.name,
+                status="active",
+                config_json=listing.config_json or {},
+                version="1.0.0",
+            )
+            db.add(asset)
+            
+            # 4. Generate Receipt
+            import hashlib
+            from backend.db.models.billing import Invoice
+            receipt_number = f"VKL-{(amount_total + hash(session.get('id'))) % 999999:06d}"
+            receipt_hash = hashlib.sha256(f"{session.get('id')}:{receipt_number}:{amount_total}".encode()).hexdigest()
+            db.add(Invoice(
+                workspace_id=ws_id,
+                amount=amount_total / 100,
+                status="paid",
+                invoice_pdf_url=receipt_hash, # use as hash storage
+                stripe_invoice_id=receipt_number
+            ))
+            
+            await db.commit()
+            return {"status": "ok"}
+            
+        # Wallet and Subscription Logic
+        elif user_id and amount_total:
             db.add(
                 WalletTransaction(
                     user_id=user_id,
                     workspace_id=ws_id,
                     amount=amount_total / 100,
-                    tx_type="topup" if metadata.get("type") == "wallet_topup" else "activation",
+                    tx_type="topup" if type_ == "wallet_topup" else "activation",
                 )
             )
             
             # Handle subscription upgrades/activations
-            if metadata.get("type") == "subscription":
+            if type_ == "subscription":
                 from datetime import timedelta
                 plan_id = metadata.get("plan", "growth")
                 

@@ -50,7 +50,15 @@ async def list_admin_users(user=Depends(get_current_admin), db: AsyncSession = D
     users = result.scalars().all()
     if not users:
         return [{ "id": "u-demo-1", "email": "admin@example.com", "role": "admin", "workspace_id": "ws-demo-1", "status": "active" }]
-    return [{ "id": u.id, "email": u.email, "role": u.role, "workspace_id": u.workspace_id, "status": u.status } for u in users]
+        
+    filtered_users = []
+    for u in users:
+        email = (u.email or "").lower()
+        if email.startswith("eval.") or email.startswith("smoke."):
+            continue
+        filtered_users.append({ "id": u.id, "email": u.email, "role": u.role, "workspace_id": u.workspace_id, "status": u.status })
+        
+    return filtered_users
 
 
 @router.put("/admin/users/{id}/role")

@@ -1,0 +1,1146 @@
+{
+  "matrix": {
+    "https://api.veklom.com/control-plane-next/dashboard/": [
+      {
+        "method": "GET",
+        "endpoint": "/workspace/overview",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/workspace/overview"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/marketplace/": [
+      {
+        "method": "GET",
+        "endpoint": "/marketplace/listings",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/marketplace/listings"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/marketplace/installed",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/marketplace/installed"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/playground/": [
+      {
+        "method": "GET",
+        "endpoint": "/playground/tools",
+        "status": 200,
+        "url": "https://api.veklom.com/api/v1/playground/tools"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/ai/models",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/ai/models"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/status/": [
+      {
+        "method": "GET",
+        "endpoint": "/monitoring/metrics",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/monitoring/metrics"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/platform/uptime",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/platform/uptime"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/monitoring/health",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/monitoring/health"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/monitoring/metrics/history",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/monitoring/metrics/history"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/wallet/": [
+      {
+        "method": "GET",
+        "endpoint": "/wallet/balance",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/wallet/balance"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/wallet/transactions",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/wallet/transactions"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/wallet/stats/usage",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/wallet/stats/usage"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/wallet/topup/options",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/wallet/topup/options"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/usage/": [
+      {
+        "method": "GET",
+        "endpoint": "/billing/usage",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/billing/usage"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/billing/breakdown",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/billing/breakdown"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/insights/summary",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/insights/summary"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/cost/history",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/cost/history"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/billing/": [
+      {
+        "method": "GET",
+        "endpoint": "/billing/invoices",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/billing/invoices"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/billing/breakdown",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/billing/breakdown"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/billing/usage",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/billing/usage"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/wallet/balance",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/wallet/balance"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/subscriptions/current",
+        "status": 200,
+        "url": "https://api.veklom.com/api/v1/subscriptions/current"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/routing/": [
+      {
+        "method": "GET",
+        "endpoint": "/routing",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/routing"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/routing/economics",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/routing/economics"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/routing/stack",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/routing/stack"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/ai/routing/tier",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/ai/routing/tier"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/pipelines/": [
+      {
+        "method": "GET",
+        "endpoint": "/pipelines/nodes",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/pipelines/nodes"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/pipelines",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/pipelines"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/autonomous/": [
+      {
+        "method": "GET",
+        "endpoint": "/autonomous/feature-flags",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/autonomous/feature-flags"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/insights/": [
+      {
+        "method": "GET",
+        "endpoint": "/insights/savings",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/insights/savings"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/insights/summary",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/insights/summary"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/insights/savings/projected",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/insights/savings/projected"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/suggestions",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/suggestions"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/explain/cost",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/explain/cost"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/audit/": [
+      {
+        "method": "GET",
+        "endpoint": "/audit",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/audit"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/kill-switch/": [
+      {
+        "method": "GET",
+        "endpoint": "/cost/kill-switch/status",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/cost/kill-switch/status"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/budget/": [
+      {
+        "method": "GET",
+        "endpoint": "/budget",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/budget"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/budget/forecast",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/budget/forecast"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/compliance/": [
+      {
+        "method": "GET",
+        "endpoint": "/compliance/checks",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/compliance/checks"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/compliance/frameworks",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/compliance/frameworks"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/locker/": [
+      {
+        "method": "GET",
+        "endpoint": "/locker/security/dashboard",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/locker/security/dashboard"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/locker/security/controls",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/locker/security/controls"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/locker/monitoring/alerts",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/locker/monitoring/alerts"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/locker/security/threats/stats",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/locker/security/threats/stats"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/content-safety/": [
+      {
+        "method": "GET",
+        "endpoint": "/content-safety/age-verify/status",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/content-safety/age-verify/status"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/security/": [
+      {
+        "method": "GET",
+        "endpoint": "/security/dashboard",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/security/dashboard"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/security/stats",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/security/stats"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/security/events",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/security/events?status=open"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/governance/": [
+      {
+        "method": "GET",
+        "endpoint": "/governance/health",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/governance/health"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/governance/gladiator/routes",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/governance/gladiator/routes"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/login/": [
+      {
+        "method": "GET",
+        "endpoint": "/governance/gladiator/benchmarks",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/governance/gladiator/benchmarks"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/team/": [
+      {
+        "method": "GET",
+        "endpoint": "/team/members",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/team/members"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/team/roles",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/team/roles"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/team/sso/status",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/team/sso/status"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/team/scim/status",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/team/scim/status"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/team/mfa/status",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/team/mfa/status"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/api-keys/": [
+      {
+        "method": "GET",
+        "endpoint": "/auth/api-keys",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/auth/api-keys"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/workspace/": [
+      {
+        "method": "GET",
+        "endpoint": "/workspace/overview",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/workspace/overview"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/workspace/models",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/workspace/models"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/workspace/providers",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/workspace/providers"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/workspace/integrations",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/workspace/integrations"
+      },
+      {
+        "method": "GET",
+        "endpoint": "/workspace/observability",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/workspace/observability"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/vendor/onboarding/": [
+      {
+        "method": "GET",
+        "endpoint": "/vendors/me/listings",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/vendors/me/listings"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/vendor/listings/": [
+      {
+        "method": "GET",
+        "endpoint": "/vendors/me/listings",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/vendors/me/listings"
+      }
+    ],
+    "https://api.veklom.com/control-plane-next/vendor/stripe/": [
+      {
+        "method": "GET",
+        "endpoint": "/stripe/connect/status",
+        "status": 401,
+        "url": "https://api.veklom.com/api/v1/stripe/connect/status"
+      }
+    ]
+  },
+  "errors": [
+    {
+      "page": "https://api.veklom.com/control-plane-next/dashboard/",
+      "endpoint": "/workspace/overview",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/dashboard/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/marketplace/",
+      "endpoint": "/marketplace/listings",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/marketplace/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/marketplace/",
+      "endpoint": "/marketplace/installed",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/marketplace/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/playground/",
+      "endpoint": "/ai/models",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/playground/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/status/",
+      "endpoint": "/monitoring/metrics",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/status/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/status/",
+      "endpoint": "/platform/uptime",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/status/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/status/",
+      "endpoint": "/monitoring/health",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/status/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/status/",
+      "endpoint": "/monitoring/metrics/history",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/status/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/wallet/",
+      "endpoint": "/wallet/balance",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/wallet/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/wallet/",
+      "endpoint": "/wallet/transactions",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/wallet/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/wallet/",
+      "endpoint": "/wallet/stats/usage",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/wallet/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/wallet/",
+      "endpoint": "/wallet/topup/options",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/wallet/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/usage/",
+      "endpoint": "/billing/usage",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/usage/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/usage/",
+      "endpoint": "/billing/breakdown",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/usage/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/usage/",
+      "endpoint": "/insights/summary",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/usage/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/usage/",
+      "endpoint": "/cost/history",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/usage/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/billing/",
+      "endpoint": "/billing/invoices",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/billing/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/billing/",
+      "endpoint": "/billing/breakdown",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/billing/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/billing/",
+      "endpoint": "/billing/usage",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/billing/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/billing/",
+      "endpoint": "/wallet/balance",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/billing/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/routing/",
+      "endpoint": "/routing",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/routing/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/routing/",
+      "endpoint": "/routing/economics",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/routing/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/routing/",
+      "endpoint": "/routing/stack",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/routing/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/routing/",
+      "endpoint": "/ai/routing/tier",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/routing/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/pipelines/",
+      "endpoint": "/pipelines/nodes",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/pipelines/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/pipelines/",
+      "endpoint": "/pipelines",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/pipelines/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/autonomous/",
+      "endpoint": "/autonomous/feature-flags",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/autonomous/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "endpoint": "/insights/savings",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "endpoint": "/insights/summary",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "endpoint": "/insights/savings/projected",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "endpoint": "/suggestions",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "endpoint": "/explain/cost",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/insights/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/audit/",
+      "endpoint": "/audit",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/audit/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/kill-switch/",
+      "endpoint": "/cost/kill-switch/status",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/kill-switch/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/budget/",
+      "endpoint": "/budget",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/budget/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/budget/",
+      "endpoint": "/budget/forecast",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/budget/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/compliance/",
+      "endpoint": "/compliance/checks",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/compliance/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/compliance/",
+      "endpoint": "/compliance/frameworks",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/compliance/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/locker/",
+      "endpoint": "/locker/security/dashboard",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/locker/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/locker/",
+      "endpoint": "/locker/security/controls",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/locker/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/locker/",
+      "endpoint": "/locker/monitoring/alerts",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/locker/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/locker/",
+      "endpoint": "/locker/security/threats/stats",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/locker/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/content-safety/",
+      "endpoint": "/content-safety/age-verify/status",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/content-safety/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/security/",
+      "endpoint": "/security/dashboard",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/security/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/security/",
+      "endpoint": "/security/stats",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/security/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/security/",
+      "endpoint": "/security/events",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/security/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/governance/",
+      "endpoint": "/governance/health",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/governance/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/governance/",
+      "endpoint": "/governance/gladiator/routes",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/governance/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/login/",
+      "endpoint": "/governance/gladiator/benchmarks",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/login/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "endpoint": "/team/members",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "endpoint": "/team/roles",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "endpoint": "/team/sso/status",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "endpoint": "/team/scim/status",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "endpoint": "/team/mfa/status",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/team/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/api-keys/",
+      "endpoint": "/auth/api-keys",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/api-keys/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/subscriptions/",
+      "type": "console",
+      "text": "ChunkLoadError: Loading chunk 5885 failed.\n(missing: https://api.veklom.com/control-plane-next/_next/static/chunks/app/subscriptions/page-19ca5687c3928477.js)\n    at d.f.j (https://api.veklom.com/control-plane-next/_next/static/chunks/webpack-a8145c612d710bac.js:1:3096)\n    at https://api.veklom.com/control-plane-next/_next/static/chunks/webpack-a8145c612d710bac.js:1:1385\n    at Array.reduce (<anonymous>)\n    at d.e (https://api.veklom.com/control-plane-next/_next/static/chunks/webpack-a8145c612d710bac.js:1:1351)\n    at https://api.veklom.com/control-plane-next/_next/static/chunks/7023-89a5c67364e4fdf9.js:2:18878\n    at https://api.veklom.com/control-plane-next/_next/static/chunks/7023-89a5c67364e4fdf9.js:2:19080\n    at t (https://api.veklom.com/control-plane-next/_next/static/chunks/7023-89a5c67364e4fdf9.js:2:19283)"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "endpoint": "/workspace/overview",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "endpoint": "/workspace/models",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "endpoint": "/workspace/providers",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "endpoint": "/workspace/integrations",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "endpoint": "/workspace/observability",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/workspace/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/vendor/onboarding/",
+      "endpoint": "/vendors/me/listings",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/vendor/onboarding/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/vendor/listings/",
+      "endpoint": "/vendors/me/listings",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/vendor/listings/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/vendor/stripe/",
+      "endpoint": "/stripe/connect/status",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "page": "https://api.veklom.com/control-plane-next/vendor/stripe/",
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    }
+  ]
+}

@@ -786,8 +786,8 @@ async def submit_listing(listing_id: str, body: dict = None, user=Depends(get_cu
     await db.commit()
     return {"id": norm_id, "status": "published"}
 
-@router.post("/listings/{listing_id}/review")
-@router.post("/marketplace/listings/{listing_id}/review")
+@router.post("/listings/{listing_id}/approve")
+@router.post("/marketplace/listings/{listing_id}/approve")
 async def admin_review_listing(listing_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Admin endpoint to approve/reject a listing."""
     # Note: real admin check would go here
@@ -1339,6 +1339,28 @@ async def onboard_vendor(body: dict, user=Depends(get_current_user), db: AsyncSe
     res = await generate_onboarding_express(user, db)
     return {"status": "onboarding_started", "stripe_url": res.stripe_url, "account_id": res.account_id}
 
+@router.get("/stripe/connect/status")
+async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.marketplace import Vendor
+    result = await db.execute(select(Vendor).where(Vendor.user_id == user.id))
+    vendor = result.scalar_one_or_none()
+    if not vendor or not vendor.stripe_account_id:
+        return {"connected": False, "account_id": None}
+    
+    import os
+    import stripe
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    if not stripe.api_key:
+        return {"connected": False, "account_id": vendor.stripe_account_id}
+        
+    try:
+        account = stripe.Account.retrieve(vendor.stripe_account_id)
+        return {
+            "connected": account.charges_enabled,
+            "account_id": vendor.stripe_account_id
+        }
+    except Exception as e:
+        return {"connected": False, "account_id": vendor.stripe_account_id, "error": str(e)}
 
 
 @router.get("/vendors/me/listings")

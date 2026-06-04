@@ -343,33 +343,88 @@ async def generate_onboarding_express(
         import stripe
         stripe.api_key = key
         try:
-            # If we don't have an account ID or it's a mock, create a new express account
+            # If we don't have an account ID or it's a mock, create a new express account using V2
             if not account_id or account_id.startswith("acct_mock_"):
-                account = stripe.Account.create(
-                    type="express",
-                    capabilities={"card_payments": {"requested": True}, "transfers": {"requested": True}},
-                    business_profile={"name": vendor.business_name}
-                )
-                account_id = account.id
-                vendor.stripe_account_id = account_id
-                await db.commit()
-                await db.refresh(vendor)
+                import httpx
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(
+                        "https://api.stripe.com/v2/core/accounts",
+                        headers={
+                            "Authorization": f"Bearer {key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "display_name": vendor.business_name,
+                            "contact_email": getattr(user, "email", "support@veklom.com"),
+                            "identity": {"country": "us"},
+                            "dashboard": "full",
+                            "defaults": {
+                                "responsibilities": {
+                                    "fees_collector": "stripe",
+                                    "losses_collector": "stripe"
+                                }
+                            },
+                            "configuration": {
+                                "customer": {},
+                                "merchant": {
+                                    "capabilities": {
+                                        "card_payments": {"requested": True}
+                                    }
+                                }
+                            }
+                        }
+                    )
+                    if res.status_code >= 400:
+                        logger.error(f"Stripe V2 account creation failed: {res.text}")
+                        raise HTTPException(status_code=500, detail=f"Stripe Connect account creation failed: {res.text}")
+                        
+                    account_data = res.json()
+                    account_id = account_data.get("id")
+                    if not account_id:
+                        raise HTTPException(status_code=500, detail="Invalid response from Stripe V2 account creation")
+                        
+                    vendor.stripe_account_id = account_id
+                    await db.commit()
+                    await db.refresh(vendor)
             
-            # Generate Account Link
-            account_link = stripe.AccountLink.create(
-                account=account_id,
-                refresh_url="https://veklom.com/control-plane-next/vendor/stripe",
-                return_url="https://veklom.com/control-plane-next/vendor/stripe",
-                type="account_onboarding",
-            )
+            # Generate Account Link via V2
+            import httpx
+            async with httpx.AsyncClient() as client:
+                res = await client.post(
+                    "https://api.stripe.com/v2/core/account_links",
+                    headers={
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "account": account_id,
+                        "use_case": {
+                            "type": "account_onboarding",
+                            "account_onboarding": {
+                                "configurations": ["merchant", "customer"],
+                                "refresh_url": "https://veklom.com/control-plane-next/vendor/stripe",
+                                "return_url": "https://veklom.com/control-plane-next/vendor/stripe"
+                            }
+                        }
+                    }
+                )
+                if res.status_code >= 400:
+                    logger.error(f"Stripe V2 account link creation failed: {res.text}")
+                    raise HTTPException(status_code=500, detail=f"Stripe AccountLink creation failed: {res.text}")
+                    
+                link_data = res.json()
+                stripe_url = link_data.get("url")
+                if not stripe_url:
+                    raise HTTPException(status_code=500, detail="Invalid response from Stripe V2 account link creation")
+                    
             return OnboardingExpressResponse(
                 status="onboarding_started",
-                stripe_url=account_link.url,
+                stripe_url=stripe_url,
                 account_id=account_id
             )
         except Exception as e:
-            logger.error(f"Stripe AccountLink creation failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Stripe AccountLink creation failed: {e}")
+            logger.error(f"Stripe Connect Flow failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Stripe Connect Flow failed: {e}")
 
     # Stripe is not ready
     raise HTTPException(status_code=503, detail="Stripe integration is not configured")

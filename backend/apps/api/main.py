@@ -462,19 +462,7 @@ async def not_found(request: Request, exc):
         path_name = request.url.path.lstrip("/")
         return RedirectResponse(url=f"/control-plane-next/{path_name}/{query_str}", status_code=302)
 
-    # Serve workspace SPA fallback or redirect workspace to control-plane-next
-    is_workspace = request.url.path.startswith("/workspace")
-    is_github = request.url.path.startswith("/github")
-
-    if is_workspace:
-        from fastapi.responses import RedirectResponse
-        subpath = request.url.path[len("/workspace"):].lstrip("/")
-        query_str = f"?{request.url.query}" if request.url.query else ""
-        if subpath and not subpath.endswith("/") and not "." in subpath:
-            subpath = f"{subpath}/"
-        return RedirectResponse(url=f"/control-plane-next/{subpath}{query_str}", status_code=307)
-
-    if is_github:
+    if is_workspace or is_github:
         index_path = WORKSPACE_DIR / "index.html"
         base_path = "/workspace"
     else:
@@ -726,13 +714,6 @@ def _mount_static():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
     # Do NOT mount landing directory - it will be served by catch-all route
 
-
-@app.get("/workspace")
-@app.get("/workspace/")
-async def redirect_workspace_root(request: Request):
-    from fastapi.responses import RedirectResponse
-    query_str = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"/control-plane-next/{query_str}", status_code=307)
 
 
 @app.get("/control-plane-next/subscription/")

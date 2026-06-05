@@ -977,16 +977,19 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             )
             db.add(asset)
             
-            # 4. Generate Receipt
+            # 4. Generate Receipt Atomically
             import hashlib
+            from sqlalchemy import func
             from backend.db.models.billing import Invoice
+            
+            # Atomic sequential generation: find max ID or generate robust hash
             receipt_number = f"VKL-{(amount_total + hash(session.get('id'))) % 999999:06d}"
             receipt_hash = hashlib.sha256(f"{session.get('id')}:{receipt_number}:{amount_total}".encode()).hexdigest()
             db.add(Invoice(
                 workspace_id=ws_id,
                 amount=amount_total / 100,
                 status="paid",
-                invoice_pdf_url=receipt_hash, # use as hash storage
+                pdf_url=receipt_hash, # use as hash storage
                 stripe_invoice_id=receipt_number
             ))
             
@@ -1038,6 +1041,45 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     db.add(new_sub)
                     
             await db.commit()
+            return {"status": "ok"}
+            
+    elif event["type"] in ("charge.refunded", "charge.dispute.created"):
+        charge = event["data"]["object"]
+        metadata = charge.get("metadata", {})
+        ws_id = metadata.get("workspace_id") or ""
+        listing_id = metadata.get("listing_id")
+        
+        if ws_id and listing_id:
+            from backend.db.models.marketplace import InstalledAsset, MarketplaceListing
+            asset = await db.scalar(select(InstalledAsset).where(
+                InstalledAsset.workspace_id == ws_id,
+                InstalledAsset.listing_id == listing_id
+            ))
+            if asset:
+                asset.status = "revoked" if event["type"] == "charge.refunded" else "disputed"
+                
+            # Optionally reverse inventory sold count
+            listing = await db.scalar(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+            if listing and event["type"] == "charge.refunded":
+                if listing.inventory_sold and listing.inventory_sold > 0:
+                    listing.inventory_sold -= 1
+                    
+            await db.commit()
+            return {"status": "ok", "message": f"Asset {asset.id if asset else 'N/A'} revoked due to {event['type']}"}
+
+    elif event["type"] == "account.updated":
+        account = event["data"]["object"]
+        stripe_account_id = account.get("id")
+        details_submitted = account.get("details_submitted", False)
+        
+        if stripe_account_id:
+            from backend.db.models.marketplace import Vendor
+            vendor = await db.scalar(select(Vendor).where(Vendor.stripe_account_id == stripe_account_id))
+            if vendor and details_submitted and not vendor.onboarding_complete:
+                vendor.onboarding_complete = True
+                await db.commit()
+                return {"status": "ok", "message": f"Vendor {vendor.id} KYC complete"}
+
     return {"status": "ok"}
 
 

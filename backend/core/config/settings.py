@@ -174,7 +174,7 @@ class Settings(BaseSettings):
     RELAYER_URL: str = ""
     CHAIN_ID: int = 1
     USDC_ADDRESS: str = ""
-    VEKLOM_TREASURY_ADDRESS: str = ""
+    VEKLOM_TREASURY_ADDRESS: str = "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
     
     # Edge Ingestion
     EDGE_API_KEY: str = "veklom_edge_dev_key"

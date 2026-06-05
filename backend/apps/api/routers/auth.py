@@ -1151,12 +1151,11 @@ def _validate_github_state(state: str, max_age_seconds: int = 600) -> tuple:
             ts, nonce, uid, next_encoded, sig_b64 = parts
         if not ts.isdigit() or not nonce:
             raise HTTPException(status_code=400, detail="Invalid state payload structure")
-        payload = f"{ts}.{nonce}.{uid}.{next_encoded}" if next_encoded else f"{ts}.{nonce}.{uid}"
-        # Also try legacy payload format for backward compat
+        payload = f"{ts}.{nonce}.{uid}.{next_encoded}"
         expected_sig = hmac.new(settings.JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).digest()
         expected_b64 = base64.urlsafe_b64encode(expected_sig).decode().rstrip("=")
         if not hmac.compare_digest(expected_b64, sig_b64):
-            # Try legacy format (3-part payload)
+            # Try legacy format (3-part payload without next_encoded) for backward compat
             legacy_payload = f"{ts}.{nonce}.{uid}"
             legacy_sig = hmac.new(settings.JWT_SECRET_KEY.encode(), legacy_payload.encode(), hashlib.sha256).digest()
             legacy_b64 = base64.urlsafe_b64encode(legacy_sig).decode().rstrip("=")

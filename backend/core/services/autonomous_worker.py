@@ -11,6 +11,8 @@ from backend.db.models.ai import ExecLog
 from backend.db.models.marketplace import PipelineRun
 from sqlalchemy import select, update
 
+logger = logging.getLogger(__name__)
+
 async def _update_job_state(transaction_id: str, state: Dict[str, Any]):
     if not redis_client:
         return

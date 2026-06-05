@@ -376,7 +376,7 @@ async def list_pipeline_runs(pipeline_id: str, user=Depends(get_current_user), d
     result = await db.execute(
         select(PipelineRun)
         .where(PipelineRun.pipeline_id == pipeline_id, PipelineRun.workspace_id == (user.workspace_id or "default"))
-        .order_by(PipelineRun.created_at.desc())
+        .order_by(PipelineRun.started_at.desc())
         .limit(50)
     )
     runs = result.scalars().all()
@@ -387,8 +387,8 @@ async def list_pipeline_runs(pipeline_id: str, user=Depends(get_current_user), d
             {
                 "id": r.id,
                 "status": r.status,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                "created_at": r.started_at.isoformat() if r.started_at else None,
+                "updated_at": r.completed_at.isoformat() if r.completed_at else None,
             }
             for r in runs
         ]
@@ -443,9 +443,9 @@ async def get_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_curre
         "pipeline_id": run.pipeline_id,
         "status": run.status,
         "steps": run.steps,
-        "result": run.result,
-        "created_at": run.created_at.isoformat() if run.created_at else None,
-        "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+        "result": run.output,
+        "created_at": run.started_at.isoformat() if run.started_at else None,
+        "updated_at": run.completed_at.isoformat() if run.completed_at else None,
     }
 
 

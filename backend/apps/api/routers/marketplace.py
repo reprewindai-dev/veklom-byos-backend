@@ -1494,16 +1494,6 @@ async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depen
         return {"connected": False, "status": "incomplete", "onboarding_url": "/api/v1/stripe/connect/onboard"}
         
     try:
-        if vendor.stripe_account_id == "bypass_stripe_check":
-            return {
-                "connected": True,
-                "status": "active",
-                "charges_enabled": True,
-                "payouts_enabled": True,
-                "details_submitted": True,
-                "onboarding_url": "/api/v1/stripe/connect/onboard"
-            }
-            
         account = stripe.Account.retrieve(vendor.stripe_account_id)
         is_active = account.charges_enabled and account.details_submitted
         status = "active" if is_active else "restricted" if account.details_submitted else "pending"
@@ -1518,7 +1508,19 @@ async def stripe_status(user=Depends(get_current_user), db: AsyncSession = Depen
     except Exception as e:
         import logging
         from fastapi.responses import JSONResponse
-        logging.getLogger("veklom").error(f"Stripe status check failed: {e}")
+        logger = logging.getLogger("veklom")
+        err_msg = str(e)
+        logger.error(f"Stripe status check failed: {err_msg}")
+        
+        # Self-healing: clear invalid test stripe accounts
+        if "does not have access to account" in err_msg or "No such account" in err_msg or "does not exist" in err_msg:
+            try:
+                vendor.stripe_account_id = ""
+                await db.commit()
+                return {"connected": False, "status": "incomplete", "onboarding_url": "/api/v1/stripe/connect/onboard"}
+            except Exception:
+                pass
+
         return JSONResponse(status_code=503, content={
             "connected": False,
             "status": "configuration_error",

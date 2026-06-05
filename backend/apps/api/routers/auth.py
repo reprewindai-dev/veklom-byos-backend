@@ -650,7 +650,7 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
             user.status = "active"
             await db.commit()
             
-        return RedirectResponse(url="https://veklom.com/control-plane-next/login?verified=true", status_code=302)
+        return RedirectResponse(url="https://veklom.com/veklom-control-plane/login?verified=true", status_code=302)
     except JWTError:
         raise HTTPException(status_code=400, detail="Invalid or expired verification token")
 
@@ -719,7 +719,7 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request, db: Asy
             algorithm=settings.ALGORITHM
         )
         # Using frontend URL instead of API URL for the email link
-        reset_url = f"https://veklom.com/control-plane-next/reset-password?token={reset_token}"
+        reset_url = f"https://veklom.com/veklom-control-plane/reset-password?token={reset_token}"
         
         reset_html = f"""
         <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
@@ -911,7 +911,7 @@ async def logout(request: Request, db: AsyncSession = Depends(get_db)):
 
     if request.method == "GET":
         from fastapi.responses import RedirectResponse
-        resp = RedirectResponse(url="/control-plane-next/login/", status_code=302)
+        resp = RedirectResponse(url="/veklom-control-plane/login/", status_code=302)
     else:
         resp = JSONResponse(content={"message": "Logged out successfully"})
         

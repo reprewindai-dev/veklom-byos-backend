@@ -456,13 +456,24 @@ async def not_found(request: Request, exc):
     if request.url.path.startswith("/api/"):
         return JSONResponse(status_code=404, content={"detail": "Not found"})
     
+    is_workspace = request.url.path.startswith("/workspace")
+    is_github = request.url.path.startswith("/github")
+
+    if is_workspace:
+        from fastapi.responses import RedirectResponse
+        subpath = request.url.path[len("/workspace"):].lstrip("/")
+        query_str = f"?{request.url.query}" if request.url.query else ""
+        if subpath and not subpath.endswith("/") and not "." in subpath:
+            subpath = f"{subpath}/"
+        return RedirectResponse(url=f"/veklom-control-plane/{subpath}{query_str}", status_code=307)
+    
     if request.url.path in ("/login", "/signup"):
         from fastapi.responses import RedirectResponse
         query_str = f"?{request.url.query}" if request.url.query else ""
         path_name = request.url.path.lstrip("/")
-        return RedirectResponse(url=f"/control-plane-next/{path_name}/{query_str}", status_code=302)
+        return RedirectResponse(url=f"/veklom-control-plane/{path_name}/{query_str}", status_code=302)
 
-    if is_workspace or is_github:
+    if is_github:
         index_path = WORKSPACE_DIR / "index.html"
         base_path = "/workspace"
     else:
@@ -691,8 +702,6 @@ def _mount_static():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-    if WORKSPACE_DIR.exists():
-        app.mount("/workspace", StaticFiles(directory=str(WORKSPACE_DIR), html=True), name="workspace")
     if VEKLOM_CONTROL_PLANE_DIR.exists():
         app.mount("/veklom-control-plane", StaticFiles(directory=str(VEKLOM_CONTROL_PLANE_DIR), html=True), name="veklom-control-plane")
     if CONTROL_PLANE_NEXT_DIR.exists():
@@ -717,6 +726,14 @@ def _mount_static():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
     # Do NOT mount landing directory - it will be served by catch-all route
 
+
+
+@app.get("/workspace")
+@app.get("/workspace/")
+async def redirect_workspace_root(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"/veklom-control-plane/{query_str}", status_code=307)
 
 
 @app.get("/control-plane-next/subscription/")

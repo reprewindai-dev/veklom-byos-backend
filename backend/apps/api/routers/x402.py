@@ -343,8 +343,7 @@ async def generate_onboarding_express(
         import stripe
         stripe.api_key = key
         try:
-            # If we don't have an account ID or it's a mock, create a new express account using V2
-            if not account_id or account_id.startswith("acct_mock_"):
+            if not account_id:
                 account = stripe.Account.create(
                     type="express",
                     country="US",
@@ -559,7 +558,7 @@ async def capture_payment(
     now = datetime.now(timezone.utc)
     details["status"] = "captured"
     details["amount"] = capture_amount
-    details["tx_hash"] = f"0x_mock_capture_{uuid.uuid4().hex[:16]}"
+    details["tx_hash"] = ""
     details["updated_at"] = now.isoformat()
     
     log_entry.details = details

@@ -220,27 +220,6 @@ async def structured_logs(
                 "hash": (log.hash_chain or "")[:8],
                 "raw": f"{ts} INF {log.action} {log.resource_type} user_{(log.user_id or '')[:6]} — OK",
             })
-    else:
-        # Live synthetic entries from workspace activity
-        for i in range(20):
-            t = now - timedelta(minutes=i * 2, seconds=i * 7)
-            ts = t.strftime("%H:%M:%S.%f")[:12]
-            levels = ["INF", "INF", "INF", "WARN", "INF"]
-            lv = levels[i % len(levels)]
-            actions = ["chat-prod", "embed-rag", "code-assist", "patient-intake", "nightly-batch"]
-            svc = actions[i % len(actions)]
-            cost = f"${0.00001 * (i + 1):.5f}"
-            entries.append({
-                "timestamp": ts,
-                "level": lv,
-                "service": svc,
-                "action": "INF" if lv == "INF" else "WARN",
-                "resource": "completion",
-                "user_id": f"user_{i:03d}",
-                "cost": cost,
-                "hash": hashlib.sha256(f"{ts}{svc}".encode()).hexdigest()[:8],
-                "raw": f"{ts} {lv} {svc} llama3-70b 140ms user_{i:03d} [REDACTED] {cost} ✓",
-            })
     if search:
         search_lower = search.lower()
         entries = [e for e in entries if search_lower in e["raw"].lower()]
@@ -266,15 +245,6 @@ async def monitoring_audit_export(
     logs = result.scalars().all()
     now = datetime.now(timezone.utc)
 
-    # Build mock entries if no real logs yet
-    mock_entries = [
-        {"action": "deploy.update", "resource": "chat-prod", "actor": user.email, "dt": (now - timedelta(minutes=2)).isoformat(), "hash": "sha256:a3f8..."},
-        {"action": "policy.enforce", "resource": "gpc.compile", "actor": "system/policy-v3", "dt": (now - timedelta(minutes=15)).isoformat(), "hash": "sha256:b91c..."},
-        {"action": "vault.rotate", "resource": "key_openai_proxy", "actor": user.email, "dt": (now - timedelta(minutes=30)).isoformat(), "hash": "sha256:c44d..."},
-        {"action": "evidence.export", "resource": "soc2-pkg-h2 /form/compliance", "actor": user.email, "dt": (now - timedelta(hours=1)).isoformat(), "hash": "sha256:d7f1..."},
-        {"action": "key.create", "resource": "key_ghs_chat_stag", "actor": user.email, "dt": (now - timedelta(hours=2)).isoformat(), "hash": "sha256:e2a9..."},
-    ]
-
     lines = [
         "# Veklom Sovereign AI Hub — Audit Log Export",
         f"# Workspace: {ws}",
@@ -292,17 +262,11 @@ async def monitoring_audit_export(
     ]
 
     chain_hash = "sha256:genesis"
-    if logs:
-        for log in logs:
-            ts = log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else now.strftime("%Y-%m-%d %H:%M:%S")
-            entry_hash = log.hash_chain or hashlib.sha256(f"{ts}{log.action}{log.resource_type}".encode()).hexdigest()[:16]
-            chain_hash = "sha256:" + hashlib.sha256(f"{chain_hash}{entry_hash}".encode()).hexdigest()[:16]
-            lines.append(f"| {ts} | {log.action} | {log.resource_type} | {(log.user_id or '')[:12]} | {entry_hash[:16]}... |")
-    else:
-        for e in mock_entries:
-            entry_hash = e["hash"]
-            chain_hash = "sha256:" + hashlib.sha256(f"{chain_hash}{entry_hash}".encode()).hexdigest()[:16]
-            lines.append(f"| {e['dt'][:19]} | {e['action']} | {e['resource']} | {e['actor']} | {entry_hash} |")
+    for log in logs:
+        ts = log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else now.strftime("%Y-%m-%d %H:%M:%S")
+        entry_hash = log.hash_chain or hashlib.sha256(f"{ts}{log.action}{log.resource_type}".encode()).hexdigest()[:16]
+        chain_hash = "sha256:" + hashlib.sha256(f"{chain_hash}{entry_hash}".encode()).hexdigest()[:16]
+        lines.append(f"| {ts} | {log.action} | {log.resource_type} | {(log.user_id or '')[:12]} | {entry_hash[:16]}... |")
 
     lines += [
         "",
@@ -313,7 +277,7 @@ async def monitoring_audit_export(
         f"| Property | Value |",
         f"|---|---|",
         f"| Final chain hash | {chain_hash} |",
-        f"| Total entries | {len(logs) or len(mock_entries)} |",
+        f"| Total entries | {len(logs)} |",
         f"| Chain status | ✓ INTACT |",
         f"| Storage encryption | AES-256-GCM |",
         f"| Transport | TLS 1.3 |",

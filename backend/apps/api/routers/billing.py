@@ -1024,14 +1024,14 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 if existing_sub:
                     existing_sub.plan = plan_id
                     existing_sub.status = "active"
-                    existing_sub.stripe_subscription_id = session.get("subscription") or session.get("id") or "sub_mock"
+                    existing_sub.stripe_subscription_id = session.get("subscription") or session.get("id") or ""
                     existing_sub.current_period_end = datetime.now(timezone.utc) + timedelta(days=30)
                 else:
                     new_sub = Subscription(
                         user_id=user_id,
                         workspace_id=ws_id,
                         plan=plan_id,
-                        stripe_subscription_id=session.get("subscription") or session.get("id") or "sub_mock",
+                        stripe_subscription_id=session.get("subscription") or session.get("id") or "",
                         stripe_customer_id=session.get("customer") or "",
                         status="active",
                         current_period_start=datetime.now(timezone.utc),

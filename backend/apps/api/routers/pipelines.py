@@ -239,26 +239,9 @@ async def get_pipeline_graph(pipeline_id: str, user=Depends(get_current_user), d
     pipe = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
     if pipe and isinstance(pipe.steps, dict) and "graph" in pipe.steps:
         return pipe.steps["graph"]
-    # Return default graph for the mock pipelines
     return {
-        "nodes": [
-            {"id": "input-1", "type": "input", "position": {"x": 50, "y": 200}, "data": {"label": "Input", "nodeType": "input"}},
-            {"id": "policy-1", "type": "gate", "position": {"x": 250, "y": 200}, "data": {"label": "Policy Gate", "nodeType": "policy-gate"}},
-            {"id": "embed-1", "type": "embedding", "position": {"x": 450, "y": 120}, "data": {"label": "BGE-M3 Embedding", "nodeType": "embed-bge"}},
-            {"id": "retrieve-1", "type": "retrieval", "position": {"x": 450, "y": 280}, "data": {"label": "pgvector", "nodeType": "pgvector"}},
-            {"id": "rerank-1", "type": "transform", "position": {"x": 650, "y": 200}, "data": {"label": "Re-Ranker", "nodeType": "reranker"}},
-            {"id": "llm-1", "type": "model", "position": {"x": 850, "y": 200}, "data": {"label": "Llama 3.1 70B", "nodeType": "llm-ollama"}},
-            {"id": "output-1", "type": "output", "position": {"x": 1050, "y": 200}, "data": {"label": "Output", "nodeType": "stream-out"}},
-        ],
-        "edges": [
-            {"id": "e-input-policy", "source": "input-1", "target": "policy-1", "animated": True},
-            {"id": "e-policy-embed", "source": "policy-1", "target": "embed-1", "animated": True},
-            {"id": "e-policy-retrieve", "source": "policy-1", "target": "retrieve-1", "animated": True},
-            {"id": "e-embed-rerank", "source": "embed-1", "target": "rerank-1", "animated": True},
-            {"id": "e-retrieve-rerank", "source": "retrieve-1", "target": "rerank-1", "animated": True},
-            {"id": "e-rerank-llm", "source": "rerank-1", "target": "llm-1", "animated": True},
-            {"id": "e-llm-output", "source": "llm-1", "target": "output-1", "animated": True},
-        ],
+        "nodes": [],
+        "edges": [],
         "viewport": {"x": 0, "y": 0, "zoom": 1},
     }
 
@@ -502,30 +485,34 @@ async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_cu
         raise HTTPException(status_code=404, detail="Run not found or access denied")
     
     async def generate():
-        # Send initial queued state
-        """
-        Stream server-sent events that represent a mock pipeline run and its step-by-step progression.
-        
-        Each yielded string is a complete SSE `data:` event (terminated by two newlines) whose JSON payload reports run-level and step-level status updates, progress, and final evidence/proof fields.
-        
-        Returns:
-            An async generator that yields `str` values: SSE-formatted `data:` events containing JSON objects with keys such as `type` (one of `run.queued`, `run.running`, `step.running`, `step.completed`, `run.completed`), `run_id`, `status`, `stage` (for step events), `progress`, and final `output`, `evidence_id`, and `proof_hash`.
-        """
+        import asyncio
         yield f"data: {json.dumps({'type': 'run.queued', 'run_id': run_id, 'status': 'queued', 'message': 'Pipeline run queued'})}\n\n"
         
-        # Simulate run progression (in real implementation, this would poll the background task)
-        import asyncio
-        stages = ["Source", "Build", "Validate", "Test", "Stage", "Gate", "Deploy"]
-        
-        yield f"data: {json.dumps({'type': 'run.running', 'run_id': run_id, 'status': 'running', 'message': 'Pipeline execution started'})}\n\n"
-        
-        for i, stage in enumerate(stages):
-            yield f"data: {json.dumps({'type': 'step.running', 'run_id': run_id, 'stage': stage, 'status': 'running', 'progress': (i + 1) / len(stages) * 100})}\n\n"
-            await asyncio.sleep(0.5)
-            yield f"data: {json.dumps({'type': 'step.completed', 'run_id': run_id, 'stage': stage, 'status': 'completed', 'progress': (i + 1) / len(stages) * 100})}\n\n"
-        
-        # Send final completed state with evidence/proof
-        yield f"data: {json.dumps({'type': 'run.completed', 'run_id': run_id, 'status': 'completed', 'progress': 100, 'output': 'Pipeline execution completed successfully', 'evidence_id': f'evd_{run_id[:8]}', 'proof_hash': f'0x{run_id[:16]}'})}\n\n"
+        while True:
+            await asyncio.sleep(2)
+            result = await db.execute(select(PipelineRun).where(PipelineRun.id == run_id))
+            r = result.scalar_one_or_none()
+            if not r:
+                break
+                
+            data = {
+                'type': f'run.{r.status}', 
+                'run_id': r.id, 
+                'status': r.status, 
+                'progress': 100 if r.status in ("completed", "failed") else 50
+            }
+            if r.status == "completed":
+                data['output'] = r.result
+                data['evidence_id'] = f'evd_{r.id[:8]}'
+                data['proof_hash'] = f'0x{r.id[:16]}'
+                yield f"data: {json.dumps(data)}\n\n"
+                break
+            elif r.status == "failed":
+                data['output'] = r.result
+                yield f"data: {json.dumps(data)}\n\n"
+                break
+                
+            yield f"data: {json.dumps(data)}\n\n"
     
     return StreamingResponse(generate(), media_type="text/event-stream")
 

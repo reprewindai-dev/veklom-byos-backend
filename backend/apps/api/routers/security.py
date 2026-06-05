@@ -48,14 +48,6 @@ async def list_security_events(threat_type: str = None, status: str = "open", us
         
     result = await db.execute(query.order_by(SecurityEvent.created_at.desc()).limit(50))
     events = result.scalars().all()
-    if not events:
-        # Provide some mock events matching the filters
-        mock = _mock_events()
-        if threat_type:
-            mock = [m for m in mock if m["threat_type"] == threat_type]
-        if status:
-            mock = [m for m in mock if m["status"] == status]
-        return mock
     return [_event_dict(e) for e in events]
 
 
@@ -74,14 +66,24 @@ async def resolve_security_event(event_id: str, body: dict, user=Depends(get_cur
 
 
 @router.get("/security/dashboard")
-async def security_dashboard(user=Depends(get_current_user)):
+async def security_dashboard(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Calculate real scores based on DB
+    from backend.apps.api.routers.security import security_stats
+    stats = await security_stats(user, db)
+    
+    result = await db.execute(
+        select(SecurityEvent).where(SecurityEvent.workspace_id == user.workspace_id)
+        .order_by(SecurityEvent.created_at.desc()).limit(5)
+    )
+    events = result.scalars().all()
+
     return {
-        "security_score": 92,
-        "total_events_24h": 3,
-        "critical_alerts": 0,
-        "open_incidents": 1,
-        "controls": _mock_controls(),
-        "recent_events": _mock_events()[:5],
+        "security_score": stats.get("security_score", 100),
+        "total_events_24h": stats.get("last_24h", 0),
+        "critical_alerts": stats.get("critical", 0),
+        "open_incidents": stats.get("open", 0),
+        "controls": _get_platform_controls(),
+        "recent_events": [_event_dict(e) for e in events],
     }
 
 
@@ -132,8 +134,6 @@ async def security_alerts(user=Depends(get_current_user), db: AsyncSession = Dep
         .order_by(SecurityEvent.created_at.desc()).limit(20)
     )
     events = result.scalars().all()
-    if not events:
-        return [{"id": "alert1", "severity": "medium", "message": "Unusual login pattern detected", "timestamp": datetime.now(timezone.utc).isoformat(), "acknowledged": False, "source": "Auth", "time": "just now"}]
     return [{"id": e.id, "severity": e.severity, "message": e.description, "timestamp": e.created_at.isoformat() if e.created_at else "", "acknowledged": e.status == "acknowledged", "source": e.event_type, "time": "recently"} for e in events]
 
 
@@ -342,13 +342,13 @@ async def locker_security(user=Depends(get_current_user)):
 
 @router.get("/locker/security/controls")
 async def locker_security_controls(user=Depends(get_current_user)):
-    return _mock_controls()
+    return _get_platform_controls()
 
 
 @router.patch("/locker/security/controls/{control_id}")
 @router.post("/locker/security/controls/{control_id}")
 async def update_security_control(control_id: str, body: dict, user=Depends(get_current_user)):
-    controls = {c["name"]: c for c in _mock_controls()}
+    controls = {c["name"]: c for c in _get_platform_controls()}
     ctrl = controls.get(control_id, {"name": control_id})
     ctrl["enabled"] = body.get("enabled", ctrl.get("enabled", True))
     return {"id": control_id, **ctrl, "updated": True}
@@ -365,13 +365,30 @@ async def disable_control(control_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/locker/security/dashboard")
-async def locker_security_dashboard(user=Depends(get_current_user)):
-    return {"security_score": 95, "controls": _mock_controls(), "events": _mock_events()[:3]}
+async def locker_security_dashboard(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.apps.api.routers.security import security_stats
+    stats = await security_stats(user, db)
+    
+    result = await db.execute(
+        select(SecurityEvent).where(SecurityEvent.workspace_id == user.workspace_id)
+        .order_by(SecurityEvent.created_at.desc()).limit(3)
+    )
+    events = result.scalars().all()
+    
+    return {
+        "security_score": stats.get("security_score", 100), 
+        "controls": _get_platform_controls(), 
+        "events": [_event_dict(e) for e in events]
+    }
 
 
 @router.get("/locker/security/events")
-async def locker_security_events(user=Depends(get_current_user)):
-    return _mock_events()
+async def locker_security_events(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SecurityEvent).where(SecurityEvent.workspace_id == user.workspace_id)
+        .order_by(SecurityEvent.created_at.desc()).limit(50)
+    )
+    return [_event_dict(e) for e in result.scalars().all()]
 
 
 @router.get("/locker/security/threats/stats")
@@ -562,16 +579,7 @@ def _event_dict(e: SecurityEvent) -> dict:
     }
 
 
-def _mock_events():
-    now = datetime.now(timezone.utc).isoformat()
-    return [
-        {"id": "se1", "event_type": "auth_failure", "threat_type": "brute_force", "severity": "medium", "description": "Multiple failed login attempts", "status": "open", "created_at": now},
-        {"id": "se2", "event_type": "rate_limit", "threat_type": "dos", "severity": "low", "description": "Rate limit triggered", "status": "resolved", "created_at": now},
-        {"id": "se3", "event_type": "policy_violation", "threat_type": "compliance", "severity": "high", "description": "PII detected in prompt", "status": "resolved", "created_at": now},
-    ]
-
-
-def _mock_controls():
+def _get_platform_controls():
     return [
         {"name": "mfa_enabled", "display_name": "Multi-Factor Auth", "enabled": True, "category": "authentication"},
         {"name": "ai_monitoring", "display_name": "AI Monitoring", "enabled": True, "category": "monitoring"},

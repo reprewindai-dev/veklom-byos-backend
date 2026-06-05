@@ -1850,7 +1850,8 @@ async def get_onboarding_vertical(
 from pydantic import BaseModel
 import httpx
 import uuid
-from backend.db.models.marketplace import Agent, Pipeline
+from backend.db.models.agent import Agent
+from backend.db.models.marketplace import Pipeline
 
 @router.post("/github/sync")
 async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):

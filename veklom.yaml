@@ -4,7 +4,7 @@ http:
       entryPoints:
         - http
         - https
-      rule: "Host(`veklom.com`) || Host(`www.veklom.com`) || Host(`app.veklom.com`) || Host(`lockerphycer.veklom.com`)"
+      rule: "Host(`veklom.com`) || Host(`www.veklom.com`) || Host(`app.veklom.com`)"
       service: veklom
       tls:
         certResolver: letsencrypt
@@ -12,4 +12,4 @@ http:
     veklom:
       loadBalancer:
         servers:
-          - url: http://n13gp1nhrcdp0hvazvbnlxru-213557155694:8088
+          - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:8088"

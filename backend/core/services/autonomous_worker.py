@@ -8,8 +8,8 @@ from backend.core.database.database import get_db_session
 from backend.core.database.redis_client import redis_client
 from backend.core.ai.provider_router import run_completion
 from backend.db.models.ai import ExecLog
-
-logger = logging.getLogger(__name__)
+from backend.db.models.marketplace import PipelineRun
+from sqlalchemy import select, update
 
 async def _update_job_state(transaction_id: str, state: Dict[str, Any]):
     if not redis_client:
@@ -42,32 +42,46 @@ async def _log_execution(workspace_id: str, user_id: str, provider: str, model: 
     except Exception as e:
         logger.error(f"Failed to log execution: {e}")
 
+async def _update_pipeline_run(run_id: str, updates: dict):
+    try:
+        async with get_db_session() as db:
+            result = await db.execute(select(PipelineRun).where(PipelineRun.id == run_id))
+            run = result.scalar_one_or_none()
+            if run:
+                for k, v in updates.items():
+                    setattr(run, k, v)
+                if updates.get("status") in ("completed", "failed"):
+                    run.completed_at = datetime.now(timezone.utc)
+                await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to update PipelineRun {run_id}: {e}")
+
 async def run_pipeline_background(transaction_id: str, steps: List[Dict], workspace_id: str, user_id: str):
-    """Executes a pipeline autonomously in the background."""
-    state = {
-        "status": "PROCESSING",
+    """Executes a pipeline autonomously in the background and updates Postgres."""
+    await _update_pipeline_run(transaction_id, {
+        "status": "running",
         "progress": 0,
-        "detail": "Initializing autonomous pipeline engine...",
-        "destination_node": None
-    }
-    await _update_job_state(transaction_id, state)
+        "current_step": "Initializing autonomous pipeline engine..."
+    })
     
     total_steps = len(steps)
     if total_steps == 0:
-        state["status"] = "COMPLETED"
-        state["progress"] = 100
-        state["detail"] = "Pipeline has no steps."
-        await _update_job_state(transaction_id, state)
+        await _update_pipeline_run(transaction_id, {
+            "status": "completed",
+            "progress": 100,
+            "current_step": "Pipeline has no steps.",
+            "output": {"result": "No steps to run."}
+        })
         return
         
     context = "Initial Pipeline State."
     
     for i, step in enumerate(steps):
         step_name = step.get("name", f"Step {i+1}")
-        state["destination_node"] = step_name
-        state["detail"] = f"Executing {step_name} autonomously..."
-        state["progress"] = int((i / total_steps) * 100)
-        await _update_job_state(transaction_id, state)
+        await _update_pipeline_run(transaction_id, {
+            "current_step": step_name,
+            "progress": int((i / total_steps) * 100)
+        })
         
         try:
             start_time = datetime.now()
@@ -89,21 +103,24 @@ async def run_pipeline_background(transaction_id: str, steps: List[Dict], worksp
             await _log_execution(workspace_id, user_id, result.provider, result.payload.get("model", "unknown"), latency, tokens, cost)
             
             # Brief delay to allow monitoring systems to tick
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5)
             
         except Exception as e:
             logger.error(f"Pipeline step {step_name} failed: {e}")
-            state["status"] = "FAILED"
-            state["detail"] = f"Failed at {step_name}: {str(e)}"
-            await _update_job_state(transaction_id, state)
+            await _update_pipeline_run(transaction_id, {
+                "status": "failed",
+                "error": f"Failed at {step_name}: {str(e)}",
+                "current_step": step_name
+            })
             return
             
     # Finalize
-    state["status"] = "COMPLETED"
-    state["progress"] = 100
-    state["detail"] = "Pipeline execution finalized successfully."
-    state["result_ref"] = "pipeline_success_0x8f2"
-    await _update_job_state(transaction_id, state)
+    await _update_pipeline_run(transaction_id, {
+        "status": "completed",
+        "progress": 100,
+        "current_step": "Done",
+        "output": {"result": context, "evidence_id": f"evd_{transaction_id[:8]}", "proof_hash": f"0x{transaction_id[:16]}"}
+    })
 
 async def run_gpc_background(transaction_id: str, graph: Dict, workspace_id: str, user_id: str, provider: str, model: str):
     """Executes a Governed Plan Compiler (GPC) graph autonomously."""

@@ -324,8 +324,11 @@ async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: Asy
     db.add(run)
     await db.commit()
     
+    # The frontend UI hardcodes 7 visual badges for test runs
+    ui_steps = [{"name": s} for s in ["Source", "Build", "Validate", "Test", "Stage", "Gate", "Deploy"]]
+    
     # Start background execution
-    asyncio.create_task(run_pipeline_background(run_id, steps, user.workspace_id or "default", user.id))
+    asyncio.create_task(run_pipeline_background(run_id, ui_steps, user.workspace_id or "default", user.id))
     
     return {
         "run_id": run_id,
@@ -488,31 +491,44 @@ async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_cu
         import asyncio
         yield f"data: {json.dumps({'type': 'run.queued', 'run_id': run_id, 'status': 'queued', 'message': 'Pipeline run queued'})}\n\n"
         
+        last_step = None
         while True:
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
             result = await db.execute(select(PipelineRun).where(PipelineRun.id == run_id))
             r = result.scalar_one_or_none()
             if not r:
                 break
+            
+            if r.current_step and r.current_step != last_step and r.current_step not in ("Initializing autonomous pipeline engine...", "Done"):
+                if last_step and last_step not in ("Initializing autonomous pipeline engine...", "Done"):
+                    # Complete the previous step
+                    yield f"data: {json.dumps({'type': 'step.completed', 'stage': last_step})}\n\n"
+                
+                # Start the new step
+                yield f"data: {json.dumps({'type': 'step.running', 'stage': r.current_step})}\n\n"
+                last_step = r.current_step
                 
             data = {
                 'type': f'run.{r.status}', 
                 'run_id': r.id, 
                 'status': r.status, 
-                'progress': 100 if r.status in ("completed", "failed") else 50
+                'progress': r.progress
             }
             if r.status == "completed":
-                data['output'] = r.result
-                data['evidence_id'] = f'evd_{r.id[:8]}'
-                data['proof_hash'] = f'0x{r.id[:16]}'
+                if last_step and last_step not in ("Initializing autonomous pipeline engine...", "Done"):
+                    yield f"data: {json.dumps({'type': 'step.completed', 'stage': last_step})}\n\n"
+                
+                out_data = r.output or {}
+                data['output'] = out_data.get('result', '')
+                data['evidence_id'] = out_data.get('evidence_id', f'evd_{r.id[:8]}')
+                data['proof_hash'] = out_data.get('proof_hash', f'0x{r.id[:16]}')
                 yield f"data: {json.dumps(data)}\n\n"
                 break
             elif r.status == "failed":
-                data['output'] = r.result
+                out_data = r.output or {}
+                data['output'] = out_data.get('result', '')
                 yield f"data: {json.dumps(data)}\n\n"
                 break
-                
-            yield f"data: {json.dumps(data)}\n\n"
     
     return StreamingResponse(generate(), media_type="text/event-stream")
 

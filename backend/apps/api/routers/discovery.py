@@ -195,6 +195,7 @@ async def x402_json():
         "network": VEKLOM_NETWORK,
         "chain_id": 8453,
         "pay_to": treasury,
+        "treasury": treasury,
         "protected_routes": protected_routes,
         "proof_header_name": "X-Payment-Proof",
         "challenge_ttl_seconds": 300,

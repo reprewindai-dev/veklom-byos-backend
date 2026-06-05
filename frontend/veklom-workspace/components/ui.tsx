@@ -101,16 +101,3 @@ export function Button({ children, onClick, variant = "primary", type = "button"
     </button>
   );
 }
-
-export function Badge({ children, variant = "default", className }: { children: ReactNode; variant?: "default" | "outline"; className?: string }) {
-  return (
-    <span className={clsx(
-      "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
-      variant === "default" && "bg-bg-700 text-ink-200",
-      variant === "outline" && "border border-border text-ink-200",
-      className
-    )}>
-      {children}
-    </span>
-  );
-}

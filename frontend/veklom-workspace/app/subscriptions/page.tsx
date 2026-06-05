@@ -20,7 +20,7 @@ export default function SubscriptionsPage() {
     setBusy(planId); setErr(undefined);
     try {
       const res = await api<any>("/api/v1/subscriptions/checkout", { body: { plan_id: planId } });
-      if (res?.url || res?.checkout_url) window.location.href = res.url || res.checkout_url;
+      if (res?.url) window.location.href = res.url;
     } catch (e) { setErr((e as Error).message); } finally { setBusy(undefined); }
   }
   async function portal() {

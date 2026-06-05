@@ -2,11 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "export",
-  trailingSlash: true,
-  basePath: "/veklom-control-plane",
+  basePath: "/workspace-next",
   env: {
-    NEXT_PUBLIC_API_BASE_URL:
-      process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.veklom.com",
+    NEXT_PUBLIC_API_BASE_URL: "",
   },
 };
 export default nextConfig;

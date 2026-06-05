@@ -64,8 +64,8 @@ test.describe('Veklom smoke', () => {
     await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle');
 
-    // The workspace SPA should load — check the body element exists
-    await expect(page.locator('body')).toBeVisible({ timeout: 15000 });
+    // The workspace SPA should load — check the root element exists
+    await expect(page.locator('#root')).toBeVisible({ timeout: 15000 });
 
     // Look for any sign-up / register link or button (flexible selector)
     const signUpTrigger = page
@@ -107,7 +107,7 @@ test.describe('Veklom smoke', () => {
     await page.waitForLoadState('networkidle');
 
     // The root SPA element must render (even if unauthenticated — shows login overlay)
-    await expect(page.locator('body')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#root')).toBeVisible({ timeout: 15000 });
 
     // If the workspace sidebar is visible, check for key nav items.
     // If the user is unauthenticated the SPA shows a login screen — skip nav checks.
@@ -143,12 +143,11 @@ test.describe('Veklom smoke', () => {
     const footerLinks = [
       /terms|tos/i,
       /privacy/i,
+      /status/i,
+      /contact|dsa|legal/i
     ];
     for (const l of footerLinks) {
-      const link = page.getByRole('link', { name: l }).first();
-      if (await link.isVisible().catch(() => false)) {
-        await expect(link).toBeVisible();
-      }
+      await expect(page.getByRole('link', { name: l }).first()).toBeVisible();
     }
   });
 

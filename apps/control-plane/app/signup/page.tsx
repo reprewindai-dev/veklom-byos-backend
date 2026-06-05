@@ -12,7 +12,6 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [name, setName] = useState("");
-  const [workspaceName, setWorkspaceName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | undefined>();
 
@@ -20,7 +19,7 @@ export default function SignupPage() {
     e.preventDefault();
     setBusy(true); setErr(undefined);
     try {
-      await signup(email, pw, name || undefined, workspaceName || undefined);
+      await signup(email, pw, name || undefined);
       router.replace("/dashboard");
     } catch (e) {
       setErr((e as Error).message);
@@ -43,12 +42,6 @@ export default function SignupPage() {
           <div>
             <label className="text-xs text-ink-400">Name</label>
             <input value={name} onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full bg-bg-700 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-brand-500" />
-          </div>
-          <div>
-            <label className="text-xs text-ink-400">Workspace Name</label>
-            <input required value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)}
-              placeholder="e.g. Acme Corp"
               className="mt-1 w-full bg-bg-700 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-brand-500" />
           </div>
           <div>

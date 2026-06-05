@@ -465,13 +465,13 @@ async def not_found(request: Request, exc):
         query_str = f"?{request.url.query}" if request.url.query else ""
         if subpath and not subpath.endswith("/") and not "." in subpath:
             subpath = f"{subpath}/"
-        return RedirectResponse(url=f"/veklom-control-plane/{subpath}{query_str}", status_code=307)
+        return RedirectResponse(url=f"/control-plane-next/{subpath}{query_str}", status_code=307)
     
     if request.url.path in ("/login", "/signup"):
         from fastapi.responses import RedirectResponse
         query_str = f"?{request.url.query}" if request.url.query else ""
         path_name = request.url.path.lstrip("/")
-        return RedirectResponse(url=f"/veklom-control-plane/{path_name}/{query_str}", status_code=302)
+        return RedirectResponse(url=f"/control-plane-next/{path_name}/{query_str}", status_code=302)
 
     if is_github:
         index_path = WORKSPACE_DIR / "index.html"
@@ -690,22 +690,19 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend"
 LANDING_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "landing"
 GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "gpc"
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
-CONTROL_PLANE_NEXT_DIR = FRONTEND_DIR / "control-plane-next"
+SOVEREIGN_CONTROL_NODE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "sovereign-control-node"
 COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
 LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 OPERATOR_CENTER_DIR = FRONTEND_DIR / "operator-center"
-VEKLOM_CONTROL_PLANE_DIR = FRONTEND_DIR / "veklom-control-plane"
 
 
 def _mount_static():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-    if VEKLOM_CONTROL_PLANE_DIR.exists():
-        app.mount("/veklom-control-plane", StaticFiles(directory=str(VEKLOM_CONTROL_PLANE_DIR), html=True), name="veklom-control-plane")
-    if CONTROL_PLANE_NEXT_DIR.exists():
-        app.mount("/control-plane-next", StaticFiles(directory=str(CONTROL_PLANE_NEXT_DIR), html=True), name="control-plane-next")
+    if SOVEREIGN_CONTROL_NODE_DIR.exists():
+        app.mount("/control-plane-next", StaticFiles(directory=str(SOVEREIGN_CONTROL_NODE_DIR), html=True), name="control-plane-next")
     if OPERATOR_CENTER_DIR.exists():
         app.mount("/operator-center", StaticFiles(directory=str(OPERATOR_CENTER_DIR), html=True), name="operator-center")
     if COMMAND_CENTER_DIR.exists():
@@ -733,7 +730,7 @@ def _mount_static():
 async def redirect_workspace_root(request: Request):
     from fastapi.responses import RedirectResponse
     query_str = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"/veklom-control-plane/{query_str}", status_code=307)
+    return RedirectResponse(url=f"/control-plane-next/dashboard/{query_str}", status_code=307)
 
 
 @app.get("/control-plane-next/subscription/")

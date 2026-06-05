@@ -8,7 +8,7 @@ Read completely before touching anything. Violations break the live site.
 ## Live Site
 
 - **URL:** https://veklom.com
-- **Workspace:** https://veklom.com/workspace/
+- **Workspace:** https://veklom.com/control-plane-next/dashboard/
 - **Server:** Hetzner VPS `5.78.135.11`
 - **Internal port:** `8088`
 - **Proxy:** Cloudflare (443 → 8088 via Traefik on the server)
@@ -116,27 +116,16 @@ sleep 3 && curl -sk -H "Host: veklom.com" https://localhost/health
 
 ## The Correct Workspace — NEVER REPLACE THIS
 
-The workspace at `/workspace/` is served from:
+The true, sovereign workspace is served at `/control-plane-next/` and its assets live in:
 ```
-frontend/static/workspace/
-```
-
-This is the **REALFRONTEND prebuilt bundle** — compiled March 2026, matches the
-screenshots `Screenshot_3-5-2026_*.jpeg` in this repo.
-
-**Required files (do not delete or overwrite):**
-```
-frontend/static/workspace/assets/index-EUKZeqk4.js   ← compiled app (THE REAL ONE)
-frontend/static/workspace/assets/index-WqgIFi2m.css  ← styles (83KB full CSS)
-frontend/static/workspace/overview-live.js            ← live telemetry
-frontend/static/workspace/index.html                  ← SPA shell (loads index-EUKZeqk4.js)
-frontend/static/workspace/config.js                   ← API base injection
+frontend/sovereign-control-node/
 ```
 
-**The index.html MUST load `index-EUKZeqk4.js` and `index-WqgIFi2m.css` — not any other bundle.**
-
-**Pages:** Overview, Playground, Marketplace, Models, Pipelines, Deployments,
-Vault, Compliance, Monitoring, Billing, Team, Settings.
+**ABSOLUTE RULES — DO NOT VIOLATE**
+1. **The only valid frontend directory is `frontend/sovereign-control-node/`.**
+2. **ALL OTHER FRONTENDS ARE GARBAGE AND HAVE BEEN DELETED.** Do not look for `frontend/static/workspace` or `frontend/veklom-workspace` or `frontend/static/veklom-control-plane`. If you try to restore them, you will break the live site and anger the user.
+3. This is a prebuilt static Next.js export (`out/` directory). Do not attempt to run `npm install` or `npm run build` in this repo. The source code for this frontend is maintained elsewhere.
+4. The backend routes `/workspace`, `/login`, and `/signup` all redirect to `/control-plane-next/`.
 
 ---
 
@@ -151,35 +140,12 @@ Vault, Compliance, Monitoring, Billing, Team, Settings.
 
 ---
 
-## ABSOLUTE RULES — DO NOT VIOLATE
-
-1. **NEVER run `npm run build` or `vite build` in `frontend/` and copy output
-   to `frontend/static/workspace/`.** This destroys the real workspace.
-
-2. **NEVER replace `frontend/static/workspace/assets/index-EUKZeqk4.js`.**
-   It is a compiled binary. There is no source to rebuild it from.
-   The index.html must always load `index-EUKZeqk4.js` and `index-WqgIFi2m.css`.
-
-3. **`frontend/src/` is NOT the workspace source.** It is a separate scaffold.
-   Do not build it and treat the output as the workspace.
-
-4. **After EVERY git push, you MUST also SSH and rebuild on the server.**
-   Git push alone does NOT update the live site unless GitHub Actions runs.
-
-5. **If you manually recreate the Docker container, you MUST also verify
-   `/data/coolify/proxy/dynamic/veklom.yaml` still exists with correct config.**
-   Without it, Traefik cannot route traffic and the site shows "no server available."
-
-6. **Do not change the container name.** It must stay `n13gp1nhrcdp0hvazvbnlxru-213557155694`.
-
----
-
 ## Backend
 
 - **Entry point:** `backend/apps/api/main.py` (FastAPI)
 - **Run command:** `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8088`
 - **All API routes:** prefixed `/api/v1/`
-- **Static mounts:** `/workspace`, `/command-center`, `/irongrid`, `/terminal`, `/gpc-engine`
+- **Static mounts:** `/control-plane-next`, `/command-center`, `/irongrid`, `/terminal`, `/gpc-engine`
 
 ---
 

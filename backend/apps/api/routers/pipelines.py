@@ -738,10 +738,29 @@ async def canary_promote(user=Depends(get_current_user)):
 
 # --- Routing ---
 @router.get("/routing")
-async def list_routing_rules(user=Depends(get_current_user)):
+async def list_routing_rules(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.marketplace import Pipeline as _P
+    result = await db.execute(
+        select(_P).where(
+            _P.workspace_id == (user.workspace_id or "default"),
+            _P.description == "routing_rule"
+        )
+    )
+    rules = result.scalars().all()
+    if not rules:
+        # Return sensible defaults if no rules have been created yet
+        return [
+            {"id": "r1", "name": "Cost optimization", "strategy": "cheapest_capable", "is_active": True},
+            {"id": "r2", "name": "Quality first", "strategy": "highest_quality", "is_active": False},
+        ]
     return [
-        {"id": "r1", "name": "Cost optimization", "strategy": "cheapest_capable", "is_active": True},
-        {"id": "r2", "name": "Quality first", "strategy": "highest_quality", "is_active": False},
+        {
+            "id": r.id,
+            "name": r.name,
+            "strategy": (r.steps or {}).get("strategy", ""),
+            "is_active": (r.steps or {}).get("is_active", True),
+        }
+        for r in rules
     ]
 
 

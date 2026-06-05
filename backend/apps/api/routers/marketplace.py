@@ -971,13 +971,44 @@ async def add_marketplace_review(
 
 
 @router.patch("/marketplace/listings/{listing_id}")
-async def update_listing(listing_id: str, body: dict, user=Depends(get_current_user)):
-    return {"id": listing_id, "message": "Listing updated", **body}
+async def update_listing(listing_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.marketplace import MarketplaceListing
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(
+        select(MarketplaceListing).where(MarketplaceListing.id == norm_id)
+    )
+    listing = result.scalar_one_or_none()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    # Only vendor who owns the listing or superuser can update
+    if listing.vendor_id and listing.vendor_id != (user.workspace_id or "") and not user.is_superuser:
+        raise HTTPException(status_code=403, detail="Not authorized to update this listing")
+    allowed = ("name", "description", "price", "pricing_model", "tags", "status", "icon_url", "config_json")
+    for k in allowed:
+        if k in body:
+            setattr(listing, k, body[k])
+    from datetime import datetime, timezone as _tz
+    listing.updated_at = datetime.now(_tz.utc)
+    await db.commit()
+    await db.refresh(listing)
+    return {"id": listing.id, "name": listing.name, "status": listing.status, "message": "Listing updated"}
 
 
 @router.delete("/marketplace/listings/{listing_id}")
-async def delete_listing(listing_id: str, user=Depends(get_current_user)):
-    return {"message": "Listing deleted"}
+async def delete_listing(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from backend.db.models.marketplace import MarketplaceListing
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(
+        select(MarketplaceListing).where(MarketplaceListing.id == norm_id)
+    )
+    listing = result.scalar_one_or_none()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.vendor_id and listing.vendor_id != (user.workspace_id or "") and not user.is_superuser:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this listing")
+    await db.delete(listing)
+    await db.commit()
+    return {"message": "Listing deleted", "id": norm_id}
 
 
 @router.post("/marketplace/listings/{listing_id}/install")
@@ -1562,32 +1593,90 @@ _PLUGIN_REGISTRY = {
     "p5": {"id": "p5", "name": "Audit Sealer", "category": "evidence", "status": "active", "version": "1.4.0", "description": "Seals every action into a deterministic evidence block for SOC2 replay.", "author": "Veklom Native", "docs_url": "/docs/plugins/audit-sealer"},
 }
 
-_plugin_states: dict = {}
+_plugin_states: dict = {}  # In-memory fallback — DB persistence below
 
 
 @router.get("/plugins")
-async def list_plugins(user=Depends(get_current_user)):
+async def list_plugins(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws_id = getattr(user, "workspace_id", "") or ""
+    # Load persisted states from InstalledAsset rows keyed by plugin id
+    from backend.db.models.marketplace import InstalledAsset
+    db_result = await db.execute(
+        select(InstalledAsset).where(
+            InstalledAsset.workspace_id == ws_id,
+            InstalledAsset.asset_type == "plugin"
+        )
+    )
+    db_states = {a.listing_id: a.status == "active" for a in db_result.scalars().all()}
     result = []
     for pid, meta in _PLUGIN_REGISTRY.items():
-        state = _plugin_states.get(f"{ws_id}:{pid}", True)
+        # DB state wins over in-memory fallback
+        state = db_states.get(pid, _plugin_states.get(f"{ws_id}:{pid}", True))
         result.append({**meta, "enabled": state, "status": "active" if state else "inactive"})
     return result
 
 
 @router.post("/plugins/{plugin_id}/enable")
-async def enable_plugin_mp(plugin_id: str, user=Depends(get_current_user)):
+async def enable_plugin_mp(plugin_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws_id = getattr(user, "workspace_id", "") or ""
     _plugin_states[f"{ws_id}:{plugin_id}"] = True
+    # Persist to DB
+    from backend.db.models.marketplace import InstalledAsset
+    result = await db.execute(
+        select(InstalledAsset).where(
+            InstalledAsset.workspace_id == ws_id,
+            InstalledAsset.listing_id == plugin_id,
+            InstalledAsset.asset_type == "plugin"
+        )
+    )
+    asset = result.scalar_one_or_none()
     meta = _PLUGIN_REGISTRY.get(plugin_id, {"id": plugin_id, "name": plugin_id})
+    if asset:
+        asset.status = "active"
+    else:
+        import uuid as _uuid
+        db.add(InstalledAsset(
+            id=str(_uuid.uuid4()),
+            workspace_id=ws_id,
+            listing_id=plugin_id,
+            installed_by=user.id,
+            asset_type="plugin",
+            name=meta.get("name", plugin_id),
+            status="active",
+        ))
+    await db.commit()
     return {"id": plugin_id, "enabled": True, "status": "active", "name": meta.get("name", plugin_id)}
 
 
 @router.post("/plugins/{plugin_id}/disable")
-async def disable_plugin_mp(plugin_id: str, user=Depends(get_current_user)):
+async def disable_plugin_mp(plugin_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws_id = getattr(user, "workspace_id", "") or ""
     _plugin_states[f"{ws_id}:{plugin_id}"] = False
+    # Persist to DB
+    from backend.db.models.marketplace import InstalledAsset
+    result = await db.execute(
+        select(InstalledAsset).where(
+            InstalledAsset.workspace_id == ws_id,
+            InstalledAsset.listing_id == plugin_id,
+            InstalledAsset.asset_type == "plugin"
+        )
+    )
+    asset = result.scalar_one_or_none()
     meta = _PLUGIN_REGISTRY.get(plugin_id, {"id": plugin_id, "name": plugin_id})
+    if asset:
+        asset.status = "inactive"
+    else:
+        import uuid as _uuid
+        db.add(InstalledAsset(
+            id=str(_uuid.uuid4()),
+            workspace_id=ws_id,
+            listing_id=plugin_id,
+            installed_by=user.id,
+            asset_type="plugin",
+            name=meta.get("name", plugin_id),
+            status="inactive",
+        ))
+    await db.commit()
     return {"id": plugin_id, "enabled": False, "status": "inactive", "name": meta.get("name", plugin_id)}
 
 

@@ -2,9 +2,9 @@ import subprocess
 
 sql = """
 UPDATE vendors SET 
-  stripe_account_id = 'bypass_stripe_check',
-  onboarding_complete = true,
-  status = 'approved'
+  stripe_account_id = '',
+  onboarding_complete = false,
+  status = 'pending'
 WHERE user_id = '3f9a04b6-3630-457a-92a7-0243a4473aa9';
 """
 

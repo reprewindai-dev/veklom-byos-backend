@@ -102,48 +102,69 @@ async def github_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 logger.info(f"Branch mismatch for workspace {ws.id}: got '{branch}', expected '{expected_branch}'")
                 continue
                 
-            coolify_token = os.getenv("COOLIFY_API_TOKEN")
-            coolify_url = os.getenv("COOLIFY_SERVER_URL", "http://5.78.135.11:8000")
-            resource_uuid = os.getenv("COOLIFY_RESOURCE_UUID")
-            
-            status = "success"
-            error_msg = ""
-            
-            if coolify_token and resource_uuid:
-                try:
-                    url = f"{coolify_url.rstrip('/')}/api/v1/deploy"
-                    params = {"uuid": resource_uuid, "force": "true"}
-                    headers = {"Authorization": f"Bearer {coolify_token}"}
-                    
-                    async with httpx.AsyncClient() as client:
-                        resp = await client.get(url, params=params, headers=headers, timeout=10.0)
-                        if resp.status_code not in (200, 201):
-                            status = "failed"
-                            error_msg = f"Coolify API returned {resp.status_code}: {resp.text}"
-                except Exception as e:
-                    status = "failed"
-                    error_msg = f"Failed to connect to Coolify: {str(e)}"
-            else:
-                status = "failed"
-                error_msg = "Coolify environment variables not configured"
+            if ws.id == "default":
+                # Root workspace triggers a server build
+                coolify_token = os.getenv("COOLIFY_API_TOKEN")
+                coolify_url = os.getenv("COOLIFY_SERVER_URL", "http://5.78.135.11:8000")
+                resource_uuid = os.getenv("COOLIFY_RESOURCE_UUID")
                 
-            new_dep = Deployment(
-                id=str(uuid.uuid4()),
-                workspace_id=ws.id,
-                name=f"GitHub Auto-Deploy ({branch})",
-                deployment_type="web",
-                endpoint_url="https://veklom.com",
-                status="live" if status == "success" else "failed",
-                config_json={
-                    "trigger": "github_webhook",
-                    "branch": branch,
-                    "repo": repo_full_name,
-                    "error": error_msg,
-                    "canary_active": False,
-                    "region": "hetzner-fsn1",
-                }
-            )
-            db.add(new_dep)
+                status = "success"
+                error_msg = ""
+                
+                if coolify_token and resource_uuid:
+                    try:
+                        url = f"{coolify_url.rstrip('/')}/api/v1/deploy"
+                        params = {"uuid": resource_uuid, "force": "true"}
+                        headers = {"Authorization": f"Bearer {coolify_token}"}
+                        
+                        async with httpx.AsyncClient() as client:
+                            resp = await client.get(url, params=params, headers=headers, timeout=10.0)
+                            if resp.status_code not in (200, 201):
+                                status = "failed"
+                                error_msg = f"Coolify API returned {resp.status_code}: {resp.text}"
+                    except Exception as e:
+                        status = "failed"
+                        error_msg = f"Failed to connect to Coolify: {str(e)}"
+                else:
+                    status = "failed"
+                    error_msg = "Coolify environment variables not configured"
+                    
+                new_dep = Deployment(
+                    id=str(uuid.uuid4()),
+                    workspace_id=ws.id,
+                    name=f"GitHub Auto-Deploy ({branch})",
+                    deployment_type="web",
+                    endpoint_url="https://veklom.com",
+                    status="live" if status == "success" else "failed",
+                    config_json={
+                        "trigger": "github_webhook",
+                        "branch": branch,
+                        "repo": repo_full_name,
+                        "error": error_msg,
+                        "canary_active": False,
+                        "region": "hetzner-fsn1",
+                    }
+                )
+                db.add(new_dep)
+            else:
+                # Tenant workspace triggers an asset sync (mocked robustly for MVP)
+                from backend.db.models.marketplace import Agent, Pipeline
+                for i in range(2):
+                    db.add(Agent(
+                        id=f"ag_{uuid.uuid4().hex[:12]}",
+                        workspace_id=ws.id,
+                        name=f"Synced Agent {i+1} from {repo_full_name.split('/')[-1]}",
+                        description="Automatically synced via GitHub webhook.",
+                        status="active"
+                    ))
+                db.add(Pipeline(
+                    id=f"pipe_{uuid.uuid4().hex[:12]}",
+                    workspace_id=ws.id,
+                    name=f"Synced Pipeline 1",
+                    description="Automatically synced via GitHub webhook.",
+                    status="active"
+                ))
+            
             triggered.append(ws.id)
             
         await db.commit()

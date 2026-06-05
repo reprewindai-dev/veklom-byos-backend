@@ -876,6 +876,12 @@ async def trigger_github_deployment(workspace_id: str, user=Depends(get_current_
     if user.workspace_id and user.workspace_id != workspace_id:
         raise HTTPException(status_code=403, detail="Forbidden")
         
+    # If this is a tenant workspace (not the root admin workspace), trigger GitHub Sync instead
+    # The root workspace id is usually "default" or empty for superadmins
+    if workspace_id and workspace_id != "default":
+        from backend.apps.api.routers.workspace import sync_github_workspace
+        return await sync_github_workspace(user=user, db=db)
+        
     coolify_token = os.getenv("COOLIFY_API_TOKEN")
     coolify_url = os.getenv("COOLIFY_SERVER_URL", "http://5.78.135.11:8000")
     resource_uuid = os.getenv("COOLIFY_RESOURCE_UUID")

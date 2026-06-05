@@ -112,31 +112,17 @@ EOF
 sleep 3 && curl -sk -H "Host: veklom.com" https://localhost/health
 ```
 
----
-
 ## The Correct Workspace — NEVER REPLACE THIS
 
-The workspace at `/workspace/` is served from:
+The workspace at `/workspace/` redirects to the true Next.js control plane served from:
 ```
-frontend/static/workspace/
-```
-
-This is the **REALFRONTEND prebuilt bundle** — compiled March 2026, matches the
-screenshots `Screenshot_3-5-2026_*.jpeg` in this repo.
-
-**Required files (do not delete or overwrite):**
-```
-frontend/static/workspace/assets/index-EUKZeqk4.js   ← compiled app (THE REAL ONE)
-frontend/static/workspace/assets/index-WqgIFi2m.css  ← styles (83KB full CSS)
-frontend/static/workspace/overview-live.js            ← live telemetry
-frontend/static/workspace/index.html                  ← SPA shell (loads index-EUKZeqk4.js)
-frontend/static/workspace/config.js                   ← API base injection
+frontend/static/veklom-control-plane/
 ```
 
-**The index.html MUST load `index-EUKZeqk4.js` and `index-WqgIFi2m.css` — not any other bundle.**
+This is the **REAL FRONTEND** — a Next.js application built to replace the old legacy Vite app.
 
-**Pages:** Overview, Playground, Marketplace, Models, Pipelines, Deployments,
-Vault, Compliance, Monitoring, Billing, Team, Settings.
+**Required source:**
+The source code for the frontend is located at `frontend/veklom-workspace/`.
 
 ---
 
@@ -153,24 +139,13 @@ Vault, Compliance, Monitoring, Billing, Team, Settings.
 
 ## ABSOLUTE RULES — DO NOT VIOLATE
 
-1. **NEVER run `npm run build` or `vite build` in `frontend/` and copy output
-   to `frontend/static/workspace/`.** This destroys the real workspace.
-
-2. **NEVER replace `frontend/static/workspace/assets/index-EUKZeqk4.js`.**
-   It is a compiled binary. There is no source to rebuild it from.
-   The index.html must always load `index-EUKZeqk4.js` and `index-WqgIFi2m.css`.
-
-3. **`frontend/src/` is NOT the workspace source.** It is a separate scaffold.
-   Do not build it and treat the output as the workspace.
-
-4. **After EVERY git push, you MUST also SSH and rebuild on the server.**
+1. **NEVER mention or attempt to restore the legacy Vite React app.** It has been completely purged from the repository.
+2. **After EVERY git push, you MUST also SSH and rebuild on the server.**
    Git push alone does NOT update the live site unless GitHub Actions runs.
-
-5. **If you manually recreate the Docker container, you MUST also verify
+3. **If you manually recreate the Docker container, you MUST also verify
    `/data/coolify/proxy/dynamic/veklom.yaml` still exists with correct config.**
    Without it, Traefik cannot route traffic and the site shows "no server available."
-
-6. **Do not change the container name.** It must stay `n13gp1nhrcdp0hvazvbnlxru-213557155694`.
+4. **Do not change the container name.** It must stay `n13gp1nhrcdp0hvazvbnlxru-213557155694`.
 
 ---
 

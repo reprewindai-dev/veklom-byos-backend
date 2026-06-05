@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 120" width="430" height="120" fill="none">
+  <defs>
+    <filter id="vglow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#vglow)" stroke="#FFB800" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M30 32 L62 96 L94 32"/>
+  </g>
+  <circle cx="62" cy="52" r="8.5" fill="#FFB800" filter="url(#vglow)"/>
+  <text x="112" y="90" font-family="Geist, Inter, system-ui, -apple-system, Segoe UI, sans-serif"
+        font-size="86" font-weight="800" letter-spacing="-3" fill="#FFFFFF">eklom</text>
+</svg>

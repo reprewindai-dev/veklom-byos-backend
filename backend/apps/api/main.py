@@ -511,6 +511,7 @@ from backend.apps.api.routers import (
     admin,
     agents,
     genome,
+    agency,
     agentic_commerce,
     ai,
     auth,
@@ -574,6 +575,9 @@ app.include_router(runs.router, prefix="/api/v1/runs")
 
 # Genome (PGL) inner-engine read surface — certificates, life ledger, chain verify
 app.include_router(genome.router, prefix="/api/v1")
+
+# Agency / Memory — durable agent state (rank/posture/privileges), memory, notifications
+app.include_router(agency.router, prefix="/api/v1")
 
 # Copilot registry
 app.include_router(copilot.router, prefix="/api/v1")

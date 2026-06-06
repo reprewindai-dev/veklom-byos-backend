@@ -12,6 +12,7 @@ from backend.db.models.genome import GenomeVersion
 from backend.db.models.ledger import LedgerEvent
 from backend.db.models.lineage import BirthCertificate, LineageEdge
 from backend.db.models.pgl import PGLCertificate, PGLLedgerEvent
+from backend.db.models.agency import AgentState, AgentMemoryEntry, Notification
 from backend.db.models.provider import ProviderKey, ProviderRoutingLog
 from backend.db.models.playground import PlaygroundSession, PlaygroundPrompt
 from backend.db.models.repo_risk_gate import RepoRiskGateRun, RepoRiskGateEvent
@@ -49,6 +50,7 @@ __all__ = [
     "LedgerEvent",
     "BirthCertificate", "LineageEdge",
     "PGLCertificate", "PGLLedgerEvent",
+    "AgentState", "AgentMemoryEntry", "Notification",
     # billing extension
     "BillingUsage", "BillingEvent", "AnalyticsEvent",
     # provider management

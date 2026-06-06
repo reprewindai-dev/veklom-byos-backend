@@ -160,16 +160,26 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
         except Exception as e:
             node_label = step.get("label") or step.get("name") or step.get("node_type") or "node"
             logger.error(f"Pipeline node {node_label} failed: {e}")
+            receipt = _build_run_receipt(transaction_id, context, execution, workspace_id, user_id, "failed", str(e))
             await _update_pipeline_run(transaction_id, {
                 "status": "failed",
                 "error": f"Failed at {node_label}: {str(e)}",
                 "current_step": stage,
-                "output": {"trace": context.get("trace", []), "failed_node": step}
+                "output": {
+                    "trace": context.get("trace", []),
+                    "failed_node": step,
+                    "receipt": receipt,
+                    "cost_breakdown": receipt["cost_breakdown"],
+                    "policy_decisions": receipt["policy_decisions"],
+                    "replay": receipt["replay"],
+                    "evidence_id": receipt["evidence_id"],
+                    "proof_hash": receipt["proof_hash"],
+                }
             })
             return
 
     final_text = str(context.get("text", ""))
-    proof_hash = hashlib.sha256(json.dumps(context.get("trace", []), sort_keys=True).encode()).hexdigest()
+    receipt = _build_run_receipt(transaction_id, context, execution, workspace_id, user_id, "completed")
     await _update_pipeline_run(transaction_id, {
         "status": "completed",
         "progress": 100,
@@ -177,8 +187,12 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
         "output": {
             "result": final_text,
             "trace": context.get("trace", []),
-            "evidence_id": f"evd_{transaction_id[:8]}",
-            "proof_hash": f"0x{proof_hash[:16]}"
+            "receipt": receipt,
+            "cost_breakdown": receipt["cost_breakdown"],
+            "policy_decisions": receipt["policy_decisions"],
+            "replay": receipt["replay"],
+            "evidence_id": receipt["evidence_id"],
+            "proof_hash": receipt["proof_hash"],
         }
     })
 
@@ -265,6 +279,9 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
     canonical_node_type = PIPELINE_ADAPTER_ALIASES.get(node_type, node_type)
     config = step.get("config") or {}
     label = step.get("label") or node_type
+    started_at = datetime.now(timezone.utc)
+    tokens_before = int(context.get("tokens") or 0)
+    cost_before = float(context.get("cost") or 0)
     before = hashlib.sha256(str(context.get("text", "")).encode()).hexdigest()[:12]
 
     if node_type in {"input", "source"}:
@@ -282,11 +299,70 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context["chunks"] = chunks
         result = {"kind": "chunker", "chunks": len(chunks)}
 
+    elif node_type in {"embed-bge", "embed-openai"}:
+        embedding = await _embedding_node(node_type, config, context)
+        context["embedding"] = embedding["embedding"]
+        context["embedding_provider"] = embedding["provider"]
+        context["embedding_model"] = embedding["model"]
+        context["tokens"] = int(context.get("tokens") or 0) + embedding.get("tokens", 0)
+        context["cost"] = float(context.get("cost") or 0) + embedding.get("cost", 0)
+        result = {"kind": "embedding", "provider": embedding["provider"], "model": embedding["model"], "dimensions": len(embedding["embedding"])}
+
+    elif node_type in {"pgvector"}:
+        output = await _pgvector_node(config, context)
+        context["records"] = output.get("records", context.get("records", []))
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "pgvector", **{k: v for k, v in output.items() if k != "records"}}
+
+    elif node_type in {"qdrant"}:
+        output = await _qdrant_node(config, context)
+        context["records"] = output.get("records", context.get("records", []))
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "qdrant", **{k: v for k, v in output.items() if k != "records"}}
+
+    elif node_type in {"weaviate"}:
+        output = await _weaviate_node(config, context)
+        context["records"] = output.get("records", context.get("records", []))
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "weaviate", **{k: v for k, v in output.items() if k != "records"}}
+
+    elif node_type in {"reranker"}:
+        output = _reranker_node(config, context)
+        context["records"] = output["records"]
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "reranker", "records": len(output["records"])}
+
+    elif node_type in {"hybrid-search"}:
+        output = _hybrid_search_node(config, context)
+        context["records"] = output["records"]
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "hybrid_search", "records": len(output["records"])}
+
     elif node_type in {"policy-gate", "pii-redact"}:
         masked = pii_engine.mask(str(context.get("text", "")), config.get("strategy", "redact"))
         context["text"] = masked.get("masked_text", context.get("text", ""))
         context["policy"] = {"pii_found": masked.get("pii_found", []), "redacted": bool(masked.get("pii_found"))}
         result = {"kind": "policy", **context["policy"]}
+
+    elif node_type in {"cost-gate", "budget-gate"}:
+        output = _financial_gate_node(node_type, config, context)
+        context.setdefault("policy", {}).update(output)
+        result = {"kind": node_type.replace("-", "_"), **output}
+
+    elif node_type == "repo-risk-gate":
+        output = await _repo_risk_gate_node(config, context)
+        context.setdefault("policy", {}).update({"repo_risk": output})
+        result = {"kind": "repo_risk_gate", **output}
+
+    elif node_type == "human-approval":
+        output = _human_approval_node(config, context)
+        context.setdefault("policy", {}).update({"approval": output})
+        result = {"kind": "human_approval", **output}
+
+    elif node_type == "lock-engine":
+        output = _lock_engine_node(config, context)
+        context["execution_lock"] = output
+        result = {"kind": "lock_engine", **output}
 
     elif node_type in {"http-call", "http-request"}:
         response = await _http_request_node(config, context)
@@ -308,9 +384,48 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context["text"] = json.dumps(output, default=str)
         result = {"kind": "marketplace_tool", "tools": output.get("count", 0)}
 
+    elif node_type in {"code-exec", "code_executor"}:
+        output = await _code_executor_node(config, context)
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "code_executor", "status": output.get("status")}
+
     elif node_type in {"webhook"}:
         response = await _webhook_node(config, context)
         result = {"kind": "webhook", "status": response}
+
+    elif node_type in {"cost-router", "fallback", "load-balancer", "classifier", "semantic-router"}:
+        output = await _routing_node(node_type, config, context)
+        context["routing"] = output
+        context["provider"] = output.get("provider", context.get("provider"))
+        context["model"] = output.get("model", context.get("model"))
+        result = {"kind": "routing", **output}
+
+    elif node_type in {"lc-memory"}:
+        memory = list(context.get("memory", []))
+        memory.append({"at": datetime.now(timezone.utc).isoformat(), "text": str(context.get("text", ""))[:4000]})
+        context["memory"] = memory[-int(config.get("max_messages") or 20):]
+        result = {"kind": "memory", "messages": len(context["memory"])}
+
+    elif node_type in {"lc-toolnode"}:
+        tools = _normalize_tool_names(config.get("tools_allowed") or config.get("tools") or [])
+        if not tools:
+            raise ValueError("missing_config: Tool Node requires tools_allowed")
+        context["tools_allowed"] = tools
+        result = {"kind": "tool_binding", "tools_allowed": tools}
+
+    elif node_type in {"lc-langgraph"}:
+        output = await _langgraph_contract_node(config, context)
+        context["text"] = output["result"]
+        result = {"kind": "langgraph", "steps": output["steps"]}
+
+    elif node_type in {"lc-retrievalqa"}:
+        completion = await _retrievalqa_node(config, context)
+        context["text"] = completion["text"]
+        context["provider"] = completion["provider"]
+        context["model"] = completion["model"]
+        context["tokens"] = int(context.get("tokens") or 0) + completion["tokens"]
+        context["cost"] = float(context.get("cost") or 0) + completion["cost"]
+        result = {"kind": "retrievalqa", "provider": completion["provider"], "model": completion["model"], "chunks": len(context.get("chunks", []))}
 
     elif node_type in {"json-format", "markdown-render", "lc-parser", "output-parser"}:
         context["text"] = _format_output(node_type, context)
@@ -320,6 +435,26 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         seal = hashlib.sha256(json.dumps(context.get("trace", []), sort_keys=True).encode()).hexdigest()
         context["audit_seal"] = seal
         result = {"kind": "audit", "seal": seal[:16]}
+
+    elif node_type == "evidence-pack":
+        output = _evidence_pack_node(config, context)
+        context["evidence_pack"] = output
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "evidence_pack", "evidence_id": output["evidence_id"], "proof_hash": output["proof_hash"]}
+
+    elif node_type == "pgl-register":
+        output = await _pgl_register_node(config, context)
+        context["pgl_record"] = output
+        result = {"kind": "pgl_register", **output}
+
+    elif node_type in {"deploy-endpoint", "deploy-agent"}:
+        output = _deploy_contract_node(node_type, config, context)
+        context["deployment_contract"] = output
+        result = {"kind": node_type.replace("-", "_"), **output}
+
+    elif node_type in {"stream-out"}:
+        context["stream_ready"] = True
+        result = {"kind": "stream_output", "stream_ready": True}
 
     elif canonical_node_type in PIPELINE_NODE_ADAPTERS:
         adapter_result = await PIPELINE_NODE_ADAPTERS[canonical_node_type](config, context)
@@ -360,6 +495,16 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         "stage": step.get("stage"),
         "input_hash": before,
         "output_hash": after,
+        "latency_ms": int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000),
+        "token_usage": {
+            "delta_tokens": max(0, int(context.get("tokens") or 0) - tokens_before),
+            "total_tokens": int(context.get("tokens") or 0),
+        },
+        "cost_usd": max(0, float(context.get("cost") or 0) - cost_before),
+        "provider": context.get("provider") or context.get("embedding_provider") or "pipeline",
+        "model": context.get("model") or context.get("embedding_model") or node_type,
+        "policy_decision": _policy_decision_for_trace(node_type, context),
+        "certification": _node_certification(node_type, config, context),
         "result": result,
         "executed_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -437,6 +582,707 @@ async def _llm_node(node_type: str, config: dict, context: dict) -> dict:
         "model": result.payload.get("model") or config.get("model") or node_type,
         "tokens": tokens,
         "cost": tokens * 0.00001,
+    }
+
+
+def _safe_slug(value: str, default: str) -> str:
+    raw = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(value or default).strip())
+    return (raw or default)[:64]
+
+
+def _context_text(context: dict) -> str:
+    text = context.get("text")
+    if isinstance(text, str):
+        return text
+    return json.dumps(text, default=str)
+
+
+def _records_from_context(context: dict) -> list[dict]:
+    records = context.get("records")
+    if isinstance(records, list) and records:
+        return [record if isinstance(record, dict) else {"text": str(record)} for record in records]
+    chunks = context.get("chunks")
+    if isinstance(chunks, list) and chunks:
+        return [{"id": f"chunk-{index + 1}", "text": str(chunk)} for index, chunk in enumerate(chunks)]
+    text_value = _context_text(context)
+    return [{"id": "context", "text": text_value}] if text_value else []
+
+
+def _tokenize(value: str) -> set[str]:
+    tokens: set[str] = set()
+    current = []
+    for char in str(value).lower():
+        if char.isalnum():
+            current.append(char)
+        elif current:
+            token = "".join(current)
+            if len(token) > 2:
+                tokens.add(token)
+            current = []
+    if current:
+        token = "".join(current)
+        if len(token) > 2:
+            tokens.add(token)
+    return tokens
+
+
+async def _embedding_node(node_type: str, config: dict, context: dict) -> dict:
+    text_value = _context_text(context)
+    if not text_value:
+        raise ValueError("missing_config: Embedding node requires upstream text")
+
+    if node_type == "embed-openai":
+        api_key = settings.OPENAI_API_KEY.strip()
+        if not api_key:
+            raise ValueError("missing_key: OpenAI Embedding requires OPENAI_API_KEY")
+        model = str(config.get("model") or config.get("model_name") or "text-embedding-3-small")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": model, "input": text_value[:30000]},
+            )
+        response.raise_for_status()
+        payload = response.json()
+        embedding = payload["data"][0]["embedding"]
+        usage = payload.get("usage") or {}
+        tokens = int(usage.get("total_tokens") or max(1, len(text_value.split())))
+        return {
+            "provider": "openai",
+            "model": model,
+            "embedding": [float(value) for value in embedding],
+            "tokens": tokens,
+            "cost": tokens * 0.00000002,
+        }
+
+    base_url = settings.OLLAMA_BASE_URL.strip().rstrip("/")
+    if not base_url:
+        raise ValueError("missing_key: BGE-M3 Embedding requires OLLAMA_BASE_URL")
+    model = str(config.get("model") or config.get("model_name") or "bge-m3")
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        response = await client.post(f"{base_url}/api/embeddings", json={"model": model, "prompt": text_value[:30000]})
+    response.raise_for_status()
+    payload = response.json()
+    embedding = payload.get("embedding") or payload.get("embeddings")
+    if isinstance(embedding, list) and embedding and isinstance(embedding[0], list):
+        embedding = embedding[0]
+    if not isinstance(embedding, list) or not embedding:
+        raise ValueError("missing_config: Ollama embedding response did not include an embedding vector")
+    tokens = max(1, len(text_value.split()))
+    return {
+        "provider": "ollama",
+        "model": model,
+        "embedding": [float(value) for value in embedding],
+        "tokens": tokens,
+        "cost": 0.0,
+    }
+
+
+async def _pgvector_node(config: dict, context: dict) -> dict:
+    embedding = context.get("embedding")
+    if not isinstance(embedding, list) or not embedding:
+        raise ValueError("missing_config: pgvector Store requires upstream embedding")
+    dimension = len(embedding)
+    if dimension < 2 or dimension > 4096:
+        raise ValueError("missing_config: pgvector embedding dimensions must be between 2 and 4096")
+
+    text_value = _context_text(context)
+    metadata = {
+        "provider": context.get("embedding_provider"),
+        "model": context.get("embedding_model"),
+        "source_hash": hashlib.sha256(text_value.encode()).hexdigest()[:16],
+    }
+    record_id = str(config.get("record_id") or f"pgv_{metadata['source_hash']}")
+    vector_literal = "[" + ",".join(str(float(value)) for value in embedding) + "]"
+    try:
+        async with get_db_session() as db:
+            await db.execute(sql_text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await db.execute(sql_text(
+                f"""
+                CREATE TABLE IF NOT EXISTS pipeline_pgvector_records (
+                    id text PRIMARY KEY,
+                    text text NOT NULL,
+                    embedding vector({dimension}) NOT NULL,
+                    metadata jsonb NOT NULL DEFAULT '{{}}'::jsonb,
+                    created_at timestamptz NOT NULL DEFAULT now()
+                )
+                """
+            ))
+            await db.execute(sql_text(
+                """
+                INSERT INTO pipeline_pgvector_records (id, text, embedding, metadata)
+                VALUES (:id, :text, CAST(:embedding AS vector), CAST(:metadata AS jsonb))
+                ON CONFLICT (id) DO UPDATE
+                SET text = EXCLUDED.text, embedding = EXCLUDED.embedding, metadata = EXCLUDED.metadata
+                """
+            ), {"id": record_id, "text": text_value[:12000], "embedding": vector_literal, "metadata": json.dumps(metadata)})
+            await db.commit()
+    except Exception as exc:
+        raise ValueError(f"missing_config: pgvector extension unavailable or not writable: {exc}") from exc
+
+    records = [{"id": record_id, "text": text_value[:12000], "score": 1.0, "metadata": metadata}]
+    return {"status": "stored", "record_id": record_id, "dimensions": dimension, "records": records}
+
+
+async def _qdrant_node(config: dict, context: dict) -> dict:
+    embedding = context.get("embedding")
+    if not isinstance(embedding, list) or not embedding:
+        raise ValueError("missing_config: Qdrant Store requires upstream embedding")
+    url = str(config.get("url") or config.get("base_url") or "").strip().rstrip("/")
+    collection = _safe_slug(config.get("collection") or config.get("collection_name"), "veklom_pipeline")
+    if not url:
+        raise ValueError("missing_config: Qdrant Store requires config.url")
+    await _assert_safe_external_url(url)
+
+    text_value = _context_text(context)
+    record_id = int(hashlib.sha256(text_value.encode()).hexdigest()[:15], 16)
+    headers = {"api-key": str(config.get("api_key"))} if config.get("api_key") else {}
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=False, headers=headers) as client:
+        create = await client.put(f"{url}/collections/{collection}", json={"vectors": {"size": len(embedding), "distance": "Cosine"}})
+        if create.status_code >= 400 and create.status_code != 409:
+            create.raise_for_status()
+        response = await client.put(
+            f"{url}/collections/{collection}/points",
+            params={"wait": "true"},
+            json={
+                "points": [{
+                    "id": record_id,
+                    "vector": embedding,
+                    "payload": {"text": text_value[:12000], "source": "veklom_pipeline"},
+                }]
+            },
+        )
+    response.raise_for_status()
+    return {
+        "status": "stored",
+        "collection": collection,
+        "record_id": record_id,
+        "records": [{"id": str(record_id), "text": text_value[:12000], "score": 1.0, "metadata": {"store": "qdrant", "collection": collection}}],
+    }
+
+
+async def _weaviate_node(config: dict, context: dict) -> dict:
+    embedding = context.get("embedding")
+    if not isinstance(embedding, list) or not embedding:
+        raise ValueError("missing_config: Weaviate Store requires upstream embedding")
+    url = str(config.get("url") or config.get("base_url") or "").strip().rstrip("/")
+    class_name = _safe_slug(config.get("class_name") or config.get("className"), "VeklomPipelineRecord")
+    if not url:
+        raise ValueError("missing_config: Weaviate Store requires config.url")
+    await _assert_safe_external_url(url)
+
+    text_value = _context_text(context)
+    headers = {"Authorization": f"Bearer {config.get('api_key')}"} if config.get("api_key") else {}
+    payload = {
+        "class": class_name,
+        "properties": {"text": text_value[:12000], "source": "veklom_pipeline"},
+        "vector": embedding,
+    }
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=False, headers=headers) as client:
+        response = await client.post(f"{url}/v1/objects", json=payload)
+    response.raise_for_status()
+    data = response.json()
+    record_id = str(data.get("id") or hashlib.sha256(text_value.encode()).hexdigest()[:16])
+    return {
+        "status": "stored",
+        "class_name": class_name,
+        "record_id": record_id,
+        "records": [{"id": record_id, "text": text_value[:12000], "score": 1.0, "metadata": {"store": "weaviate", "class_name": class_name}}],
+    }
+
+
+def _reranker_node(config: dict, context: dict) -> dict:
+    query = str(config.get("query") or context.get("query") or _context_text(context))
+    query_tokens = _tokenize(query)
+    top_k = max(1, min(int(config.get("top_k") or config.get("topK") or 5), 25))
+    scored = []
+    for index, record in enumerate(_records_from_context(context)):
+        text_value = str(record.get("text") or record.get("content") or record)
+        overlap = len(query_tokens & _tokenize(text_value))
+        score = float(record.get("score") or 0) + overlap + (1 / (index + 1))
+        scored.append({**record, "text": text_value, "score": round(score, 4), "rank_reason": "token_overlap"})
+    return {"records": sorted(scored, key=lambda item: item["score"], reverse=True)[:top_k]}
+
+
+def _hybrid_search_node(config: dict, context: dict) -> dict:
+    query = str(config.get("query") or context.get("query") or _context_text(context))
+    query_tokens = _tokenize(query)
+    top_k = max(1, min(int(config.get("top_k") or config.get("topK") or 5), 25))
+    records = []
+    for record in _records_from_context(context):
+        text_value = str(record.get("text") or record.get("content") or record)
+        text_tokens = _tokenize(text_value)
+        lexical = len(query_tokens & text_tokens) / max(1, len(query_tokens))
+        vector_score = float(record.get("score") or 0)
+        hybrid_score = round((0.65 * lexical) + (0.35 * vector_score), 4)
+        records.append({**record, "text": text_value, "score": hybrid_score, "rank_reason": "hybrid_lexical_vector"})
+    return {"query": query, "records": sorted(records, key=lambda item: item["score"], reverse=True)[:top_k]}
+
+
+def _financial_gate_node(node_type: str, config: dict, context: dict) -> dict:
+    current_cost = float(context.get("cost") or 0)
+    if node_type == "cost-gate":
+        max_cost = config.get("max_cost_usd") or config.get("maxCostUsd") or config.get("monthlyCapUsd")
+        if max_cost is None:
+            raise ValueError("missing_config: Cost Gate requires max_cost_usd")
+        max_cost_float = float(max_cost)
+        if current_cost > max_cost_float:
+            raise ValueError(f"policy_blocked: Cost Gate blocked ${current_cost:.6f} over ${max_cost_float:.6f}")
+        return {"allowed": True, "gate": "cost", "current_cost_usd": current_cost, "max_cost_usd": max_cost_float}
+
+    monthly_cap = config.get("monthly_cap_usd") or config.get("monthlyCapUsd")
+    if monthly_cap is None:
+        raise ValueError("missing_config: Budget Gate requires monthly_cap_usd")
+    cap_float = float(monthly_cap)
+    projected = current_cost + float(config.get("committed_spend_usd") or config.get("committedSpendUsd") or 0)
+    if projected > cap_float:
+        raise ValueError(f"policy_blocked: Budget Gate blocked projected spend ${projected:.6f} over ${cap_float:.6f}")
+    return {"allowed": True, "gate": "budget", "projected_spend_usd": projected, "monthly_cap_usd": cap_float}
+
+
+async def _repo_risk_gate_node(config: dict, context: dict) -> dict:
+    repo_url = str(config.get("repo_url") or config.get("repoUrl") or context.get("repo_url") or "").strip()
+    if not repo_url:
+        raise ValueError("missing_config: Repo Risk Gate requires repo_url")
+    parsed = urlparse(repo_url)
+    if parsed.hostname not in {"github.com", "www.github.com"}:
+        raise ValueError("missing_config: Repo Risk Gate currently supports GitHub repo URLs")
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if len(parts) < 2:
+        raise ValueError("missing_config: Repo Risk Gate requires a GitHub owner/repo URL")
+    owner = parts[0]
+    repo = parts[1].replace(".git", "")
+    api_url = f"https://api.github.com/repos/{owner}/{repo}"
+    headers = {"Accept": "application/vnd.github+json"}
+    token = str(config.get("github_token") or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False, headers=headers) as client:
+        response = await client.get(api_url)
+    response.raise_for_status()
+    data = response.json()
+    risk_score = 0
+    reasons = []
+    if data.get("archived"):
+        risk_score += 50
+        reasons.append("archived_repository")
+    if data.get("disabled"):
+        risk_score += 50
+        reasons.append("disabled_repository")
+    if data.get("open_issues_count", 0) > 100:
+        risk_score += 15
+        reasons.append("high_open_issues")
+    pushed_at = data.get("pushed_at") or ""
+    if not pushed_at:
+        risk_score += 10
+        reasons.append("missing_push_timestamp")
+    threshold = int(config.get("max_risk_score") or config.get("maxRiskScore") or 70)
+    if risk_score > threshold:
+        raise ValueError(f"policy_blocked: Repo Risk Gate score {risk_score} exceeds {threshold}")
+    return {
+        "allowed": True,
+        "repo": f"{owner}/{repo}",
+        "risk_score": risk_score,
+        "threshold": threshold,
+        "reasons": reasons or ["no_blocking_repo_risk"],
+        "default_branch": data.get("default_branch"),
+        "pushed_at": pushed_at,
+    }
+
+
+def _human_approval_node(config: dict, context: dict) -> dict:
+    approval_id = str(config.get("approval_id") or config.get("approvalId") or "").strip()
+    approved_by = str(config.get("approved_by") or config.get("approvedBy") or "").strip()
+    status = str(config.get("status") or "").strip().lower()
+    if status != "approved" or not approval_id or not approved_by:
+        raise ValueError("approval_required: Human Approval requires status=approved, approval_id, and approved_by")
+    return {
+        "allowed": True,
+        "approval_id": approval_id,
+        "approved_by": approved_by,
+        "approved_at": config.get("approved_at") or config.get("approvedAt") or datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _lock_engine_node(config: dict, context: dict) -> dict:
+    trace = context.get("trace", [])
+    lock_payload = {
+        "trace": trace,
+        "policy": context.get("policy", {}),
+        "cost": context.get("cost", 0),
+        "model": context.get("model"),
+        "provider": context.get("provider"),
+        "scope": config.get("scope") or "pipeline_execution_contract",
+    }
+    lock_hash = hashlib.sha256(json.dumps(lock_payload, sort_keys=True, default=str).encode()).hexdigest()
+    return {
+        "locked": True,
+        "lock_id": f"lock_{lock_hash[:16]}",
+        "lock_hash": f"0x{lock_hash[:32]}",
+        "scope": lock_payload["scope"],
+    }
+
+
+def _evidence_pack_node(config: dict, context: dict) -> dict:
+    trace = context.get("trace", [])
+    pack = {
+        "trace": trace,
+        "policy": context.get("policy", {}),
+        "cost_usd": float(context.get("cost") or 0),
+        "tokens": int(context.get("tokens") or 0),
+        "audit_seal": context.get("audit_seal"),
+        "lock": context.get("execution_lock"),
+        "result_hash": hashlib.sha256(_context_text(context).encode()).hexdigest(),
+        "format": config.get("format") or "signed_json",
+    }
+    pack_hash = hashlib.sha256(json.dumps(pack, sort_keys=True, default=str).encode()).hexdigest()
+    return {
+        **pack,
+        "evidence_id": f"evd_{pack_hash[:12]}",
+        "proof_hash": f"0x{pack_hash[:32]}",
+        "sealed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def _pgl_register_node(config: dict, context: dict) -> dict:
+    evidence = context.get("evidence_pack") or _evidence_pack_node({}, context)
+    proof_hash = str(evidence.get("proof_hash") or "")
+    if not proof_hash:
+        raise ValueError("missing_config: PGL Register requires an evidence proof hash")
+    record_id = str(config.get("record_id") or f"pgl_{proof_hash.replace('0x', '')[:16]}")
+    try:
+        async with get_db_session() as db:
+            await db.execute(sql_text(
+                """
+                CREATE TABLE IF NOT EXISTS pipeline_governance_ledger (
+                    id text PRIMARY KEY,
+                    proof_hash text NOT NULL,
+                    evidence jsonb NOT NULL,
+                    created_at timestamptz NOT NULL DEFAULT now()
+                )
+                """
+            ))
+            await db.execute(sql_text(
+                """
+                INSERT INTO pipeline_governance_ledger (id, proof_hash, evidence)
+                VALUES (:id, :proof_hash, CAST(:evidence AS jsonb))
+                ON CONFLICT (id) DO UPDATE
+                SET proof_hash = EXCLUDED.proof_hash, evidence = EXCLUDED.evidence
+                """
+            ), {"id": record_id, "proof_hash": proof_hash, "evidence": json.dumps(evidence, default=str)})
+            await db.commit()
+    except Exception as exc:
+        raise ValueError(f"missing_config: PGL Register could not write governance ledger: {exc}") from exc
+    return {"registered": True, "record_id": record_id, "proof_hash": proof_hash}
+
+
+def _deploy_contract_node(node_type: str, config: dict, context: dict) -> dict:
+    proof = context.get("evidence_pack") or {"proof_hash": context.get("audit_seal")}
+    if not proof.get("proof_hash"):
+        raise ValueError("missing_config: Deploy node requires Audit Signer or Evidence Pack proof")
+    contract_hash = hashlib.sha256(json.dumps({
+        "node_type": node_type,
+        "proof": proof,
+        "policy": context.get("policy", {}),
+        "lock": context.get("execution_lock"),
+        "config": config,
+    }, sort_keys=True, default=str).encode()).hexdigest()
+    route_kind = "endpoint" if node_type == "deploy-endpoint" else "agent"
+    return {
+        "deployable": True,
+        "kind": route_kind,
+        "contract_id": f"{route_kind}_{contract_hash[:16]}",
+        "contract_hash": f"0x{contract_hash[:32]}",
+        "requires_runtime_route": "/api/v1/deployments",
+    }
+
+
+async def _code_executor_node(config: dict, context: dict) -> dict:
+    sandbox_url = str(config.get("sandbox_url") or config.get("sandboxUrl") or "").strip().rstrip("/")
+    if not sandbox_url:
+        raise ValueError("unsafe: code_executor requires configured sandbox_url")
+    await _assert_safe_external_url(sandbox_url)
+    payload = {
+        "language": config.get("language") or "python",
+        "code": config.get("code") or "",
+        "input": context.get("text", ""),
+        "timeout_seconds": min(int(config.get("timeout_seconds") or config.get("timeoutSeconds") or 10), 30),
+    }
+    if not payload["code"]:
+        raise ValueError("missing_config: code_executor requires config.code")
+    async with httpx.AsyncClient(timeout=payload["timeout_seconds"] + 5, follow_redirects=False) as client:
+        response = await client.post(sandbox_url, json=payload)
+    response.raise_for_status()
+    return {"status": "completed", "sandbox_url": sandbox_url, "result": response.json() if "json" in response.headers.get("content-type", "") else response.text}
+
+
+def _normalize_provider_entries(raw: Any) -> list[dict]:
+    if isinstance(raw, str):
+        raw = [item.strip() for item in raw.split(",") if item.strip()]
+    entries = raw if isinstance(raw, list) else []
+    normalized = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            provider = str(entry.get("provider") or entry.get("name") or "").strip().lower()
+            model = str(entry.get("model") or "").strip()
+            cost = float(entry.get("estimated_cost") or entry.get("cost") or 0.0)
+        else:
+            provider = str(entry).strip().lower()
+            model = ""
+            cost = 0.0
+        if provider:
+            normalized.append({"provider": provider, "model": model, "estimated_cost": cost})
+    return normalized
+
+
+async def _routing_node(node_type: str, config: dict, context: dict) -> dict:
+    if node_type == "cost-router":
+        candidates = _normalize_provider_entries(config.get("candidates") or config.get("providers") or [
+            {"provider": "ollama", "model": settings.OLLAMA_MODEL, "estimated_cost": 0.0},
+            {"provider": "groq", "model": settings.GROQ_MODEL, "estimated_cost": 0.00002},
+            {"provider": "gemini", "model": settings.GEMINI_MODEL, "estimated_cost": 0.00004},
+            {"provider": "openai", "model": settings.OPENAI_MODEL_CHAT, "estimated_cost": 0.00008},
+        ])
+        configured = [candidate for candidate in candidates if _configured_provider(candidate["provider"])]
+        if not configured:
+            raise ValueError("missing_key: cost-router has no configured provider candidates")
+        selected = sorted(configured, key=lambda item: item["estimated_cost"])[0]
+        return {"decision": "selected", "reason": "lowest_configured_estimated_cost", **selected}
+
+    if node_type in {"fallback", "load-balancer"}:
+        providers = _normalize_provider_entries(config.get("providers"))
+        if not providers:
+            raise ValueError(f"missing_config: {node_type} requires providers")
+        configured = [provider for provider in providers if _configured_provider(provider["provider"])]
+        if not configured:
+            raise ValueError(f"missing_key: {node_type} providers are not configured")
+        if node_type == "load-balancer":
+            index = int(hashlib.sha256(_context_text(context).encode()).hexdigest()[:8], 16) % len(configured)
+            selected = configured[index]
+            return {"decision": "selected", "reason": "deterministic_hash_balance", **selected}
+        selected = configured[0]
+        return {"decision": "selected", "reason": "first_configured_fallback", **selected}
+
+    if node_type == "classifier":
+        labels = config.get("labels") or []
+        if isinstance(labels, str):
+            labels = [item.strip() for item in labels.split(",") if item.strip()]
+        if not labels:
+            raise ValueError("missing_config: classifier requires labels")
+        text_tokens = _tokenize(_context_text(context))
+        scored = []
+        for label in labels:
+            label_text = label.get("label") if isinstance(label, dict) else str(label)
+            keywords = label.get("keywords", []) if isinstance(label, dict) else [label_text]
+            if isinstance(keywords, str):
+                keywords = [keywords]
+            score = len(text_tokens & set().union(*[_tokenize(keyword) for keyword in keywords]))
+            scored.append({"label": label_text, "score": score})
+        selected = sorted(scored, key=lambda item: item["score"], reverse=True)[0]
+        return {"decision": "classified", **selected}
+
+    routes = config.get("routes") or []
+    if not isinstance(routes, list) or not routes:
+        raise ValueError("missing_config: semantic-router requires routes")
+    text_tokens = _tokenize(_context_text(context))
+    best = None
+    for route in routes:
+        if not isinstance(route, dict):
+            continue
+        keywords = route.get("keywords") or [route.get("label") or route.get("route") or ""]
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        score = len(text_tokens & set().union(*[_tokenize(keyword) for keyword in keywords]))
+        candidate = {"route": route.get("route") or route.get("label"), "provider": route.get("provider"), "model": route.get("model"), "score": score}
+        if best is None or score > best["score"]:
+            best = candidate
+    if not best:
+        raise ValueError("missing_config: semantic-router routes are invalid")
+    return {"decision": "routed", **best}
+
+
+def _normalize_tool_names(raw: Any) -> list[str]:
+    if isinstance(raw, str):
+        raw = [item.strip() for item in raw.split(",") if item.strip()]
+    normalized = []
+    for value in raw if isinstance(raw, list) else []:
+        tool = str(value).strip().lower().replace("-", "_")
+        if tool not in ALLOWED_LANGCHAIN_TOOLS:
+            raise ValueError(f"missing_config: unsupported pipeline tool '{value}'")
+        if tool not in normalized:
+            normalized.append(tool)
+    return normalized
+
+
+async def _langgraph_contract_node(config: dict, context: dict) -> dict:
+    steps = config.get("steps")
+    if isinstance(steps, str):
+        try:
+            steps = json.loads(steps)
+        except json.JSONDecodeError:
+            steps = [item.strip() for item in steps.splitlines() if item.strip()]
+    if not isinstance(steps, list) or not steps:
+        raise ValueError("missing_config: LangGraph node requires configured steps")
+    state = {"input": _context_text(context), "memory": context.get("memory", [])}
+    executed = []
+    for index, step in enumerate(steps[:20]):
+        label = step.get("label") if isinstance(step, dict) else str(step)
+        operation = (step.get("operation") if isinstance(step, dict) else "pass") or "pass"
+        state["last_step"] = label
+        state["text"] = f"{state.get('text') or state['input']}\n[{index + 1}] {label}".strip()
+        executed.append({"index": index + 1, "label": label, "operation": operation, "status": "completed"})
+    return {"result": state.get("text") or state["input"], "steps": executed}
+
+
+async def _retrievalqa_node(config: dict, context: dict) -> dict:
+    provider = str(config.get("model_provider") or config.get("provider") or "").strip().lower()
+    model = str(config.get("model_name") or config.get("model") or "").strip()
+    if not provider:
+        raise ValueError("missing_config: RetrievalQA requires model_provider")
+    if not model:
+        raise ValueError("missing_config: RetrievalQA requires model_name")
+    if not _configured_provider(provider):
+        raise ValueError(f"missing_key: RetrievalQA provider '{provider}' is not configured")
+    question = str(config.get("question") or config.get("prompt") or context.get("query") or context.get("text") or "")
+    sources = _records_from_context(context)
+    source_text = "\n\n".join(str(record.get("text") or record) for record in sources[:8])
+    prompt = (
+        "Answer the question using only the provided retrieved context. "
+        "Return uncertainty when the context is insufficient.\n\n"
+        f"Question:\n{question}\n\nRetrieved context:\n{source_text}"
+    )
+    result = await run_completion({
+        "provider": provider,
+        "model": model,
+        "temperature": config.get("temperature", 0.2),
+        "messages": [{"role": "user", "content": prompt}],
+    }, stream=False)
+    text = _completion_text(result.payload)
+    usage = result.payload.get("usage") or {}
+    tokens = int(usage.get("total_tokens") or max(1, len(prompt.split()) + len(text.split())))
+    return {
+        "text": text,
+        "provider": result.provider,
+        "model": result.payload.get("model") or model,
+        "tokens": tokens,
+        "cost": tokens * 0.00001,
+    }
+
+
+def _configured_requirement_status(requirement: str, config: dict, context: dict) -> bool:
+    requirement_key = requirement.lower().replace("-", "_").replace(" ", "_")
+    if requirement_key in {"text_or_url"}:
+        return bool(config.get("text") or config.get("url") or context.get("text"))
+    if requirement_key == "embedding":
+        return bool(context.get("embedding"))
+    if requirement_key == "proof":
+        return bool(context.get("audit_seal") or context.get("evidence_pack"))
+    if requirement_key == "openai_api_key":
+        return bool(settings.OPENAI_API_KEY.strip())
+    if requirement_key == "groq_api_key":
+        return bool(settings.GROQ_API_KEY.strip())
+    if requirement_key == "gemini_api_key":
+        return bool(settings.GEMINI_API_KEY.strip())
+    if requirement_key == "serpapi_key":
+        return bool(settings.SERPAPI_KEY.strip())
+    if requirement_key == "ollama_base_url":
+        return bool(settings.OLLAMA_BASE_URL.strip())
+    return bool(config.get(requirement_key) or config.get(requirement))
+
+
+def _node_certification(node_type: str, config: dict, context: dict) -> dict:
+    static_requirements = {
+        "doc-loader": ["text or url"],
+        "file-read": ["text or url"],
+        "langchain_agent": ["model_provider", "model_name"],
+        "lc-langgraph": ["steps"],
+        "lc-retrievalqa": ["model_provider", "model_name"],
+        "lc-toolnode": ["tools_allowed"],
+        "llm-openai": ["OPENAI_API_KEY"],
+        "llm-groq": ["GROQ_API_KEY"],
+        "llm-gemini": ["GEMINI_API_KEY"],
+        "llm-ollama": ["OLLAMA_BASE_URL"],
+        "embed-openai": ["OPENAI_API_KEY"],
+        "embed-bge": ["OLLAMA_BASE_URL"],
+        "pgvector": ["embedding"],
+        "qdrant": ["url", "collection", "embedding"],
+        "weaviate": ["url", "class_name", "embedding"],
+        "repo-risk-gate": ["repo_url"],
+        "cost-gate": ["max_cost_usd"],
+        "budget-gate": ["monthly_cap_usd"],
+        "human-approval": ["approval_id"],
+        "deploy-endpoint": ["proof"],
+        "deploy-agent": ["proof"],
+        "web-search": ["SERPAPI_KEY"],
+        "http-call": ["url"],
+        "sql-query": ["query"],
+        "code-exec": ["sandbox_url"],
+        "webhook": ["url"],
+    }
+    requirements = static_requirements.get(node_type, [])
+    missing = [requirement for requirement in requirements if not _configured_requirement_status(requirement, config, context)]
+    if node_type in {"code-exec", "code_executor"} and missing:
+        status = "unsafe"
+    elif missing:
+        status = "missing_key" if any(item.endswith("_KEY") or item == "SERPAPI_KEY" for item in missing) else "missing_config"
+    else:
+        status = "real"
+    return {"status": status, "requirements": requirements, "missing": missing}
+
+
+def _policy_decision_for_trace(node_type: str, context: dict) -> dict:
+    policy = context.get("policy") if isinstance(context.get("policy"), dict) else {}
+    boundary_nodes = {"http-call", "http-request", "webhook", "web-search", "qdrant", "weaviate", "embed-openai", "llm-openai", "llm-groq", "llm-gemini"}
+    gate_nodes = {"policy-gate", "cost-gate", "budget-gate", "repo-risk-gate", "human-approval", "lock-engine"}
+    return {
+        "allowed": True,
+        "reason": "governance_gate_enforced" if node_type in gate_nodes else "policy_gate_inline" if policy else "default_allow_no_policy_gate",
+        "pii_redacted": bool(policy.get("redacted")),
+        "pii_found": policy.get("pii_found", []),
+        "boundary_crossing": node_type in boundary_nodes,
+    }
+
+
+def _build_run_receipt(transaction_id: str, context: dict, execution: list[dict], workspace_id: str, user_id: str, status: str, error: str | None = None) -> dict:
+    trace = context.get("trace", [])
+    trace_hash = hashlib.sha256(json.dumps(trace, sort_keys=True, default=str).encode()).hexdigest()
+    graph_hash = hashlib.sha256(json.dumps(execution, sort_keys=True, default=str).encode()).hexdigest()
+    cost_breakdown = []
+    for item in trace:
+        cost_breakdown.append({
+            "node_id": item.get("node_id"),
+            "node_type": item.get("node_type"),
+            "provider": item.get("provider"),
+            "model": item.get("model"),
+            "tokens": (item.get("token_usage") or {}).get("delta_tokens", 0),
+            "cost_usd": item.get("cost_usd", 0),
+        })
+    policy_decisions = [item.get("policy_decision", {}) for item in trace]
+    proof_hash = hashlib.sha256(f"{transaction_id}:{trace_hash}:{graph_hash}:{status}".encode()).hexdigest()
+    return {
+        "receipt_id": f"rcpt_{transaction_id[:12]}",
+        "evidence_id": f"evd_{transaction_id[:8]}",
+        "status": status,
+        "workspace_id": workspace_id,
+        "user_id": user_id,
+        "proof_hash": f"0x{proof_hash[:32]}",
+        "trace_hash": f"0x{trace_hash[:32]}",
+        "graph_hash": f"0x{graph_hash[:32]}",
+        "total_nodes": len(execution),
+        "executed_nodes": len(trace),
+        "total_tokens": int(context.get("tokens") or 0),
+        "total_cost_usd": round(sum(float(item.get("cost_usd") or 0) for item in cost_breakdown), 8),
+        "cost_breakdown": cost_breakdown,
+        "policy_decisions": policy_decisions,
+        "boundary_crossings": [item for item in policy_decisions if item.get("boundary_crossing")],
+        "deployable": status == "completed" and not error,
+        "replay": {
+            "graph_hash": f"0x{graph_hash[:32]}",
+            "execution_order": [step.get("id") or step.get("node_type") for step in execution],
+            "deterministic": True,
+        },
+        "error": error,
+        "sealed_at": datetime.now(timezone.utc).isoformat(),
     }
 
 

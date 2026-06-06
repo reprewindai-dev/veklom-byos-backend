@@ -76,8 +76,122 @@ def _default_pipeline_graph(template: str = "clinical-rag") -> dict:
 
 
 # --- Pipeline Node Database ---
+FULL_PIPELINE_NODE_CATALOG = {
+    "categories": [
+        {
+            "id": "veklom", "label": "Veklom Governance",
+            "nodes": [
+                {"id": "policy-gate", "name": "Policy Gate", "type": "gate", "description": "Enforce policy before risky execution", "certification": {"status": "real", "adapter": "policy_gate"}},
+                {"id": "audit-signer", "name": "Audit Signer", "type": "output", "description": "Seal trace evidence with SHA-256 proof", "certification": {"status": "real", "adapter": "audit_signer"}},
+                {"id": "evidence-pack", "name": "Evidence Pack", "type": "output", "description": "Compile proof, cost, policy, and trace receipt", "certification": {"status": "real", "adapter": "evidence_pack"}},
+                {"id": "pgl-register", "name": "PGL Register", "type": "gate", "description": "Register sealed proof in the governance ledger", "certification": {"status": "real", "adapter": "pgl_register"}},
+                {"id": "repo-risk-gate", "name": "Repo Risk Gate", "type": "gate", "description": "Assess GitHub repository risk before deployment", "certification": {"status": "configured", "adapter": "repo_risk_gate", "requires": ["repo_url"]}},
+                {"id": "cost-gate", "name": "Cost Gate", "type": "gate", "description": "Block runs over allowed node or total cost", "certification": {"status": "configured", "adapter": "cost_gate", "requires": ["max_cost_usd"]}},
+                {"id": "budget-gate", "name": "Budget Gate", "type": "gate", "description": "Enforce monthly or workspace budget thresholds", "certification": {"status": "configured", "adapter": "budget_gate", "requires": ["monthly_cap_usd"]}},
+                {"id": "human-approval", "name": "Human Approval", "type": "gate", "description": "Pause deployment until an explicit approval is present", "certification": {"status": "configured", "adapter": "human_approval", "requires": ["approval_id"]}},
+                {"id": "deploy-endpoint", "name": "Deploy Endpoint", "type": "output", "description": "Mark a completed governed run as endpoint-ready", "certification": {"status": "real", "adapter": "deploy_endpoint"}},
+                {"id": "deploy-agent", "name": "Deploy Agent", "type": "output", "description": "Package pipeline as a governed agent contract", "certification": {"status": "real", "adapter": "deploy_agent"}},
+                {"id": "lock-engine", "name": "Lock Engine", "type": "gate", "description": "Freeze the execution contract for replayable deploys", "certification": {"status": "real", "adapter": "lock_engine"}},
+                {"id": "marketplace-tool", "name": "Marketplace Tool", "type": "tool", "description": "Invoke Veklom marketplace capabilities", "certification": {"status": "real", "adapter": "marketplace_tool"}},
+            ],
+        },
+        {
+            "id": "input", "label": "Input",
+            "nodes": [
+                {"id": "input", "name": "Input", "type": "input", "description": "Pipeline input text or upstream payload", "certification": {"status": "real", "adapter": "input"}},
+                {"id": "doc-loader", "name": "Document Loader", "type": "input", "description": "Load text from config.text or a governed external URL", "certification": {"status": "configured", "adapter": "document_loader", "requires": ["text or url"]}},
+            ],
+        },
+        {
+            "id": "langchain", "label": "LangChain",
+            "nodes": [
+                {"id": "langchain_agent", "name": "LangChain Agent", "type": "agent", "description": "ReAct tool-calling agent with governed tools", "certification": {"status": "configured", "adapter": "langchain_agent", "requires": ["model_provider", "model_name"]}},
+                {"id": "lc-langgraph", "name": "LangGraph", "type": "agent", "description": "Stateful multi-step graph", "certification": {"status": "configured", "adapter": "langgraph_contract", "requires": ["steps"]}},
+                {"id": "lc-memory", "name": "Conversation Memory", "type": "memory", "description": "Buffer / summary memory", "certification": {"status": "real", "adapter": "conversation_memory"}},
+                {"id": "lc-retrievalqa", "name": "RetrievalQA Chain", "type": "chain", "description": "RAG question-answering over upstream chunks", "certification": {"status": "configured", "adapter": "retrieval_qa", "requires": ["model_provider", "model_name"]}},
+                {"id": "lc-parser", "name": "Output Parser", "type": "output", "description": "Structured Pydantic parsing", "certification": {"status": "real", "adapter": "output_parser"}},
+                {"id": "lc-toolnode", "name": "Tool Node", "type": "tool", "description": "Bind marketplace tools", "certification": {"status": "configured", "adapter": "tool_binding", "requires": ["tools_allowed"]}},
+            ],
+        },
+        {
+            "id": "models", "label": "Models",
+            "nodes": [
+                {"id": "llm-openai", "name": "OpenAI LLM", "type": "model", "provider": "openai", "description": "GPT-4o, GPT-4o-mini", "certification": {"status": "configured", "adapter": "llm", "requires": ["OPENAI_API_KEY"]}},
+                {"id": "llm-groq", "name": "Groq LLM", "type": "model", "provider": "groq", "description": "Llama 3.1 8B Instant", "certification": {"status": "configured", "adapter": "llm", "requires": ["GROQ_API_KEY"]}},
+                {"id": "llm-ollama", "name": "Ollama LLM", "type": "model", "provider": "ollama", "description": "Local models - Qwen, Llama, Mistral", "certification": {"status": "configured", "adapter": "llm", "requires": ["OLLAMA_BASE_URL"]}},
+                {"id": "llm-gemini", "name": "Gemini LLM", "type": "model", "provider": "gemini", "description": "Gemini 2.5 Flash / Pro", "certification": {"status": "configured", "adapter": "llm", "requires": ["GEMINI_API_KEY"]}},
+                {"id": "embed-bge", "name": "BGE-M3 Embedding", "type": "embedding", "provider": "ollama", "description": "Multi-lingual embeddings through Ollama", "certification": {"status": "configured", "adapter": "embedding", "requires": ["OLLAMA_BASE_URL"]}},
+                {"id": "embed-openai", "name": "OpenAI Embedding", "type": "embedding", "provider": "openai", "description": "text-embedding-3-small/large", "certification": {"status": "configured", "adapter": "embedding", "requires": ["OPENAI_API_KEY"]}},
+            ],
+        },
+        {
+            "id": "retrieval", "label": "Retrieval",
+            "nodes": [
+                {"id": "pgvector", "name": "pgvector Store", "type": "vector_store", "description": "PostgreSQL vector similarity storage/search", "certification": {"status": "configured", "adapter": "pgvector", "requires": ["embedding"]}},
+                {"id": "qdrant", "name": "Qdrant Store", "type": "vector_store", "description": "Qdrant cloud/self-hosted vector DB", "certification": {"status": "configured", "adapter": "qdrant", "requires": ["url", "collection", "embedding"]}},
+                {"id": "weaviate", "name": "Weaviate Store", "type": "vector_store", "description": "Weaviate vector DB", "certification": {"status": "configured", "adapter": "weaviate", "requires": ["url", "class_name", "embedding"]}},
+                {"id": "chunker", "name": "Document Chunker", "type": "transform", "description": "Split docs into overlapping chunks", "certification": {"status": "real", "adapter": "chunker"}},
+                {"id": "reranker", "name": "Re-Ranker", "type": "transform", "description": "Score-based re-ranking for top-k results", "certification": {"status": "real", "adapter": "reranker"}},
+                {"id": "hybrid-search", "name": "Hybrid Search", "type": "retrieval", "description": "BM25 + vector fusion over upstream records", "certification": {"status": "real", "adapter": "hybrid_search"}},
+            ],
+        },
+        {
+            "id": "tools", "label": "Tools",
+            "nodes": [
+                {"id": "web-search", "name": "Web Search", "type": "tool", "description": "SerpAPI web search", "certification": {"status": "configured", "adapter": "web_search", "requires": ["SERPAPI_KEY"]}},
+                {"id": "code-exec", "name": "Code Executor", "type": "tool", "description": "Sandboxed Python/JS execution", "certification": {"status": "configured", "adapter": "code_executor", "requires": ["sandbox_url"]}},
+                {"id": "http-call", "name": "HTTP Request", "type": "tool", "description": "Call external REST APIs", "certification": {"status": "configured", "adapter": "http_request", "requires": ["url"]}},
+                {"id": "sql-query", "name": "SQL Query", "type": "tool", "description": "Execute read-only SQL against configured DBs", "certification": {"status": "configured", "adapter": "sql_query", "requires": ["query"]}},
+                {"id": "file-read", "name": "File Reader", "type": "tool", "description": "Read documents from governed URL or text payload", "certification": {"status": "configured", "adapter": "file_reader", "requires": ["text or url"]}},
+                {"id": "marketplace-tool", "name": "Marketplace Tool", "type": "tool", "description": "Search Veklom marketplace tools", "certification": {"status": "real", "adapter": "marketplace_tool"}},
+            ],
+        },
+        {
+            "id": "routing", "label": "Routing",
+            "nodes": [
+                {"id": "policy-gate", "name": "Policy Gate", "type": "gate", "description": "Apply compliance policy before execution", "certification": {"status": "real", "adapter": "policy_gate"}},
+                {"id": "cost-router", "name": "Cost Router", "type": "router", "description": "Route to cheapest capable model", "certification": {"status": "real", "adapter": "cost_router"}},
+                {"id": "fallback", "name": "Fallback Chain", "type": "router", "description": "Try providers in order until success", "certification": {"status": "configured", "adapter": "fallback_router", "requires": ["providers"]}},
+                {"id": "load-balancer", "name": "Load Balancer", "type": "router", "description": "Deterministic distribution across providers", "certification": {"status": "configured", "adapter": "load_balancer", "requires": ["providers"]}},
+                {"id": "classifier", "name": "Intent Classifier", "type": "router", "description": "Route based on query classification", "certification": {"status": "configured", "adapter": "classifier", "requires": ["labels"]}},
+                {"id": "semantic-router", "name": "Semantic Router", "type": "router", "description": "Route by semantic label or configured keywords", "certification": {"status": "configured", "adapter": "semantic_router", "requires": ["routes"]}},
+            ],
+        },
+        {
+            "id": "output", "label": "Output",
+            "nodes": [
+                {"id": "json-format", "name": "JSON Formatter", "type": "output", "description": "Structure output as JSON schema", "certification": {"status": "real", "adapter": "json_formatter"}},
+                {"id": "markdown-render", "name": "Markdown Render", "type": "output", "description": "Render output as Markdown", "certification": {"status": "real", "adapter": "markdown_renderer"}},
+                {"id": "pii-redact", "name": "PII Redactor", "type": "output", "description": "Strip/mask PII before response", "certification": {"status": "real", "adapter": "pii_redactor"}},
+                {"id": "audit-log", "name": "Audit Logger", "type": "output", "description": "Write run audit event into the trace", "certification": {"status": "real", "adapter": "audit_logger"}},
+                {"id": "audit-signer", "name": "Audit Signer", "type": "output", "description": "SHA-256 seal the evidence trace", "certification": {"status": "real", "adapter": "audit_signer"}},
+                {"id": "webhook", "name": "Webhook", "type": "output", "description": "POST results to external URL", "certification": {"status": "configured", "adapter": "webhook", "requires": ["url"]}},
+                {"id": "stream-out", "name": "Stream Output", "type": "output", "description": "Mark output stream-ready for SSE consumers", "certification": {"status": "real", "adapter": "stream_output"}},
+            ],
+        },
+    ]
+}
+
+
+def _dedupe_node_catalog(catalog: dict) -> dict:
+    seen: set[str] = set()
+    categories = []
+    for category in catalog.get("categories", []):
+        nodes = []
+        for node in category.get("nodes", []):
+            node_id = node.get("id")
+            if not node_id or node_id in seen:
+                continue
+            seen.add(node_id)
+            nodes.append(node)
+        if nodes:
+            categories.append({**category, "nodes": nodes})
+    return {"categories": categories}
+
+
 @router.get("/pipelines/nodes")
 async def list_pipeline_nodes(user=Depends(get_current_user)):
+    return _dedupe_node_catalog(FULL_PIPELINE_NODE_CATALOG)
     return {
         "categories": [
             {
@@ -592,14 +706,24 @@ async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_cu
                     yield f"data: {json.dumps({'type': 'step.completed', 'stage': last_step})}\n\n"
                 
                 out_data = r.output or {}
+                receipt = out_data.get('receipt') or {}
                 data['output'] = out_data.get('result', '')
                 data['evidence_id'] = out_data.get('evidence_id', f'evd_{r.id[:8]}')
                 data['proof_hash'] = out_data.get('proof_hash', f'0x{r.id[:16]}')
+                data['receipt_id'] = receipt.get('receipt_id')
+                data['total_cost_usd'] = receipt.get('total_cost_usd')
+                data['total_tokens'] = receipt.get('total_tokens')
+                data['deployable'] = receipt.get('deployable')
                 yield f"data: {json.dumps(data)}\n\n"
                 break
             elif r.status == "failed":
                 out_data = r.output or {}
+                receipt = out_data.get('receipt') or {}
                 data['output'] = out_data.get('result', '')
+                data['evidence_id'] = out_data.get('evidence_id', f'evd_{r.id[:8]}')
+                data['proof_hash'] = out_data.get('proof_hash', f'0x{r.id[:16]}')
+                data['receipt_id'] = receipt.get('receipt_id')
+                data['error'] = r.error
                 yield f"data: {json.dumps(data)}\n\n"
                 break
     

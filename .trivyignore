@@ -24,3 +24,8 @@ CVE-2026-5773
 CVE-2026-6276
 CVE-2025-69720
 CVE-2026-7598
+
+# VEKLOM-SEC-425 | expires=2026-07-31 | ticket=VEKLOM-SEC-425
+# Package: perl-base (OS layer)
+# Reason: Upstream Debian 13.5 base-image advisory has no fixed package at scan time; runtime does not execute perl.
+CVE-2026-48962

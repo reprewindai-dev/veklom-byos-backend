@@ -64,8 +64,9 @@ test.describe('Veklom smoke', () => {
     await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle');
 
-    // The workspace SPA should load — check the root element exists
-    await expect(page.locator('#root')).toBeVisible({ timeout: 15000 });
+    // The control plane is a Next App Router export, not a Vite SPA; assert the rendered auth shell.
+    await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/welcome back|sovereign sign-in|sign in/i).first()).toBeVisible({ timeout: 15000 });
 
     // Look for any sign-up / register link or button (flexible selector)
     const signUpTrigger = page
@@ -106,11 +107,12 @@ test.describe('Veklom smoke', () => {
     await page.goto(`${BASE}/workspace`);
     await page.waitForLoadState('networkidle');
 
-    // The root SPA element must render (even if unauthenticated — shows login overlay)
-    await expect(page.locator('#root')).toBeVisible({ timeout: 15000 });
+    // The workspace route may redirect unauthenticated users into the Next auth shell.
+    await expect(page.locator('body')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('main, nav, [role="navigation"]').first()).toBeVisible({ timeout: 15000 });
 
     // If the workspace sidebar is visible, check for key nav items.
-    // If the user is unauthenticated the SPA shows a login screen — skip nav checks.
+    // If the user is unauthenticated the control plane shows a login screen — skip nav checks.
     const navVisible = await page.locator('nav, [role="navigation"]').first().isVisible().catch(() => false);
     if (navVisible) {
       const expected = [
@@ -131,8 +133,8 @@ test.describe('Veklom smoke', () => {
         await expect(page.locator('body')).toBeVisible();
       }
     } else {
-      // Unauthenticated: SPA loaded but shows login — that's acceptable for smoke
-      console.log('Workspace loaded in unauthenticated state — skipping nav element checks.');
+      // Unauthenticated: control plane loaded but shows login; that's acceptable for smoke.
+      console.log('Workspace loaded in unauthenticated state; skipping nav element checks.');
       await expect(page.locator('body')).toBeVisible();
     }
   });

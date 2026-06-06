@@ -14,9 +14,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: https:; "
-            "font-src 'self' data:; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
             "connect-src 'self' https://api.stripe.com https://veklom.com https://api.veklom.com; "
             "frame-src 'self' https://lockerphycer.veklom.com https://uacpv3.onrender.com https://js.stripe.com; "
             "object-src 'none'; "
@@ -29,7 +29,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # X-Frame-Options — SAMEORIGIN allows veklom.com to embed its own pages (terminal, irongrid etc.)
         # Skip for routes that are meant to be iframed within the landing page
         path = request.url.path
-        iframe_routes = ("/terminal", "/irongrid", "/command-center", "/gpc", "/gpc-engine", "/workspace")
+        iframe_routes = ("/terminal", "/repogate", "/irongrid", "/command-center", "/gpc", "/gpc-engine", "/workspace")
         if not any(path.startswith(r) for r in iframe_routes):
             response.headers["X-Frame-Options"] = "SAMEORIGIN"
         # else: no X-Frame-Options header — allows veklom.com to iframe these pages

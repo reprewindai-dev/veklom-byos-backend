@@ -692,6 +692,7 @@ GPC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "g
 WORKSPACE_DIR = FRONTEND_DIR / "workspace"
 SOVEREIGN_CONTROL_NODE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "sovereign-control-node"
 COMMAND_CENTER_DIR = FRONTEND_DIR / "command-center"
+REPOGATE_DIR = FRONTEND_DIR / "repogate"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
 LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 OPERATOR_CENTER_DIR = FRONTEND_DIR / "operator-center"
@@ -711,6 +712,8 @@ def _mount_static():
             StaticFiles(directory=str(COMMAND_CENTER_DIR), html=True),
             name="command-center",
         )
+    if REPOGATE_DIR.exists():
+        app.mount("/repogate", StaticFiles(directory=str(REPOGATE_DIR), html=True), name="repogate")
     if GPC_DIR.exists():
         app.mount("/gpc-engine", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc-engine")
         app.mount("/gpc", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc")

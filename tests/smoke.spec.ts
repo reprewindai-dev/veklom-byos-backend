@@ -1,4 +1,4 @@
-import { test, expect, request } from '@playwright/test';
+import { test, expect, type APIRequestContext, type APIResponse, type Page } from '@playwright/test';
 
 /**
  * ENV you can pass:
@@ -30,26 +30,93 @@ const failingList = (process.env.FAILING_ENDPOINTS || '')
   .map(s => s.trim())
   .filter(Boolean);
 
+const rolloutStatuses = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function waitForResponseStatus(
+  api: APIRequestContext,
+  url: string,
+  allowedStatuses: number[],
+  label: string,
+  timeoutMs = 120_000
+): Promise<APIResponse> {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = 'no response';
+  let lastError = '';
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await api.get(url, { timeout: 15_000 });
+      const status = response.status();
+      lastStatus = `${status} ${response.statusText()}`;
+
+      if (allowedStatuses.includes(status)) {
+        return response;
+      }
+
+      if (!rolloutStatuses.has(status)) {
+        break;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await sleep(2_000);
+  }
+
+  throw new Error(`${label} did not reach ${allowedStatuses.join('/')} before timeout; last=${lastStatus}${lastError ? `; error=${lastError}` : ''}`);
+}
+
+async function gotoDuringRollout(page: Page, url: string, label: string, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = 'no response';
+  let lastError = '';
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      const status = response?.status();
+      lastStatus = status ? `${status} ${response?.statusText()}` : 'missing navigation response';
+
+      if (response?.ok()) {
+        return response;
+      }
+
+      if (status && !rolloutStatuses.has(status)) {
+        break;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await sleep(2_000);
+  }
+
+  throw new Error(`${label} did not render before timeout; last=${lastStatus}${lastError ? `; error=${lastError}` : ''}`);
+}
+
 test.describe('Veklom smoke', () => {
+  test.beforeAll(async ({ request }) => {
+    await waitForResponseStatus(request, BASE, [200], 'public landing');
+    await waitForResponseStatus(request, endpoints.statusDataPublic, [200], 'public status/data');
+  });
 
   test('@smoke health endpoints resolve', async ({ request }) => {
-    const r1 = await request.get(endpoints.statusDataPublic);
-    expect(r1.status(), 'public status/data must 200').toBe(200);
+    const r1 = await waitForResponseStatus(request, endpoints.statusDataPublic, [200], 'public status/data');
     const json = await r1.json();
     expect(json).toBeTruthy();
 
-    const r2 = await request.get(endpoints.plans);
-    expect([200, 204]).toContain(r2.status());
+    await waitForResponseStatus(request, endpoints.plans, [200, 204], 'subscription plans');
   });
 
   test('@smoke landing routes render', async ({ page }) => {
     // /status and /status.html should both 200 and not throw
     for (const url of [endpoints.statusRoute, endpoints.statusHtml]) {
-      const resp = await page.goto(url, { waitUntil: 'domcontentloaded' });
-      expect(resp?.ok(), `${url} should 200`).toBeTruthy();
       // Basic sanity: page has body and no console errors of type 'error'
       const errors: string[] = [];
       page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+      await gotoDuringRollout(page, url, url);
       await expect(page.locator('body')).toBeVisible();
       expect(errors, `no landing JS errors on ${url}`).toHaveLength(0);
     }
@@ -61,7 +128,7 @@ test.describe('Veklom smoke', () => {
     page.on('response', res => console.log(`[Browser Response] ${res.status()} ${res.url()}`));
 
     // Navigate to login (redirects to /workspace/login in the SPA)
-    await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
+    await gotoDuringRollout(page, `${BASE}/login`, 'login route');
     await page.waitForLoadState('networkidle');
 
     // The control plane is a Next App Router export, not a Vite SPA; assert the rendered auth shell.
@@ -104,7 +171,7 @@ test.describe('Veklom smoke', () => {
   });
 
   test('@smoke workspace basics (terminal/run present)', async ({ page }) => {
-    await page.goto(`${BASE}/workspace`);
+    await gotoDuringRollout(page, `${BASE}/workspace`, 'workspace route');
     await page.waitForLoadState('networkidle');
 
     // The workspace route may redirect unauthenticated users into the Next auth shell.
@@ -140,7 +207,7 @@ test.describe('Veklom smoke', () => {
   });
 
   test('@smoke footer & DSA/Contact presence', async ({ page }) => {
-    await page.goto(BASE);
+    await gotoDuringRollout(page, BASE, 'public landing');
     await page.getByRole('contentinfo'); // footer landmark
     const footerLinks = [
       /terms|tos/i,
@@ -154,8 +221,7 @@ test.describe('Veklom smoke', () => {
   });
 
   test('@smoke headers: CSP/TLS/CORS sane', async ({ request }) => {
-    const resp = await request.get(BASE, { ignoreHTTPSErrors: true });
-    expect(resp.ok()).toBeTruthy();
+    const resp = await waitForResponseStatus(request, BASE, [200], 'public landing headers');
 
     const csp = resp.headers()['content-security-policy'];
     expect(csp, 'CSP present').toBeTruthy();
@@ -185,7 +251,7 @@ test.describe('Veklom smoke', () => {
         requests.push({ url: req.url(), body });
       }
     });
-    await page.goto(BASE);
+    await gotoDuringRollout(page, BASE, 'public landing analytics');
     await page.waitForTimeout(1500);
     if (requests.length === 0) {
       console.warn('PostHog is not enabled or not emitting events (likely REPLACE_ME_POSTHOG_KEY is active)');

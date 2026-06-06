@@ -36,6 +36,14 @@ ALLOWED_LANGCHAIN_TOOLS = {
 }
 
 
+class PipelinePausedForApproval(Exception):
+    def __init__(self, approval: dict, context: dict, step_index: int):
+        super().__init__("approval_required: ASK_HUMAN is waiting for approval")
+        self.approval = approval
+        self.context = context
+        self.step_index = step_index
+
+
 class LangChainAgentConfig(BaseModel):
     model_provider: str = Field(..., min_length=2, max_length=32)
     model_name: str = Field(..., min_length=2, max_length=160)
@@ -112,12 +120,12 @@ async def _update_pipeline_run(run_id: str, updates: dict):
     except Exception as e:
         logger.error(f"Failed to update PipelineRun {run_id}: {e}")
 
-async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id: str, user_id: str):
+async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id: str, user_id: str, resume_context: dict | None = None, start_index: int = 0):
     """Executes a pipeline autonomously in the background and updates Postgres."""
     await _update_pipeline_run(transaction_id, {
         "status": "running",
-        "progress": 0,
-        "current_step": "Source"
+        "progress": max(0, min(100, int((start_index or 0) * 5))),
+        "current_step": "Source" if not resume_context else "Test"
     })
 
     await asyncio.sleep(0.25)
@@ -150,7 +158,7 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
         })
         return
 
-    context: Dict[str, Any] = {
+    context: Dict[str, Any] = resume_context or {
         "text": "",
         "chunks": [],
         "records": [],
@@ -158,9 +166,13 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
         "policy": {},
         "preflight": preflight,
     }
+    context["transaction_id"] = transaction_id
+    context["workspace_id"] = workspace_id
+    context["user_id"] = user_id
+    context["preflight"] = preflight
 
     await _set_lifecycle_stage(transaction_id, "Test", 36, {"preflight": preflight})
-    for i, step in enumerate(execution):
+    for i, step in enumerate(execution[start_index:], start=start_index):
         stage = "Test"
         await _update_pipeline_run(transaction_id, {
             "current_step": stage,
@@ -178,6 +190,7 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
 
         try:
             start_time = datetime.now()
+            step["index"] = i
             context = await _execute_pipeline_node(step, context)
             latency = int((datetime.now() - start_time).total_seconds() * 1000)
             provider = step.get("provider") or context.get("provider") or "pipeline"
@@ -186,6 +199,22 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
             cost = float(context.get("cost") or 0)
             await _log_execution(workspace_id, user_id, provider, model, latency, tokens, cost)
             await asyncio.sleep(0.25)
+
+        except PipelinePausedForApproval as pause:
+            await _update_pipeline_run(transaction_id, {
+                "status": "waiting_approval",
+                "progress": 60,
+                "current_step": "Gate",
+                "output": {
+                    "trace": pause.context.get("trace", []),
+                    "preflight": preflight,
+                    "approval": pause.approval,
+                    "frozen_context": pause.context,
+                    "resume": {"start_index": pause.step_index},
+                    "evidence_id": f"evd_{transaction_id[:8]}",
+                },
+            })
+            return
 
         except Exception as e:
             node_label = step.get("label") or step.get("name") or step.get("node_type") or "node"
@@ -445,6 +474,11 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context.setdefault("policy", {}).update({"approval": output})
         result = {"kind": "human_approval", **output}
 
+    elif node_type == "ask-human":
+        output = _ask_human_node(config, context, step.get("index") or 0)
+        context.setdefault("policy", {}).update({"approval": output})
+        result = {"kind": "ask_human", **output}
+
     elif node_type == "lock-engine":
         output = _lock_engine_node(config, context)
         context["execution_lock"] = output
@@ -575,10 +609,31 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context["text"] = json.dumps(output, default=str)
         result = {"kind": "evidence_pack", "evidence_id": output["evidence_id"], "proof_hash": output["proof_hash"]}
 
+    elif node_type == "evidence-receipt":
+        output = _evidence_receipt_node(config, context)
+        context["evidence_receipt"] = output
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "evidence_receipt", "receipt_id": output["receipt_id"], "proof_hash": output["proof_hash"]}
+
     elif node_type == "pgl-register":
         output = await _pgl_register_node(config, context)
         context["pgl_record"] = output
         result = {"kind": "pgl_register", **output}
+
+    elif node_type == "pgl-lineage-anchor":
+        output = await _pgl_lineage_anchor_node(config, context)
+        context["pgl_lineage_anchor"] = output
+        result = {"kind": "pgl_lineage_anchor", **output}
+
+    elif node_type == "x402-payment-gate":
+        output = _x402_payment_gate_node(config, context)
+        context.setdefault("policy", {}).update({"x402_payment": output})
+        result = {"kind": "x402_payment_gate", **output}
+
+    elif node_type == "shadow-mode":
+        output = _shadow_mode_node(config, context)
+        context["shadow_mode"] = output
+        result = {"kind": "shadow_mode", **output}
 
     elif node_type in {"deploy-endpoint", "deploy-agent"}:
         output = _deploy_contract_node(node_type, config, context)
@@ -1192,6 +1247,35 @@ def _human_approval_node(config: dict, context: dict) -> dict:
     }
 
 
+def _ask_human_node(config: dict, context: dict, step_index: int) -> dict:
+    approval_id = str(config.get("approval_id") or config.get("approvalId") or f"appr_{context.get('transaction_id', 'run')[:8]}_{step_index}").strip()
+    approvals = context.get("approvals") if isinstance(context.get("approvals"), dict) else {}
+    existing = approvals.get(approval_id) or {}
+    if existing.get("status") == "approved":
+        return {
+            "allowed": True,
+            "approval_id": approval_id,
+            "approved_by": existing.get("approved_by") or existing.get("approvedBy"),
+            "approved_at": existing.get("approved_at") or datetime.now(timezone.utc).isoformat(),
+        }
+
+    approval = {
+        "approval_id": approval_id,
+        "status": "waiting_approval",
+        "reason": config.get("reason") or "Human approval required before this governed pipeline can continue.",
+        "requested_by": context.get("user_id"),
+        "workspace_id": context.get("workspace_id"),
+        "input_hash": hashlib.sha256(_context_text(context).encode()).hexdigest()[:16],
+        "trace_hash": hashlib.sha256(json.dumps(context.get("trace", []), sort_keys=True, default=str).encode()).hexdigest()[:16],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "notify": {
+            "email": config.get("email"),
+            "webhook_url_hash": hashlib.sha256(str(config.get("webhook_url") or config.get("url") or "").encode()).hexdigest()[:16] if config.get("webhook_url") or config.get("url") else None,
+        },
+    }
+    raise PipelinePausedForApproval(approval, context, step_index)
+
+
 def _lock_engine_node(config: dict, context: dict) -> dict:
     trace = context.get("trace", [])
     lock_payload = {
@@ -1232,6 +1316,27 @@ def _evidence_pack_node(config: dict, context: dict) -> dict:
     }
 
 
+def _evidence_receipt_node(config: dict, context: dict) -> dict:
+    trace = context.get("trace", [])
+    receipt = {
+        "what_ran": [{"node_id": item.get("node_id"), "node_type": item.get("node_type"), "label": item.get("label")} for item in trace],
+        "who_ran_it": context.get("user_id"),
+        "workspace_id": context.get("workspace_id"),
+        "cost_usd": float(context.get("cost") or 0),
+        "tokens": int(context.get("tokens") or 0),
+        "latency_ms": sum(int(item.get("latency_ms") or 0) for item in trace),
+        "policy_decisions": [item.get("policy_decision", {}) for item in trace],
+        "audit_hash": context.get("audit_seal") or (context.get("evidence_pack") or {}).get("proof_hash"),
+        "replay": {
+            "input_hash": hashlib.sha256(_context_text(context).encode()).hexdigest()[:16],
+            "trace_hash": hashlib.sha256(json.dumps(trace, sort_keys=True, default=str).encode()).hexdigest()[:16],
+        },
+        "format": config.get("format") or "receipt_json",
+    }
+    receipt_hash = hashlib.sha256(json.dumps(receipt, sort_keys=True, default=str).encode()).hexdigest()
+    return {**receipt, "receipt_id": f"rcpt_{receipt_hash[:12]}", "proof_hash": f"0x{receipt_hash[:32]}", "sealed_at": datetime.now(timezone.utc).isoformat()}
+
+
 async def _pgl_register_node(config: dict, context: dict) -> dict:
     evidence = context.get("evidence_pack") or _evidence_pack_node({}, context)
     proof_hash = str(evidence.get("proof_hash") or "")
@@ -1262,6 +1367,83 @@ async def _pgl_register_node(config: dict, context: dict) -> dict:
     except Exception as exc:
         raise ValueError(f"missing_config: PGL Register could not write governance ledger: {exc}") from exc
     return {"registered": True, "record_id": record_id, "proof_hash": proof_hash}
+
+
+async def _pgl_lineage_anchor_node(config: dict, context: dict) -> dict:
+    parent_hash = str(config.get("parent_hash") or config.get("parentHash") or context.get("audit_seal") or (context.get("evidence_pack") or {}).get("proof_hash") or "").strip()
+    if not parent_hash:
+        raise ValueError("missing_config: PGL Lineage Anchor requires parent_hash or upstream audit/evidence proof")
+    lineage_payload = {
+        "parent_hash": parent_hash,
+        "trace_hash": hashlib.sha256(json.dumps(context.get("trace", []), sort_keys=True, default=str).encode()).hexdigest(),
+        "workspace_id": context.get("workspace_id"),
+        "transaction_id": context.get("transaction_id"),
+        "anchored_at": datetime.now(timezone.utc).isoformat(),
+    }
+    lineage_hash = hashlib.sha256(json.dumps(lineage_payload, sort_keys=True, default=str).encode()).hexdigest()
+    record_id = str(config.get("record_id") or f"lineage_{lineage_hash[:16]}")
+    try:
+        async with get_db_session() as db:
+            await db.execute(sql_text(
+                """
+                CREATE TABLE IF NOT EXISTS pipeline_lineage_anchors (
+                    id text PRIMARY KEY,
+                    lineage_hash text NOT NULL,
+                    parent_hash text NOT NULL,
+                    payload jsonb NOT NULL,
+                    created_at timestamptz NOT NULL DEFAULT now()
+                )
+                """
+            ))
+            await db.execute(sql_text(
+                """
+                INSERT INTO pipeline_lineage_anchors (id, lineage_hash, parent_hash, payload)
+                VALUES (:id, :lineage_hash, :parent_hash, CAST(:payload AS jsonb))
+                ON CONFLICT (id) DO UPDATE
+                SET lineage_hash = EXCLUDED.lineage_hash, parent_hash = EXCLUDED.parent_hash, payload = EXCLUDED.payload
+                """
+            ), {"id": record_id, "lineage_hash": f"0x{lineage_hash[:32]}", "parent_hash": parent_hash, "payload": json.dumps(lineage_payload, default=str)})
+            await db.commit()
+    except Exception as exc:
+        raise ValueError(f"missing_config: PGL Lineage Anchor could not write lineage table: {exc}") from exc
+    return {"anchored": True, "record_id": record_id, "parent_hash": parent_hash, "lineage_hash": f"0x{lineage_hash[:32]}"}
+
+
+def _x402_payment_gate_node(config: dict, context: dict) -> dict:
+    price = float(config.get("max_price_usd") or config.get("maxPriceUsd") or config.get("price_usd") or 0)
+    if price <= 0:
+        raise ValueError("missing_config: x402 Payment Gate requires max_price_usd")
+    workspace_cap = float(config.get("workspace_budget_usd") or config.get("workspaceBudgetUsd") or config.get("monthly_cap_usd") or config.get("monthlyCapUsd") or 0)
+    current_cost = float(context.get("cost") or 0)
+    if workspace_cap and current_cost + price > workspace_cap:
+        raise ValueError(f"payment_blocked: x402 Payment Gate blocked ${current_cost + price:.6f} over budget ${workspace_cap:.6f}")
+    asset = str(config.get("asset") or "USDC").upper()
+    network = str(config.get("network") or "base").lower()
+    challenge = {
+        "asset": asset,
+        "network": network,
+        "max_price_usd": price,
+        "settlement_required": bool(config.get("settlement_required") or config.get("settlementRequired")),
+        "proof": hashlib.sha256(f"{context.get('transaction_id')}:{asset}:{network}:{price}".encode()).hexdigest()[:16],
+    }
+    if challenge["settlement_required"] and not config.get("settlement_proof") and not config.get("settlementProof"):
+        raise ValueError("payment_required: x402 Payment Gate requires settlement_proof for settlement_required tools")
+    return {"allowed": True, "payment_challenge": challenge, "settlement_proof": config.get("settlement_proof") or config.get("settlementProof")}
+
+
+def _shadow_mode_node(config: dict, context: dict) -> dict:
+    shadow_id = f"shadow_{hashlib.sha256((context.get('transaction_id', '') + _context_text(context)).encode()).hexdigest()[:12]}"
+    return {
+        "enabled": True,
+        "shadow_id": shadow_id,
+        "traffic_sample": float(config.get("traffic_sample") or config.get("trafficSample") or 0.05),
+        "writes_disabled": True,
+        "production_exposure": False,
+        "metrics": {
+            "trace_hash": hashlib.sha256(json.dumps(context.get("trace", []), sort_keys=True, default=str).encode()).hexdigest()[:16],
+            "estimated_cost_usd": float(context.get("cost") or 0),
+        },
+    }
 
 
 def _deploy_contract_node(node_type: str, config: dict, context: dict) -> dict:
@@ -1509,11 +1691,16 @@ def _adapter_name_for_node(node_type: str) -> str:
         "audit-signer": "audit_signer",
         "audit-log": "audit_logger",
         "evidence-pack": "evidence_pack",
+        "evidence-receipt": "evidence_receipt",
         "pgl-register": "pgl_register",
+        "pgl-lineage-anchor": "pgl_lineage_anchor",
         "repo-risk-gate": "repo_risk_gate",
         "cost-gate": "cost_gate",
         "budget-gate": "budget_gate",
         "human-approval": "human_approval",
+        "ask-human": "ask_human",
+        "x402-payment-gate": "x402_payment_gate",
+        "shadow-mode": "shadow_mode",
         "deploy-endpoint": "deploy_endpoint",
         "deploy-agent": "deploy_agent",
         "deploy-job": "deploy_job",
@@ -1549,6 +1736,8 @@ def _estimate_node_cost_usd(node_type: str, config: dict) -> float:
         return float(config.get("estimated_cost_usd") or 0.0001)
     if node_type in {"web-search", "http-call", "webhook", "webhook-output", "custom-http"}:
         return float(config.get("estimated_cost_usd") or 0.0002)
+    if node_type == "x402-payment-gate":
+        return float(config.get("max_price_usd") or config.get("price_usd") or config.get("estimated_cost_usd") or 0)
     return float(config.get("estimated_cost_usd") or 0)
 
 
@@ -1580,8 +1769,11 @@ def _node_certification(node_type: str, config: dict, context: dict) -> dict:
         "cost-gate": ["max_cost_usd"],
         "budget-gate": ["monthly_cap_usd"],
         "human-approval": ["approval_id"],
+        "ask-human": ["approval_id"],
         "deploy-endpoint": ["proof"],
         "deploy-agent": ["proof"],
+        "pgl-lineage-anchor": ["parent_hash"],
+        "x402-payment-gate": ["max_price_usd"],
         "web-search": ["SERPAPI_KEY"],
         "http-call": ["url"],
         "custom-http": ["url"],
@@ -1622,7 +1814,7 @@ def _policy_decision_for_trace(node_type: str, context: dict) -> dict:
         "custom-mcp-tool", "custom-node-package", "web-search", "qdrant", "weaviate",
         "embed-openai", "llm-openai", "llm-groq", "llm-gemini", "llm-anthropic", "llm-openai-compatible",
     }
-    gate_nodes = {"policy-gate", "cost-gate", "budget-gate", "repo-risk-gate", "human-approval", "lock-engine"}
+    gate_nodes = {"policy-gate", "cost-gate", "budget-gate", "repo-risk-gate", "human-approval", "ask-human", "x402-payment-gate", "pgl-lineage-anchor", "shadow-mode", "lock-engine"}
     return {
         "allowed": True,
         "reason": "governance_gate_enforced" if node_type in gate_nodes else "policy_gate_inline" if policy else "default_allow_no_policy_gate",

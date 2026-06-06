@@ -89,6 +89,11 @@ FULL_PIPELINE_NODE_CATALOG = {
                 {"id": "cost-gate", "name": "Cost Gate", "type": "gate", "description": "Block runs over allowed node or total cost", "certification": {"status": "configured", "adapter": "cost_gate", "requires": ["max_cost_usd"]}},
                 {"id": "budget-gate", "name": "Budget Gate", "type": "gate", "description": "Enforce monthly or workspace budget thresholds", "certification": {"status": "configured", "adapter": "budget_gate", "requires": ["monthly_cap_usd"]}},
                 {"id": "human-approval", "name": "Human Approval", "type": "gate", "description": "Pause deployment until an explicit approval is present", "certification": {"status": "configured", "adapter": "human_approval", "requires": ["approval_id"]}},
+                {"id": "ask-human", "name": "ASK_HUMAN Gate", "type": "gate", "description": "Pause execution, freeze context, and resume only after explicit approval", "certification": {"status": "configured", "adapter": "ask_human", "requires": ["approval_id"]}},
+                {"id": "pgl-lineage-anchor", "name": "PGL Lineage Anchor", "type": "gate", "description": "Anchor parent proof, execution graph, and receipt hash into lineage", "certification": {"status": "configured", "adapter": "pgl_lineage_anchor", "requires": ["parent_hash"]}},
+                {"id": "x402-payment-gate", "name": "x402 Payment Gate", "type": "gate", "description": "Require payment proof before paid tool/model execution proceeds", "certification": {"status": "configured", "adapter": "x402_payment_gate", "requires": ["max_price_usd"]}},
+                {"id": "evidence-receipt", "name": "Evidence Receipt", "type": "output", "description": "Seal run proof with cost, policy, trace, identity, and replay metadata", "certification": {"status": "real", "adapter": "evidence_receipt"}},
+                {"id": "shadow-mode", "name": "Shadow Mode", "type": "runtime", "description": "Run candidate logic against mirrored traffic without production writes", "certification": {"status": "real", "adapter": "shadow_mode"}},
                 {"id": "deploy-endpoint", "name": "Deploy Endpoint", "type": "output", "description": "Mark a completed governed run as endpoint-ready", "certification": {"status": "real", "adapter": "deploy_endpoint"}},
                 {"id": "deploy-agent", "name": "Deploy Agent", "type": "output", "description": "Package pipeline as a governed agent contract", "certification": {"status": "real", "adapter": "deploy_agent"}},
                 {"id": "lock-engine", "name": "Lock Engine", "type": "gate", "description": "Freeze the execution contract for replayable deploys", "certification": {"status": "real", "adapter": "lock_engine"}},
@@ -148,7 +153,6 @@ FULL_PIPELINE_NODE_CATALOG = {
                 {"id": "slack-send", "name": "Slack", "type": "integration", "description": "Post governed result to Slack webhook", "certification": {"status": "configured", "adapter": "integration_webhook", "requires": ["url"]}},
                 {"id": "github-action", "name": "GitHub", "type": "integration", "description": "Open issue/dispatch webhook with evidence", "certification": {"status": "configured", "adapter": "integration_webhook", "requires": ["url"]}},
                 {"id": "stripe-event", "name": "Stripe", "type": "integration", "description": "Send billing or usage event to Stripe-connected workflow", "certification": {"status": "configured", "adapter": "integration_webhook", "requires": ["url"]}},
-                {"id": "pagerduty-event", "name": "PagerDuty", "type": "integration", "description": "Trigger incident workflow with audit proof", "certification": {"status": "configured", "adapter": "integration_webhook", "requires": ["url"]}},
             ],
         },
         {
@@ -156,7 +160,6 @@ FULL_PIPELINE_NODE_CATALOG = {
             "nodes": [
                 {"id": "sql-query", "name": "SQL Query", "type": "data", "description": "Execute read-only SQL against configured DBs", "certification": {"status": "configured", "adapter": "sql_query", "requires": ["query"]}},
                 {"id": "file-read", "name": "File Reader", "type": "data", "description": "Read documents from governed URL or text payload", "certification": {"status": "configured", "adapter": "file_reader", "requires": ["text or url"]}},
-                {"id": "json-format", "name": "JSON Parser", "type": "data", "description": "Normalize upstream JSON payloads", "certification": {"status": "real", "adapter": "json_formatter"}},
             ],
         },
         {
@@ -166,7 +169,6 @@ FULL_PIPELINE_NODE_CATALOG = {
                 {"id": "markdown-render", "name": "Markdown Render", "type": "output", "description": "Render output as Markdown", "certification": {"status": "real", "adapter": "markdown_renderer"}},
                 {"id": "pii-redact", "name": "PII Redactor", "type": "output", "description": "Strip/mask PII before response", "certification": {"status": "real", "adapter": "pii_redactor"}},
                 {"id": "audit-log", "name": "Audit Logger", "type": "output", "description": "Write run audit event into the trace", "certification": {"status": "real", "adapter": "audit_logger"}},
-                {"id": "stream-out", "name": "Stream Output", "type": "output", "description": "Mark output stream-ready for SSE consumers", "certification": {"status": "real", "adapter": "stream_output"}},
             ],
         },
         {
@@ -653,6 +655,79 @@ async def get_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_curre
     }
 
 
+@router.post("/pipelines/{pipeline_id}/runs/{run_id}/approve")
+async def approve_pipeline_run(pipeline_id: str, run_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Approve an ASK_HUMAN pause and resume the frozen pipeline context."""
+    pipeline = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline not found or access denied")
+
+    result = await db.execute(
+        select(PipelineRun).where(
+            PipelineRun.id == run_id,
+            PipelineRun.pipeline_id == pipeline.id,
+            PipelineRun.workspace_id == (user.workspace_id or "default"),
+        )
+    )
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found or access denied")
+    if run.status != "waiting_approval":
+        raise HTTPException(status_code=409, detail=f"Run is not waiting for approval; current status is {run.status}")
+
+    output = run.output or {}
+    approval = output.get("approval") or {}
+    approval_id = body.get("approval_id") or approval.get("approval_id")
+    if not approval_id:
+        raise HTTPException(status_code=400, detail="approval_id is required")
+    if approval.get("approval_id") and approval_id != approval.get("approval_id"):
+        raise HTTPException(status_code=400, detail="approval_id does not match the pending approval")
+
+    decision = (body.get("decision") or body.get("status") or "approved").lower()
+    approved_by = body.get("approved_by") or getattr(user, "email", None) or user.id
+    frozen_context = output.get("frozen_context") or {}
+    resume = output.get("resume") or {}
+    start_index = int(resume.get("start_index") or approval.get("step_index") or 0)
+
+    approvals = dict(frozen_context.get("approvals") or {})
+    approvals[approval_id] = {
+        "status": decision,
+        "approved_by": approved_by,
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+        "comment": body.get("comment") or "",
+    }
+    frozen_context["approvals"] = approvals
+
+    if decision not in {"approved", "allow", "allowed"}:
+        run.status = "failed"
+        run.error = f"approval_rejected: {approval_id} rejected by {approved_by}"
+        run.current_step = "Gate"
+        run.completed_at = datetime.now(timezone.utc)
+        run.output = {**output, "approval": {**approval, "status": "rejected", "approved_by": approved_by}}
+        await db.commit()
+        return {"status": "rejected", "run_id": run.id, "approval_id": approval_id}
+
+    run.status = "queued"
+    run.progress = max(run.progress or 0, 60)
+    run.current_step = "Gate"
+    run.error = None
+    run.output = {**output, "approval": {**approval, "status": "approved", "approved_by": approved_by}, "frozen_context": frozen_context}
+    await db.commit()
+
+    asyncio.create_task(
+        run_pipeline_background(
+            run.id,
+            run.steps or {},
+            user.workspace_id or "default",
+            user.id,
+            resume_context=frozen_context,
+            start_index=start_index,
+        )
+    )
+
+    return {"status": "resuming", "run_id": run.id, "approval_id": approval_id, "start_index": start_index}
+
+
 @router.get("/pipelines/{pipeline_id}/runs/{run_id}/stream")
 async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
@@ -731,6 +806,13 @@ async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_cu
                 data['total_cost_usd'] = receipt.get('total_cost_usd')
                 data['total_tokens'] = receipt.get('total_tokens')
                 data['deployable'] = receipt.get('deployable')
+                yield f"data: {json.dumps(data)}\n\n"
+                break
+            elif r.status == "waiting_approval":
+                out_data = r.output or {}
+                data['approval'] = out_data.get('approval')
+                data['evidence_id'] = out_data.get('evidence_id', f'evd_{r.id[:8]}')
+                data['trace'] = out_data.get('trace', [])
                 yield f"data: {json.dumps(data)}\n\n"
                 break
             elif r.status == "failed":

@@ -1615,8 +1615,9 @@ async def listing_install_health(listing_id: str, user=Depends(get_current_user)
         InstalledAsset.listing_id == norm_id,
     ))
     asset = asset_result.scalar_one_or_none()
-    package = (asset.config_json or {}).get("package") if asset else _marketplace_package(listing)
-    configured_secrets = (asset.config_json or {}).get("configured_secrets", []) if asset else []
+    asset_config = asset.config_json or {} if asset else {}
+    package = asset_config.get("package") or _marketplace_package(listing)
+    configured_secrets = asset_config.get("configured_secrets", [])
     health = _package_health(package, configured_secrets, status=asset.status if asset and asset.status == "failed" else None)
     return {
         "listing_id": norm_id,
@@ -1646,8 +1647,9 @@ async def test_listing_package(listing_id: str, body: dict = None, user=Depends(
         InstalledAsset.listing_id == norm_id,
     ))
     asset = asset_result.scalar_one_or_none()
-    package = (asset.config_json or {}).get("package") if asset else _marketplace_package(listing)
-    health = _package_health(package, (asset.config_json or {}).get("configured_secrets", []) if asset else [])
+    asset_config = asset.config_json or {} if asset else {}
+    package = asset_config.get("package") or _marketplace_package(listing)
+    health = _package_health(package, asset_config.get("configured_secrets", []))
     proof_payload = {
         "listing_id": norm_id,
         "asset_id": asset.id if asset else None,
@@ -1659,16 +1661,26 @@ async def test_listing_package(listing_id: str, body: dict = None, user=Depends(
         "tested_at": datetime.now(timezone.utc).isoformat(),
     }
     proof_hash = hashlib.sha256(json.dumps(proof_payload, sort_keys=True, default=str).encode()).hexdigest()
-    db.add(_marketplace_audit(user, "marketplace_test", norm_id, {**proof_payload, "health": health, "proof_hash": f"0x{proof_hash[:32]}"}))
-    await db.commit()
+    audit_status = "written"
+    audit_error = None
+    try:
+        db.add(_marketplace_audit(user, "marketplace_test", norm_id, {**proof_payload, "health": health, "proof_hash": f"0x{proof_hash[:32]}"}))
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        audit_status = "failed"
+        audit_error = str(exc)
+    status = "pass" if health["status"] in {"configured", "active"} and audit_status == "written" else "audit_failed" if audit_status == "failed" else "needs_configuration"
     return {
-        "status": "pass" if health["status"] in {"configured", "active"} else "needs_configuration",
-        "policy_result": "allowed" if health["status"] in {"configured", "active"} else "blocked_missing_secrets",
+        "status": status,
+        "policy_result": "allowed" if status == "pass" else "blocked_audit_write_failed" if audit_status == "failed" else "blocked_missing_secrets",
         "output": f"{listing.name} package test completed against adapter {package['backend_adapter']['adapter']}.",
         "provider": package["marketplace_json"]["provider"],
         "billing_impact": f"{package['billing_meter']['model']} · {package['billing_meter']['unit']}",
         "evidence_id": f"evd_{proof_hash[:12]}",
         "proof_hash": f"0x{proof_hash[:32]}",
+        "audit_status": audit_status,
+        "audit_error": audit_error,
         "health": health,
         "package": package,
     }

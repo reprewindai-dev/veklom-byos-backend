@@ -816,6 +816,8 @@ async def _get_user_from_request(request):
 
 @app.middleware("http")
 async def force_https(request, call_next):
+    if request.url.path in {"/health", "/health/", "/api/health", "/api/v1/health"}:
+        return await call_next(request)
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     if settings.APP_ENV == "production" and proto != "https":
         from fastapi.responses import RedirectResponse

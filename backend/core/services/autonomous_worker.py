@@ -293,6 +293,21 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context["text"] = response
         result = {"kind": "http", "chars": len(response)}
 
+    elif node_type in {"web-search", "web_search"}:
+        output = await _langchain_tool_web_search(config, context)
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "web_search", "results": len(output.get("results", []))}
+
+    elif node_type in {"sql-query", "sql_query"}:
+        output = await _langchain_tool_sql_query(config, context)
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "sql_query", "rows": output.get("row_count", 0)}
+
+    elif node_type in {"marketplace-tool", "marketplace_tool"}:
+        output = await _langchain_tool_marketplace_tool(config, context)
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "marketplace_tool", "tools": output.get("count", 0)}
+
     elif node_type in {"webhook"}:
         response = await _webhook_node(config, context)
         result = {"kind": "webhook", "status": response}

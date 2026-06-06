@@ -81,14 +81,17 @@ async def list_pipeline_nodes(user=Depends(get_current_user)):
     return {
         "categories": [
             {
+                "id": "input", "label": "Input",
+                "nodes": [
+                    {"id": "input", "name": "Input", "type": "input", "description": "Pipeline input text or upstream payload"},
+                    {"id": "doc-loader", "name": "Document Loader", "type": "input", "description": "Load text from config.text or a governed external URL"},
+                ],
+            },
+            {
                 "id": "langchain", "label": "LangChain",
                 "nodes": [
                     {"id": "langchain_agent", "name": "LangChain Agent", "type": "agent", "description": "ReAct tool-calling agent with governed tools"},
-                    {"id": "lc-langgraph", "name": "LangGraph", "type": "agent", "description": "Stateful multi-step graph"},
-                    {"id": "lc-memory", "name": "Conversation Memory", "type": "memory", "description": "Buffer / summary memory"},
-                    {"id": "lc-retrievalqa", "name": "RetrievalQA Chain", "type": "chain", "description": "RAG question-answering"},
                     {"id": "lc-parser", "name": "Output Parser", "type": "output", "description": "Structured Pydantic parsing"},
-                    {"id": "lc-toolnode", "name": "Tool Node", "type": "tool", "description": "Bind marketplace tools"},
                 ],
             },
             {
@@ -98,48 +101,39 @@ async def list_pipeline_nodes(user=Depends(get_current_user)):
                     {"id": "llm-groq", "name": "Groq LLM", "type": "model", "provider": "groq", "description": "Llama 3.1 8B Instant (fast)"},
                     {"id": "llm-ollama", "name": "Ollama LLM", "type": "model", "provider": "ollama", "description": "Local models — Qwen, Llama, Mistral"},
                     {"id": "llm-gemini", "name": "Gemini LLM", "type": "model", "provider": "gemini", "description": "Gemini 2.5 Flash / Pro"},
-                    {"id": "embed-bge", "name": "BGE-M3 Embedding", "type": "embedding", "provider": "ollama", "description": "Multi-lingual 1024d embeddings"},
-                    {"id": "embed-openai", "name": "OpenAI Embedding", "type": "embedding", "provider": "openai", "description": "text-embedding-3-small/large"},
                 ]
             },
             {
-                "id": "retrieval", "label": "Retrieval",
+                "id": "retrieval", "label": "Transform",
                 "nodes": [
-                    {"id": "pgvector", "name": "pgvector Store", "type": "vector_store", "description": "PostgreSQL vector similarity search"},
-                    {"id": "qdrant", "name": "Qdrant Store", "type": "vector_store", "description": "Qdrant cloud/self-hosted vector DB"},
                     {"id": "chunker", "name": "Document Chunker", "type": "transform", "description": "Split docs into overlapping chunks"},
-                    {"id": "reranker", "name": "Re-Ranker", "type": "transform", "description": "Cross-encoder re-ranking for top-k results"},
-                    {"id": "hybrid-search", "name": "Hybrid Search", "type": "retrieval", "description": "BM25 + vector fusion search"},
                 ]
             },
             {
                 "id": "tools", "label": "Tools",
                 "nodes": [
                     {"id": "web-search", "name": "Web Search", "type": "tool", "description": "Brave/SerpAPI web search"},
-                    {"id": "code-exec", "name": "Code Executor", "type": "tool", "description": "Sandboxed Python/JS execution"},
                     {"id": "http-call", "name": "HTTP Request", "type": "tool", "description": "Call external REST APIs"},
                     {"id": "sql-query", "name": "SQL Query", "type": "tool", "description": "Execute SQL against configured DBs"},
                     {"id": "file-read", "name": "File Reader", "type": "tool", "description": "Read documents from S3/local storage"},
+                    {"id": "marketplace-tool", "name": "Marketplace Tool", "type": "tool", "description": "Search Veklom marketplace tools"},
                 ]
             },
             {
                 "id": "routing", "label": "Routing",
                 "nodes": [
                     {"id": "policy-gate", "name": "Policy Gate", "type": "gate", "description": "Apply compliance policy before execution"},
-                    {"id": "cost-router", "name": "Cost Router", "type": "router", "description": "Route to cheapest capable model"},
-                    {"id": "fallback", "name": "Fallback Chain", "type": "router", "description": "Try providers in order until success"},
-                    {"id": "load-balancer", "name": "Load Balancer", "type": "router", "description": "Round-robin across providers"},
-                    {"id": "classifier", "name": "Intent Classifier", "type": "router", "description": "Route based on query classification"},
                 ]
             },
             {
                 "id": "output", "label": "Output",
                 "nodes": [
                     {"id": "json-format", "name": "JSON Formatter", "type": "output", "description": "Structure output as JSON schema"},
+                    {"id": "markdown-render", "name": "Markdown Render", "type": "output", "description": "Render output as Markdown"},
                     {"id": "pii-redact", "name": "PII Redactor", "type": "output", "description": "Strip/mask PII before response"},
                     {"id": "audit-log", "name": "Audit Logger", "type": "output", "description": "Log to immutable audit trail"},
+                    {"id": "audit-signer", "name": "Audit Signer", "type": "output", "description": "SHA-256 seal the evidence trace"},
                     {"id": "webhook", "name": "Webhook", "type": "output", "description": "POST results to external URL"},
-                    {"id": "stream-out", "name": "Stream Output", "type": "output", "description": "SSE streaming response"},
                 ]
             },
         ]

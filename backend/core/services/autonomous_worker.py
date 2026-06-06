@@ -9,15 +9,63 @@ from typing import Dict, Any
 from urllib.parse import urlparse
 
 import httpx
+from pydantic import BaseModel, Field, ValidationError, field_validator
+from backend.core.config.settings import settings
 from backend.core.database.database import get_db_session
 from backend.core.database.redis_client import redis_client
-from backend.core.ai.provider_router import run_completion
+from backend.core.ai.provider_router import _configured_provider, run_completion
 from backend.core.privacy import pii as pii_engine
 from backend.db.models.ai import ExecLog
 from backend.db.models.marketplace import PipelineRun
-from sqlalchemy import select, update
+from sqlalchemy import select, text as sql_text, update
 
 logger = logging.getLogger(__name__)
+
+LANGCHAIN_AGENT_NODE_TYPE = "langchain_agent"
+PIPELINE_ADAPTER_ALIASES = {
+    "lc-agent": LANGCHAIN_AGENT_NODE_TYPE,
+    "langchain-agent": LANGCHAIN_AGENT_NODE_TYPE,
+}
+ALLOWED_LANGCHAIN_TOOLS = {
+    "web_search",
+    "http_request",
+    "sql_query",
+    "file_reader",
+    "code_executor",
+    "marketplace_tool",
+}
+
+
+class LangChainAgentConfig(BaseModel):
+    model_provider: str = Field(..., min_length=2, max_length=32)
+    model_name: str = Field(..., min_length=2, max_length=160)
+    system_prompt: str = Field(default="You are a governed Veklom ReAct agent. Use tools only when required.", max_length=4000)
+    tools_allowed: list[str] = Field(default_factory=list, max_length=8)
+    blocked_tools: list[str] = Field(default_factory=list, max_length=8)
+    max_iterations: int = Field(default=3, ge=1, le=8)
+    timeout_seconds: int = Field(default=45, ge=5, le=180)
+    temperature: float = Field(default=0.2, ge=0, le=2)
+    redact_pii: bool = True
+
+    @field_validator("model_provider")
+    @classmethod
+    def normalize_provider(cls, value: str) -> str:
+        provider = value.strip().lower()
+        aliases = {"google": "gemini", "hf": "huggingface"}
+        return aliases.get(provider, provider)
+
+    @field_validator("tools_allowed", "blocked_tools")
+    @classmethod
+    def validate_tools(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for value in values or []:
+            tool = str(value).strip().lower().replace("-", "_")
+            if tool not in ALLOWED_LANGCHAIN_TOOLS:
+                raise ValueError(f"Unsupported LangChain tool '{value}'")
+            if tool not in normalized:
+                normalized.append(tool)
+        return normalized
+
 
 async def _update_job_state(transaction_id: str, state: Dict[str, Any]):
     if not redis_client:
@@ -214,6 +262,7 @@ def _stage_for_node(node_type: str, category: str | None) -> str:
 
 async def _execute_pipeline_node(step: dict, context: dict) -> dict:
     node_type = (step.get("node_type") or "").lower()
+    canonical_node_type = PIPELINE_ADAPTER_ALIASES.get(node_type, node_type)
     config = step.get("config") or {}
     label = step.get("label") or node_type
     before = hashlib.sha256(str(context.get("text", "")).encode()).hexdigest()[:12]
@@ -256,6 +305,25 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         seal = hashlib.sha256(json.dumps(context.get("trace", []), sort_keys=True).encode()).hexdigest()
         context["audit_seal"] = seal
         result = {"kind": "audit", "seal": seal[:16]}
+
+    elif canonical_node_type in PIPELINE_NODE_ADAPTERS:
+        adapter_result = await PIPELINE_NODE_ADAPTERS[canonical_node_type](config, context)
+        context["text"] = adapter_result["final_answer"]
+        context["provider"] = adapter_result["provider"]
+        context["model"] = adapter_result["model"]
+        context["tokens"] = adapter_result["token_usage"]["total_tokens"]
+        context["cost"] = adapter_result["cost"]
+        context["agent_trace"] = adapter_result
+        result = {
+            "kind": "langchain_agent",
+            "provider": adapter_result["provider"],
+            "model": adapter_result["model"],
+            "iterations": len(adapter_result["intermediate_steps"]),
+            "tool_calls": adapter_result["tool_calls"],
+            "token_usage": adapter_result["token_usage"],
+            "cost": adapter_result["cost"],
+            "errors": adapter_result["errors"],
+        }
 
     elif node_type.startswith("llm-") or node_type in {"lc-agent", "lc-langgraph", "lc-retrievalqa"}:
         completion = await _llm_node(node_type, config, context)
@@ -371,6 +439,339 @@ async def _assert_safe_external_url(raw_url: str) -> None:
         ip = ipaddress.ip_address(sockaddr[0])
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
             raise ValueError("Outbound node URL resolves to a private or reserved network")
+
+
+async def execute_langchain_agent(node_config: dict, input_context: dict) -> dict:
+    config = _validate_langchain_agent_config(node_config)
+    return await asyncio.wait_for(
+        _run_react_agent(config, input_context),
+        timeout=config.timeout_seconds,
+    )
+
+
+def _validate_langchain_agent_config(node_config: dict) -> LangChainAgentConfig:
+    normalized = dict(node_config or {})
+    if "model_provider" not in normalized and normalized.get("provider"):
+        normalized["model_provider"] = normalized["provider"]
+    if "model_name" not in normalized and normalized.get("model"):
+        normalized["model_name"] = normalized["model"]
+    if "tools_allowed" not in normalized and normalized.get("tools"):
+        normalized["tools_allowed"] = normalized["tools"]
+    if "redact_pii" not in normalized and "redactPii" in normalized:
+        normalized["redact_pii"] = normalized["redactPii"]
+    if "max_iterations" not in normalized and "maxIterations" in normalized:
+        normalized["max_iterations"] = normalized["maxIterations"]
+    if "timeout_seconds" not in normalized and "timeoutSeconds" in normalized:
+        normalized["timeout_seconds"] = normalized["timeoutSeconds"]
+
+    try:
+        config = LangChainAgentConfig.model_validate(normalized)
+    except ValidationError as exc:
+        raise ValueError(f"Invalid LangChain Agent config: {exc.errors()}") from exc
+
+    blocked = set(config.blocked_tools)
+    config.tools_allowed = [tool for tool in config.tools_allowed if tool not in blocked]
+    if not _configured_provider(config.model_provider):
+        raise ValueError(f"LangChain Agent provider '{config.model_provider}' is not configured")
+    return config
+
+
+async def _run_react_agent(config: LangChainAgentConfig, input_context: dict) -> dict:
+    safe_text = str(input_context.get("text", ""))
+    policy = {"pii_found": [], "redacted": False}
+    if config.redact_pii:
+        masked = pii_engine.mask(safe_text, "redact")
+        safe_text = masked.get("masked_text", safe_text)
+        policy = {"pii_found": masked.get("pii_found", []), "redacted": bool(masked.get("pii_found"))}
+
+    try:
+        from langchain.agents import AgentExecutor, create_react_agent
+        from langchain_core.language_models.chat_models import BaseChatModel
+        from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+        from langchain_core.outputs import ChatGeneration, ChatResult
+        from langchain_core.prompts import PromptTemplate
+        from langchain_core.tools import StructuredTool
+    except ImportError as exc:
+        raise ValueError("LangChain Agent requires langchain and langchain-core to be installed") from exc
+
+    class VeklomLangChainChatModel(BaseChatModel):
+        provider: str
+        selected_model: str
+        temperature: float = 0.2
+        token_usage: dict = Field(default_factory=lambda: {"total_tokens": 0})
+
+        @property
+        def _llm_type(self) -> str:
+            return "veklom_provider_router"
+
+        def _generate(self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
+            raise RuntimeError("VeklomLangChainChatModel must be invoked asynchronously")
+
+        async def _agenerate(self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
+            body_messages = [_langchain_message_to_provider_message(message) for message in messages]
+            result = await run_completion({
+                "provider": self.provider,
+                "model": self.selected_model,
+                "temperature": self.temperature,
+                "messages": body_messages,
+            }, stream=False)
+            if result.provider != self.provider and self.provider != "sovereign":
+                raise ValueError(f"Selected LangChain Agent provider '{self.provider}' did not execute; router returned '{result.provider}'")
+            text = _completion_text(result.payload)
+            usage = result.payload.get("usage") or {}
+            total_tokens = int(usage.get("total_tokens") or max(1, sum(len(m["content"].split()) for m in body_messages) + len(text.split())))
+            self.token_usage["total_tokens"] = int(self.token_usage.get("total_tokens", 0)) + total_tokens
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=text, response_metadata={"provider": result.provider, "model": self.selected_model, "usage": usage}))])
+
+    prompt = PromptTemplate.from_template(
+        "You are a Veklom governed ReAct agent.\n"
+        "Use only the tools listed below. If no tool is necessary, answer directly.\n\n"
+        "{tools}\n\n"
+        "Use this format:\n"
+        "Question: the input task\n"
+        "Thought: reason about the next step\n"
+        "Action: one of [{tool_names}]\n"
+        "Action Input: the input to the action\n"
+        "Observation: the action result\n"
+        "... repeat Thought/Action/Action Input/Observation as needed\n"
+        "Thought: I now know the final answer\n"
+        "Final Answer: the final answer\n\n"
+        "Question: {input}\n"
+        "Thought:{agent_scratchpad}"
+    )
+    llm = VeklomLangChainChatModel(provider=config.model_provider, selected_model=config.model_name, temperature=config.temperature)
+    tools = _build_langchain_structured_tools(config.tools_allowed, input_context, StructuredTool)
+    agent = create_react_agent(llm, tools, prompt)
+    executor = AgentExecutor(
+        agent=agent,
+        tools=tools,
+        max_iterations=config.max_iterations,
+        max_execution_time=config.timeout_seconds,
+        return_intermediate_steps=True,
+        handle_parsing_errors=True,
+        verbose=False,
+    )
+    result = await executor.ainvoke({"input": safe_text})
+    intermediate_steps = _serialize_langchain_intermediate_steps(result.get("intermediate_steps", []))
+    tool_calls = [
+        {
+            "iteration": index + 1,
+            "tool": step.get("tool"),
+            "input": step.get("tool_input"),
+            "status": "completed",
+            "output": step.get("observation"),
+        }
+        for index, step in enumerate(intermediate_steps)
+        if step.get("tool")
+    ]
+    errors = [call for call in tool_calls if isinstance(call.get("output"), str) and "requires" in call["output"].lower()]
+    final_answer = str(result.get("output") or "")
+    total_tokens = int(llm.token_usage.get("total_tokens", 0))
+
+    return {
+        "final_answer": final_answer,
+        "intermediate_steps": intermediate_steps,
+        "tool_calls": tool_calls,
+        "token_usage": {
+            "total_tokens": total_tokens,
+            "estimated_prompt_tokens": total_tokens // 2,
+            "estimated_completion_tokens": total_tokens - (total_tokens // 2),
+        },
+        "cost": total_tokens * 0.00001,
+        "errors": errors,
+        "provider": config.model_provider,
+        "model": config.model_name,
+        "policy": policy,
+    }
+
+
+def _bind_langchain_tools(tools_allowed: list[str]) -> dict[str, Any]:
+    registry = {
+        "web_search": _langchain_tool_web_search,
+        "http_request": _langchain_tool_http_request,
+        "sql_query": _langchain_tool_sql_query,
+        "file_reader": _langchain_tool_file_reader,
+        "code_executor": _langchain_tool_code_executor,
+        "marketplace_tool": _langchain_tool_marketplace_tool,
+    }
+    return {tool: registry[tool] for tool in tools_allowed if tool in registry}
+
+
+def _build_langchain_structured_tools(tools_allowed: list[str], input_context: dict, structured_tool_cls: Any) -> list[Any]:
+    tool_coroutines = _bind_langchain_tools(tools_allowed)
+    descriptions = {
+        "web_search": "Search the public web. Input can be a search query string or JSON with query.",
+        "http_request": "Call an external HTTP API. Input must be JSON with url, optional method, optional body.",
+        "sql_query": "Run a read-only SQL SELECT/WITH query against the configured Veklom database.",
+        "file_reader": "Read text from a configured document URL or direct text payload.",
+        "code_executor": "Execute sandboxed code when a sandbox service is configured.",
+        "marketplace_tool": "Search Veklom marketplace tools. Input can be a query string or JSON with query.",
+    }
+
+    tools: list[Any] = []
+    for name, coroutine in tool_coroutines.items():
+        async def _runner(tool_input: str, _coroutine=coroutine, _context=input_context) -> str:
+            args = _coerce_tool_args(tool_input)
+            result = await _coroutine(args, _context)
+            return json.dumps(result, default=str)
+
+        tools.append(structured_tool_cls.from_function(
+            coroutine=_runner,
+            name=name,
+            description=descriptions[name],
+        ))
+    return tools
+
+
+def _coerce_tool_args(tool_input: Any) -> dict:
+    if isinstance(tool_input, dict):
+        return tool_input
+    raw = str(tool_input or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+        return {"query": parsed}
+    except json.JSONDecodeError:
+        return {"query": raw, "text": raw}
+
+
+def _langchain_message_to_provider_message(message: Any) -> dict:
+    role = getattr(message, "type", "user")
+    if role == "human":
+        role = "user"
+    elif role == "ai":
+        role = "assistant"
+    elif role not in {"system", "assistant", "user"}:
+        role = "user"
+    content = getattr(message, "content", "")
+    if not isinstance(content, str):
+        content = json.dumps(content, default=str)
+    return {"role": role, "content": content}
+
+
+def _serialize_langchain_intermediate_steps(raw_steps: list[Any]) -> list[dict]:
+    serialized: list[dict] = []
+    for index, item in enumerate(raw_steps):
+        try:
+            action, observation = item
+            serialized.append({
+                "iteration": index + 1,
+                "tool": getattr(action, "tool", None),
+                "tool_input": getattr(action, "tool_input", None),
+                "log": getattr(action, "log", ""),
+                "observation": observation,
+            })
+        except Exception:
+            serialized.append({"iteration": index + 1, "raw": str(item)})
+    return serialized
+
+
+def _react_prompt(config: LangChainAgentConfig, input_text: str, tools: dict[str, Any], steps: list[dict]) -> str:
+    tool_names = ", ".join(tools.keys()) or "none"
+    tool_history = json.dumps(steps[-6:], ensure_ascii=False)
+    return (
+        "Run this pipeline node as a ReAct agent.\n"
+        f"Available tools: {tool_names}\n"
+        "Return only JSON. Use one of these shapes:\n"
+        "{\"thought\":\"...\",\"action\":\"tool_name\",\"action_input\":{...}}\n"
+        "{\"thought\":\"...\",\"final_answer\":\"...\"}\n\n"
+        f"Upstream context:\n{input_text}\n\n"
+        f"Intermediate steps:\n{tool_history}"
+    )
+
+
+def _completion_text(payload: dict) -> str:
+    try:
+        return str(payload["choices"][0]["message"]["content"])
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def _parse_react_decision(model_text: str) -> dict:
+    text = (model_text or "").strip()
+    if not text:
+        return {"final_answer": ""}
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else {"final_answer": text}
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(text[start:end + 1])
+                return parsed if isinstance(parsed, dict) else {"final_answer": text}
+            except json.JSONDecodeError:
+                pass
+    return {"final_answer": text}
+
+
+async def _langchain_tool_web_search(args: dict, context: dict) -> dict:
+    if not settings.SERPAPI_KEY:
+        raise ValueError("web_search requires SERPAPI_KEY")
+    query = str(args.get("query") or context.get("text") or "").strip()
+    if not query:
+        raise ValueError("web_search requires query")
+    async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
+        response = await client.get("https://serpapi.com/search.json", params={"q": query, "api_key": settings.SERPAPI_KEY, "num": 5})
+    response.raise_for_status()
+    data = response.json()
+    results = data.get("organic_results") or []
+    return {"query": query, "results": [{"title": r.get("title"), "link": r.get("link"), "snippet": r.get("snippet")} for r in results[:5]]}
+
+
+async def _langchain_tool_http_request(args: dict, context: dict) -> dict:
+    output = await _http_request_node({
+        "url": args.get("url"),
+        "method": args.get("method") or "GET",
+        "body": args.get("body"),
+    }, context)
+    return {"response": output[:12000], "truncated": len(output) > 12000}
+
+
+async def _langchain_tool_sql_query(args: dict, context: dict) -> dict:
+    query = str(args.get("query") or "").strip()
+    lowered = query.lower()
+    if not query or not (lowered.startswith("select ") or lowered.startswith("with ")):
+        raise ValueError("sql_query only permits SELECT/WITH read queries")
+    if ";" in query or "--" in query or "/*" in query:
+        raise ValueError("sql_query rejects multi-statement or commented SQL")
+    async with get_db_session() as db:
+        result = await db.execute(sql_text(query).execution_options(autocommit=False))
+        rows = result.mappings().fetchmany(100)
+    return {"rows": [dict(row) for row in rows], "row_count": len(rows)}
+
+
+async def _langchain_tool_file_reader(args: dict, context: dict) -> dict:
+    text = await _load_document({"url": args.get("url"), "text": args.get("text")})
+    return {"text": text[:12000], "chars": len(text), "truncated": len(text) > 12000}
+
+
+async def _langchain_tool_code_executor(args: dict, context: dict) -> dict:
+    raise ValueError("code_executor requires a configured sandbox service before it can run")
+
+
+async def _langchain_tool_marketplace_tool(args: dict, context: dict) -> dict:
+    from backend.apps.api.routers.marketplace import _source_marketplace_tools
+
+    needle = str(args.get("query") or args.get("tool") or "").strip().lower()
+    tools = _source_marketplace_tools()
+    if needle:
+        tools = [
+            tool for tool in tools
+            if needle in tool.get("name", "").lower()
+            or needle in tool.get("category", "").lower()
+            or any(needle in str(cap).lower() for cap in tool.get("capabilities", []))
+        ]
+    return {"tools": tools[:5], "count": len(tools)}
+
+
+PIPELINE_NODE_ADAPTERS = {
+    LANGCHAIN_AGENT_NODE_TYPE: execute_langchain_agent,
+}
 
 
 def _format_output(node_type: str, context: dict) -> str:

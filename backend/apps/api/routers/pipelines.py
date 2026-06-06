@@ -18,11 +18,79 @@ import uuid
 router = APIRouter(tags=["Pipelines"])
 
 
+def _default_pipeline_graph(template: str = "clinical-rag") -> dict:
+    if template == "clinical-rag":
+        return {
+            "nodes": [
+                {"id": "demo-input", "type": "input", "position": {"x": 40, "y": 220}, "data": {"label": "Input", "nodeType": "input"}},
+                {"id": "demo-policy", "type": "routing", "position": {"x": 230, "y": 220}, "data": {"label": "Policy Gate", "nodeType": "policy-gate"}},
+                {"id": "demo-agent", "type": "langchain", "position": {"x": 450, "y": 190}, "data": {"label": "LangChain Agent", "nodeType": "langchain_agent"}},
+                {"id": "demo-json", "type": "output", "position": {"x": 700, "y": 220}, "data": {"label": "JSON Formatter", "nodeType": "json-format"}},
+                {"id": "demo-audit", "type": "output", "position": {"x": 930, "y": 220}, "data": {"label": "Audit Signer", "nodeType": "audit-signer"}},
+            ],
+            "edges": [
+                {"id": "e-demo-input-policy", "source": "demo-input", "target": "demo-policy", "animated": True},
+                {"id": "e-demo-policy-agent", "source": "demo-policy", "target": "demo-agent", "animated": True},
+                {"id": "e-demo-agent-json", "source": "demo-agent", "target": "demo-json", "animated": True},
+                {"id": "e-demo-json-audit", "source": "demo-json", "target": "demo-audit", "animated": True},
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1},
+            "node_configs": {
+                "demo-input": {
+                    "text": "Summarize Veklom's governed inference pipeline for an enterprise buyer. Redact any PII such as investor@example.com before output.",
+                    "requireEvidence": True,
+                },
+                "demo-policy": {
+                    "policy": "sovereign_default",
+                    "strategy": "redact",
+                    "requireEvidence": True,
+                    "redactPii": True,
+                },
+                "demo-agent": {
+                    "model_provider": "ollama",
+                    "model_name": "qwen2.5:3b",
+                    "system_prompt": "You are the Veklom governed inference agent. Produce concise enterprise-ready output and respect policy-gated context.",
+                    "tools_allowed": ["marketplace_tool"],
+                    "blocked_tools": ["code_executor"],
+                    "max_iterations": 3,
+                    "timeout_seconds": 45,
+                    "temperature": 0.2,
+                    "redact_pii": True,
+                    "requireEvidence": True,
+                },
+                "demo-json": {
+                    "outputSchema": "signed_json",
+                    "requireEvidence": True,
+                },
+                "demo-audit": {
+                    "requireEvidence": True,
+                },
+            },
+        }
+    return {
+        "nodes": [],
+        "edges": [],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+        "node_configs": {},
+    }
+
+
 # --- Pipeline Node Database ---
 @router.get("/pipelines/nodes")
 async def list_pipeline_nodes(user=Depends(get_current_user)):
     return {
         "categories": [
+            {
+                "id": "langchain", "label": "LangChain",
+                "nodes": [
+                    {"id": "langchain_agent", "name": "LangChain Agent", "type": "agent", "description": "ReAct tool-calling agent with governed tools"},
+                    {"id": "lc-langgraph", "name": "LangGraph", "type": "agent", "description": "Stateful multi-step graph"},
+                    {"id": "lc-memory", "name": "Conversation Memory", "type": "memory", "description": "Buffer / summary memory"},
+                    {"id": "lc-retrievalqa", "name": "RetrievalQA Chain", "type": "chain", "description": "RAG question-answering"},
+                    {"id": "lc-parser", "name": "Output Parser", "type": "output", "description": "Structured Pydantic parsing"},
+                    {"id": "lc-toolnode", "name": "Tool Node", "type": "tool", "description": "Bind marketplace tools"},
+                ],
+            },
             {
                 "id": "models", "label": "Models",
                 "nodes": [
@@ -145,6 +213,7 @@ async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: Async
                 "vectorStore": "pgvector",
                 "invocations": 0,
                 "lastRun": "—",
+                "graph": _default_pipeline_graph(pipeline_id),
             }
         )
         try:
@@ -166,6 +235,7 @@ async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: Async
 # --- Pipelines ---
 @router.get("/pipelines")
 async def list_pipelines(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await _get_or_create_pipeline("clinical-rag", user.workspace_id or "default", db)
     result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == (user.workspace_id or "default")).limit(50))
     pipes = result.scalars().all()
     # Seed default pipelines if none exist
@@ -174,6 +244,7 @@ async def list_pipelines(user=Depends(get_current_user), db: AsyncSession = Depe
             await _get_or_create_pipeline(pid, user.workspace_id or "default", db)
         result = await db.execute(select(Pipeline).where(Pipeline.workspace_id == (user.workspace_id or "default")).limit(50))
         pipes = result.scalars().all()
+    pipes = sorted(pipes, key=lambda p: 0 if isinstance(p.steps, dict) and p.steps.get("template") == "clinical-rag" else 1)
     return [_pipe_dict(p) for p in pipes]
 
 
@@ -239,10 +310,19 @@ async def get_pipeline_graph(pipeline_id: str, user=Depends(get_current_user), d
     pipe = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
     if pipe and isinstance(pipe.steps, dict) and "graph" in pipe.steps:
         return pipe.steps["graph"]
+    if pipe and isinstance(pipe.steps, dict):
+        graph = _default_pipeline_graph(pipe.steps.get("template", "clinical-rag"))
+        if graph["nodes"]:
+            steps = dict(pipe.steps)
+            steps["graph"] = graph
+            pipe.steps = steps
+            await db.commit()
+            return graph
     return {
         "nodes": [],
         "edges": [],
         "viewport": {"x": 0, "y": 0, "zoom": 1},
+        "node_configs": {},
     }
 
 

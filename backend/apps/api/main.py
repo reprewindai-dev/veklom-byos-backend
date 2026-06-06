@@ -510,6 +510,7 @@ async def internal_error(request: Request, exc):
 from backend.apps.api.routers import (
     admin,
     agents,
+    genome,
     agentic_commerce,
     ai,
     auth,
@@ -570,6 +571,9 @@ app.include_router(system.router, prefix="/api/v1")
 
 # Veklom Runs (Atomic Unit)
 app.include_router(runs.router, prefix="/api/v1/runs")
+
+# Genome (PGL) inner-engine read surface — certificates, life ledger, chain verify
+app.include_router(genome.router, prefix="/api/v1")
 
 # Copilot registry
 app.include_router(copilot.router, prefix="/api/v1")

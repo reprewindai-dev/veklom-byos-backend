@@ -106,9 +106,11 @@ class RunOrchestrator:
         if run.status == VeklomRunStatus.HELD:
              await self._update_state(run, VeklomRunStatus.APPROVED)
              
-        # Call PGL to commit intent and get pre-execution certificate
+        # Call PGL to commit intent and get pre-execution certificate.
+        # Pass the orchestrator's session so the ledger persists for real
+        # (no anonymous execution). The client flushes; our _update_state commits.
         from backend.services.pgl_client import PGLClient
-        pgl = PGLClient()
+        pgl = PGLClient(self.db)
         
         pgl_result = await pgl.commit_intent(
             workspace_id=run.workspace_id,
@@ -129,14 +131,16 @@ class RunOrchestrator:
 
     async def attest_run(self, run: VeklomRun, evidence: dict, output_hash: str, outcome_hash: str) -> VeklomRun:
         from backend.services.pgl_client import PGLClient
-        pgl = PGLClient()
+        pgl = PGLClient(self.db)
         
         pre_cert = run.pgl_identity.get("pre_execution_certificate_id") if run.pgl_identity else None
         if pre_cert:
             pgl_result = await pgl.attest_outcome(
                 pre_execution_certificate_id=pre_cert,
                 output_hash=output_hash,
-                outcome_hash=outcome_hash
+                outcome_hash=outcome_hash,
+                workspace_id=run.workspace_id,
+                actor_id=run.actor_id
             )
             # Merge post-execution PGL details into pgl_identity
             run.pgl_identity.update(pgl_result)
@@ -161,7 +165,7 @@ class RunOrchestrator:
 
     async def rollback_run(self, run: VeklomRun, reason: str = "Operator aborted") -> VeklomRun:
         from backend.services.pgl_client import PGLClient
-        pgl = PGLClient()
+        pgl = PGLClient(self.db)
         
         post_cert = run.pgl_identity.get("post_execution_certificate_id") if run.pgl_identity else None
         if post_cert:

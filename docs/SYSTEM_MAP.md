@@ -1,153 +1,214 @@
 # Veklom System Map — Locked Build Contract
 
-**Status:** authoritative. Every claim below is evidence-tagged.
-**Sources:** `USER_MANUAL.md`, `WIRING_CROSS_REFERENCE.md`, `API_SURFACE.md`, and direct source reads.
+**Status:** authoritative. Every claim is evidence-tagged. This is the full
+governed-intelligence-control-plane model, reconciled against ground truth across
+**all** workspace repos (not just `backend-2`).
 
-**Evidence tags**
-- `CODE` — verified by reading the source file (line cited).
-- `MANUAL` — documented in `USER_MANUAL.md` with response shape.
-- `SURFACE` — listed in `API_SURFACE.md`.
-- `STUB` — route/model exists but returns placeholder / does not perform the real work.
-- `MISSING` — referenced somewhere but not implemented.
+**Evidence tags:** `CODE` (read the source), `MANUAL` (`USER_MANUAL.md`), `SURFACE`
+(`API_SURFACE.md`), `STUB` (exists but placeholder), `MISSING` (referenced, not built).
 
 ---
 
-## 1. The Operating Model (one governed loop)
+## 0. Thesis
 
-The product is ONE governed loop. Every surface either advances an asset along it or
-governs/observes one segment.
+Veklom is **not an agent app or a marketplace.** It is a **sovereign control plane for
+governed intelligent systems**: every important actor has identity, every action is
+attributable, every runtime can be inspected, every meaningful signal can be acted on,
+and every optimization is learned from auditable evidence. Agents are one kind of
+governed asset inside a larger control plane.
 
-```
-Connected Source -> Repo Risk Gate -> Asset Wrapper (GPC) -> Marketplace Asset
-   -> Workspace Install -> Deployment -> Terminal Runtime -> Evidence Ledger
-```
+The moat is the **closed governed loop**, not any single feature:
 
-Three cross-cutting layers wrap the entire loop (they touch every stage, they are not stages):
-
-- **PGL Spine** — identity + hash-chained ledger for every moving part.
-- **Insights / Heartbeat** — live posture + forecast + recommended actions.
-- **Agency / Memory** — durable notifications, alarms, persistent memory.
+> actors are **born** (identity) → **constrained** (governance) → **executed** (runtime)
+> → **observed** (telemetry/ledger) → **interpreted** (signals/forecast) → **improved**
+> (learning) → **proven** (replay/evidence).
 
 ---
 
-## 2. Navigation IA (what the human sees)
+## 1. The Governed Loop (already real in code)
+
+The loop is implemented as a real state machine in
+`backend/services/orchestrator.py` (`RunOrchestrator` + `VeklomRunStateMachine`):
 
 ```
-OPERATIONS
-  Overview      heartbeat dashboard (compact telemetry, recommended actions)
-  Ship Asset    the spine (8 stages: stage-rail + canvas)
-  Pipelines     graph builder
-  Playground    governed inference + Compare-2
-  Runtime       deployments + terminal + live metrics
-
-GOVERNANCE
-  Governance    audit, compliance, privacy, safety, locker, kill, budget
-  Optimization  routing, jobs, usage, insights, savings, forecast
-  Agency        notifications, alarms, persistent memory, approvals, jobs
-  Workspace     team, keys, providers, models, billing, wallet
+INTENT_CAPTURED → COMPILED → CONTEXTUALIZED → GOVERNED → (HELD / APPROVED / DENIED)
+   → COMMITTED → ROUTED → EXECUTING → ATTESTED → BILLED → SEALED   (+ FAILED, ROLLED_BACK)
 ```
 
-Nothing is deleted. Every current page becomes a tab/panel under one of these.
+| Loop stage | What happens | Real code |
+|---|---|---|
+| **Identity** | `commit_run()` calls `pgl.commit_intent()` → pre-exec certificate, stored on `run.pgl_identity` | CODE `orchestrator.py:104` — PGL client is **STUB** |
+| **Constraint** | `govern_run()` runs UACP v2 compile → v3 context → v4 governor → APPROVED/HELD/DENIED | CODE `orchestrator.py:79` (`uacp_v2/v3/v4`) |
+| **Execution** | `route_run()` → `execute_run()`; `autonomous_worker.py` runs governed LangChain agents | CODE `orchestrator.py:123-128`, `core/services/autonomous_worker.py` |
+| **Observation** | `attest_run()` calls `pgl.attest_outcome()` + stores evidence/output/outcome hashes | CODE `orchestrator.py:130` |
+| **Interpretation** | insights/heartbeat + forecast service (EWMA+trend) | CODE `monitoring.py`, `services/forecast.py` |
+| **Optimization** | `/autonomous/*` predictors, IronGrid routing substrate | CODE `autonomous.py`, `pyo3-irongrid-api` repo |
+| **Proof** | `rollback_run()` PGL register; proof receipts (`evidence_id`/`proof_hash`/`replay`); audit HMAC chain | CODE `autonomous_worker.py`, `agents.py`, `audit` |
+
+**The keystone gap:** the loop and its PGL hooks are real, but `pgl_client.py` returns
+fake UUIDs (STUB), and the hot `/v1/exec` path may bypass the orchestrator. Making the
+loop *enforced* = (a) make `pgl_client` persist to the real genome ledger, (b) route
+execution through the orchestrator so **no agent executes anonymously.**
 
 ---
 
-## 3. The Spine — stage by stage (with route backing)
+## 2. Architecture — inner engine + outer surfaces
 
-| Stage | Object | Route backing | Evidence |
+### Inner engine (the conceptual center)
+- **Genome (PGL)** — identity substrate: birth certificate before execution, declared
+  purpose/jurisdiction/risk/tools/permissions/safety, lineage, hash-chained life ledger,
+  replay/compliance export. Invariant: **no anonymous execution.**
+- **Heartbeat (Insights)** — pulse + signals + forecast + Golden State + recommended
+  actions. Interprets the system; not a passive dashboard.
+- **Learning** — trains cost/quality/routing predictors from governed logs once sample
+  thresholds are met; exposes trainable state + before/after impact. Evidence-driven.
+
+### Outer surfaces (how humans work the engine)
+Source · Build · Marketplace · Run · Prove · Workspace. Each reads as a surface of the
+same engine, never a peer "module."
+
+---
+
+## 3. Cross-repo ground truth (where each layer ACTUALLY lives)
+
+| Map layer | Implementation | Repo | Status |
 |---|---|---|---|
-| Connected Source | GitHub repo / source | `/auth/github/status|repos|repos/select` | CODE (`auth.py`, matrix task 11) |
-| Repo Risk Gate | Risk Run + ledger | `/repo-risk-gate/runs[/{id}/events|decision|ledger]` | router `repo_risk_gate.py` exists |
-| Asset Wrapper (GPC) | Governed Plan | `/gpc/intent-to-plan|plans|runs|observability/signals` | router `gpc.py` exists |
-| Marketplace Asset | Listing | `/marketplace/listings*`, `/marketplace/automation` | SURFACE |
-| Workspace Install | Install | `/marketplace/installed`, `/workspace/providers|models` | CODE (matrix task 3) |
-| Deployment | Deployment instance | `/deployments` CRUD, `/deployments/pause-all`, `/edge/canary/*` | CODE (model real, runtime STUB) |
-| Terminal Runtime | Execution surface | `/v1/exec` (SSE+circuit breaker), `/command-center/terminals/*` | MANUAL §4 / CODE |
-| Evidence Ledger | Proof | `/audit/logs`, `/audit/logs/{id}`, `/audit/verify/{id}`, `/agents/evidence` | MANUAL §11 / SURFACE / CODE |
-
-**Deployment note:** `Deployment` table is real (`db/models/marketplace.py:72`), but creating a deployment
-only inserts `status="pending"` with a synthetic `endpoint_url` — no real runtime spin-up. Persist real,
-**execution STUB**.
+| Genome / PGL | `agent.py`/`genome.py`/`lineage.py` schema + `agents.py` ledger; `pgl_client.py` (→ external `gnomledger`) | `backend-2`; UI in `agent-control-room` / `Agent-Control-need-pgl` | schema real; client STUB; UI prototype |
+| Governed loop | `orchestrator.py` state machine + UACP v2/v3/v4 | `backend-2` | CODE real |
+| Constraint | `mcp_gateway.py`, `jti_guard.py`, ZeroTrust, x402, Repo Risk Gate | `backend-2` + `repogate` | real |
+| Execution | `autonomous_worker.py` (LangChain agents + proof receipts), UACP service | `backend-2` + `agent` (agent defs) + `uacp_-veklom-terminal` | real |
+| Heartbeat | insights/monitoring + `services/forecast.py` | `backend-2` | forecast real; heartbeat partial |
+| Learning | `/autonomous/*`, IronGrid, routing engine | `backend-2` + `pyo3-irongrid-api` + `hardened-lock-routing-engine` | partial |
+| Proof / Replay | proof receipts, audit HMAC chain, UACP replay, compliance packets; semantic graph research | `backend-2` + `Veklom = Sovereign Runtime Infrastructure` (gnomledger + `ottomattas/neosemantics`) | real, scattered |
+| Outer surfaces | github intake, GPC, pipelines, marketplace, deployments, workspace | `backend-2` + `veklom-control-plane` (`sovereign-control-node` frontend) | real |
 
 ---
 
-## 4. The Three Hearts — current truth
-
-### 4.1 PGL Spine
-| Component | State | Evidence |
-|---|---|---|
-| `Agent`, `GenomeVersion`, `BirthCertificate`, `LineageEdge` schema | real | CODE (`db/models/agent.py`, `genome.py`, `lineage.py`) |
-| `LedgerEvent` hash chain | real, honest | CODE (`agents.py` writes SHA-256 chained events) |
-| `/agents/*` registry, runs, evidence, guardrails | real, no fabrication | CODE (`agents.py`) |
-| `pgl_client.py` commit_intent / attest_outcome / resolve_genome | **STUB** (returns fake UUIDs) | CODE (`services/pgl_client.py`) |
-| Ledger threaded through runs/inference/install/deploy | **MISSING** (only `/agents` writes) | CODE |
-
-**Gap:** the ledger is universal in intent but only the agents router writes to it.
-
-### 4.2 Insights / Forecast Heart
-| Component | State | Evidence |
-|---|---|---|
-| `/insights`, `/insights/summary` aggregation over `ExecutionLog` | real | CODE (`monitoring.py:507`) |
-| `/insights/savings/projected` | **STUB** (`savings * 30`, confidence 0.82 hardcoded) | CODE (`monitoring.py:585`) |
-| `billing /cost/predict`, `/budget/forecast` | **STUB** (`daily_avg * 30`, linear) | CODE (`billing.py:726`) |
-| `workspace` overview `forecast_eod` | linear (`burn_rate * 1440`) | CODE (`workspace.py:686-687`) |
-| `/autonomous/cost/predict` | **real** (interpolates unit_cost/token from `ExecLog` when count>=10) | CODE (`autonomous.py:46-50`) |
-| `/autonomous/train` | gates honestly, but **does not persist a model** | CODE (`autonomous.py:69-93`) |
-| `/autonomous/quality/optimize`, `feature-flags` | **STUB** (hardcoded / echo) | CODE (`autonomous.py:96-122`) |
-
-**Gap:** forecasting is scattered across 3 linear stubs. The only real data-driven path is
-`/autonomous/cost/predict`. Training reports success without persisting an artifact.
-
-### 4.3 Agency / Memory
-| Component | State | Evidence |
-|---|---|---|
-| `monitoring.py` alerts | **STUB** (in-memory dict `_alerts`, dies on restart) | CODE (`monitoring.py:35`) |
-| durable `alerts` table (manual §19) | **MISSING** (never built) | grep: no `class Alert` |
-| `workspace.py` alert feed from `security_events` | real read | CODE (`workspace.py:481`) |
-| conversation memory (Redis `conv:{ws}:{id}`) | real but **ephemeral** (24h TTL, 20 msgs) | MANUAL §6 |
-| durable agent memory / approvals / scheduled jobs | **MISSING** | — |
-
-**Gap:** Agency/Memory is greenfield. Needs durable `notifications`/`alarms` + `agent_memory` tables.
-Conversation buffer stays as the hot 24h cache.
-
----
-
-## 5. Real DB Schema backing the hearts (Manual §19, confirmed tables)
+## 4. Visual IA screen tree (the 9 top-level areas)
 
 ```
-execution_logs    every /v1/exec call: tenant, model, provider, tokens, latency  (forecast source)
-ai_audit_logs     immutable HMAC-SHA256 records                                   (evidence)
-cost_predictions  predicted vs actual                                            (forecast training signal)
-routing_decisions provider routing decisions + reasoning                          (routing/optimize)
-budgets           budget limits + spend tracking                                  (forecast/alerts)
-security_events   threat events + AI confidence                                   (agency alert feed)
-agents / genome_versions / birth_certificates / lineage_edges / ledger events     (PGL spine)
+Overview ........ workspace pulse + system truth (active agents, milestones, what needs you)
+                  └ heartbeat strip, recommended actions, "meaningful progress" feed
+
+Genome .......... PGL inner engine
+                  ├ Registry .......... agents/actors  →  /api/v1/agents, /agents/{id}
+                  ├ Certificates ...... birth certs     →  birth_certificates (agents.py)
+                  ├ Lineage ........... fork graph       →  lineage_edges
+                  ├ Life Ledger ....... hash chain       →  /agents/evidence, LedgerEvent
+                  ├ Passport / Posture  behavior band    →  (NEW) posture from ledger+violations
+                  └ Replay ............ proof bundles     →  /agents/monthly-report, audit export
+
+Source .......... ├ Connected Source ..  /auth/github/status|repos|repos/select
+                  └ Repo Risk Gate ....  /repo-risk-gate/runs[/{id}/events|decision|ledger]   (repogate)
+
+Build ........... ├ GPC plan compiler .  /gpc/intent-to-plan|plans|runs|observability/signals
+                  ├ Pipelines .........  /pipelines[/{id}/graph|run] (real LangChain adapter)
+                  └ Listing creation ..  /marketplace/listings (create/submit/review)
+
+Marketplace ..... browse / list / install / datasheet   →  /marketplace/* , /listings/*
+
+Run ............. ├ Deployments .......  /deployments CRUD, /edge/canary/*   (runtime STUB)
+                  ├ Terminal Runtime ..  /v1/exec, /command-center/terminals/*  (uacp_-veklom-terminal)
+                  ├ Playground ........  /playground/*, Compare-2
+                  ├ Smart Routing .....  /routing/* (irongrid substrate)
+                  └ Autonomous Jobs ...  /autonomous/* + autonomous_worker
+
+Insights ........ Heartbeat: pulse · signals · forecast · Golden State · actions
+                  →  /insights, /autonomous/forecast, /monitoring/*
+
+Prove ........... audit · compliance · explainability · evidence · replay
+                  →  /audit/logs|verify, /compliance/report, /evidence/create, /explainability/{id}
+
+Workspace ....... team · keys · providers · models · billing · wallet · budgets
+                  →  /workspace/*, /team/*, /auth/api-keys, /billing/*, /wallet/*
 ```
 
----
-
-## 6. Locked Build Order
-
-1. **Forecast Heart** — consolidate the 3 linear stubs onto one forecast service built on the
-   `/autonomous` path; give `/autonomous/train` a real persisted model over the `ExecutionLog`
-   time series; repoint `insights/projected`, `billing` forecast, and `workspace` overview at it.
-2. **Agency / Memory** — create durable `notifications`/`alarms` + `agent_memory` tables; wire
-   `monitoring.py` off the in-memory dict; keep Redis conv buffer as hot cache.
-3. **PGL Spine** — make `pgl_client` real (or DB-backed) and thread a ledger event into every
-   governed action: runs, playground inference, marketplace install, deployment.
-4. **IA / Ship Asset page** — wrap the now-real engine in the one-spine UI.
-
-Rationale: identity-data already exists, so visibility (forecast) is the cheapest high-value win;
-memory persistence unblocks agency; PGL threading is the deepest and benefits from the other two
-being real first.
+**Ambient-trail rule:** any surface that shows an action or output (Pipelines node,
+Terminal session, Deployment, Autonomous job) MUST show a PGL identity/trail chip with
+one-click access to the related ledger. The trail is never a hidden admin concern.
 
 ---
 
-## 7. Honesty Discipline (already in the codebase — keep it)
+## 5. Wireframe spec — Genome page
 
-The backend already returns explicit empty states with reasons, `SKILL_MISSING`, `NOT_WIRED`, and
-`EVIDENCE_MISSING`. Every UI surface must mirror this: show `verified / simulated / placeholder /
-needs trace proof` rather than over-claiming. This is a product strength, not a weakness.
+```
+┌ Genome / <Actor name>  · [Posture: Trusted ▾]  · cert_xxxx ··········· [Issue cert] ┐
+├───────────────┬────────────────────────────────────────────────────────────────────┤
+│ ACTOR LIST    │ IDENTITY CARD                                                        │
+│ (registry)    │  declared purpose · jurisdiction · risk · model family · tools       │
+│  ● Alpha      │  permissions · safety rules · runtime config                         │
+│  ○ Beta       │  [View genome JSON]  [Verify chain]                                  │
+│  ○ Gamma      ├────────────────────────────────────────────────────────────────────┤
+│               │ LINEAGE          │ LIFE LEDGER (hash chain)     │ POSTURE            │
+│               │  Alpha→Beta      │  birth · deploy · attest ··· │  band + recent      │
+│               │  Alpha→Gamma     │  each row: event/hash/prev   │  violations/streak  │
+│  + Register   ├──────────────────┴──────────────────────────────┴────────────────────┤
+│               │ Tabs: [Events] [Evidence] [Replay] [Advanced]                         │
+└───────────────┴────────────────────────────────────────────────────────────────────┘
+```
+- **Primary action:** Issue/renew certificate · Register actor.
+- **Statuses:** Trusted / Cautioned / Restricted / Suspended (posture band).
+- **Replay tab:** export compliance packet; clearly label simulated vs live.
+- **Invariant banner** if any executing actor lacks a certificate: "N actors executing
+  without PGL identity — block / inspect."
+
+## 5b. Wireframe spec — Heartbeat (Insights) page
+
+```
+┌ Heartbeat ····················································· [last updated · live] ┐
+│ SYSTEM PULSE   3 active agents · 1 awaiting approval · 0 criticals · inside band     │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ SIGNALS (memory-backed, each has a next step)                                       │
+│  ✓ No governance violations in 72h        → [View]                                   │
+│  ▲ Spend trending above baseline in 3 days → [Inspect forecast]                      │
+│  ◷ Pipeline "Clinical RAG" stalled 27 min  → [Open run]                              │
+├───────────────────────────────┬────────────────────────────────────────────────────┤
+│ FORECAST (real, EWMA+trend)    │ GOLDEN STATE                                         │
+│  30d spend proj · confidence   │  inside / outside learned band · confidence          │
+│  method · samples_used         │  (insufficient_data shown honestly)                  │
+├───────────────────────────────┴────────────────────────────────────────────────────┤
+│ RECOMMENDED ACTIONS  [Retrain route predictor] [Inspect drift] [Promote route]       │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+- **Lead with interpretation, not charts.** Every signal is actionable or clearly informative.
+- Forecast confidence + sample count always explicit (no forecast theater).
+- Positive momentum shown alongside risk (milestones, streaks).
 
 ---
 
-*Locked: see git history for date. Update this file whenever a STUB becomes CODE.*
+## 6. Genome-first implementation sequence (your map's order)
+
+1. **Genome / keystone** — make `pgl_client` persist to the real ledger (DB-backed via
+   `BirthCertificate`/`LedgerEvent`, or call `gnomledger`); enforce no-anonymous-execution
+   by routing run/exec through `orchestrator`; expose a `/genome` surface; make trail chips
+   ambient.
+2. **Heartbeat** — redesign Insights around pulse/signals/forecast/Golden State/actions
+   (forecast service already real — built this session).
+3. **Learning** — expose trainable state, sample thresholds, before/after impact, Golden
+   State bands; persist trained predictors (forecast model already persists).
+4. **Prove** — unify replay + evidence export + compliance packet around Genome + life ledger.
+5. **UI regrouping** — reorganize nav into the 9 areas once inner-engine concepts are stable.
+
+---
+
+## 7. Risks to avoid
+
+- **Fragmentation:** leaving Genome/Heartbeat/Learning/Proof scattered weakens the narrative.
+- **Hype:** marketing "self-learning agents" without showing what learns, at what layer, on what evidence.
+- **Opaque autonomy:** any output/action without a visible identity + trail chip breaks the anti-rogue promise.
+- **Forecast theater:** forecasts without confidence/sample/lineage are decorative.
+- **Proof detachment:** keeping replay/compliance export as isolated admin output underuses the biggest differentiator.
+
+## 8. Honesty discipline (already in the codebase — keep it)
+
+Backend already returns explicit empty states with reasons, `SKILL_MISSING`, `NOT_WIRED`,
+`EVIDENCE_MISSING`. Every UI surface must mirror this: `verified / simulated / placeholder /
+needs trace proof`. Strength, not weakness.
+
+---
+
+## 9. Done this session
+- Forecast heart: real EWMA+trend model (`forecast_models`), persisted `/autonomous/train`,
+  new `/autonomous/forecast`, consolidated the 3 linear `*30` stubs. **Shipped + live.**
+
+*Locked. Update whenever a STUB becomes CODE.*

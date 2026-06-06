@@ -207,6 +207,18 @@ class PGLClient:
         logger.warning(f"[PGL] rollback persisted post={post_execution_certificate_id} hash={event_hash[:12]}")
         return result
 
+    async def record_event(
+        self, workspace_id: str, actor_id: str, certificate_id: Optional[str],
+        event_type: str, payload: Dict[str, Any],
+    ) -> Optional[str]:
+        """Public: append a hash-chained ledger event for any governed moving part
+        (route decisions, node executions, etc.). Returns the event hash, or None
+        when no DB session is bound. Uses flush; caller owns the commit."""
+        if not self.persistent:
+            logger.info(f"[PGL] (sim) record_event {event_type} ws={workspace_id}")
+            return None
+        return await self._append_event(workspace_id, actor_id, certificate_id, event_type, payload)
+
     async def verify_chain(self, workspace_id: str) -> Dict[str, Any]:
         """Replay the workspace's ledger and verify the SHA-256 chain integrity."""
         if not self.persistent:

@@ -6,7 +6,9 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.database.database import get_db
 from backend.core.runtime_contract import (
     ROUTING_POLICY_VERSION,
     classify_route,
@@ -17,6 +19,7 @@ from backend.core.runtime_contract import (
 )
 from backend.core.security.auth import get_current_user
 from backend.core.security.entitlements import require_entitlement
+from backend.services import smart_router as sr
 
 
 router = APIRouter(
@@ -105,18 +108,76 @@ async def routing_decision(payload: RoutingDecisionRequest):
     }
 
 
+class SmartRouteRequest(BaseModel):
+    """Full requirement vector for the interpretable MCDM router."""
+    security_clearance: int = Field(default=1, ge=1, le=3)
+    estimated_tokens: int = Field(default=1000, ge=1, le=2_000_000)
+    max_latency_ms: int = Field(default=600_000, ge=1, le=600_000)
+    task_complexity: int = Field(default=5, ge=1, le=10)
+    scores: dict[str, int] = Field(default_factory=dict)            # per-criterion 1..5 overrides
+    weights: dict[str, float] | None = None                        # AHP weight override (governance lever)
+
+
+def _req_from(user, body: SmartRouteRequest) -> "sr.RoutingRequirement":
+    return sr.RoutingRequirement(
+        workspace_id=getattr(user, "workspace_id", None) or "default",
+        actor_id=str(getattr(user, "id", None) or "unknown"),
+        security_clearance=body.security_clearance,
+        estimated_tokens=body.estimated_tokens,
+        max_latency_ms=body.max_latency_ms,
+        task_complexity=body.task_complexity,
+        scores=body.scores,
+    )
+
+
+@router.post("/select")
+async def routing_select(
+    body: SmartRouteRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Interpretable MCDM model selection (AHP + SAW + hard gates + risk-veto +
+    confidence margin). Persists the decision to routing_decisions + a PGL ledger
+    event so the choice is auditable back to weights and scores."""
+    req = _req_from(user, body)
+    return await sr.select_model(db, req, weights=body.weights)
+
+
 @router.post("/test")
-async def routing_test(body: dict, user=Depends(get_current_user)):
+async def routing_test(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Manual-compatible model selection, now backed by the interpretable MCDM router.
+
+    Maps the legacy `constraints.strategy` onto AHP criterion emphasis:
+    cost_optimized -> cost, quality_optimized -> accuracy, speed_optimized -> time.
+    """
     constraints = body.get("constraints", {})
     strategy = constraints.get("strategy", "cost_optimized")
+    scores: dict[str, int] = {}
+    if strategy == "cost_optimized":
+        scores["cost"] = 5
+    elif strategy == "quality_optimized":
+        scores["accuracy"] = 5
+    elif strategy == "speed_optimized":
+        scores["time"] = 5
+    req = sr.RoutingRequirement(
+        workspace_id=getattr(user, "workspace_id", None) or "default",
+        actor_id=str(getattr(user, "id", None) or "unknown"),
+        estimated_tokens=int(body.get("estimated_tokens", 1000)),
+        task_complexity=int(body.get("task_complexity", 5)),
+        scores=scores,
+    )
+    result = await sr.select_model(db, req)
+    if not result.get("selected_provider"):
+        return {"selected_provider": None, "reasoning": result.get("reason", "no_viable_node"),
+                "expected_cost": "0.000000", "alternatives_considered": result.get("rejected", [])}
+    # Manual-contract shape (kept stable) + interpretable extras.
     return {
-        "selected_provider": "ollama",
-        "reasoning": f"Selected ollama: lowest cost (free), meets quality threshold (0.85 >= {constraints.get('min_quality', 0.80)}).",
-        "expected_cost": "0.000000",
-        "expected_quality_score": 0.85,
-        "expected_latency_ms": 1800,
-        "alternatives_considered": [
-            { "provider": "openai", "cost": "0.002000", "quality": 0.95 },
-            { "provider": "groq",   "cost": "0.000180", "quality": 0.88 }
-        ]
+        "selected_provider": result["selected_provider"],
+        "reasoning": result["reasoning"],
+        "expected_cost": result["expected_cost"],
+        "expected_quality_score": result["expected_quality_score"],
+        "expected_latency_ms": result["expected_latency_ms"],
+        "alternatives_considered": result["alternatives_considered"],
+        "confidence": result["confidence"],
+        "persisted": result.get("persisted", False),
     }

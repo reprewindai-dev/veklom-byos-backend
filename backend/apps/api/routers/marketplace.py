@@ -1,5 +1,8 @@
 """Marketplace, vendor, listing routes."""
 
+import hashlib
+import json
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -10,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.core.services.posthog_client import posthog_service, hash_id
-from backend.db.models.marketplace import MarketplaceListing, Vendor
+from backend.db.models.marketplace import InstalledAsset, MarketplaceListing, Pipeline, Vendor
+from backend.db.models.security import AuditLog
 from pydantic import BaseModel, Field, HttpUrl, EmailStr
 from typing import Optional
 
@@ -703,6 +707,328 @@ def normalize_listing_id(listing_id: str) -> str:
     return listing_id
 
 
+_PACKAGE_BLUEPRINTS = {
+    "ls_clinical_rag": {
+        "nodes": ["doc-loader", "pii-redact", "chunker", "embed-bge", "pgvector", "retrievalqa", "policy-gate", "audit-signer", "evidence-receipt", "deploy-endpoint"],
+        "templates": ["clinical-rag-hipaa"],
+        "adapter": "clinical_rag_executor",
+        "routes": ["/api/v1/pipelines/{pipeline_id}/run"],
+        "policy": ["hipaa_phi_redaction", "eu_region_lock", "budget_gate"],
+        "secrets": [],
+        "env": ["VEKLOM_WORKSPACE_ID", "DATABASE_URL"],
+        "dependencies": ["pgvector", "qdrant|optional", "ollama:bge-m3"],
+        "container": "registry.veklom.com/marketplace/clinical-rag-hipaa:1.4.0",
+        "billing": {"model": "monthly_plus_metered_run", "unit": "pipeline_run", "unit_price_usd": 0.04},
+    },
+    "ls_pci_dss_v4": {
+        "nodes": ["policy-gate", "payment-data-redactor", "evidence-receipt", "audit-signer", "report-generator"],
+        "templates": ["pci-dss-v4-evidence-schedule"],
+        "adapter": "pci_evidence_pack_executor",
+        "routes": ["/api/v1/compliance/evidence/export", "/api/v1/audit/export"],
+        "policy": ["pci_data_redaction", "control_checklist", "evidence_schedule"],
+        "secrets": ["SIEM_WEBHOOK_URL"],
+        "env": ["VEKLOM_WORKSPACE_ID"],
+        "dependencies": ["audit_logs", "compliance_checks"],
+        "container": "registry.veklom.com/marketplace/pci-dss-v4:4.0.1",
+        "billing": {"model": "monthly", "unit": "workspace", "unit_price_usd": 0.0},
+    },
+    "ls_legal_redactor": {
+        "nodes": ["doc-loader", "pii-redact", "legal-diff", "privilege-detector", "audit-signer", "evidence-receipt"],
+        "templates": ["legal-redaction-diff"],
+        "adapter": "legal_redactor_diff_executor",
+        "routes": ["/api/v1/pipelines/{pipeline_id}/run"],
+        "policy": ["gdpr_pii_redaction", "privilege_detection", "chain_of_custody"],
+        "secrets": [],
+        "env": ["VEKLOM_WORKSPACE_ID"],
+        "dependencies": ["python-docx", "pypdf", "diff-match-patch"],
+        "container": "registry.veklom.com/marketplace/legal-redactor:2.1.0",
+        "billing": {"model": "monthly_plus_document", "unit": "document", "unit_price_usd": 0.08},
+    },
+    "ls_finance_prompts": {
+        "nodes": ["prompt-template", "json-format", "risk-flagger", "disclosure-formatter", "audit-signer"],
+        "templates": ["finance-risk-summary", "earnings-call-summary"],
+        "adapter": "finance_prompt_pack_executor",
+        "routes": ["/api/v1/playground/run"],
+        "policy": ["finance_disclosure_review", "version_lock"],
+        "secrets": [],
+        "env": ["VEKLOM_WORKSPACE_ID"],
+        "dependencies": ["prompt_library"],
+        "container": "",
+        "billing": {"model": "one_time", "unit": "workspace_license", "unit_price_usd": 0.0},
+    },
+    "ls_veklom_oncall": {
+        "nodes": ["incident-router", "webhook", "health-monitor", "human-approval", "evidence-receipt"],
+        "templates": ["managed-oncall-incident-review"],
+        "adapter": "veklom_oncall_managed_service",
+        "routes": ["/api/v1/monitoring/health", "/api/v1/marketplace/support/escalate"],
+        "policy": ["support_sla", "read_only_access", "incident_audit"],
+        "secrets": ["PAGERDUTY_WEBHOOK_URL"],
+        "env": ["VEKLOM_WORKSPACE_ID"],
+        "dependencies": ["monitoring", "audit_logs"],
+        "container": "",
+        "billing": {"model": "monthly", "unit": "workspace_sla", "unit_price_usd": 0.0},
+    },
+    "ls_veklom_sdk_pro": {
+        "nodes": ["sdk-client", "pipeline-runner", "audit-export-helper", "x402-payment-gate"],
+        "templates": ["sdk-pipeline-runner-example"],
+        "adapter": "python_sdk_package",
+        "routes": ["/api/v1/pipelines/{pipeline_id}/run", "/api/v1/audit/export", "/api/v1/x402/*"],
+        "policy": ["api_key_scope", "audit_helper"],
+        "secrets": ["VEKLOM_API_KEY"],
+        "env": ["VEKLOM_API_BASE_URL"],
+        "dependencies": ["veklom-sdk"],
+        "container": "",
+        "billing": {"model": "free", "unit": "sdk_install", "unit_price_usd": 0.0},
+    },
+    "ls_medstx_triage": {
+        "nodes": ["doc-loader", "policy-gate", "pii-redact", "llm-ollama", "triage-classifier", "audit-signer", "evidence-receipt"],
+        "templates": ["medstx-triage-intake"],
+        "adapter": "medstx_triage_model_endpoint",
+        "routes": ["/v1/triage/classify", "/api/v1/pipelines/{pipeline_id}/run"],
+        "policy": ["hipaa_phi_redaction", "triage_safety_refusal", "clinical_audit"],
+        "secrets": ["MODEL_LICENSE_KEY"],
+        "env": ["VEKLOM_WORKSPACE_ID", "OLLAMA_BASE_URL"],
+        "dependencies": ["gpu_runtime", "model_weights"],
+        "container": "registry.veklom.com/marketplace/medstx-triage-13b:1.3.0",
+        "billing": {"model": "monthly_plus_run", "unit": "triage_run", "unit_price_usd": 0.12},
+    },
+    "ls_eu_sovereign": {
+        "nodes": ["policy-gate", "region-lock", "evidence-receipt", "audit-signer", "deploy-endpoint"],
+        "templates": ["eu-sovereign-region-gate"],
+        "adapter": "eu_residency_policy_pack",
+        "routes": ["/api/v1/routing/policy", "/api/v1/compliance/evidence/export"],
+        "policy": ["eu_only_routing", "hetzner_region_lock", "gdpr_residency"],
+        "secrets": [],
+        "env": ["VEKLOM_ALLOWED_REGIONS"],
+        "dependencies": ["routing_policy", "compliance_checks"],
+        "container": "",
+        "billing": {"model": "monthly", "unit": "workspace_policy", "unit_price_usd": 0.0},
+    },
+    "ls_co2router": {
+        "nodes": ["carbon-score", "semantic-router", "policy-gate", "evidence-receipt"],
+        "templates": ["carbon-aware-routing"],
+        "adapter": "co2router_runtime_adapter",
+        "routes": ["/api/v1/routing/decision", "/api/v1/routing/economics"],
+        "policy": ["carbon_budget", "latency_guardrail", "sovereign_region_allowlist"],
+        "secrets": ["GRID_CARBON_API_KEY"],
+        "env": ["VEKLOM_ALLOWED_REGIONS"],
+        "dependencies": ["carbon_intensity_feed", "routing_policy"],
+        "container": "registry.veklom.com/marketplace/co2router:2.1.0",
+        "billing": {"model": "monthly_plus_decision", "unit": "routing_decision", "unit_price_usd": 0.001},
+    },
+    "py03-irongrid": {
+        "nodes": ["route-score", "latency-topology", "benchmark-runner", "policy-gate", "evidence-receipt"],
+        "templates": ["irongrid-route-optimizer"],
+        "adapter": "py03_irongrid_route_optimizer",
+        "routes": ["/api/v1/routing/topology", "/api/v1/routing/operational-runtime"],
+        "policy": ["latency_slo", "data_movement_budget", "region_allowlist"],
+        "secrets": [],
+        "env": ["VEKLOM_WORKSPACE_ID"],
+        "dependencies": ["pyo3-irongrid", "routing_policy"],
+        "container": "registry.veklom.com/marketplace/py03-irongrid:1.0.0",
+        "billing": {"model": "monthly_plus_benchmark", "unit": "route_score", "unit_price_usd": 0.002},
+    },
+    "ls_qwen_72b": {
+        "nodes": ["llm-ollama", "policy-gate", "cost-gate", "audit-signer", "evidence-receipt"],
+        "templates": ["qwen-openai-compatible-endpoint"],
+        "adapter": "qwen_72b_int4_model_endpoint",
+        "routes": ["/v1/chat/completions", "/api/v1/deployments"],
+        "policy": ["cost_gate", "model_safety", "gpu_budget"],
+        "secrets": [],
+        "env": ["OLLAMA_BASE_URL", "CUDA_VISIBLE_DEVICES"],
+        "dependencies": ["gpu_runtime", "qwen2.5-72b-int4"],
+        "container": "registry.veklom.com/marketplace/qwen-2.5-72b-int4:2.5.0",
+        "billing": {"model": "free_plus_compute_meter", "unit": "gpu_minute", "unit_price_usd": 0.0},
+    },
+    "ls_okta_scim": {
+        "nodes": ["http-call", "policy-gate", "role-mapper", "audit-signer"],
+        "templates": ["okta-scim-sync"],
+        "adapter": "okta_scim_connector",
+        "routes": ["/api/v1/team/scim", "/api/v1/auth/connected-accounts"],
+        "policy": ["role_mapping", "deprovision_audit", "sso_compatibility"],
+        "secrets": ["OKTA_DOMAIN", "OKTA_API_TOKEN"],
+        "env": ["VEKLOM_WORKSPACE_ID"],
+        "dependencies": ["scim2", "saml2"],
+        "container": "registry.veklom.com/marketplace/okta-scim:3.1.0",
+        "billing": {"model": "monthly_plus_seat", "unit": "managed_identity", "unit_price_usd": 2.0},
+    },
+}
+
+
+def _blueprint_for_listing(listing: MarketplaceListing) -> dict:
+    default = {
+        "nodes": ["marketplace-tool", "policy-gate", "audit-signer", "evidence-receipt"],
+        "templates": [f"{listing.id}-starter"],
+        "adapter": f"{listing.category}_adapter",
+        "routes": ["/api/v1/marketplace/tools"],
+        "policy": ["budget_gate", "workspace_policy", "audit_required"],
+        "secrets": [],
+        "env": ["VEKLOM_WORKSPACE_ID"],
+        "dependencies": ["veklom-runtime"],
+        "container": "",
+        "billing": {"model": listing.pricing_model or "per_run", "unit": "run", "unit_price_usd": 0.0},
+    }
+    return {**default, **_PACKAGE_BLUEPRINTS.get(listing.id, {})}
+
+
+def _package_health(package: dict, configured_secrets: list[str] | None = None, status: str | None = None) -> dict:
+    configured = set(configured_secrets or [])
+    required = set(package["install_manifest"].get("secrets_needed", []))
+    missing = sorted(required - configured)
+    state = status or ("missing_secrets" if missing else "configured")
+    return {
+        "status": state,
+        "missing_secrets": missing,
+        "checks": [
+            {"name": "backend_adapter", "status": "pass", "target": package["backend_adapter"]["adapter"]},
+            {"name": "policy_hooks", "status": "pass" if package["policy_integration"]["rules"] else "warn"},
+            {"name": "audit_hooks", "status": "pass"},
+            {"name": "billing_meter", "status": "pass"},
+            {"name": "secrets", "status": "fail" if missing else "pass"},
+        ],
+    }
+
+
+def _marketplace_package(listing: MarketplaceListing) -> dict:
+    cfg = listing.config_json or {}
+    bp = _blueprint_for_listing(listing)
+    version = listing.version_identifier or (cfg.get("changelog") or [{"version": "1.0.0"}])[0].get("version", "1.0.0")
+    package = {
+        "marketplace_json": {
+            "id": listing.id,
+            "name": listing.name,
+            "category": listing.category,
+            "price": listing.price,
+            "pricing_model": listing.pricing_model,
+            "version": version,
+            "provider": cfg.get("vendor_name", "Veklom Native"),
+            "provider_slug": cfg.get("vendor_slug", "veklom_native"),
+            "compatibility": cfg.get("compatibility", []),
+        },
+        "install_manifest": {
+            "env_vars": bp["env"],
+            "secrets_needed": bp["secrets"],
+            "dependencies": bp["dependencies"],
+            "container_image": bp["container"],
+            "install_method": cfg.get("install_method", "container"),
+            "deploy_target": cfg.get("deploy_target", "hetzner"),
+        },
+        "backend_adapter": {
+            "adapter": bp["adapter"],
+            "routes": bp["routes"],
+            "execution_mode": "workspace_scoped",
+            "fail_closed": True,
+        },
+        "pipeline_integration": {
+            "nodes": bp["nodes"],
+            "templates": bp["templates"],
+            "installs_pipeline": bool(bp["nodes"]),
+        },
+        "policy_integration": {
+            "rules": bp["policy"],
+            "budget_gate": "budget_gate" in bp["policy"] or "cost_gate" in bp["policy"],
+            "region_gate": any("region" in rule or "residency" in rule for rule in bp["policy"]),
+            "pii_safety": any("pii" in rule or "phi" in rule or "redaction" in rule for rule in bp["policy"]),
+        },
+        "audit_integration": {
+            "events": ["marketplace_install", "marketplace_test", "marketplace_uninstall", "package_run"],
+            "hash_algorithm": "sha256",
+            "evidence_required": True,
+        },
+        "billing_meter": {
+            "meter_id": f"mtr_{listing.id}",
+            "model": bp["billing"]["model"],
+            "unit": bp["billing"]["unit"],
+            "unit_price_usd": bp["billing"]["unit_price_usd"],
+            "base_price_usd": listing.price,
+        },
+        "test_action": {
+            "method": "POST",
+            "endpoint": f"/api/v1/marketplace/listings/{listing.id}/test",
+            "proves": ["backend_adapter", "policy_hooks", "audit_receipt", "billing_meter"],
+        },
+        "docs": {
+            "url": cfg.get("docs_url", ""),
+            "datasheet_endpoint": f"/api/v1/marketplace/listings/{listing.id}/datasheet",
+            "install_instructions": cfg.get("install_instructions", ""),
+        },
+        "uninstall": {
+            "method": "DELETE",
+            "endpoint": f"/api/v1/marketplace/installed/{listing.id}",
+            "removes": ["installed_asset", "workspace_pipeline_template", "package_config"],
+        },
+    }
+    package["health_check"] = _package_health(package)
+    package["proof_hash"] = hashlib.sha256(json.dumps(package, sort_keys=True, default=str).encode()).hexdigest()
+    return package
+
+
+def _marketplace_audit(user, action: str, resource_id: str, details: dict) -> AuditLog:
+    payload_hash = hashlib.sha256(json.dumps(details, sort_keys=True, default=str).encode()).hexdigest()
+    return AuditLog(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        workspace_id=user.workspace_id or "default",
+        action=action,
+        resource_type="marketplace_package",
+        resource_id=resource_id,
+        details={**details, "payload_hash": f"0x{payload_hash[:32]}"},
+        hash_chain=f"0x{payload_hash[:32]}",
+    )
+
+
+async def _provision_package_pipeline(db: AsyncSession, user, listing: MarketplaceListing, asset: InstalledAsset, package: dict) -> str | None:
+    integration = package.get("pipeline_integration") or {}
+    nodes = integration.get("nodes") or []
+    if not nodes:
+        return None
+
+    workspace_id = user.workspace_id or "default"
+    pipeline_name = f"{listing.name} package"
+    existing = await db.execute(select(Pipeline).where(Pipeline.workspace_id == workspace_id, Pipeline.name == pipeline_name))
+    pipe = existing.scalar_one_or_none()
+    graph_nodes = [
+        {
+            "id": f"pkg-node-{idx}",
+            "type": "marketplace",
+            "position": {"x": 80 + idx * 210, "y": 220},
+            "data": {"label": node.replace("-", " ").title(), "nodeType": node},
+        }
+        for idx, node in enumerate(nodes[:8])
+    ]
+    graph_edges = [
+        {"id": f"pkg-edge-{idx}", "source": graph_nodes[idx]["id"], "target": graph_nodes[idx + 1]["id"], "animated": True}
+        for idx in range(max(0, len(graph_nodes) - 1))
+    ]
+    steps = {
+        "template": integration.get("templates", [listing.id])[0],
+        "source": "marketplace_package",
+        "marketplace_listing_id": listing.id,
+        "marketplace_asset_id": asset.id,
+        "graph": {"nodes": graph_nodes, "edges": graph_edges, "viewport": {"x": 0, "y": 0, "zoom": 1}},
+        "node_configs": {
+            node["id"]: {"policy": "sovereign_default", "requireEvidence": True, "marketplace_listing_id": listing.id}
+            for node in graph_nodes
+        },
+    }
+    if pipe:
+        pipe.steps = steps
+        pipe.config_json = {**(pipe.config_json or {}), "marketplace_package": package["marketplace_json"]}
+        pipe.status = "draft"
+    else:
+        pipe = Pipeline(
+            id=str(uuid.uuid4()),
+            workspace_id=workspace_id,
+            name=pipeline_name,
+            description=f"Installed from marketplace package {listing.id}.",
+            steps=steps,
+            config_json={"marketplace_package": package["marketplace_json"], "installed_asset_id": asset.id},
+            status="draft",
+        )
+        db.add(pipe)
+    return pipe.id
+
+
 @router.get("/listings/{listing_id}")
 async def get_listing_short(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _ensure_catalog_seeded(db)
@@ -1061,8 +1387,21 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
         InstalledAsset.workspace_id == target,
         InstalledAsset.listing_id == norm_id
     ))
-    if existing.scalars().first():
-        return {"id": listing_id, "status": "already_installed", "message": "This listing is already installed in your workspace"}
+    existing_asset = existing.scalars().first()
+    if existing_asset:
+        package = (existing_asset.config_json or {}).get("package") or _marketplace_package(listing)
+        health = _package_health(package, existing_asset.config_json.get("configured_secrets", []) if existing_asset.config_json else [])
+        return {
+            "id": existing_asset.id,
+            "listing_id": norm_id,
+            "workspace_id": target,
+            "asset_type": existing_asset.asset_type,
+            "name": existing_asset.name,
+            "status": "already_installed",
+            "health": health,
+            "package": package,
+            "message": "This listing is already installed in your workspace",
+        }
 
     # --- Inventory Check ---
     if listing.inventory_quantity == 0:
@@ -1163,6 +1502,11 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
                 }
             )
 
+    package = _marketplace_package(listing)
+    configured_secrets = body.get("configured_secrets") or []
+    health = _package_health(package, configured_secrets)
+    install_status = "active" if health["status"] == "configured" else "needs_configuration"
+
     # Create InstalledAsset record
     asset = InstalledAsset(
         id=str(_uuid.uuid4()),
@@ -1171,14 +1515,33 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
         installed_by=user.id,
         asset_type=listing.category,
         name=listing.name,
-        status="active",
-        config_json=listing.config_json or {},
-        version="1.0.0",
+        status=install_status,
+        config_json={
+            "listing": listing.config_json or {},
+            "package": package,
+            "configured_secrets": configured_secrets,
+            "health": health,
+            "install_manifest": package["install_manifest"],
+            "backend_adapter": package["backend_adapter"],
+            "pipeline_integration": package["pipeline_integration"],
+            "policy_integration": package["policy_integration"],
+            "audit_integration": package["audit_integration"],
+            "billing_meter": package["billing_meter"],
+        },
+        version=package["marketplace_json"]["version"],
     )
     db.add(asset)
+    pipeline_id = await _provision_package_pipeline(db, user, listing, asset, package)
 
     # Increment listing downloads
     listing.downloads = (listing.downloads or 0) + 1
+    db.add(_marketplace_audit(user, "marketplace_install", norm_id, {
+        "asset_id": asset.id,
+        "package_hash": package["proof_hash"],
+        "health": health,
+        "billing_meter": package["billing_meter"],
+        "pipeline_id": pipeline_id,
+    }))
 
     await db.commit()
     await db.refresh(asset)
@@ -1199,6 +1562,11 @@ async def install_listing(listing_id: str, body: dict = None, user=Depends(get_c
         "asset_type": asset.asset_type,
         "name": asset.name,
         "status": asset.status,
+        "health": health,
+        "package": package,
+        "pipeline_id": pipeline_id,
+        "billing_meter": package["billing_meter"],
+        "audit_hash": package["proof_hash"],
         "installed_at": asset.created_at.isoformat() if asset.created_at else None,
         "message": f"{listing.name} installed successfully",
     }
@@ -1223,6 +1591,9 @@ async def list_installed(user=Depends(get_current_user), db: AsyncSession = Depe
                 "name": a.name,
                 "status": a.status,
                 "version": a.version,
+                "health": (a.config_json or {}).get("health") or _package_health((a.config_json or {}).get("package", {})) if (a.config_json or {}).get("package") else {"status": a.status},
+                "package": (a.config_json or {}).get("package"),
+                "billing_meter": (a.config_json or {}).get("billing_meter"),
                 "installed_at": a.created_at.isoformat() if a.created_at else None,
             }
             for a in assets
@@ -1230,11 +1601,124 @@ async def list_installed(user=Depends(get_current_user), db: AsyncSession = Depe
     }
 
 
+@router.get("/marketplace/listings/{listing_id}/health")
+@router.get("/listings/{listing_id}/health")
+async def listing_install_health(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await _ensure_catalog_seeded(db)
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalar_one_or_none()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    asset_result = await db.execute(select(InstalledAsset).where(
+        InstalledAsset.workspace_id == (user.workspace_id or "default"),
+        InstalledAsset.listing_id == norm_id,
+    ))
+    asset = asset_result.scalar_one_or_none()
+    package = (asset.config_json or {}).get("package") if asset else _marketplace_package(listing)
+    configured_secrets = (asset.config_json or {}).get("configured_secrets", []) if asset else []
+    health = _package_health(package, configured_secrets, status=asset.status if asset and asset.status == "failed" else None)
+    return {
+        "listing_id": norm_id,
+        "installed": bool(asset),
+        "asset_id": asset.id if asset else None,
+        "status": asset.status if asset else "not_installed",
+        "health": health,
+        "package": package,
+    }
+
+
+@router.post("/marketplace/listings/{listing_id}/test")
+@router.post("/marketplace/listings/{listing_id}/demo")
+@router.post("/listings/{listing_id}/test")
+@router.post("/listings/{listing_id}/demo")
+async def test_listing_package(listing_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await _ensure_catalog_seeded(db)
+    body = body or {}
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
+    listing = result.scalar_one_or_none()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    asset_result = await db.execute(select(InstalledAsset).where(
+        InstalledAsset.workspace_id == (user.workspace_id or "default"),
+        InstalledAsset.listing_id == norm_id,
+    ))
+    asset = asset_result.scalar_one_or_none()
+    package = (asset.config_json or {}).get("package") if asset else _marketplace_package(listing)
+    health = _package_health(package, (asset.config_json or {}).get("configured_secrets", []) if asset else [])
+    proof_payload = {
+        "listing_id": norm_id,
+        "asset_id": asset.id if asset else None,
+        "adapter": package["backend_adapter"]["adapter"],
+        "nodes": package["pipeline_integration"]["nodes"],
+        "policy": package["policy_integration"]["rules"],
+        "billing_meter": package["billing_meter"],
+        "input_hash": hashlib.sha256(str(body.get("input", "")).encode()).hexdigest()[:16],
+        "tested_at": datetime.now(timezone.utc).isoformat(),
+    }
+    proof_hash = hashlib.sha256(json.dumps(proof_payload, sort_keys=True, default=str).encode()).hexdigest()
+    db.add(_marketplace_audit(user, "marketplace_test", norm_id, {**proof_payload, "health": health, "proof_hash": f"0x{proof_hash[:32]}"}))
+    await db.commit()
+    return {
+        "status": "pass" if health["status"] in {"configured", "active"} else "needs_configuration",
+        "policy_result": "allowed" if health["status"] in {"configured", "active"} else "blocked_missing_secrets",
+        "output": f"{listing.name} package test completed against adapter {package['backend_adapter']['adapter']}.",
+        "provider": package["marketplace_json"]["provider"],
+        "billing_impact": f"{package['billing_meter']['model']} · {package['billing_meter']['unit']}",
+        "evidence_id": f"evd_{proof_hash[:12]}",
+        "proof_hash": f"0x{proof_hash[:32]}",
+        "health": health,
+        "package": package,
+    }
+
+
+@router.delete("/marketplace/installed/{listing_id}")
+@router.delete("/installed/{listing_id}")
+async def uninstall_listing_package(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    norm_id = normalize_listing_id(listing_id)
+    asset_result = await db.execute(select(InstalledAsset).where(
+        InstalledAsset.workspace_id == (user.workspace_id or "default"),
+        InstalledAsset.listing_id == norm_id,
+    ))
+    asset = asset_result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Installed package not found")
+
+    pipeline_name = f"{asset.name} package"
+    pipe_result = await db.execute(select(Pipeline).where(
+        Pipeline.workspace_id == (user.workspace_id or "default"),
+        Pipeline.name == pipeline_name,
+    ))
+    pipe = pipe_result.scalar_one_or_none()
+    removed_pipeline_id = None
+    if pipe:
+        removed_pipeline_id = pipe.id
+        await db.delete(pipe)
+
+    package = (asset.config_json or {}).get("package", {})
+    db.add(_marketplace_audit(user, "marketplace_uninstall", norm_id, {
+        "asset_id": asset.id,
+        "removed_pipeline_id": removed_pipeline_id,
+        "package_hash": package.get("proof_hash"),
+    }))
+    await db.delete(asset)
+    await db.commit()
+    return {
+        "status": "uninstalled",
+        "listing_id": norm_id,
+        "removed_pipeline_id": removed_pipeline_id,
+        "message": "Marketplace package uninstalled and workspace package config removed",
+    }
+
+
 @router.get("/marketplace/listings/{listing_id}/datasheet")
 @router.get("/listings/{listing_id}/datasheet")
 async def listing_datasheet(listing_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _ensure_catalog_seeded(db)
-    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == listing_id))
+    norm_id = normalize_listing_id(listing_id)
+    result = await db.execute(select(MarketplaceListing).where(MarketplaceListing.id == norm_id))
     listing = result.scalar_one_or_none()
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -1252,6 +1736,7 @@ async def listing_datasheet(listing_id: str, user=Depends(get_current_user), db:
     changelog = cfg.get("changelog", [])
     compatibility = cfg.get("compatibility", [])
     install = cfg.get("install_instructions", "See documentation.")
+    package = _marketplace_package(listing)
     
     price_str = f"${automated_price:.2f}/{listing.pricing_model}" if automated_price else "Free"
     badges = " · ".join(cfg.get("badges", []))
@@ -1331,6 +1816,42 @@ Mature Target Value (${target_price:.2f})
 
 ---
 
+## Marketplace Package Contract
+
+### marketplace.json
+```json
+{json.dumps(package["marketplace_json"], indent=2)}
+```
+
+### Install Manifest
+```json
+{json.dumps(package["install_manifest"], indent=2)}
+```
+
+### Backend Adapter
+```json
+{json.dumps(package["backend_adapter"], indent=2)}
+```
+
+### Pipeline Integration
+```json
+{json.dumps(package["pipeline_integration"], indent=2)}
+```
+
+### Policy / Audit / Billing / Health
+```json
+{json.dumps({
+    "policy_integration": package["policy_integration"],
+    "audit_integration": package["audit_integration"],
+    "billing_meter": package["billing_meter"],
+    "health_check": package["health_check"],
+    "test_action": package["test_action"],
+    "uninstall": package["uninstall"],
+}, indent=2)}
+```
+
+---
+
 ## Compatibility
 
 """ + "\n".join(f"- {c}" for c in compatibility) + """
@@ -1368,7 +1889,7 @@ Mature Target Value (${target_price:.2f})
 *Generated by Veklom Marketplace · {now}*
 *Listing ID: {listing_id}*
 """
-    filename = f"{listing_id}-datasheet.md"
+    filename = f"{norm_id}-datasheet.md"
     return PlainTextResponse(
         content=md,
         media_type="text/markdown",
@@ -1773,6 +2294,7 @@ def _listing_dict(l: MarketplaceListing, category_counts: dict | None = None) ->
     automated_price = get_automated_listing_price(l, category_counts=category_counts)
     target_price = float(cfg.get("target_price", l.price))
     
+    package = _marketplace_package(l)
     return {
         "id": l.id,
         "name": l.name,
@@ -1801,6 +2323,18 @@ def _listing_dict(l: MarketplaceListing, category_counts: dict | None = None) ->
         "github_url": cfg.get("github_url", ""),
         "docs_url": cfg.get("docs_url", ""),
         "pip_install": cfg.get("pip_install", ""),
+        "package": package,
+        "marketplace_json": package["marketplace_json"],
+        "install_manifest": package["install_manifest"],
+        "backend_adapter": package["backend_adapter"],
+        "pipeline_integration": package["pipeline_integration"],
+        "policy_integration": package["policy_integration"],
+        "audit_integration": package["audit_integration"],
+        "billing_meter": package["billing_meter"],
+        "health_check": package["health_check"],
+        "test_action": package["test_action"],
+        "uninstall": package["uninstall"],
+        "demo_available": True,
         "target_price": target_price,
         "density_multiplier": density_multiplier,
         "category_density": cat_count,

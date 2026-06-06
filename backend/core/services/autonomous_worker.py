@@ -117,9 +117,10 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
     await _update_pipeline_run(transaction_id, {
         "status": "running",
         "progress": 0,
-        "current_step": "Initializing autonomous pipeline engine..."
+        "current_step": "Source"
     })
 
+    await asyncio.sleep(0.25)
     execution = _build_execution_plan(steps)
     total_steps = len(execution)
     if total_steps == 0:
@@ -131,19 +132,48 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
         })
         return
 
+    await _set_lifecycle_stage(transaction_id, "Build", 12)
+    await asyncio.sleep(0.25)
+    preflight = _preflight_execution_plan(execution)
+    await _set_lifecycle_stage(transaction_id, "Validate", 24, {"preflight": preflight})
+    await asyncio.sleep(0.25)
+    blocking = [item for item in preflight["nodes"] if item["certification"]["status"] in {"unsupported"}]
+    if blocking:
+        context = {"text": "", "trace": [], "policy": {}, "preflight": preflight}
+        receipt = _build_run_receipt(transaction_id, context, execution, workspace_id, user_id, "failed", "unsupported pipeline node")
+        await _update_pipeline_run(transaction_id, {
+            "status": "failed",
+            "progress": 24,
+            "current_step": "Validate",
+            "error": "Preflight failed: unsupported pipeline node",
+            "output": {"preflight": preflight, "receipt": receipt, "evidence_id": receipt["evidence_id"], "proof_hash": receipt["proof_hash"]},
+        })
+        return
+
     context: Dict[str, Any] = {
         "text": "",
         "chunks": [],
         "records": [],
         "trace": [],
         "policy": {},
+        "preflight": preflight,
     }
 
+    await _set_lifecycle_stage(transaction_id, "Test", 36, {"preflight": preflight})
     for i, step in enumerate(execution):
-        stage = step.get("stage", step.get("name", f"Step {i+1}"))
+        stage = "Test"
         await _update_pipeline_run(transaction_id, {
             "current_step": stage,
-            "progress": int((i / total_steps) * 100)
+            "progress": 36 + int((i / total_steps) * 44),
+            "output": {
+                "preflight": preflight,
+                "running_node": {
+                    "id": step.get("id"),
+                    "node_type": step.get("node_type"),
+                    "label": step.get("label"),
+                },
+                "trace": context.get("trace", []),
+            }
         })
 
         try:
@@ -178,6 +208,18 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
             })
             return
 
+    await _set_lifecycle_stage(transaction_id, "Stage", 82, {"trace": context.get("trace", []), "preflight": preflight})
+    await asyncio.sleep(0.25)
+    await _set_lifecycle_stage(transaction_id, "Gate", 92, {"trace": context.get("trace", []), "preflight": preflight, "policy": context.get("policy", {})})
+    await asyncio.sleep(0.25)
+    if not context.get("deployment_contract"):
+        context["deployment_contract"] = _deploy_contract_node("deploy-endpoint", {"implicit": True}, context) if context.get("audit_seal") or context.get("evidence_pack") else {
+            "deployable": False,
+            "reason": "No Audit Signer, Evidence Pack, Deploy Endpoint, or Deploy Agent node produced a deployment contract.",
+        }
+    await _set_lifecycle_stage(transaction_id, "Deploy", 98, {"trace": context.get("trace", []), "preflight": preflight, "deployment_contract": context.get("deployment_contract")})
+    await asyncio.sleep(0.25)
+
     final_text = str(context.get("text", ""))
     receipt = _build_run_receipt(transaction_id, context, execution, workspace_id, user_id, "completed")
     await _update_pipeline_run(transaction_id, {
@@ -193,8 +235,52 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
             "replay": receipt["replay"],
             "evidence_id": receipt["evidence_id"],
             "proof_hash": receipt["proof_hash"],
+            "preflight": preflight,
+            "deployment_contract": context.get("deployment_contract"),
         }
     })
+
+
+async def _set_lifecycle_stage(transaction_id: str, stage: str, progress: int, output: dict | None = None):
+    updates = {
+        "current_step": stage,
+        "progress": progress,
+    }
+    if output is not None:
+        updates["output"] = output
+    await _update_pipeline_run(transaction_id, updates)
+
+
+def _preflight_execution_plan(execution: list[dict]) -> dict:
+    context = {"text": "", "trace": [], "policy": {}, "cost": 0, "tokens": 0}
+    node_reports = []
+    estimated_cost = 0.0
+    boundary_crossings = 0
+    for step in execution:
+        node_type = (step.get("node_type") or "").lower()
+        config = step.get("config") or {}
+        certification = _node_certification(node_type, config, context)
+        decision = _policy_decision_for_trace(node_type, context)
+        if decision.get("boundary_crossing"):
+            boundary_crossings += 1
+        estimated_cost += _estimate_node_cost_usd(node_type, config)
+        node_reports.append({
+            "node_id": step.get("id"),
+            "label": step.get("label"),
+            "node_type": node_type,
+            "adapter": certification.get("adapter") or _adapter_name_for_node(node_type),
+            "certification": certification,
+            "policy_decision": decision,
+            "estimated_cost_usd": _estimate_node_cost_usd(node_type, config),
+            "deployable": node_type in {"deploy-endpoint", "deploy-agent", "webhook", "stream-out"},
+        })
+    return {
+        "status": "ready" if all(item["certification"]["status"] != "unsupported" for item in node_reports) else "blocked",
+        "estimated_cost_usd": round(estimated_cost, 8),
+        "boundary_crossings": boundary_crossings,
+        "node_count": len(node_reports),
+        "nodes": node_reports,
+    }
 
 
 def _build_execution_plan(steps: Any) -> list[dict]:
@@ -364,7 +450,7 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context["execution_lock"] = output
         result = {"kind": "lock_engine", **output}
 
-    elif node_type in {"http-call", "http-request"}:
+    elif node_type in {"http-call", "http-request", "custom-http"}:
         response = await _http_request_node(config, context)
         context["text"] = response
         result = {"kind": "http", "chars": len(response)}
@@ -384,14 +470,18 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context["text"] = json.dumps(output, default=str)
         result = {"kind": "marketplace_tool", "tools": output.get("count", 0)}
 
-    elif node_type in {"code-exec", "code_executor"}:
+    elif node_type in {"code-exec", "code_executor", "custom-python"}:
         output = await _code_executor_node(config, context)
         context["text"] = json.dumps(output, default=str)
         result = {"kind": "code_executor", "status": output.get("status")}
 
-    elif node_type in {"webhook"}:
+    elif node_type in {"webhook", "webhook-output"}:
         response = await _webhook_node(config, context)
-        result = {"kind": "webhook", "status": response}
+        result = {"kind": "webhook", **response}
+
+    elif node_type in {"email-send", "slack-send", "discord-send", "github-action", "jira-action", "pagerduty-event", "stripe-event"}:
+        response = await _integration_webhook_node(node_type, config, context)
+        result = {"kind": "integration_webhook", **response}
 
     elif node_type in {"cost-router", "fallback", "load-balancer", "classifier", "semantic-router"}:
         output = await _routing_node(node_type, config, context)
@@ -399,6 +489,21 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context["provider"] = output.get("provider", context.get("provider"))
         context["model"] = output.get("model", context.get("model"))
         result = {"kind": "routing", **output}
+
+    elif node_type in {"retry-logic", "circuit-breaker", "rate-limiter"}:
+        output = _runtime_contract_node(node_type, config, context)
+        context.setdefault("runtime_contracts", []).append(output)
+        result = {"kind": node_type.replace("-", "_"), **output}
+
+    elif node_type == "custom-mcp-tool":
+        output = await _custom_mcp_tool_node(config, context)
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "custom_mcp_tool", "status": output.get("status")}
+
+    elif node_type == "custom-node-package":
+        output = await _custom_node_package_node(config, context)
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "custom_node_package", "status": output.get("status")}
 
     elif node_type in {"lc-memory"}:
         memory = list(context.get("memory", []))
@@ -412,6 +517,34 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
             raise ValueError("missing_config: Tool Node requires tools_allowed")
         context["tools_allowed"] = tools
         result = {"kind": "tool_binding", "tools_allowed": tools}
+
+    elif node_type in {"agent-node", "supervisor-agent", "critic-agent", "planner-agent"}:
+        output = await _governed_agent_node(node_type, config, context)
+        context["text"] = output["text"]
+        context["provider"] = output["provider"]
+        context["model"] = output["model"]
+        context["tokens"] = int(context.get("tokens") or 0) + output["tokens"]
+        context["cost"] = float(context.get("cost") or 0) + output["cost"]
+        result = {"kind": node_type.replace("-", "_"), "provider": output["provider"], "model": output["model"]}
+
+    elif node_type == "agent-team":
+        output = _agent_team_node(config, context)
+        context["agent_team"] = output
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "agent_team", "agents": len(output["agents"])}
+
+    elif node_type == "agent-handoff":
+        output = _agent_handoff_node(config, context)
+        context["agent_handoff"] = output
+        context["text"] = json.dumps(output, default=str)
+        result = {"kind": "agent_handoff", "handoff_id": output["handoff_id"]}
+
+    elif node_type == "pgl-register-agent":
+        evidence = context.get("evidence_pack") or _evidence_pack_node({"format": "agent_certificate"}, context)
+        context["evidence_pack"] = evidence
+        output = await _pgl_register_node(config, context)
+        context["pgl_record"] = output
+        result = {"kind": "pgl_register_agent", **output}
 
     elif node_type in {"lc-langgraph"}:
         output = await _langgraph_contract_node(config, context)
@@ -548,16 +681,171 @@ async def _http_request_node(config: dict, context: dict) -> str:
     return response.text
 
 
-async def _webhook_node(config: dict, context: dict) -> int:
+async def _webhook_node(config: dict, context: dict) -> dict:
     url = config.get("url") or config.get("webhookUrl") or config.get("webhook_url")
     if not url:
         raise ValueError("Webhook requires config.url")
+    method = str(config.get("method") or "POST").upper()
+    if method not in {"POST", "PUT", "PATCH"}:
+        raise ValueError("Webhook method must be POST, PUT, or PATCH")
     await _assert_safe_external_url(str(url))
-    payload = {"result": context.get("text", ""), "trace": context.get("trace", []), "audit_seal": context.get("audit_seal")}
-    async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
-        response = await client.post(str(url), json=payload)
+    headers = dict(config.get("headers") or {})
+    auth_token = str(config.get("auth_token") or config.get("authToken") or "").strip()
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    payload = _webhook_payload(config, context)
+    timeout_seconds = max(2, min(int(config.get("timeout_seconds") or config.get("timeoutSeconds") or 10), 60))
+    retry_count = max(0, min(int(config.get("retry_count") or config.get("retryCount") or 0), 5))
+    started = datetime.now(timezone.utc)
+    last_error = None
+    response = None
+    for attempt in range(retry_count + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=False, headers=headers) as client:
+                response = await client.request(method, str(url), json=payload)
+            response.raise_for_status()
+            break
+        except Exception as exc:
+            last_error = exc
+            if attempt >= retry_count:
+                raise
+            await asyncio.sleep(0.3 * (attempt + 1))
+    latency_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+    return {
+        "status": response.status_code if response is not None else 0,
+        "method": method,
+        "latency_ms": latency_ms,
+        "attempts": retry_count + 1 if last_error else 1,
+        "response_code": response.status_code if response is not None else None,
+        "audit_record": {
+            "payload_hash": hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:16],
+            "url_hash": hashlib.sha256(str(url).encode()).hexdigest()[:16],
+        },
+    }
+
+
+def _webhook_payload(config: dict, context: dict) -> dict:
+    base = {
+        "result": context.get("text", ""),
+        "cost": context.get("cost", 0),
+        "tokens": context.get("tokens", 0),
+        "trace": context.get("trace", []),
+        "audit_hash": context.get("audit_seal") or (context.get("evidence_pack") or {}).get("proof_hash"),
+        "evidence_pack": context.get("evidence_pack"),
+        "deployment_contract": context.get("deployment_contract"),
+    }
+    template = config.get("payload_template") or config.get("payloadTemplate")
+    if not isinstance(template, dict):
+        return base
+    payload = {}
+    for key, value in template.items():
+        if isinstance(value, str) and value.startswith("$."):
+            source = value[2:]
+            payload[key] = base.get(source) or context.get(source)
+        else:
+            payload[key] = value
+    return payload
+
+
+async def _integration_webhook_node(node_type: str, config: dict, context: dict) -> dict:
+    result = await _webhook_node(config, context)
+    return {**result, "integration": node_type}
+
+
+def _runtime_contract_node(node_type: str, config: dict, context: dict) -> dict:
+    if node_type == "retry-logic":
+        return {
+            "contract": "retry",
+            "max_attempts": max(1, min(int(config.get("max_attempts") or config.get("maxAttempts") or 3), 10)),
+            "backoff_ms": max(100, min(int(config.get("backoff_ms") or config.get("backoffMs") or 500), 30000)),
+        }
+    if node_type == "circuit-breaker":
+        return {
+            "contract": "circuit_breaker",
+            "failure_threshold": max(1, min(int(config.get("failure_threshold") or config.get("failureThreshold") or 3), 20)),
+            "cooldown_seconds": max(5, min(int(config.get("cooldown_seconds") or config.get("cooldownSeconds") or 60), 3600)),
+        }
+    return {
+        "contract": "rate_limiter",
+        "limit": max(1, int(config.get("limit") or 100)),
+        "window_seconds": max(1, int(config.get("window_seconds") or config.get("windowSeconds") or 60)),
+    }
+
+
+async def _governed_agent_node(node_type: str, config: dict, context: dict) -> dict:
+    normalized = dict(config or {})
+    if "provider" not in normalized and normalized.get("model_provider"):
+        normalized["provider"] = normalized["model_provider"]
+    if "model" not in normalized and normalized.get("model_name"):
+        normalized["model"] = normalized["model_name"]
+    role_prompt = {
+        "agent-node": "Execute this governed agent task.",
+        "supervisor-agent": "Supervise and route this agent work. Return decision, risk, and next action.",
+        "critic-agent": "Critique this output for policy, evidence, cost, and deployment risk.",
+        "planner-agent": "Create a governed execution plan with inputs, outputs, policy gates, evidence, and deploy target.",
+    }[node_type]
+    normalized["prompt"] = f"{role_prompt}\n\nUpstream context:\n{_context_text(context)}"
+    return await _llm_node(node_type, normalized, context)
+
+
+def _agent_team_node(config: dict, context: dict) -> dict:
+    agents = config.get("agents")
+    if not isinstance(agents, list) or not agents:
+        raise ValueError("missing_config: Agent Team requires agents")
+    normalized = []
+    for index, agent in enumerate(agents[:12]):
+        if not isinstance(agent, dict) or not agent.get("name"):
+            raise ValueError("missing_config: Agent Team agents require name")
+        normalized.append({
+            "id": agent.get("id") or f"agent-{index + 1}",
+            "name": agent["name"],
+            "role": agent.get("role") or "worker",
+            "model_provider": agent.get("model_provider") or agent.get("provider"),
+            "model_name": agent.get("model_name") or agent.get("model"),
+        })
+    return {
+        "team_id": f"team_{hashlib.sha256(json.dumps(normalized, sort_keys=True, default=str).encode()).hexdigest()[:12]}",
+        "agents": normalized,
+        "input_hash": hashlib.sha256(_context_text(context).encode()).hexdigest()[:16],
+    }
+
+
+def _agent_handoff_node(config: dict, context: dict) -> dict:
+    recipient = str(config.get("recipient") or config.get("target_agent") or config.get("targetAgent") or "human").strip()
+    handoff = {
+        "recipient": recipient,
+        "context": _context_text(context)[:12000],
+        "trace_hash": hashlib.sha256(json.dumps(context.get("trace", []), sort_keys=True, default=str).encode()).hexdigest()[:16],
+        "policy": context.get("policy", {}),
+    }
+    handoff_hash = hashlib.sha256(json.dumps(handoff, sort_keys=True, default=str).encode()).hexdigest()
+    return {**handoff, "handoff_id": f"handoff_{handoff_hash[:12]}"}
+
+
+async def _custom_mcp_tool_node(config: dict, context: dict) -> dict:
+    server_url = str(config.get("server_url") or config.get("serverUrl") or "").strip().rstrip("/")
+    if not server_url:
+        raise ValueError("missing_config: Custom MCP Tool requires server_url")
+    await _assert_safe_external_url(server_url)
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
+        response = await client.post(server_url, json={"input": context.get("text", ""), "config": config.get("tool_config") or {}})
     response.raise_for_status()
-    return response.status_code
+    return {"status": "completed", "server_url_hash": hashlib.sha256(server_url.encode()).hexdigest()[:16], "result": response.json() if "json" in response.headers.get("content-type", "") else response.text}
+
+
+async def _custom_node_package_node(config: dict, context: dict) -> dict:
+    package_url = str(config.get("package_url") or config.get("packageUrl") or "").strip()
+    sandbox_url = str(config.get("sandbox_url") or config.get("sandboxUrl") or "").strip().rstrip("/")
+    if not package_url:
+        raise ValueError("missing_config: Upload Node Package requires package_url")
+    if not sandbox_url:
+        raise ValueError("unsafe: Upload Node Package requires sandbox_url")
+    await _assert_safe_external_url(package_url)
+    await _assert_safe_external_url(sandbox_url)
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+        response = await client.post(sandbox_url, json={"package_url": package_url, "input": context.get("text", ""), "test_only": True})
+    response.raise_for_status()
+    return {"status": "sandbox_tested", "package_hash": hashlib.sha256(package_url.encode()).hexdigest()[:16], "result": response.json() if "json" in response.headers.get("content-type", "") else response.text}
 
 
 async def _llm_node(node_type: str, config: dict, context: dict) -> dict:
@@ -1183,6 +1471,8 @@ def _configured_requirement_status(requirement: str, config: dict, context: dict
         return bool(settings.GROQ_API_KEY.strip())
     if requirement_key == "gemini_api_key":
         return bool(settings.GEMINI_API_KEY.strip())
+    if requirement_key == "anthropic_api_key":
+        return bool(settings.ANTHROPIC_API_KEY.strip())
     if requirement_key == "serpapi_key":
         return bool(settings.SERPAPI_KEY.strip())
     if requirement_key == "ollama_base_url":
@@ -1190,11 +1480,88 @@ def _configured_requirement_status(requirement: str, config: dict, context: dict
     return bool(config.get(requirement_key) or config.get(requirement))
 
 
+def _adapter_name_for_node(node_type: str) -> str:
+    adapters = {
+        "input": "input",
+        "source": "input",
+        "doc-loader": "document_loader",
+        "file-read": "document_loader",
+        "langchain_agent": "langchain_agent",
+        "agent-node": "agent_node",
+        "agent-team": "agent_team",
+        "supervisor-agent": "supervisor_agent",
+        "critic-agent": "critic_agent",
+        "planner-agent": "planner_agent",
+        "agent-handoff": "agent_handoff",
+        "pgl-register-agent": "pgl_register_agent",
+        "lc-langgraph": "langgraph_contract",
+        "lc-memory": "conversation_memory",
+        "lc-retrievalqa": "retrieval_qa",
+        "lc-parser": "output_parser",
+        "lc-toolnode": "tool_binding",
+        "chunker": "chunker",
+        "reranker": "reranker",
+        "hybrid-search": "hybrid_search",
+        "pgvector": "pgvector",
+        "qdrant": "qdrant",
+        "weaviate": "weaviate",
+        "policy-gate": "policy_gate",
+        "audit-signer": "audit_signer",
+        "audit-log": "audit_logger",
+        "evidence-pack": "evidence_pack",
+        "pgl-register": "pgl_register",
+        "repo-risk-gate": "repo_risk_gate",
+        "cost-gate": "cost_gate",
+        "budget-gate": "budget_gate",
+        "human-approval": "human_approval",
+        "deploy-endpoint": "deploy_endpoint",
+        "deploy-agent": "deploy_agent",
+        "deploy-job": "deploy_job",
+        "deploy-pipeline": "deploy_pipeline",
+        "lock-engine": "lock_engine",
+        "retry-logic": "retry_logic",
+        "circuit-breaker": "circuit_breaker",
+        "rate-limiter": "rate_limiter",
+        "webhook": "webhook",
+        "webhook-output": "webhook",
+        "http-call": "http_request",
+        "custom-http": "http_request",
+        "custom-python": "code_executor",
+        "custom-mcp-tool": "mcp_tool_contract",
+        "custom-node-package": "private_node_package",
+        "marketplace-tool": "marketplace_tool",
+        "pii-redact": "pii_redactor",
+        "json-format": "json_formatter",
+        "markdown-render": "markdown_renderer",
+        "stream-out": "stream_output",
+    }
+    if node_type.startswith("llm-"):
+        return "llm"
+    if node_type.startswith("embed-"):
+        return "embedding"
+    return adapters.get(node_type, "unsupported")
+
+
+def _estimate_node_cost_usd(node_type: str, config: dict) -> float:
+    if node_type.startswith("llm-") or node_type in {"langchain_agent", "agent-node", "supervisor-agent", "critic-agent", "planner-agent", "lc-retrievalqa"}:
+        return float(config.get("estimated_cost_usd") or config.get("estimatedCostUsd") or 0.002)
+    if node_type.startswith("embed-"):
+        return float(config.get("estimated_cost_usd") or 0.0001)
+    if node_type in {"web-search", "http-call", "webhook", "webhook-output", "custom-http"}:
+        return float(config.get("estimated_cost_usd") or 0.0002)
+    return float(config.get("estimated_cost_usd") or 0)
+
+
 def _node_certification(node_type: str, config: dict, context: dict) -> dict:
     static_requirements = {
         "doc-loader": ["text or url"],
         "file-read": ["text or url"],
         "langchain_agent": ["model_provider", "model_name"],
+        "agent-node": ["model_provider", "model_name"],
+        "supervisor-agent": ["model_provider", "model_name"],
+        "critic-agent": ["model_provider", "model_name"],
+        "planner-agent": ["model_provider", "model_name"],
+        "agent-team": ["agents"],
         "lc-langgraph": ["steps"],
         "lc-retrievalqa": ["model_provider", "model_name"],
         "lc-toolnode": ["tools_allowed"],
@@ -1202,6 +1569,8 @@ def _node_certification(node_type: str, config: dict, context: dict) -> dict:
         "llm-groq": ["GROQ_API_KEY"],
         "llm-gemini": ["GEMINI_API_KEY"],
         "llm-ollama": ["OLLAMA_BASE_URL"],
+        "llm-anthropic": ["ANTHROPIC_API_KEY"],
+        "llm-openai-compatible": ["base_url"],
         "embed-openai": ["OPENAI_API_KEY"],
         "embed-bge": ["OLLAMA_BASE_URL"],
         "pgvector": ["embedding"],
@@ -1215,24 +1584,44 @@ def _node_certification(node_type: str, config: dict, context: dict) -> dict:
         "deploy-agent": ["proof"],
         "web-search": ["SERPAPI_KEY"],
         "http-call": ["url"],
+        "custom-http": ["url"],
+        "email-send": ["url"],
+        "slack-send": ["url"],
+        "discord-send": ["url"],
+        "github-action": ["url"],
+        "jira-action": ["url"],
+        "pagerduty-event": ["url"],
+        "stripe-event": ["url"],
         "sql-query": ["query"],
         "code-exec": ["sandbox_url"],
+        "custom-python": ["sandbox_url"],
+        "custom-mcp-tool": ["server_url"],
+        "custom-node-package": ["package_url", "sandbox_url"],
         "webhook": ["url"],
+        "webhook-output": ["url"],
     }
+    adapter = _adapter_name_for_node(node_type)
+    if adapter == "unsupported":
+        return {"status": "unsupported", "adapter": adapter, "requirements": [], "missing": []}
     requirements = static_requirements.get(node_type, [])
     missing = [requirement for requirement in requirements if not _configured_requirement_status(requirement, config, context)]
-    if node_type in {"code-exec", "code_executor"} and missing:
+    if node_type in {"code-exec", "code_executor", "custom-python", "custom-node-package"} and missing:
         status = "unsafe"
     elif missing:
         status = "missing_key" if any(item.endswith("_KEY") or item == "SERPAPI_KEY" for item in missing) else "missing_config"
     else:
         status = "real"
-    return {"status": status, "requirements": requirements, "missing": missing}
+    return {"status": status, "adapter": adapter, "requirements": requirements, "missing": missing}
 
 
 def _policy_decision_for_trace(node_type: str, context: dict) -> dict:
     policy = context.get("policy") if isinstance(context.get("policy"), dict) else {}
-    boundary_nodes = {"http-call", "http-request", "webhook", "web-search", "qdrant", "weaviate", "embed-openai", "llm-openai", "llm-groq", "llm-gemini"}
+    boundary_nodes = {
+        "http-call", "http-request", "custom-http", "webhook", "webhook-output",
+        "email-send", "slack-send", "discord-send", "github-action", "jira-action", "pagerduty-event", "stripe-event",
+        "custom-mcp-tool", "custom-node-package", "web-search", "qdrant", "weaviate",
+        "embed-openai", "llm-openai", "llm-groq", "llm-gemini", "llm-anthropic", "llm-openai-compatible",
+    }
     gate_nodes = {"policy-gate", "cost-gate", "budget-gate", "repo-risk-gate", "human-approval", "lock-engine"}
     return {
         "allowed": True,

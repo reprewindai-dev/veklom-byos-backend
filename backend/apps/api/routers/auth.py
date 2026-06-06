@@ -777,7 +777,10 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
     await db.execute(sqlalchemy.delete(Session).where(Session.user_id == user.id))
     await db.commit()
     
-    return {"message": "Password has been successfully reset. All previous sessions have been revoked."}@router.post("/login")
+    return {"message": "Password has been successfully reset. All previous sessions have been revoked."}
+
+
+@router.post("/login")
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
     result = await db.execute(select(User).where(User.email == email))

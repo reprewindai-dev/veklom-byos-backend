@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.db.models.ai import ExecLog
+from backend.services import forecast as forecast_svc
 
 router = APIRouter(prefix="/autonomous", tags=["Autonomous Intelligence (ML)"])
 
@@ -68,14 +69,21 @@ async def autonomous_cost_predict(body: dict, user=Depends(get_current_user), db
 
 @router.post("/train")
 async def autonomous_train(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Fit and PERSIST the spend-forecast model over this workspace's execution_logs.
+
+    Honest gate: if the workspace has fewer than `min_samples` execution rows we
+    refuse to train and report the real count.  When sufficient, we fit an
+    EWMA + linear-trend model and store the coefficients in `forecast_models`
+    so every surface reads one reproducible forecast.
+    """
     workspace_id = user.workspace_id or "default"
     min_samples = body.get("min_samples", 100)
-    
+
     # Check total logs in execution_logs
     count = await db.scalar(
         select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id)
     ) or 0
-    
+
     if count < min_samples:
         return {
             "success": False,
@@ -84,13 +92,42 @@ async def autonomous_train(body: dict, user=Depends(get_current_user), db: Async
             "min_samples": min_samples,
             "message": f"Not enough execution samples to train models. Need at least {min_samples}, got {count}."
         }
-        
+
+    # Real fit + persist of the spend-forecast model.
+    spend_model = await forecast_svc.train_and_persist(db, workspace_id)
+
     return {
         "success": True,
-        "cost_predictor": { "trained": True, "samples_used": count },
+        "samples_used": count,
+        "cost_predictor": {
+            "trained": spend_model["trained"],
+            "samples_used": spend_model["samples_used"],
+            "method": spend_model["method"],
+            "confidence": spend_model["confidence"],
+            "model_version": spend_model["model_version"],
+            "trained_at": spend_model["trained_at"],
+        },
         "routing_optimizer": { "trained": True, "samples_used": count },
         "quality_predictor": { "trained": True, "samples_used": count }
     }
+
+
+@router.get("/forecast")
+async def autonomous_forecast(
+    horizon_days: int = 30,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Canonical spend forecast for this workspace.
+
+    Reads the persisted model (from /autonomous/train) when present, otherwise
+    fits on the fly without persisting so the read always works.  Returns
+    `method="insufficient_data"` with the real sample count when history is too
+    thin — never a fabricated number.
+    """
+    workspace_id = user.workspace_id or "default"
+    horizon_days = max(1, min(int(horizon_days), 365))
+    return await forecast_svc.get_projection(db, workspace_id, horizon_days)
 
 
 @router.post("/quality/optimize")

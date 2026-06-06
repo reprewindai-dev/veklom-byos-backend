@@ -691,16 +691,21 @@ async def budget_forecast(user=Depends(get_current_user), db: AsyncSession = Dep
     rule = result.scalar_one_or_none()
     budget_limit = rule.limit_usd if rule else 500.0
     
-    # Project spend based on daily rate
-    days_elapsed = (now - month_start).days
-    daily_rate = float(spend) / max(1, days_elapsed)
-    projected_spend = daily_rate * (days_elapsed + days_remaining)
-    
+    # Project remaining-month spend via the canonical forecast service
+    # (EWMA + linear trend over execution_logs), then add already-booked spend.
+    from backend.services import forecast as forecast_svc
+
+    projection = await forecast_svc.get_projection(db, workspace_id, max(1, days_remaining))
+    projected_spend = float(spend) + float(projection["projected_spend_usd"])
+
     return {
         "current_spend": round(float(spend), 4),
         "projected_spend": round(projected_spend, 4),
         "budget_limit": float(budget_limit),
         "days_remaining": days_remaining,
+        "forecast_method": projection["method"],
+        "forecast_confidence": projection["confidence"],
+        "samples_used": projection["samples_used"],
     }
 
 
@@ -714,17 +719,16 @@ async def cost_predict(body: dict = None, user=Depends(get_current_user), db: As
     
     workspace_id = user.workspace_id or ""
     now = datetime.now(timezone.utc)
-    
-    # Get last 7 days of spend
-    week_ago = now - timedelta(days=7)
-    weekly_spend = await db.scalar(
-        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0))
-        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= week_ago)
-    ) or 0.0
-    
-    daily_avg = float(weekly_spend) / 7
-    predicted_monthly = daily_avg * 30
-    
+
+    # Spend projection via the canonical forecast service (EWMA + linear trend
+    # over execution_logs) — replaces the old flat daily_avg * 30 heuristic.
+    from backend.services import forecast as forecast_svc
+
+    projection = await forecast_svc.get_projection(db, workspace_id, 30)
+    predicted_monthly = float(projection["projected_spend_usd"])
+    daily_avg = float(projection["daily_avg_usd"])
+    spend_confidence = float(projection["confidence"])
+
     body = body or {}
     model = body.get("model", "llama3.1")
     input_tokens = int(body.get("input_tokens", body.get("max_tokens", 1000)))
@@ -760,7 +764,9 @@ async def cost_predict(body: dict = None, user=Depends(get_current_user), db: As
     return {
         "predicted_monthly": round(predicted_monthly, 4),
         "predicted_daily": round(daily_avg, 4),
-        "confidence": 0.85 + (0.05 if daily_avg > 0 else 0.0),
+        "confidence": round(spend_confidence, 4),
+        "forecast_method": projection["method"],
+        "samples_used": projection["samples_used"],
         "predicted_cost": cost_str,
         "confidence_lower": lower_cost_str,
         "confidence_upper": upper_cost_str,

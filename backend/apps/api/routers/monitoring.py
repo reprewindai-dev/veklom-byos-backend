@@ -580,9 +580,42 @@ async def insights_savings(user=Depends(get_current_user), db: AsyncSession = De
 
 @router.get("/insights/savings/projected")
 async def insights_savings_projected(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # Very simple baseline projection (multiply by 30)
+    """Project monthly savings by scaling realized savings against the canonical
+    spend forecast (EWMA + linear trend) instead of a flat * 30 multiplier.
+
+    projected_savings = realized_savings * (projected_30d_spend / actual_spend_to_date)
+
+    This keeps savings honestly tied to the forecasted activity level and carries
+    the forecast's real confidence + method.
+    """
+    from backend.services import forecast as forecast_svc
+
+    ws = user.workspace_id or ""
     savings_data = await insights_savings(user, db)
-    return {"projected_monthly_savings": round(savings_data["total_saved_usd"] * 30, 2), "confidence": 0.82}
+    realized_savings = float(savings_data["total_saved_usd"])
+
+    actual_cost = await db.scalar(
+        select(func.coalesce(func.sum(ExecutionLog.cost), 0.0)).where(ExecutionLog.workspace_id == ws)
+    ) or 0.0
+    actual_cost = float(actual_cost)
+
+    projection = await forecast_svc.get_projection(db, ws, 30)
+    projected_spend = float(projection["projected_spend_usd"])
+
+    if actual_cost > 0:
+        scale = projected_spend / actual_cost
+        projected_savings = realized_savings * scale
+    else:
+        projected_savings = 0.0
+
+    return {
+        "projected_monthly_savings": round(projected_savings, 2),
+        "realized_savings": round(realized_savings, 2),
+        "projected_30d_spend": round(projected_spend, 2),
+        "confidence": projection["confidence"],
+        "method": projection["method"],
+        "samples_used": projection["samples_used"],
+    }
 
 
 # --- Metrics ---

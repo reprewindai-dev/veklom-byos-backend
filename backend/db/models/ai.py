@@ -145,5 +145,27 @@ class IncidentLog(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
+class ForecastModel(Base):
+    """Persisted spend-forecast model — the Insights/Forecast heart.
+
+    One row per (workspace_id, model_type).  `params` holds the fitted
+    EWMA + linear-trend coefficients so projections are reproducible and
+    explainable rather than recomputed ad-hoc.  Trained by
+    `backend.services.forecast.train_and_persist` over execution_logs.
+    """
+
+    __tablename__ = "forecast_models"
+    id = Column(String(36), primary_key=True, default=_uuid)
+    workspace_id = Column(String(36), nullable=False, index=True)
+    model_type = Column(String(64), default="spend", index=True)
+    method = Column(String(64), default="ewma_linear")
+    params = Column(JSON, default=dict)
+    samples_used = Column(Integer, default=0)
+    confidence = Column(Float, default=0.0)
+    window_days = Column(Integer, default=30)
+    version = Column(String(32), default="v1")
+    trained_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
 # Alias to support both ExecutionLog (manual alignment) and ExecLog (production/legacy)
 ExecLog = ExecutionLog

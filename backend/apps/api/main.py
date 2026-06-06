@@ -377,9 +377,23 @@ if has_valid_endpoint and has_valid_headers:
     HTTPXClientInstrumentor().instrument()
 
 # --- Middleware ---
+# allow_origin_regex lets the VEKLOM-CORE-LIVE applet (Google AI Studio / Cloud Run /
+# Firebase Hosting) and *.veklom.com call the API cross-origin, in addition to the
+# explicit CORS_ORIGINS list. Regex (not "*") keeps allow_credentials valid.
+_CORS_ORIGIN_REGEX = (
+    r"https://([a-z0-9-]+\.)*("
+    r"veklom\.com|"
+    r"usercontent\.goog|"           # AI Studio applet sandboxes
+    r"aistudio\.google\.com|"
+    r"run\.app|"                    # Cloud Run
+    r"web\.app|firebaseapp\.com"    # Firebase Hosting
+    r")"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

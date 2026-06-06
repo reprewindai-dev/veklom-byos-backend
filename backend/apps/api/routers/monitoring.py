@@ -3,20 +3,145 @@
 import hashlib
 import json
 import re
+import time as _time
 import uuid as _uuid_mod
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import PlainTextResponse, StreamingResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
-from backend.db.models.ai import ExecutionLog
+from backend.db.models.ai import ExecutionLog, IncidentLog
 
 router = APIRouter(tags=["Monitoring"])
+
+# Real process start (for honest uptime, not a hardcoded 99.99%).
+_PROCESS_START_WALL = datetime.now(timezone.utc)
+
+try:  # optional — real host metrics when available, honest "not measured" otherwise
+    import psutil as _psutil
+except Exception:  # pragma: no cover
+    _psutil = None
+
+
+def _host_metrics() -> dict:
+    """Real host CPU/memory/disk via psutil, or an honest not-measured state."""
+    if _psutil is None:
+        return {"measured": False, "cpu_percent": None, "memory_percent": None, "disk_percent": None,
+                "reason": "psutil_unavailable"}
+    try:
+        return {
+            "measured": True,
+            "cpu_percent": round(_psutil.cpu_percent(interval=0.0), 1),
+            "memory_percent": round(_psutil.virtual_memory().percent, 1),
+            "disk_percent": round(_psutil.disk_usage("/").percent, 1),
+        }
+    except Exception as e:  # pragma: no cover
+        return {"measured": False, "cpu_percent": None, "memory_percent": None, "disk_percent": None,
+                "reason": str(e)[:80]}
+
+
+async def _traffic_metrics(db: AsyncSession, minutes: int = 5) -> dict:
+    """Real requests/sec, avg latency, and error rate from execution_logs."""
+    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    row = (await db.execute(
+        select(
+            func.count(),
+            func.coalesce(func.avg(ExecutionLog.latency_ms), 0.0),
+            func.coalesce(func.sum(case((ExecutionLog.status != "completed", 1), else_=0)), 0),
+        ).where(ExecutionLog.created_at >= since)
+    )).first()
+    count = int(row[0] or 0)
+    avg_lat = float(row[1] or 0.0)
+    errors = int(row[2] or 0)
+    return {
+        "requests_per_second": round(count / (minutes * 60), 3),
+        "avg_latency_ms": round(avg_lat, 1),
+        "error_rate": round(errors / count, 4) if count else 0.0,
+        "window_minutes": minutes,
+        "samples": count,
+    }
+
+
+async def _component_health(db: AsyncSession) -> dict:
+    """Live component pings: DB, Redis, AI gateway, policy engine (in-process)."""
+    components: dict = {}
+
+    t0 = _time.perf_counter()
+    try:
+        await db.execute(text("SELECT 1"))
+        ok = True
+    except Exception:
+        ok = False
+    components["database"] = {"status": "healthy" if ok else "unhealthy",
+                              "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
+
+    t0 = _time.perf_counter()
+    try:
+        from backend.core.database.redis_client import redis_client
+        pong = await redis_client.ping()
+        components["redis"] = {"status": "healthy" if pong else "degraded",
+                               "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
+    except Exception:
+        components["redis"] = {"status": "unknown", "latency_ms": None, "reason": "ping_failed"}
+
+    t0 = _time.perf_counter()
+    base = getattr(settings, "LLM_BASE_URL", None) or getattr(settings, "OLLAMA_BASE_URL", None)
+    if base:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                r = await client.get(f"{base.rstrip('/')}/api/tags")
+            ok = r.status_code < 500
+            components["ai_gateway"] = {"status": "healthy" if ok else "degraded",
+                                        "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
+        except Exception:
+            components["ai_gateway"] = {"status": "unknown", "latency_ms": None, "reason": "unreachable"}
+    else:
+        components["ai_gateway"] = {"status": "unknown", "latency_ms": None, "reason": "no_base_url"}
+
+    # Policy engine runs in-process with the API — no network hop.
+    components["policy_engine"] = {"status": "healthy", "latency_ms": 0, "note": "in-process"}
+    return components
+
+
+async def _incident_history_90d(db: AsyncSession) -> tuple[list, int, float]:
+    """Real 90d status history derived from incident_logs (no sub-day probe store)."""
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=90)
+    rows = (await db.execute(
+        select(IncidentLog.created_at, IncidentLog.severity, IncidentLog.resolved)
+        .where(IncidentLog.created_at >= start)
+    )).all()
+    by_day: dict[str, str] = {}
+    active = 0
+    for created_at, severity, resolved in rows:
+        if created_at is None:
+            continue
+        if not resolved:
+            active += 1
+        day = created_at.date().isoformat()
+        sev = (severity or "").upper()
+        status = "down" if sev in ("CRITICAL", "DOWN") else "degraded"
+        # keep the worst status seen for the day
+        if by_day.get(day) != "down":
+            by_day[day] = status
+    history = []
+    incident_days = 0
+    for i in range(90):
+        day = (start + timedelta(days=i)).date().isoformat()
+        st = by_day.get(day, "up")
+        if st != "up":
+            incident_days += 1
+        label = "Today" if i == 89 else f"{90 - i} days ago"
+        history.append({"day": label, "status": st})
+    uptime_pct = round(100.0 * (90 - incident_days) / 90.0, 3)
+    return history, active, uptime_pct
 
 # ---------------------------------------------------------------------------
 # Tenant-scoped alert store (workspace_id → list[alert])
@@ -39,53 +164,84 @@ def _get_alerts(workspace_id: str) -> list:
 
 
 @router.get("/monitoring/health")
-async def monitoring_health(user=Depends(get_current_user)):
+async def monitoring_health(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    components = await _component_health(db)
+    healthy = sum(1 for c in components.values() if c.get("status") == "healthy")
+    total = len(components)
+    unhealthy = any(c.get("status") == "unhealthy" for c in components.values())
+    score = round(100 * healthy / total) if total else 0
     return {
-        "status": "healthy",
-        "score": 98,
-        "components": {
-            "database": {"status": "healthy", "latency_ms": 2},
-            "redis": {"status": "healthy", "latency_ms": 1},
-            "ai_gateway": {"status": "healthy", "latency_ms": 45},
-            "policy_engine": {"status": "healthy", "latency_ms": 5},
-        },
+        "status": "unhealthy" if unhealthy else ("healthy" if score >= 75 else "degraded"),
+        "score": score,
+        "components": components,
+        "measured": True,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 @router.get("/monitoring/metrics")
-async def monitoring_metrics(user=Depends(get_current_user)):
+async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    host = _host_metrics()
+    traffic = await _traffic_metrics(db, minutes=5)
     return {
-        "cpu_percent": 34.2,
-        "memory_percent": 58.1,
-        "disk_percent": 22.3,
-        "network_mbps": 12.5,
-        "active_connections": 42,
-        "requests_per_second": 120,
-        "avg_latency_ms": 45,
-        "error_rate": 0.001,
+        "cpu_percent": host["cpu_percent"],
+        "memory_percent": host["memory_percent"],
+        "disk_percent": host["disk_percent"],
+        "host_measured": host["measured"],
+        "requests_per_second": traffic["requests_per_second"],
+        "avg_latency_ms": traffic["avg_latency_ms"],
+        "error_rate": traffic["error_rate"],
+        "traffic_samples": traffic["samples"],
+        "traffic_window_minutes": traffic["window_minutes"],
+        "source": "psutil+execution_logs",
     }
 
 
 @router.get("/monitoring/metrics/history")
 async def monitoring_metrics_history(
     range_param: str = Query("24h", alias="range"),
-    user=Depends(get_current_user)
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     now = datetime.now(timezone.utc)
+    start = now - timedelta(hours=24)
+    # Real hourly buckets from execution_logs (dialect-agnostic Python bucketing).
+    rows = (await db.execute(
+        select(ExecutionLog.created_at, ExecutionLog.latency_ms,
+               ExecutionLog.input_tokens, ExecutionLog.output_tokens, ExecutionLog.status)
+        .where(ExecutionLog.created_at >= start)
+    )).all()
+    buckets: dict[int, dict] = {}
+    for created_at, lat, itok, otok, status in rows:
+        if created_at is None:
+            continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        h = int((created_at - start).total_seconds() // 3600)
+        if h < 0 or h > 23:
+            continue
+        b = buckets.setdefault(h, {"count": 0, "lat": 0.0, "tokens": 0, "errors": 0})
+        b["count"] += 1
+        b["lat"] += float(lat or 0)
+        b["tokens"] += int(itok or 0) + int(otok or 0)
+        if status and status != "completed":
+            b["errors"] += 1
     points = []
     for i in range(24):
-        points.append({
-            "ts": f"{i:02d}:00",
-            "requests_per_min": max(0, 2418 - (i * 23) + (i % 4) * 80),
-            "tokens_per_sec": max(0, 184000 - (i * 1200) + (i % 3) * 3000),
-            "latency_ms": 80 + (i % 5) * 12,
-            "error_rate": round(0.0018 + (i % 7) * 0.0001, 4),
-            "gpu_util_percent": 60 + (i % 8) * 4,
-            "hetzner_percent": 80 + (i % 5) * 2,
-            "aws_percent": 20 - (i % 5) * 2,
-        })
-    return {"range": range_param, "points": points, "updated_at": now.isoformat()}
+        b = buckets.get(i)
+        ts = (start + timedelta(hours=i)).strftime("%H:00")
+        if b and b["count"]:
+            points.append({
+                "ts": ts,
+                "requests_per_min": round(b["count"] / 60.0, 2),
+                "tokens_per_sec": round(b["tokens"] / 3600.0, 2),
+                "latency_ms": round(b["lat"] / b["count"], 1),
+                "error_rate": round(b["errors"] / b["count"], 4),
+            })
+        else:
+            points.append({"ts": ts, "requests_per_min": 0, "tokens_per_sec": 0, "latency_ms": 0, "error_rate": 0.0})
+    return {"range": range_param, "points": points, "source": "execution_logs",
+            "total_samples": len(rows), "updated_at": now.isoformat()}
 
 
 @router.post("/monitoring/metrics/record")
@@ -297,15 +453,40 @@ async def monitoring_audit_export(
 
 # --- Platform Pulse ---
 @router.get("/platform/pulse")
-async def platform_pulse():
+async def platform_pulse(db: AsyncSession = Depends(get_db)):
+    """Real platform counts from the database (no hardcoded vanity numbers)."""
+    from backend.db.models.workspace import Workspace
+    from backend.db.models.marketplace import MarketplaceListing
+    from backend.db.models.run import VeklomRun
+
+    async def _count(model) -> int:
+        try:
+            return int((await db.scalar(select(func.count()).select_from(model))) or 0)
+        except Exception:
+            return 0
+
+    total_workspaces = await _count(Workspace)
+    active_listings = await _count(MarketplaceListing)
+    governed_runs = await _count(VeklomRun)
+    exec_total = await _count(ExecutionLog)
+
+    since_7d = datetime.now(timezone.utc) - timedelta(days=7)
+    try:
+        new_listings_7d = int((await db.scalar(
+            select(func.count()).select_from(MarketplaceListing)
+            .where(MarketplaceListing.created_at >= since_7d)
+        )) or 0)
+    except Exception:
+        new_listings_7d = 0
+
     return {
-        "total_users": 1524,
-        "active_listings": 42,
-        "tool_installs": 8412,
-        "gpc_compiles_total": 12053,
-        "user_growth_pct_30d": 14.5,
-        "new_listings_7d": 3,
-        "active_tools": 28,
+        "total_workspaces": total_workspaces,
+        "active_listings": active_listings,
+        "governed_runs_total": governed_runs,
+        "executions_total": exec_total,
+        "new_listings_7d": new_listings_7d,
+        "source": "db",
+        "simulated": False,
     }
 
 
@@ -320,135 +501,88 @@ def _status_history_90d(degraded_days=None, down_days=None):
     return history
 
 
+_SERVICE_DEFS = [
+    {"service": "Playground Engine", "slug": "playground", "region": "Evaluation Plane", "symbol": "shield",
+     "description": "Safe agent tests, repository review sessions, and controlled tool trials.", "component": "ai_gateway"},
+    {"service": "Governed Compiler (GPC)", "slug": "gpc", "region": "Runtime Core", "symbol": "stack",
+     "description": "Policy-aware planning, execution compile checks, and deterministic handoff.", "component": "policy_engine"},
+    {"service": "API Gateway", "slug": "api-gateway", "region": "Hetzner EU", "symbol": "globe",
+     "description": "Public API ingress, auth routing, and workspace request boundary.", "component": "database"},
+    {"service": "Policy Vault", "slug": "policy-vault", "region": "Encrypted Boundary", "symbol": "lock",
+     "description": "Key custody, rule evaluation, tenant isolation, and guarded secret access.", "component": "policy_engine"},
+    {"service": "Compliance Auditor", "slug": "compliance-auditor", "region": "Audit Plane", "symbol": "lens",
+     "description": "Signed event trails, replay records, and compliance export pipeline.", "component": "database"},
+    {"service": "Autonomous Router", "slug": "autonomous-router", "region": "Routing Mesh", "symbol": "vmark",
+     "description": "Cost, latency, policy, and capability routing for governed workloads.", "component": "ai_gateway"},
+]
+
+_STATUS_MAP = {"healthy": "up", "degraded": "degraded", "unhealthy": "down", "unknown": "degraded"}
+
+
 @router.get("/platform/uptime")
-async def platform_uptime():
-    now = datetime.now(timezone.utc).isoformat()
+async def platform_uptime(db: AsyncSession = Depends(get_db)):
+    """Real platform status: live component health, incident-derived 90d history,
+    real traffic. No simulated numbers. Where there is no historical probe store,
+    the basis is stated explicitly rather than inventing a 99.99%."""
+    now = datetime.now(timezone.utc)
+    components = await _component_health(db)
+    history, active_incidents, uptime_pct = await _incident_history_90d(db)
+    traffic = await _traffic_metrics(db, minutes=60)
+
+    # 24h checks = execution_logs in the last 24h (the real governed-call volume).
+    since_24h = now - timedelta(hours=24)
+    checks_24h = (await db.scalar(
+        select(func.count()).select_from(ExecutionLog).where(ExecutionLog.created_at >= since_24h)
+    )) or 0
+
+    unhealthy = any(c.get("status") == "unhealthy" for c in components.values())
+    degraded = any(c.get("status") in ("degraded", "unknown") for c in components.values())
+    overall = "down" if unhealthy else ("degraded" if degraded else "operational")
+    headline = ("Service disruption detected" if unhealthy else
+                "Operating with degraded components" if degraded else
+                "All governed runtime systems operational")
+
+    services = []
+    for d in _SERVICE_DEFS:
+        comp = components.get(d["component"], {})
+        services.append({
+            "service": d["service"], "slug": d["slug"], "region": d["region"], "symbol": d["symbol"],
+            "description": d["description"],
+            "status": _STATUS_MAP.get(comp.get("status", "unknown"), "degraded"),
+            "response_time_ms": comp.get("latency_ms"),
+            "uptime_90d": uptime_pct,
+            "history_90d": history,
+        })
+
+    # Real incidents from incident_logs (most recent first).
+    inc_rows = (await db.execute(
+        select(IncidentLog).where(IncidentLog.created_at >= (now - timedelta(days=90)))
+        .order_by(IncidentLog.created_at.desc()).limit(20)
+    )).scalars().all()
+    incidents = [{
+        "date": i.created_at.date().isoformat() if i.created_at else None,
+        "title": (i.message or "Incident")[:120],
+        "status": "resolved" if i.resolved else "active",
+        "severity": i.severity,
+    } for i in inc_rows]
+
     return {
-        "overall_status": "operational",
-        "headline": "All governed runtime systems operational",
-        "updated_at": now,
+        "overall_status": overall,
+        "headline": headline,
+        "updated_at": now.isoformat(),
         "window_days": 90,
-        "uptime_percent": 99.99,
-        "checks_passed_24h": 18432,
-        "active_incidents": 0,
-        "avg_response_time_ms": 20,
-        "services": [
-            {
-                "service": "Playground Engine",
-                "slug": "playground",
-                "status": "up",
-                "response_time_ms": 42,
-                "uptime_90d": 99.97,
-                "region": "Evaluation Plane",
-                "symbol": "shield",
-                "description": "Safe agent tests, repository review sessions, and controlled tool trials.",
-                "history_90d": _status_history_90d(
-                    degraded_days=[15, 33, 44, 56, 70, 76, 84],
-                    down_days=[34, 35, 36, 57],
-                ),
-            },
-            {
-                "service": "Governed Compiler (GPC)",
-                "slug": "gpc",
-                "status": "up",
-                "response_time_ms": 15,
-                "uptime_90d": 99.99,
-                "region": "Runtime Core",
-                "symbol": "stack",
-                "description": "Policy-aware planning, execution compile checks, and deterministic handoff.",
-                "history_90d": _status_history_90d(degraded_days=[9]),
-            },
-            {
-                "service": "API Gateway",
-                "slug": "api-gateway",
-                "status": "up",
-                "response_time_ms": 8,
-                "uptime_90d": 99.99,
-                "region": "Hetzner EU",
-                "symbol": "globe",
-                "description": "Public API ingress, auth routing, and workspace request boundary.",
-                "history_90d": _status_history_90d(degraded_days=[28, 52]),
-            },
-            {
-                "service": "Policy Vault",
-                "slug": "policy-vault",
-                "status": "up",
-                "response_time_ms": 12,
-                "uptime_90d": 99.98,
-                "region": "Encrypted Boundary",
-                "symbol": "lock",
-                "description": "Key custody, rule evaluation, tenant isolation, and guarded secret access.",
-                "history_90d": _status_history_90d(degraded_days=[18, 63]),
-            },
-            {
-                "service": "Compliance Auditor",
-                "slug": "compliance-auditor",
-                "status": "up",
-                "response_time_ms": 18,
-                "uptime_90d": 100.0,
-                "region": "Audit Plane",
-                "symbol": "lens",
-                "description": "Signed event trails, replay records, and compliance export pipeline.",
-                "history_90d": _status_history_90d(),
-            },
-            {
-                "service": "Autonomous Router",
-                "slug": "autonomous-router",
-                "status": "up",
-                "response_time_ms": 25,
-                "uptime_90d": 99.98,
-                "region": "Routing Mesh",
-                "symbol": "vmark",
-                "description": "Cost, latency, policy, and capability routing for governed workloads.",
-                "history_90d": _status_history_90d(degraded_days=[38, 81]),
-            },
-        ],
-        "history": [
-            {"day": "D-29", "status": "up"},
-            {"day": "D-28", "status": "up"},
-            {"day": "D-27", "status": "up"},
-            {"day": "D-26", "status": "up"},
-            {"day": "D-25", "status": "up"},
-            {"day": "D-24", "status": "up"},
-            {"day": "D-23", "status": "up"},
-            {"day": "D-22", "status": "up"},
-            {"day": "D-21", "status": "up"},
-            {"day": "D-20", "status": "up"},
-            {"day": "D-19", "status": "up"},
-            {"day": "D-18", "status": "up"},
-            {"day": "D-17", "status": "up"},
-            {"day": "D-16", "status": "degraded"},
-            {"day": "D-15", "status": "up"},
-            {"day": "D-14", "status": "up"},
-            {"day": "D-13", "status": "up"},
-            {"day": "D-12", "status": "up"},
-            {"day": "D-11", "status": "up"},
-            {"day": "D-10", "status": "up"},
-            {"day": "D-09", "status": "up"},
-            {"day": "D-08", "status": "up"},
-            {"day": "D-07", "status": "up"},
-            {"day": "D-06", "status": "up"},
-            {"day": "D-05", "status": "up"},
-            {"day": "D-04", "status": "up"},
-            {"day": "D-03", "status": "up"},
-            {"day": "D-02", "status": "up"},
-            {"day": "D-01", "status": "up"},
-            {"day": "Today", "status": "up"},
-        ],
-        "incidents": [
-            {
-                "date": "2026-05-18",
-                "title": "Brief policy telemetry delay",
-                "status": "resolved",
-                "impact": "Degraded status visibility for 3 minutes. Execution gates remained active.",
-            },
-            {
-                "date": "2026-05-11",
-                "title": "No customer-impacting incidents",
-                "status": "informational",
-                "impact": "Routine sovereign node maintenance completed without downtime.",
-            },
-        ],
+        "uptime_percent": uptime_pct,
+        "uptime_basis": "derived from incident_logs (no sub-day probe store); 100% = no recorded incident days",
+        "process_uptime_seconds": int((now - _PROCESS_START_WALL).total_seconds()),
+        "checks_passed_24h": int(checks_24h),
+        "active_incidents": active_incidents,
+        "avg_response_time_ms": traffic["avg_latency_ms"],
+        "components": components,
+        "services": services,
+        "history": history[-30:],
+        "incidents": incidents,
+        "simulated": False,
+        "source": "live_components+execution_logs+incident_logs",
     }
 
 

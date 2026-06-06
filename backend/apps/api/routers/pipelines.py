@@ -324,11 +324,10 @@ async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: Asy
     db.add(run)
     await db.commit()
     
-    # The frontend UI hardcodes 7 visual badges for test runs
-    ui_steps = [{"name": s} for s in ["Source", "Build", "Validate", "Test", "Stage", "Gate", "Deploy"]]
-    
-    # Start background execution
-    asyncio.create_task(run_pipeline_background(run_id, ui_steps, user.workspace_id or "default", user.id))
+    # Start graph-backed execution. The worker reads steps["graph"], topologically
+    # orders nodes, and executes registered adapters. Legacy pipelines without a
+    # graph still fall back to their saved step list.
+    asyncio.create_task(run_pipeline_background(run_id, steps, user.workspace_id or "default", user.id))
     
     return {
         "run_id": run_id,

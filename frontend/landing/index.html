@@ -241,7 +241,47 @@
       var fallback = document.getElementById('terminal-fallback');
       if (!iframe) return;
       var timer = setTimeout(function() { if (fallback) { iframe.style.display='none'; fallback.style.display='flex'; } }, 4000);
-      iframe.onload = function() { clearTimeout(timer); iframe.style.display='block'; if(fallback) fallback.style.display='none'; };
+      iframe.onload = function() { 
+        clearTimeout(timer); 
+        iframe.style.display='block'; 
+        if(fallback) fallback.style.display='none'; 
+
+        // Dynamic Resizing Logic
+        try {
+          var doc = iframe.contentDocument || iframe.contentWindow.document;
+          var container = iframe.closest('div[style*="height: 620px"]');
+          
+          if (container && doc) {
+            // Remove hardcoded overflow hidden inside the iframe body
+            var style = doc.createElement('style');
+            style.textContent = `
+              html, body, #root { height: auto !important; min-height: 100vh; overflow: visible !important; }
+              * { overflow: visible !important; }
+            `;
+            doc.head.appendChild(style);
+
+            container.style.transition = 'height 0.2s ease-out';
+            
+            var observer = new ResizeObserver(function() {
+              var newHeight = doc.body.scrollHeight;
+              if (newHeight > 620) {
+                container.style.height = (newHeight + 20) + 'px';
+              }
+            });
+            observer.observe(doc.body);
+            
+            // Fallback interval for deeply nested React DOM changes
+            setInterval(function() {
+                var currentH = doc.body.scrollHeight;
+                if (currentH > 620 && currentH > parseInt(container.style.height || "620", 10)) {
+                   container.style.height = (currentH + 20) + 'px';
+                }
+            }, 500);
+          }
+        } catch(e) {
+          console.warn("Could not setup auto-resize for iframe:", e);
+        }
+      };
       iframe.onerror = function() { clearTimeout(timer); iframe.style.display='none'; if(fallback) fallback.style.display='flex'; };
     })();
     </script>
@@ -885,80 +925,164 @@
 <section class="section" id="pricing">
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
-      <span class="label">Pricing</span>
-      <h2>Activate once. Fund your reserve. Pay for governed execution.</h2>
-      <p class="subtitle" style="margin:12px auto 0">No subscriptions. No token fiction. No surprise invoices.</p>
+      <span class="label">Pricing &amp; Packaging</span>
+      <h2>Transparent Pricing. Enterprise-Ready Governance.</h2>
+      <p class="subtitle" style="margin:12px auto 0">Start with a 30-day pilot. Scale to your full AI governance program. No hidden fees, no infrastructure lock-in.</p>
+      
+      <!-- Billing Cycle Toggle Switch -->
+      <div style="display:inline-flex;align-items:center;gap:12px;margin-top:24px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);padding:6px 12px;border-radius:30px;">
+        <span style="font-size:0.85rem;font-weight:600;color:var(--text-muted);" id="toggle-monthly-text">Monthly</span>
+        <button id="billing-toggle-btn" onclick="toggleBillingCycle()" style="width:42px;height:24px;border-radius:12px;background:#f97316;border:none;position:relative;cursor:pointer;padding:0;transition:background 0.3s;">
+          <span id="billing-toggle-knob" style="width:18px;height:18px;border-radius:50%;background:#ffffff;position:absolute;top:3px;left:3px;transition:left 0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+        </button>
+        <span style="font-size:0.85rem;font-weight:600;color:#ffffff;display:flex;align-items:center;gap:6px;" id="toggle-annual-text">
+          Annual <span style="background:hsla(24,95%,53%,0.15);color:hsl(24,95%,53%);font-size:0.7rem;padding:2px 8px;border-radius:10px;font-weight:700;">Save 20%</span>
+        </span>
+      </div>
     </div>
-    <div class="pricing-grid">
-      <!-- Free -->
+    
+    <div class="pricing-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
+      <!-- Starter -->
       <div class="card pricing-card">
-        <span class="label">Free Evaluation</span>
-        <div class="price" style="margin-top:8px">$0</div>
-        <div class="price-sub">No card required</div>
-        <ul>
-          <li>15 governed Playground runs</li>
-          <li>3 compare runs</li>
-          <li>20 policy tests</li>
-          <li>2 watermarked exports</li>
-          <li>BYOK provider testing</li>
-          <li>Tools browsing</li>
+        <span class="label">Starter</span>
+        <div class="price" style="margin-top:8px" id="pc-starter-price">$2,000</div>
+        <div class="price-sub" id="pc-starter-period">/mo (billed $24,000/yr)</div>
+        <ul id="pc-starter-features">
+          <li>Up to 5 models / agents</li>
+          <li>1M governed executions / month</li>
+          <li>ExecutionIdentity (up to 5 identities)</li>
+          <li>Policy Governance Layer — standard rules</li>
+          <li>Evidence Ledger — 12-month retention</li>
+          <li>SOC 2 evidence export (PDF)</li>
+          <li>Slack + email support (48hr SLA)</li>
+          <li>Vault, AWS, GCP integrations</li>
         </ul>
-        <a href="/workspace/login" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Start Free →</a>
+        <button onclick="openContactModal('starter')" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Start Pilot &rarr;</button>
+        <p style="text-align:center;font-size:0.75rem;color:var(--text-muted);margin-top:12px;">30-day pilot at $0. No credit card required.</p>
       </div>
-      <!-- Founding -->
+      
+      <!-- Growth -->
       <div class="card pricing-card card-highlight">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="label">Founding</span>
-          <span class="badge badge-orange">Most chosen</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <span class="label">Most Popular</span>
+          <span class="badge badge-orange">Growth</span>
         </div>
-        <div class="price" style="margin-top:8px">$395</div>
-        <div class="price-sub">One-time activation + $150 min reserve</div>
-        <ul>
-          <li>Playground run — $0.25</li>
-          <li>Compare run — $0.75</li>
-          <li>UACP compile — $1.50</li>
-          <li>Pipeline test — $0.25</li>
-          <li>Endpoint test — $0.50</li>
-          <li>BYOK Gov Calls — $6/1,000</li>
-          <li>Managed Gov Calls — $12/1,000</li>
+        <div class="price" style="margin-top:8px" id="pc-pro-price">$6,800</div>
+        <div class="price-sub" id="pc-pro-period">/mo (billed $81,600/yr)</div>
+        <ul id="pc-pro-features">
+          <li>Up to 25 models / agents</li>
+          <li>10M governed executions / month</li>
+          <li>ExecutionIdentity — unlimited instances per agent</li>
+          <li>Policy Governance Layer — advanced rules</li>
+          <li>Evidence Ledger — unlimited retention</li>
+          <li>SOC 2, HIPAA, ISO 27001 exports</li>
+          <li>EU AI Act documentation module</li>
+          <li>Real-time policy violation alerts</li>
+          <li>Dedicated Customer Success Manager</li>
+          <li>99.9% SLA with incident response</li>
+          <li>All Starter integrations + snowflake/db/lc</li>
         </ul>
-        <a href="/workspace/login" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:24px">Activate →</a>
+        <button onclick="openContactModal('growth')" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:24px">Start Pilot &rarr;</button>
+        <p style="text-align:center;font-size:0.75rem;color:var(--text-muted);margin-top:12px;">Includes 30-day pilot. Dedicated SE assigned.</p>
       </div>
-      <!-- Standard -->
+      
+      <!-- Enterprise -->
       <div class="card pricing-card">
-        <span class="label">Standard</span>
-        <div class="price" style="margin-top:8px">$795</div>
-        <div class="price-sub">One-time activation + $300 min reserve</div>
+        <span class="label">Enterprise</span>
+        <div class="price" style="margin-top:8px">Custom</div>
+        <div class="price-sub">For regulated enterprises &amp; platforms</div>
         <ul>
-          <li>Playground run — $0.40</li>
-          <li>Compare run — $1.20</li>
-          <li>UACP compile — $2.00</li>
-          <li>Pipeline test — $0.40</li>
-          <li>Endpoint test — $0.80</li>
-          <li>BYOK Gov Calls — $8/1,000</li>
-          <li>Managed Gov Calls — $16/1,000</li>
+          <li>Unlimited models / agents</li>
+          <li>Custom execution volume</li>
+          <li>Multi-tenant, federated identity</li>
+          <li>Custom PGL engine integration</li>
+          <li>Evidence Ledger — on-prem or VPC option</li>
+          <li>All compliance frameworks + custom mapping</li>
+          <li>FedRAMP In Process package (GovCloud)</li>
+          <li>HIPAA BAA included</li>
+          <li>Dedicated Solutions Engineer (embedded)</li>
+          <li>White-glove onboarding (&lt; 1 business day)</li>
+          <li>Custom SLA (99.99% available)</li>
+          <li>On-prem / air-gapped deployment option</li>
         </ul>
-        <a href="/workspace/login" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Activate →</a>
-      </div>
-      <!-- Regulated -->
-      <div class="card pricing-card">
-        <span class="label">Regulated / Enterprise</span>
-        <div class="price" style="margin-top:8px">$2,500+</div>
-        <div class="price-sub">Private terms + $2,500 min reserve</div>
-        <ul>
-          <li>BYOK Gov Calls — $10/1,000</li>
-          <li>Managed Gov Calls — $20/1,000</li>
-          <li>Private deployment</li>
-          <li>Procurement & security review</li>
-          <li>Custom SLA</li>
-        </ul>
-        <button onclick="openContactModal('sovereign')" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Talk to Sales &rarr;</button>
+        <button onclick="openContactModal('enterprise')" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Talk to Sales &rarr;</button>
       </div>
     </div>
   </div>
 </section>
 
+<script>
+let billingAnnual = true; // default annual view
+let starterMonthly = 2500;
+let starterAnnual = 2000;
+let growthMonthly = 8500;
+let growthAnnual = 6800;
+
+function updatePricingDisplay() {
+  if (billingAnnual) {
+    document.getElementById('pc-starter-price').textContent = '$' + starterAnnual.toLocaleString();
+    document.getElementById('pc-starter-period').textContent = '/mo (billed $' + (starterAnnual * 12).toLocaleString() + '/yr)';
+    document.getElementById('pc-pro-price').textContent = '$' + growthAnnual.toLocaleString();
+    document.getElementById('pc-pro-period').textContent = '/mo (billed $' + (growthAnnual * 12).toLocaleString() + '/yr)';
+  } else {
+    document.getElementById('pc-starter-price').textContent = '$' + starterMonthly.toLocaleString();
+    document.getElementById('pc-starter-period').textContent = '/mo (billed monthly)';
+    document.getElementById('pc-pro-price').textContent = '$' + growthMonthly.toLocaleString();
+    document.getElementById('pc-pro-period').textContent = '/mo (billed monthly)';
+  }
+}
+
+function toggleBillingCycle() {
+  billingAnnual = !billingAnnual;
+  const knob = document.getElementById('billing-toggle-knob');
+  const btn = document.getElementById('billing-toggle-btn');
+  const textM = document.getElementById('toggle-monthly-text');
+  const textA = document.getElementById('toggle-annual-text');
+  
+  if (billingAnnual) {
+    knob.style.left = '21px'; // move right (annual)
+    btn.style.background = '#f97316';
+    textM.style.color = 'var(--text-muted)';
+    textA.style.color = '#ffffff';
+  } else {
+    knob.style.left = '3px'; // move left (monthly)
+    btn.style.background = '#475569';
+    textM.style.color = '#ffffff';
+    textA.style.color = 'var(--text-muted)';
+  }
+  updatePricingDisplay();
+}
+
+// Set initial visual toggle state
+document.addEventListener('DOMContentLoaded', () => {
+  const knob = document.getElementById('billing-toggle-knob');
+  if (knob) knob.style.left = '21px';
+  updatePricingDisplay();
+});
+
+(async function loadPricing() {
+  try {
+    const res = await fetch('/api/v1/subscriptions/plans');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data || !data.plans) return;
+    const starter = data.plans.find(p => p.id === 'starter');
+    const pro = data.plans.find(p => p.id === 'growth' || p.id === 'pro');
+    if (!starter || !pro) return;
+    
+    // Read the dynamic milestone step pricing
+    starterMonthly = starter.starter_monthly || starterMonthly;
+    starterAnnual = starter.starter_annual || starterAnnual;
+    growthMonthly = pro.growth_monthly || growthMonthly;
+    growthAnnual = pro.growth_annual || growthAnnual;
+    
+    updatePricingDisplay();
+  } catch(e) { /* keep static fallback values */ }
+})();
+</script>
+
 <!-- Platform Transparency Pulse -->
+
 <section class="section section-alt" id="pulse">
   <div class="container">
     <div style="text-align:center;margin-bottom:40px">

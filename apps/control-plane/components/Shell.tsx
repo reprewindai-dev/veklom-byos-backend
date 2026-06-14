@@ -111,6 +111,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
+        {!(me as any).pgl_id && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 px-5 py-3 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2 text-amber-500 text-sm">
+              <Icons.AlertTriangle size={16} />
+              <span>Your account is not linked to the Provenance Governance Layer (PGL).</span>
+            </div>
+            <Link href="/signup/pgl" className="px-3 py-1.5 bg-amber-500 text-amber-950 text-xs font-semibold rounded-md hover:bg-amber-400 transition-colors">
+              Connect PGL
+            </Link>
+          </div>
+        )}
         <main className="flex-1 p-6 overflow-y-auto scroll-thin">{children}</main>
       </div>
     </div>

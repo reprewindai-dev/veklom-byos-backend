@@ -61,3 +61,18 @@ class PGLLedgerEvent(Base):
     prev_event_hash = Column(String(128), nullable=True)
     event_hash = Column(String(128), nullable=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+class PGLIdentity(Base):
+    """Cryptographic PGL Identity (Human Anchor)."""
+
+    __tablename__ = "pgl_identities"
+
+    id = Column(String(36), primary_key=True)               # matches users.pgl_id
+    tenant_id = Column(String(64), nullable=False, index=True)
+    primary_public_key = Column(String, nullable=False)     # Ed25519 public key (base64)
+    key_type = Column(String(32), nullable=False, default="ed25519")
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    rotated_at = Column(DateTime(timezone=True), nullable=True)
+    metadata_json = Column("metadata", JSON, default=dict)
+

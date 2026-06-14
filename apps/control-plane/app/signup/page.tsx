@@ -20,7 +20,7 @@ export default function SignupPage() {
     setBusy(true); setErr(undefined);
     try {
       await signup(email, pw, name || undefined);
-      router.replace("/dashboard");
+      router.replace("/signup/pgl");
     } catch (e) {
       setErr((e as Error).message);
     } finally {

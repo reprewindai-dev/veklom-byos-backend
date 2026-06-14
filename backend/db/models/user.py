@@ -47,6 +47,9 @@ class User(Base):
     github_username = Column(String(255), nullable=True)
     github_access_token = Column(String(512), nullable=True)
 
+    # PGL Identity
+    pgl_id = Column(String(36), unique=True, nullable=True, index=True)
+
     # MFA
     mfa_enabled = Column(Boolean, default=False)
     mfa_secret = Column(String(255), nullable=True)

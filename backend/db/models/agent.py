@@ -112,3 +112,21 @@ class AgentSkill(Base):
     input_schema: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     output_schema: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AgentIdentity(Base):
+    """Execution Identity mapping for agents. 
+    
+    Ties the agent instance back to the human PGL owner who created it.
+    """
+
+    __tablename__ = "agent_identities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)               # agent_id
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)              # human-readable name
+    created_by_pgl_id: Mapped[str] = mapped_column(String(36), nullable=False)  # who created/owns this agent (human PGL)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, default=dict)
+

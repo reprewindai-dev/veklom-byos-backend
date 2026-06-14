@@ -20,22 +20,21 @@ from backend.db.models.security import KillSwitchState
 router = APIRouter(tags=["Billing"])
 
 
-# Plan catalog - matches the landing page at veklom.com (source of truth)
-# Frontend tier keys: free / starter / pro / sovereign / enterprise
 PLAN_AMOUNTS = {
-    # Primary tier keys (match frontend + landing page)
-    "free":       {"amount": 0,      "monthly": 0,      "name": "Free Evaluation",    "description": "Free tier - 15 governed runs, no card required"},
-    "starter":    {"amount": 39500,  "monthly": 0,      "name": "Founding",           "description": "$395 one-time activation + $150 min reserve"},
-    "pro":        {"amount": 79500,  "monthly": 0,      "name": "Standard",           "description": "$795 one-time activation + $300 min reserve"},
-    "sovereign":  {"amount": 250000, "monthly": 0,      "name": "Regulated / Enterprise", "description": "$2,500+ private terms + $2,500 min reserve"},
-    "enterprise": {"amount": 0,      "monthly": 0,      "name": "Enterprise Custom",  "description": "Custom pricing - SAML/SCIM/SSO, Custom regions, Procurement-ready"},
-    # Legacy aliases (backward compat - keep for existing DB records)
-    "community":  {"amount": 0,      "monthly": 0,      "name": "Veklom Community",   "description": "Free tier - 15 governed runs"},
-    "growth":     {"amount": 29900,  "monthly": 29900,  "name": "Veklom Growth",      "description": "$299/mo - 5 deployments, Routing controls, Audit retention 30d"},
-    "founding":   {"amount": 39500,  "monthly": 39500,  "name": "Veklom Founding Activation + Reserve", "description": "Founding activation"},
-    "standard":   {"amount": 79500,  "monthly": 79500,  "name": "Veklom Standard Activation + Reserve", "description": "Standard activation"},
-    "regulated":  {"amount": 250000, "monthly": 250000, "name": "Veklom Regulated Activation + Reserve", "description": "Regulated activation"},
+    # New Monthly Subscription tiers (and their annual equivalents)
+    "free":       {"amount": 0,       "monthly": 0,      "name": "Free Evaluation",        "description": "Free tier - 15 governed runs, no card required"},
+    "starter":    {"amount": 250000,  "monthly": 250000, "name": "Starter Plan",           "description": "$2,500/mo - For teams deploying AI into production"},
+    "growth":     {"amount": 850000,  "monthly": 850000, "name": "Growth Plan",            "description": "$8,500/mo - For AI-native companies scaling governance"},
+    "sovereign":  {"amount": 0,       "monthly": 0,      "name": "Enterprise Custom",      "description": "Custom pricing - SAML/SCIM/SSO, Custom regions, Procurement-ready"},
+    "enterprise": {"amount": 0,       "monthly": 0,      "name": "Enterprise Custom",      "description": "Custom pricing - SAML/SCIM/SSO, Custom regions, Procurement-ready"},
+    # Legacy aliases (keep for existing DB records)
+    "community":  {"amount": 0,       "monthly": 0,      "name": "Veklom Community",       "description": "Free tier - 15 governed runs"},
+    "pro":        {"amount": 49500,   "monthly": 0,      "name": "Standard",               "description": "$495 one-time activation"},
+    "founding":   {"amount": 19500,   "monthly": 0,      "name": "Early Access",           "description": "Early Access activation"},
+    "standard":   {"amount": 49500,   "monthly": 0,      "name": "Standard Activation",    "description": "Standard activation"},
+    "regulated":  {"amount": 499500,  "monthly": 0,      "name": "Regulated Activation",   "description": "Regulated activation"},
 }
+
 
 
 def _stripe_ready() -> bool:
@@ -152,68 +151,72 @@ async def wallet_usage_stats(user=Depends(get_current_user)):
 
 
 # --- Subscriptions ---
+
+# (threshold, label, starter_monthly, starter_annual, growth_monthly, growth_annual)
+_MILESTONE_LEVELS = [
+    (20,   "Early Access",  250,  200,  850,  680),
+    (50,   "Founding",      500,  400,  1700, 1360),
+    (150,  "Growth",        1000, 800,  3400, 2720),
+    (350,  "Scale",         1750, 1400, 5950, 4760),
+    (None, "Established",   2500, 2000, 8500, 6800),
+]
+
+
 async def get_milestone_pricing(db: AsyncSession) -> dict:
+    """Return current pricing tier based on dual-trigger milestone thresholds.
+
+    Effective score = max(total_workspaces, active_workspaces_30d * 2.5)
+    """
+    from datetime import timedelta
     from backend.db.models.workspace import Workspace
+
     try:
         from sqlalchemy import func
-        ws_count = await db.scalar(select(func.count(Workspace.id)).where(Workspace.is_active == True)) or 0
+        total_ws = await db.scalar(
+            select(func.count(Workspace.id)).where(Workspace.is_active == True)
+        ) or 0
     except Exception:
-        ws_count = 0
+        total_ws = 0
 
-    if ws_count <= 50:
-        return {
-            "level": 1,
-            "starter_price": 395,
-            "starter_reserve": 150,
-            "starter_run": 0.25,
-            "starter_run_compare": 0.75,
-            "starter_run_compile": 1.50,
-            "starter_run_pipeline": 0.25,
-            "starter_run_endpoint": 0.50,
-            "pro_price": 795,
-            "pro_reserve": 300,
-            "pro_run": 0.40,
-            "pro_run_compare": 1.20,
-            "pro_run_compile": 2.00,
-            "pro_run_pipeline": 0.40,
-            "pro_run_endpoint": 0.80,
-        }
-    elif ws_count <= 250:
-        return {
-            "level": 2,
-            "starter_price": 495,
-            "starter_reserve": 150,
-            "starter_run": 0.35,
-            "starter_run_compare": 1.05,
-            "starter_run_compile": 2.10,
-            "starter_run_pipeline": 0.35,
-            "starter_run_endpoint": 0.70,
-            "pro_price": 995,
-            "pro_reserve": 300,
-            "pro_run": 0.55,
-            "pro_run_compare": 1.65,
-            "pro_run_compile": 2.75,
-            "pro_run_pipeline": 0.55,
-            "pro_run_endpoint": 1.10,
-        }
-    else:
-        return {
-            "level": 3,
-            "starter_price": 595,
-            "starter_reserve": 150,
-            "starter_run": 0.50,
-            "starter_run_compare": 1.50,
-            "starter_run_compile": 3.00,
-            "starter_run_pipeline": 0.50,
-            "starter_run_endpoint": 1.00,
-            "pro_price": 1195,
-            "pro_reserve": 300,
-            "pro_run": 0.75,
-            "pro_run_compare": 2.25,
-            "pro_run_compile": 3.75,
-            "pro_run_pipeline": 0.75,
-            "pro_run_endpoint": 1.50,
-        }
+    try:
+        from backend.db.models.ai import ExecLog
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        active_ws = await db.scalar(
+            select(func.count(func.distinct(ExecLog.workspace_id)))
+            .where(ExecLog.created_at >= cutoff)
+        ) or 0
+    except Exception:
+        active_ws = 0
+
+    effective_score = max(total_ws, int(active_ws * 2.5))
+
+    level_idx = len(_MILESTONE_LEVELS) - 1
+    for i, row in enumerate(_MILESTONE_LEVELS):
+        threshold = row[0]
+        if threshold is None or effective_score <= threshold:
+            level_idx = i
+            break
+
+    row = _MILESTONE_LEVELS[level_idx]
+    (threshold, label, starter_monthly, starter_annual, growth_monthly, growth_annual) = row
+
+    next_threshold = None
+    if level_idx < len(_MILESTONE_LEVELS) - 1:
+        next_threshold = _MILESTONE_LEVELS[level_idx + 1][0]
+
+    return {
+        "level": level_idx + 1,
+        "level_label": label,
+        "effective_score": effective_score,
+        "total_workspaces": total_ws,
+        "active_workspaces_30d": active_ws,
+        "next_threshold": next_threshold,
+        "spots_remaining": max(0, next_threshold - effective_score) if next_threshold else None,
+        "starter_monthly": starter_monthly,
+        "starter_annual": starter_annual,
+        "growth_monthly": growth_monthly,
+        "growth_annual": growth_annual,
+    }
 
 
 @router.get("/subscriptions/plans")
@@ -228,7 +231,16 @@ async def subscription_plans(db: AsyncSession = Depends(get_db)):
     Per-call costs deducted from reserve (Playground $0.25, Compare $0.75, etc.).
     """
     rates = await get_milestone_pricing(db)
-    return [
+    milestone = {
+        "level": rates["level"],
+        "level_label": rates["level_label"],
+        "spots_remaining": rates["spots_remaining"],
+        "next_threshold": rates["next_threshold"],
+        "effective_score": rates["effective_score"],
+    }
+    return {
+        "milestone": milestone,
+        "plans": [
         {
             "id": "free",
             "plan_id": "free",
@@ -258,80 +270,109 @@ async def subscription_plans(db: AsyncSession = Depends(get_db)):
             "id": "starter",
             "plan_id": "starter",
             "tier": "starter",
-            "name": "Founding",
-            "price": rates["starter_price"],
-            "price_label": f"${rates['starter_price']}",
-            "period": f"One-time activation + ${rates['starter_reserve']} min reserve",
+            "name": "Starter Plan",
+            "price": rates["starter_monthly"],
+            "starter_monthly": rates["starter_monthly"],
+            "starter_annual": rates["starter_annual"],
+            "price_label": f"${rates['starter_monthly']}",
+            "period": f"monthly (${rates['starter_annual']}/mo billed annually)",
             "features": [
-                f"Playground run - ${rates['starter_run']:.2f}",
-                f"Compare run - ${rates['starter_run_compare']:.2f}",
-                f"UACP compile - ${rates['starter_run_compile']:.2f}",
-                f"Pipeline test - ${rates['starter_run_pipeline']:.2f}",
-                f"Endpoint test - ${rates['starter_run_endpoint']:.2f}",
-                "BYOK Gov Calls - $6/1,000",
-                "Managed Gov Calls - $12/1,000",
+                "Up to 5 models / agents",
+                "1M governed executions / month",
+                "ExecutionIdentity (up to 5 identities)",
+                "Policy Governance Layer - standard rules",
+                "Evidence Ledger - 12-month retention",
+                "SOC 2 evidence export (PDF)",
+                "Slack + email support (48hr SLA)",
+                "Vault, AWS, GCP integrations",
             ],
             "bullets": [
-                f"Playground run - ${rates['starter_run']:.2f}",
-                f"Compare run - ${rates['starter_run_compare']:.2f}",
-                f"UACP compile - ${rates['starter_run_compile']:.2f}",
-                f"Pipeline test - ${rates['starter_run_pipeline']:.2f}",
-                f"Endpoint test - ${rates['starter_run_endpoint']:.2f}",
-                "BYOK Gov Calls - $6/1,000",
-                "Managed Gov Calls - $12/1,000",
+                "Up to 5 models / agents",
+                "1M governed executions / month",
+                "ExecutionIdentity (up to 5 identities)",
+                "Policy Governance Layer - standard rules",
+                "Evidence Ledger - 12-month retention",
+                "SOC 2 evidence export (PDF)",
+                "Slack + email support (48hr SLA)",
+                "Vault, AWS, GCP integrations",
             ],
         },
         {
-            "id": "pro",
-            "plan_id": "pro",
-            "tier": "pro",
-            "name": "Standard",
-            "price": rates["pro_price"],
-            "price_label": f"${rates['pro_price']}",
-            "period": f"One-time activation + ${rates['pro_reserve']} min reserve",
+            "id": "growth",
+            "plan_id": "growth",
+            "tier": "growth",
+            "name": "Growth Plan",
+            "price": rates["growth_monthly"],
+            "growth_monthly": rates["growth_monthly"],
+            "growth_annual": rates["growth_annual"],
+            "price_label": f"${rates['growth_monthly']}",
+            "period": f"monthly (${rates['growth_annual']}/mo billed annually)",
             "features": [
-                f"Playground run - ${rates['pro_run']:.2f}",
-                f"Compare run - ${rates['pro_run_compare']:.2f}",
-                f"UACP compile - ${rates['pro_run_compile']:.2f}",
-                f"Pipeline test - ${rates['pro_run_pipeline']:.2f}",
-                f"Endpoint test - ${rates['pro_run_endpoint']:.2f}",
-                "BYOK Gov Calls - $8/1,000",
-                "Managed Gov Calls - $16/1,000",
+                "Up to 25 models / agents",
+                "10M governed executions / month",
+                "ExecutionIdentity - unlimited instances per agent",
+                "Policy Governance Layer - advanced + context-aware rules",
+                "Evidence Ledger - unlimited retention",
+                "SOC 2, HIPAA, ISO 27001 evidence exports",
+                "EU AI Act documentation module",
+                "Real-time policy violation alerts",
+                "Dedicated Customer Success Manager",
+                "99.9% SLA with incident response",
+                "All Starter integrations + LangChain, Databricks, Snowflake",
             ],
             "bullets": [
-                f"Playground run - ${rates['pro_run']:.2f}",
-                f"Compare run - ${rates['pro_run_compare']:.2f}",
-                f"UACP compile - ${rates['pro_run_compile']:.2f}",
-                f"Pipeline test - ${rates['pro_run_pipeline']:.2f}",
-                f"Endpoint test - ${rates['pro_run_endpoint']:.2f}",
-                "BYOK Gov Calls - $8/1,000",
-                "Managed Gov Calls - $16/1,000",
+                "Up to 25 models / agents",
+                "10M governed executions / month",
+                "ExecutionIdentity - unlimited instances per agent",
+                "Policy Governance Layer - advanced + context-aware rules",
+                "Evidence Ledger - unlimited retention",
+                "SOC 2, HIPAA, ISO 27001 evidence exports",
+                "EU AI Act documentation module",
+                "Real-time policy violation alerts",
+                "Dedicated Customer Success Manager",
+                "99.9% SLA with incident response",
+                "All Starter integrations + LangChain, Databricks, Snowflake",
             ],
         },
         {
             "id": "sovereign",
             "plan_id": "sovereign",
             "tier": "sovereign",
-            "name": "Regulated / Enterprise",
-            "price": 2500,
-            "price_label": "$2,500+",
-            "period": "Private terms + $2,500 min reserve",
+            "name": "Enterprise Plan",
+            "price": 0,
+            "price_label": "Custom",
+            "period": "Talk to Sales",
             "features": [
-                "BYOK Gov Calls - $10/1,000",
-                "Managed Gov Calls - $20/1,000",
-                "Private deployment",
-                "Procurement & security review",
-                "Custom SLA",
+                "Unlimited models / agents",
+                "Custom execution volume",
+                "ExecutionIdentity - multi-tenant, federated identity",
+                "Policy Governance Layer - custom policy engine integration",
+                "Evidence Ledger - on-prem or VPC-deployed option",
+                "All compliance frameworks + custom mapping",
+                "FedRAMP In Process package (GovCloud)",
+                "HIPAA BAA included",
+                "Dedicated Solutions Engineer (embedded)",
+                "White-glove onboarding (< 1 business day)",
+                "Custom SLA (99.99% available)",
+                "On-prem / air-gapped deployment option",
             ],
             "bullets": [
-                "BYOK Gov Calls - $10/1,000",
-                "Managed Gov Calls - $20/1,000",
-                "Private deployment",
-                "Procurement & security review",
-                "Custom SLA",
+                "Unlimited models / agents",
+                "Custom execution volume",
+                "ExecutionIdentity - multi-tenant, federated identity",
+                "Policy Governance Layer - custom policy engine integration",
+                "Evidence Ledger - on-prem or VPC-deployed option",
+                "All compliance frameworks + custom mapping",
+                "FedRAMP In Process package (GovCloud)",
+                "HIPAA BAA included",
+                "Dedicated Solutions Engineer (embedded)",
+                "White-glove onboarding (< 1 business day)",
+                "Custom SLA (99.99% available)",
+                "On-prem / air-gapped deployment option",
             ],
         },
-    ]
+        ],
+    }
 
 
 

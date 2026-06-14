@@ -135,6 +135,7 @@ def _user_dict(user: User) -> dict:
         "github_username": user.github_username or "",
         "github_connected": bool(user.github_id and user.github_access_token),
         "github_account_id": user.github_id or "",
+        "pgl_id": getattr(user, "pgl_id", None) or "",
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "plan": plan,
         "is_admin": is_admin,
@@ -1533,6 +1534,54 @@ def _apikey_dict(k) -> dict:
         "status": "active" if k.is_active else "revoked",
     }
 
+
+@router.post("/pgl-onboard")
+async def onboard_pgl(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Provision a Provenance Governance Layer (PGL) identity for the user."""
+    import uuid
+    import base64
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.hazmat.primitives import serialization
+    from backend.db.models.pgl import PGLIdentity
+
+    if getattr(user, "pgl_id", None):
+        return {"success": True, "pgl_id": user.pgl_id, "message": "PGL already connected."}
+        
+    pgl_id = str(uuid.uuid4())
+    
+    # Generate Ed25519 keypair
+    private_key = ed25519.Ed25519PrivateKey.generate()
+    public_key = private_key.public_key()
+    
+    public_bytes = public_key.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw
+    )
+    public_key_b64 = base64.b64encode(public_bytes).decode('utf-8')
+    
+    identity = PGLIdentity(
+        id=pgl_id,
+        tenant_id=user.workspace_id or "default",
+        primary_public_key=public_key_b64,
+        key_type="ed25519"
+    )
+    db.add(identity)
+    
+    user.pgl_id = pgl_id
+    await db.commit()
+    await db.refresh(user)
+    
+    return {
+        "success": True,
+        "user_id": user.id,
+        "tenant_id": user.workspace_id,
+        "pgl_id": user.pgl_id,
+        "identity": {
+            "id": pgl_id,
+            "key_type": "ed25519",
+            "primary_public_key": public_key_b64,
+        }
+    }
 
 def _default_api_keys():
     return [

@@ -58,6 +58,12 @@ async def create_run(
     """
     Step 1: Capture intent and create the atomic VeklomRun.
     """
+    if not current_user.pgl_id:
+        raise HTTPException(
+            status_code=403,
+            detail="LAW0_PGL_REQUIRED: PGL identity is required to start governed runs."
+        )
+
     orchestrator = RunOrchestrator(db)
     
     # In a real scenario, workspace_id comes from active context or user model
@@ -67,7 +73,7 @@ async def create_run(
     run = await orchestrator.create_run(
         workspace_id=workspace_id,
         tenant_id=tenant_id,
-        actor_id=current_user.id,
+        actor_id=current_user.pgl_id,
         intent=intent
     )
     

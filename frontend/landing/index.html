@@ -245,42 +245,6 @@
         clearTimeout(timer); 
         iframe.style.display='block'; 
         if(fallback) fallback.style.display='none'; 
-
-        // Dynamic Resizing Logic
-        try {
-          var doc = iframe.contentDocument || iframe.contentWindow.document;
-          var container = iframe.closest('div[style*="height: 620px"]');
-          
-          if (container && doc) {
-            // Remove hardcoded overflow hidden inside the iframe body
-            var style = doc.createElement('style');
-            style.textContent = `
-              html, body, #root { height: auto !important; min-height: 100vh; overflow: visible !important; }
-              * { overflow: visible !important; }
-            `;
-            doc.head.appendChild(style);
-
-            container.style.transition = 'height 0.2s ease-out';
-            
-            var observer = new ResizeObserver(function() {
-              var newHeight = doc.body.scrollHeight;
-              if (newHeight > 620) {
-                container.style.height = (newHeight + 20) + 'px';
-              }
-            });
-            observer.observe(doc.body);
-            
-            // Fallback interval for deeply nested React DOM changes
-            setInterval(function() {
-                var currentH = doc.body.scrollHeight;
-                if (currentH > 620 && currentH > parseInt(container.style.height || "620", 10)) {
-                   container.style.height = (currentH + 20) + 'px';
-                }
-            }, 500);
-          }
-        } catch(e) {
-          console.warn("Could not setup auto-resize for iframe:", e);
-        }
       };
       iframe.onerror = function() { clearTimeout(timer); iframe.style.display='none'; if(fallback) fallback.style.display='flex'; };
     })();
@@ -782,7 +746,7 @@
       <div class="v3-side-mask-right"></div>
       <div class="v3-bottom-mask"></div>
       <div class="v3-blackbox-inner">
-        <iframe src="/gpc?api_base=https%3A%2F%2Fveklom.com%2Fapi%2Fv1&amp;source=veklom-byos-backend&amp;provider=ollama&amp;public_demo=1" title="Veklom V3 deterministic engine public preview" loading="lazy"></iframe>
+        <iframe src="https://gpc.veklom.com" title="Veklom V3 deterministic engine public preview" loading="lazy"></iframe>
       </div>
     </div>
   </div>

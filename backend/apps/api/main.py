@@ -565,7 +565,8 @@ from backend.apps.api.routers import (
     runs,
     smoke,
     edge,
-    x402
+    x402,
+    arena
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -706,6 +707,9 @@ app.include_router(plugins.router, prefix="/api/v1")
 # Exec alias for bundle's ${re}/v1/exec pattern (re=/api/v1 → /api/v1/v1/exec)
 app.include_router(exec_router.router, prefix="/api/v1/v1")
 
+# Veklom Authority Arena simulation endpoints
+app.include_router(arena.router)
+
 
 # --- Frontend static files ---
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "static"
@@ -718,6 +722,7 @@ REPOGATE_DIR = FRONTEND_DIR / "repogate"
 IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid" / "dist"
 LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 OPERATOR_CENTER_DIR = FRONTEND_DIR / "operator-center"
+ARENA_DIR = FRONTEND_DIR / "arena"
 
 
 def _mount_static():
@@ -743,6 +748,8 @@ def _mount_static():
         app.mount("/irongrid", StaticFiles(directory=str(IRONGRID_DIR), html=True), name="irongrid")
     if LOCKERPHYCER_DIR.exists():
         app.mount("/lockerphycer", StaticFiles(directory=str(LOCKERPHYCER_DIR), html=True), name="lockerphycer")
+    if ARENA_DIR.exists():
+        app.mount("/arena", StaticFiles(directory=str(ARENA_DIR), html=True), name="arena")
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
@@ -764,6 +771,15 @@ async def redirect_subscription_to_billing(request: Request):
     from fastapi.responses import RedirectResponse
     query_str = f"?{request.url.query}" if request.url.query else ""
     return RedirectResponse(url=f"/control-plane-next/billing/{query_str}", status_code=307)
+
+
+@app.get("/arena")
+@app.get("/arena/")
+async def serve_arena_page():
+    index_path = ARENA_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    raise HTTPException(status_code=404, detail="Arena build not found.")
 
 
 _mount_static()

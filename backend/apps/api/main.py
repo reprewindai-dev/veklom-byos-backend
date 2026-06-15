@@ -724,6 +724,7 @@ LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 OPERATOR_CENTER_DIR = FRONTEND_DIR / "operator-center"
 ARENA_DIR = FRONTEND_DIR / "arena"
 FAULT_MATRIX_DIR = FRONTEND_DIR / "fault-matrix" / "dist"
+UACPV3_DIR = Path(__file__).resolve().parent.parent.parent.parent / "uacpv3" / "dist"
 
 
 def _mount_static():
@@ -753,6 +754,9 @@ def _mount_static():
         app.mount("/arena", StaticFiles(directory=str(ARENA_DIR), html=True), name="arena")
     if FAULT_MATRIX_DIR.exists():
         app.mount("/fault-matrix", StaticFiles(directory=str(FAULT_MATRIX_DIR), html=True), name="fault-matrix")
+    if UACPV3_DIR.exists():
+        app.mount("/uacpv3", StaticFiles(directory=str(UACPV3_DIR), html=True), name="uacpv3")
+        app.mount("/uacp", StaticFiles(directory=str(UACPV3_DIR), html=True), name="uacp")
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

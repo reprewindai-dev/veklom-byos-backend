@@ -259,11 +259,11 @@ def _resolve_github_oauth_values(request: Optional[Request] = None) -> dict:
 
     redirect_uri = values["redirect_uri"]
     if not (_is_real_config_value(redirect_uri) and not _looks_concatenated_env(redirect_uri) and redirect_uri.startswith("http")):
-        base = (settings.API_BASE_URL or "").strip().rstrip("/")
-        if base.startswith("http"):
-            values["redirect_uri"] = f"{base}/api/v1/auth/github/callback"
-        elif request is not None:
+        if request is not None:
             values["redirect_uri"] = f"{_external_origin(request)}/api/v1/auth/github/callback"
+        else:
+            base = (settings.API_BASE_URL or "").strip().rstrip("/")
+            values["redirect_uri"] = f"{base}/api/v1/auth/github/callback"
 
     return values
 
@@ -1391,7 +1391,20 @@ async def github_callback(
     next_url = next_url_from_state or request.cookies.get("github_next_url") or ""
 
     if request.method == "GET":
-        response = HTMLResponse(content=_github_bridge_html(app_access_token, app_refresh_token, user, next_url))
+        frontend_url = settings.FRONTEND_URL.rstrip("/")
+        if "localhost" in frontend_url:
+            frontend_url = _external_origin(request)
+            
+        if next_url and (next_url.startswith("/") or next_url.startswith("https://") or next_url.startswith("http://")):
+            # Make sure relative URLs are appended to frontend_url
+            if next_url.startswith("/"):
+                final_url = f"{frontend_url}{next_url}"
+            else:
+                final_url = next_url
+        else:
+            final_url = f"{frontend_url}/control-plane-next/dashboard/"
+            
+        response = HTMLResponse(content=_github_bridge_html(app_access_token, app_refresh_token, user, final_url))
         response.delete_cookie("github_next_url")
         return response
 

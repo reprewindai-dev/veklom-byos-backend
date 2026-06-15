@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Veklom Sovereign AI Hub — Turn AI experiments into governed private workflows</title>
-<meta name="description" content="Playground, GPC, Models, Tool Hub, Pipelines, Governance, Vault, Deployments, Monitoring, Billing in one tenant-scoped workspace.">
+<title>Veklom Sovereign AI Hub - Governed execution layer for AI agents</title>
+<meta name="description" content="Veklom governs AI-agent workflows before production by compiling intent into policy-checked plans, routing execution, and sealing replayable audit evidence.">
 <meta name="theme-color" content="#0A0A0A">
+<meta name="base:app_id" content="6a142b35643955c6d859b9ea">
 <link rel="canonical" href="https://veklom.com/">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20260520-veklom">
 <link rel="shortcut icon" href="/favicon.ico?v=20260520-veklom">
@@ -16,7 +17,7 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://veklom.com/">
 <meta property="og:title" content="Veklom Sovereign AI Hub">
-<meta property="og:description" content="Test, plan, govern, deploy, and prove private AI from one tenant-scoped workspace.">
+<meta property="og:description" content="Veklom governs AI-agent workflows before they touch production through policy-checked plans, isolated execution, and replayable audit evidence.">
 <meta property="og:image" content="https://veklom.com/og-image.png">
 <meta property="og:image:secure_url" content="https://veklom.com/og-image.png">
 <meta property="og:image:width" content="1792">
@@ -26,7 +27,7 @@
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Veklom Sovereign AI Hub">
-<meta name="twitter:description" content="Test, plan, govern, deploy, and prove private AI from one tenant-scoped workspace.">
+<meta name="twitter:description" content="Veklom governs AI-agent workflows before they touch production through policy-checked plans, isolated execution, and replayable audit evidence.">
 <meta name="twitter:image" content="https://veklom.com/twitter-card.png">
 <meta name="twitter:image:alt" content="Veklom Sovereign AI Hub brand card">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,6 +35,109 @@
 <link rel="stylesheet" href="/static/css/veklom.css">
 <link rel="stylesheet" href="/static/css/brand.css">
 <script src="/config.js"></script>
+<!-- JSON-LD Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Veklom Sovereign AI Hub",
+  "description": "Veklom is an API-native governed execution layer for teams, developers, enterprise, and autonomous agents. Teams use the workspace. Developers use the API. Agents use paid routes via x402 (USDC on Base). Enterprise uses the governance and evidence layer.",
+  "url": "https://veklom.com",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "offers": {
+    "@type": "Offer",
+    "price": "395",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock"
+  },
+  "creator": {
+    "@type": "Organization",
+    "name": "Veklom",
+    "url": "https://veklom.com"
+  },
+  "featureList": [
+    "Policy-checked AI execution",
+    "Signed audit evidence",
+    "SOC2-ready compliance",
+    "HIPAA-aware data handling",
+    "GDPR-compliant",
+    "EU-sovereign deployment",
+    "BYOK credential management",
+    "Real-time cost controls",
+    "x402 agent micropayments (USDC on Base)",
+    "Operating reserve billing",
+    "Machine-readable discovery (.well-known)",
+    "Kill switch at agent/tenant/system level"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Veklom",
+  "url": "https://veklom.com",
+  "logo": "https://veklom.com/static/branding/veklom-wordmark.png",
+  "description": "Veklom is an API-native governed execution layer. Teams use the workspace. Developers use the API. Agents use paid routes via x402. Enterprise uses the governance and evidence layer (SOC2, HIPAA, GDPR, audit evidence, kill switches).",
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "email": "founder@company.com",
+    "contactType": "sales"
+  }
+}
+</script>
+
+<!-- PostHog -->
+<script>
+  !function(t,e){var o,n,p,r;e.__SV=1,(t.posthog=e.posthog||[]).init=function(i,s,a){
+    function c(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),
+      t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}} 
+    p=e.createElement("script"),p.type="text/javascript",p.async=!0,
+    p.src="https://app.posthog.com/static/array.js",r=e.getElementsByTagName("script")[0],r.parentNode.insertBefore(p,r);
+    var u=e.posthog;u._i=[];u.init=function(t,e,o){function n(t,e){var o=e.split(".");
+      2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}} 
+      var p=u;void 0!==o?p=u[o]=[]:o="posthog";p.people=p.people||[];p.toString=function(t){var e="posthog";
+      return"posthog"!==o&&(e+="."+o),t||(e+=" (stub)"),e};p.people.toString=function(){return p.toString(1)+".people (stub)"};
+      var r="capture identify alias people.set people.set_once people.unset reset group".split(" ");
+      for(var i=0;i<r.length;i++)n(p,r[i]);u._i.push([t,e,o])};
+    e.posthog.init(i,s,a)
+  }(document,window);
+  posthog.init('REPLACE_ME_POSTHOG_KEY',{api_host:'https://app.posthog.com'});
+</script>
+
+<!-- Hotjar -->
+<script>
+  (function(h,o,t,j,a,r){
+    h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};
+    h._hjSettings={hjid: 'REPLACE_ME_HOTJAR_ID', hjsv: 6};
+    a=o.getElementsByTagName('head')[0];
+    r=o.createElement('script');r.async=1;r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;
+    a.appendChild(r);
+  })(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');
+</script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const btns = document.querySelectorAll('a, button');
+    btns.forEach(btn => {
+      if (btn.innerText && btn.innerText.match(/Demo|Get Started/i)) {
+        btn.addEventListener('click', () => {
+          if (window.posthog) window.posthog.capture('cta:demo_clicked');
+        });
+      }
+    });
+  });
+</script>
+
+<!-- PlaybookUX -->
+<script>
+  (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://cdn.playbookux.com/snippet/REPLACE_ME_PLAYBOOKUX_KEY'+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','REPLACE_ME_PLAYBOOKUX_KEY');
+</script>
 </head>
 <body>
 
@@ -47,104 +151,699 @@
       <a href="#ecosystem">Ecosystem</a>
       <a href="#compare">Compare</a>
       <a href="#pricing">Pricing</a>
-      <a href="/workspace">Workspace</a>
-      <a href="/api/v1/platform/uptime" class="badge badge-green">● Operational</a>
+      <a href="/workspace/">Workspace</a>
+      <a href="/uptime" class="badge badge-status">◆ Operational</a>
       <a href="/workspace/login" class="btn btn-primary btn-sm">Sign In</a>
     </div>
   </div>
 </nav>
 
+<!-- Compliance Status Strip -->
+<div class="compliance-strip">
+  <div class="container compliance-strip-inner">
+    <span class="compliance-badge">SOC2-Ready</span>
+    <span class="compliance-badge">HIPAA-Aware</span>
+    <span class="compliance-badge">GDPR-Compliant</span>
+    <span class="compliance-badge">EU-Sovereign</span>
+    <span class="compliance-badge">ISO27001-Aligned</span>
+    <span class="compliance-badge">FedRAMP-Ready</span>
+    <a href="/legal/security" class="compliance-link">View security posture →</a>
+  </div>
+</div>
+
 <!-- Hero -->
-<section class="hero">
+<section class="hero" style="padding-bottom: 40px;">
   <div class="container">
     <img src="/static/branding/veklom-wordmark.png" alt="Veklom" class="veklom-wordmark" style="height:84px;margin:0 auto 28px;display:block">
-    <span class="label brand-kicker">Sovereign AI Hub</span>
-    <h1>Veklom is the governed operational runtime for AI systems.</h1>
+    <span class="label brand-kicker" style="font-size: 0.8rem;">Sovereign AI Operating Infrastructure</span>
+    <h1 style="margin-top: 16px; max-width: 900px; margin-left: auto; margin-right: auto;">The era of &ldquo;trust us&rdquo; AI is over.<br>Veklom is built for &ldquo;show us&rdquo; AI.</h1>
+    <p class="subtitle" style="margin: 20px auto 32px; font-size: 1.15rem; line-height: 1.6; max-width: 780px;">
+      Veklom moves AI from uncoordinated experimentation into governed production.
+      From prompt to plan to proof &mdash; with replayable evidence at every step.
+    </p>
+    <div style="display:flex;gap:0;justify-content:center;margin-bottom:32px;flex-wrap:wrap;">
+      <span style="padding:10px 20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.25);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);">Prompt</span>
+      <span style="padding:10px 8px;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;">&rarr;</span>
+      <span style="padding:10px 20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.25);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);">Plan</span>
+      <span style="padding:10px 8px;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;">&rarr;</span>
+      <span style="padding:10px 20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.25);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);">Pipeline</span>
+      <span style="padding:10px 8px;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;">&rarr;</span>
+      <span style="padding:10px 20px;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.4);font-family:var(--font-mono);font-size:0.85rem;color:var(--orange-500);font-weight:600;">Proof</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:32px;">
+      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Teams &rarr; Workspace</span>
+      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Developers &rarr; API</span>
+      <span style="padding:6px 14px;border:1px solid var(--orange-500);border-radius:999px;font-size:0.8rem;color:var(--orange-500);">Agents &rarr; Paid Routes (x402)</span>
+      <span style="padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:999px;font-size:0.8rem;color:var(--text-secondary);">Enterprise &rarr; Governance Layer</span>
+    </div>
     <div class="hero-cta">
-      <a href="/workspace/login" class="btn btn-primary">Sign In →</a>
-      <a href="#ecosystem" class="btn btn-secondary">Explore the Ecosystem</a>
-      <a href="/gpc" class="btn" style="background:var(--surface-sunken);color:var(--text-secondary);border:1px solid var(--border)">GPC Demo</a>
-      <a href="/repolgate" class="btn" style="background:var(--surface-sunken);color:var(--text-secondary);border:1px solid var(--border)">Repolgate Demo</a>
-    </div>
-    <div style="margin-top:24px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
-      <span class="badge badge-green">● Live backend connected</span>
-      <span class="badge badge-orange">SOC2-ready · HIPAA-aware · EU-sovereign</span>
-      <span class="badge badge-orange">Zero key exposure</span>
-      <span class="badge" style="background:#000;border:1px solid #333;color:#fff;font-family:monospace">
-        Coolify Build: <span style="color:#4ade80">v1.2.4-stable</span> (Deployed 2m ago)
-      </span>
-    </div>
-  </div>
-</section>
-
-<!-- GPC Public Demo Embed -->
-<section class="section" style="padding-top: 0;">
-  <div class="container">
-    <div style="text-align:center;margin-bottom:24px">
-      <span class="label">Governed Plan Compiler (GPC) Demo</span>
-      <h2 style="font-size: 1.5rem;">Messy intent in. Governed execution out.</h2>
+      <a href="/signup" class="btn btn-primary" style="padding: 14px 32px;" onclick="if(window.posthog) window.posthog.capture('hero_cta_click', { page: 'home' });">Start Free Eval</a>
+      <a href="#terminal-simulation" class="btn btn-secondary" style="padding: 14px 32px;">Start a governed repo review</a>
+      <a href="/workspace/" class="btn btn-secondary" style="padding: 14px 32px;">Open Workspace</a>
     </div>
     
-    <div class="v3-blackbox-frame" style="margin: 0 auto; position: relative; width: 100%; max-width: 1120px; height: 680px; overflow: hidden; border-radius: 28px; background: #020617; border: 1px solid var(--border);">
-      <div class="v3-side-mask-left" style="position: absolute; top: 0; bottom: 0; width: 220px; pointer-events: none; background: #020617; z-index: 20; left: 0;"></div>
-      <div class="v3-side-mask-right" style="position: absolute; top: 0; bottom: 0; width: 220px; pointer-events: none; background: #020617; z-index: 20; right: 0;"></div>
-      <div class="v3-blackbox-inner" style="position: absolute; top: 0; left: 50%; width: 1440px; height: 100%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center;">
-        <iframe src="/gpc/?public_demo=1" style="width: 100%; height: 100%; border: none; background: #0a0a0c;"></iframe>
-      </div>
+    <div class="hero-badges">
+      <span class="hero-badge-pill"><span style="color: var(--green);">●</span> Backend live — veklom.com</span>
+      <span class="hero-badge-pill">35+ teams signed up</span>
+      <span class="hero-badge-pill">Sovereign Hetzner EU nodes</span>
+      <span class="hero-badge-pill">BYOS ready</span>
+      <span class="hero-badge-pill">Live Demo</span>
     </div>
   </div>
 </section>
 
-<!-- Ecosystem / Product Language -->
-<section class="section section-alt" id="ecosystem">
+<!-- Terminal Simulation -->
+<section class="section" id="terminal-simulation" style="padding-top: 0; padding-bottom: 60px;">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:16px">
+      <span class="label">Interactive Simulation</span>
+      <h2 style="font-size: 1.75rem; margin-top: 8px;">Run a governed repo review</h2>
+      <p style="color:var(--text-secondary);margin-top:8px;font-size:0.95rem;">Watch Veklom test, verify, and gate an agent against a real repository — before it touches production.</p>
+    </div>
+
+    <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #080b0f; box-shadow: 0 20px 50px rgba(0,0,0,0.55); height: 620px; position: relative;">
+      <iframe src="/repogate/" style="width: 100%; height: 100%; border: none; display: block;" title="Veklom RepoGate governed review" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+      <div id="terminal-fallback" style="display:none;position:absolute;inset:0;background:#080b0f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
+        <div style="font-family:monospace;font-size:13px;color:#22c55e;max-width:600px;text-align:left;padding:24px;border:1px solid rgba(34,197,94,.3);border-radius:8px;">
+          <div style="color:#f97316;margin-bottom:12px;">▶ veklom / governed-repo-review</div>
+          <div>$ veklom run --policy outbound.public --repo reprewindai-dev/veklom-byos-backend</div>
+          <div style="color:#9ca3af;margin-top:8px;">→ Compiling intent... ✓ policy gate: PASS</div>
+          <div style="color:#9ca3af;">→ Agent review started — 9 files queued</div>
+          <div style="color:#9ca3af;">→ PHI scan: 0 entities detected</div>
+          <div style="color:#22c55e;margin-top:8px;">✓ Governed review complete · audit sealed · sha256:a3f8b...</div>
+        </div>
+        <a href="/workspace/" class="btn btn-primary" style="padding:12px 28px;">Open Live Terminal →</a>
+      </div>
+    </div>
+    <script>
+    (function(){
+      var iframe = document.querySelector('#terminal-simulation iframe');
+      var fallback = document.getElementById('terminal-fallback');
+      if (!iframe) return;
+      var timer = setTimeout(function() { if (fallback) { iframe.style.display='none'; fallback.style.display='flex'; } }, 4000);
+      iframe.onload = function() { 
+        clearTimeout(timer); 
+        iframe.style.display='block'; 
+        if(fallback) fallback.style.display='none'; 
+      };
+      iframe.onerror = function() { clearTimeout(timer); iframe.style.display='none'; if(fallback) fallback.style.display='flex'; };
+    })();
+    </script>
+  </div>
+</section>
+
+<!-- The Problem Section -->
+<section class="section section-alt" id="problem">
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
-      <span class="label">Ecosystem Hierarchy</span>
-      <h2>The Sovereign Infrastructure</h2>
+      <span class="label">The Problem</span>
+      <h2>Agents are getting access to real systems.<br>Without enough control.</h2>
+      <p class="subtitle" style="margin:16px auto 0; max-width: 720px;">
+        Engineering teams want to use AI agents — but they don't trust them near repositories, cloud tools, customer data, or production workflows. That instinct is right. Veklom answers it.
+      </p>
     </div>
-    <div class="grid-3">
-      <div class="card card-highlight">
-        <h3 style="color:var(--orange-500)">UACP</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The constitutional coordination layer that governs execution.</p>
+    
+    <div class="problem-grid">
+      <!-- 1 -->
+      <div class="problem-card">
+        <span class="problem-icon">🔐</span>
+        <h3>Inspected Safely</h3>
+        <p>"Can I let an agent inspect our repo safely without risking leaks or unintended commits?"</p>
       </div>
-      <div class="card">
-        <h3>V3</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The black-box interface where messy intent becomes structured output.</p>
+      <!-- 2 -->
+      <div class="problem-card">
+        <span class="problem-icon">👁</span>
+        <h3>Real-Time Telemetry</h3>
+        <p>"Can I see exactly what the agent did, every file it read, and every API call it made?"</p>
       </div>
-      <div class="card">
-        <h3>GPC</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The internal planner/compiler that prepares execution plans.</p>
+      <!-- 3 -->
+      <div class="problem-card">
+        <span class="problem-icon">🚫</span>
+        <h3>Risky Path Gating</h3>
+        <p>"Can I dynamically block risky, destructive, or out-of-scope actions before they commit?"</p>
       </div>
-      <div class="card">
-        <h3>Marketplace</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">Where vertical modules, tools, and agent capabilities plug in.</p>
+      <!-- 4 -->
+      <div class="problem-card">
+        <span class="problem-icon">🔑</span>
+        <h3>Zero Key Exposure</h3>
+        <p>"Can I isolate sensitive tokens, secrets, and provider credentials away from the frontend?"</p>
       </div>
-      <div class="card">
-        <h3>GreenVision</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The carbon/cost-aware routing vertical.</p>
+      <!-- 5 -->
+      <div class="problem-card">
+        <span class="problem-icon">📋</span>
+        <h3>Audit-Ready Records</h3>
+        <p>"Can I produce a sealed, unalterable record if compliance asks why and how this agent ran?"</p>
       </div>
-      <div class="card">
-        <h3>IronGrid / NeuralMesh</h3>
-        <p style="color:var(--text-secondary);margin-top:8px">The routing and pathfinding substrate.</p>
+      <!-- 6 -->
+      <div class="problem-card">
+        <span class="problem-icon">🏠</span>
+        <h3>Sovereign Infrastructure</h3>
+        <p>"Can I run this runtime privately on our own infrastructure without paying public cloud taxes?"</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- How It Works -->
+<!-- Product & Deployment Section -->
+<section class="section" id="deployment-options">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:48px">
+      <span class="label">Product & Deployment</span>
+      <h2>One governed runtime. Three operating boundaries.</h2>
+      <p class="subtitle" style="margin:16px auto 0; max-width: 760px;">
+        Start hosted, move to a dedicated sovereign node, or deploy BYOS. The same Veklom core governs playground tests, command-center telemetry, policy gates, and replayable audit evidence.
+      </p>
+    </div>
+    
+    <div class="model-grid">
+      <!-- 01 -->
+      <div class="model-card">
+        <div class="model-number">01</div>
+        <span class="model-icon">☁️</span>
+        <div class="model-kicker">Hosted Workspace</div>
+        <h3>Start governed immediately.</h3>
+        <p>Use Playground and Command Center on Veklom's managed secure cloud. Test agents, connect repositories, monitor runtime activity, and seal audit logs before production access.</p>
+        <div class="model-features">
+          <span class="model-tag">Instant setup</span>
+          <span class="model-tag">Playground</span>
+          <span class="model-tag">Command Center</span>
+          <span class="model-tag">Audit logging</span>
+        </div>
+        <a href="/workspace/login" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Start Free Eval</a>
+      </div>
+      <!-- 02 -->
+      <div class="model-card">
+        <div class="model-number">02</div>
+        <span class="model-icon">🔒</span>
+        <div class="model-kicker">Sovereign Node</div>
+        <h3>Run on dedicated EU hardware.</h3>
+        <p>Move the same governed runtime onto an isolated Hetzner EU node dedicated to your team. Keep data residency, policy gates, telemetry, and evidence under one boundary.</p>
+        <div class="model-features">
+          <span class="model-tag">Dedicated runtime</span>
+          <span class="model-tag">Hetzner EU</span>
+          <span class="model-tag">GPC decisions</span>
+          <span class="model-tag">Custom policy gates</span>
+        </div>
+        <a href="/workspace/login" class="btn btn-primary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Deploy Dedicated Node</a>
+      </div>
+      <!-- 03 -->
+      <div class="model-card">
+        <div class="model-number">03</div>
+        <span class="model-icon">🏠</span>
+        <div class="model-kicker">BYOS / Self-Hosted</div>
+        <h3>Own the full execution boundary.</h3>
+        <p>Deploy Veklom inside your private VPC, on-prem environment, or dark-site infrastructure. Same policy-governed runtime, without cloud egress or provider taxes.</p>
+        <div class="model-features">
+          <span class="model-tag">Your servers</span>
+          <span class="model-tag">Air-gap ready</span>
+          <span class="model-tag">Zero cloud tax</span>
+          <span class="model-tag">Enterprise SLA</span>
+        </div>
+        <button onclick="openContactModal('enterprise')" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; margin-top: 24px;">Talk to Sales</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- Machine Economy Section -->
+<section class="section section-alt" id="machine-economy" style="border-top: 1px solid var(--border);">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:48px">
+      <span class="label">Machine Economy</span>
+      <h2>Agents can discover, call, pay for, and verify APIs.</h2>
+      <p class="subtitle" style="margin:16px auto 0; max-width: 760px;">
+        The old internet required a human to sign up and add a card. The new pattern is different.
+        Agents find APIs, read the listing, pay per call, receive the result, and record proof &mdash; automatically.
+      </p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start;max-width:960px;margin:0 auto;">
+
+      <!-- Old pattern -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;padding:32px;">
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:16px;">Old Pattern</div>
+        <div style="font-family:var(--font-mono);font-size:0.85rem;line-height:2;color:var(--text-secondary);">
+          <div>human finds website</div>
+          <div>&darr;</div>
+          <div>signs up</div>
+          <div>&darr;</div>
+          <div>adds card</div>
+          <div>&darr;</div>
+          <div>uses API</div>
+        </div>
+      </div>
+
+      <!-- New pattern -->
+      <div style="background:rgba(249,115,22,0.05);border:1px solid rgba(249,115,22,0.3);border-radius:12px;padding:32px;">
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--orange-500);margin-bottom:16px;">New Pattern (x402)</div>
+        <div style="font-family:var(--font-mono);font-size:0.85rem;line-height:2;color:var(--text-secondary);">
+          <div style="color:var(--green);">agent finds API</div>
+          <div>&darr;</div>
+          <div style="color:var(--green);">reads /.well-known/x402.json</div>
+          <div>&darr;</div>
+          <div style="color:var(--green);">pays per call (USDC, Base)</div>
+          <div>&darr;</div>
+          <div style="color:var(--green);">receives result + evidence receipt</div>
+          <div>&darr;</div>
+          <div style="color:var(--green);">records proof on-chain</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audience pills styling -->
+    <style>
+      .audience-pills-container {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 48px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+      .audience-pill {
+        padding: 10px 24px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .audience-pill:hover {
+        border-color: rgba(255, 255, 255, 0.25);
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-primary);
+      }
+      .audience-pill.active {
+        border-color: hsl(24, 95%, 53%);
+        background: hsla(24, 95%, 53%, 0.12);
+        color: hsl(24, 95%, 53%);
+        box-shadow: 0 0 20px hsla(24, 95%, 53%, 0.2);
+        text-shadow: 0 0 10px hsla(24, 95%, 53%, 0.2);
+      }
+      .audience-panel {
+        display: none;
+        opacity: 0;
+        transform: translateY(10px);
+        transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .audience-panel.active {
+        display: block;
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .audience-panel-card {
+        background: rgba(15, 15, 20, 0.6);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 40px;
+        max-width: 960px;
+        margin: 0 auto;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      }
+      .audience-panel-grid {
+        display: grid;
+        grid-template-columns: 1.25fr 1fr;
+        gap: 40px;
+        align-items: center;
+      }
+      @media (max-width: 768px) {
+        .audience-panel-grid {
+          grid-template-columns: 1fr;
+          gap: 24px;
+        }
+        .audience-panel-card {
+          padding: 24px;
+        }
+      }
+      .feature-chips-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0 0;
+      }
+      .feature-chip {
+        padding: 6px 12px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 0.8rem;
+        font-family: var(--font-mono);
+        color: var(--text-secondary);
+        transition: all 0.2s ease;
+      }
+      .feature-chip:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.12);
+        color: var(--text-primary);
+      }
+    </style>
+
+    <!-- Homepage audience pills -->
+    <div class="audience-pills-container">
+      <button class="audience-pill active" onclick="switchAudience('teams')" id="pill-teams">Teams</button>
+      <button class="audience-pill" onclick="switchAudience('developers')" id="pill-developers">Developers</button>
+      <button class="audience-pill" onclick="switchAudience('agents')" id="pill-agents">Agents</button>
+      <button class="audience-pill" onclick="switchAudience('enterprise')" id="pill-enterprise">Enterprise</button>
+    </div>
+
+    <!-- Audience Panels -->
+    <div style="margin-top: 16px; min-height: 380px;">
+      
+      <!-- Panel: Teams -->
+      <div class="audience-panel active" id="panel-teams">
+        <div class="audience-panel-card" style="border-color: hsla(24, 95%, 53%, 0.25); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 0 12px hsla(24, 95%, 53%, 0.05);">
+          <div class="audience-panel-grid">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-500); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>👤</span> governed workspace
+              </div>
+              <h3 style="font-size: 1.85rem; line-height: 1.25; margin-bottom: 16px; font-weight: 800; color: #fff;">Give your team a governed AI workspace.</h3>
+              <p style="font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+                Use the Playground, Marketplace, Pipelines, Monitoring Wall, Compliance Wall, Govern UI, and Terminal in one control plane. Explore everything in Free, then unlock production execution when your team is ready.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/signup" class="btn btn-primary" style="padding: 12px 24px;">Start Free Evaluation</a>
+                <a href="/workspace/" class="btn btn-secondary" style="padding: 12px 24px;">Explore Workspace</a>
+              </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 24px;">
+              <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.05em;">Workspace Focus Area</div>
+              <div class="feature-chips-container">
+                <span class="feature-chip">Workspace</span>
+                <span class="feature-chip">Playground</span>
+                <span class="feature-chip">Team Command Center</span>
+                <span class="feature-chip">Monitoring Wall</span>
+                <span class="feature-chip">Compliance Wall</span>
+                <span class="feature-chip">Govern UI</span>
+                <span class="feature-chip">Marketplace</span>
+                <span class="feature-chip">Evidence</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Developers -->
+      <div class="audience-panel" id="panel-developers">
+        <div class="audience-panel-card">
+          <div class="audience-panel-grid">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-500); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>💻</span> build & deploy
+              </div>
+              <h3 style="font-size: 1.85rem; line-height: 1.25; margin-bottom: 16px; font-weight: 800; color: #fff;">Veklom as the governed build/deploy layer.</h3>
+              <p style="font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+                Connect to secure endpoints, deploy code hooks, and evaluate agent integrity at build time. Route model calls dynamically and run compliance gating as a GitHub action or pre-commit hook.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/terminal" class="btn btn-primary" style="padding: 12px 24px;">Open Developer Terminal</a>
+                <a href="/openapi.json" class="btn btn-secondary" style="padding: 12px 24px;">View API / Docs</a>
+              </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 24px;">
+              <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.05em;">Developer Focus Area</div>
+              <div class="feature-chips-container">
+                <span class="feature-chip">APIs</span>
+                <span class="feature-chip">Terminal</span>
+                <span class="feature-chip">Pipelines</span>
+                <span class="feature-chip">GitHub/repo risk gates</span>
+                <span class="feature-chip">Model routing</span>
+                <span class="feature-chip">x402</span>
+                <span class="feature-chip">MCP</span>
+                <span class="feature-chip">CLI</span>
+                <span class="feature-chip">Deploy previews</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Agents -->
+      <div class="audience-panel" id="panel-agents">
+        <div class="audience-panel-card" style="border-color: hsla(24, 95%, 53%, 0.25); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 0 12px hsla(24, 95%, 53%, 0.05);">
+          <div class="audience-panel-grid">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-500); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>🤖</span> agent runtime
+              </div>
+              <h3 style="font-size: 1.85rem; line-height: 1.25; margin-bottom: 16px; font-weight: 800; color: #fff;">Runtime and arbitration layer for governed agents.</h3>
+              <p style="font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+                Equip agents with real-time wallet reserves, verify capabilities before tool execution, and enforce cryptographic safety gates. Arbitration and validation run natively in ArbiterOS.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/terminal" class="btn btn-primary" style="padding: 12px 24px;">See Agent Runtime</a>
+                <a href="#v3-blackbox" class="btn btn-secondary" style="padding: 12px 24px;">View Governance Flow</a>
+              </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 24px;">
+              <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.05em;">Agent Focus Area</div>
+              <div class="feature-chips-container">
+                <span class="feature-chip">UACP4 Agent Artibus</span>
+                <span class="feature-chip">ArbiterOS</span>
+                <span class="feature-chip">SEKED</span>
+                <span class="feature-chip">SAIQ</span>
+                <span class="feature-chip">Safe execution</span>
+                <span class="feature-chip">Policy gates</span>
+                <span class="feature-chip">Approvals</span>
+                <span class="feature-chip">Evidence</span>
+                <span class="feature-chip">Spend controls</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Enterprise -->
+      <div class="audience-panel" id="panel-enterprise">
+        <div class="audience-panel-card">
+          <div class="audience-panel-grid">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-500); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>🏢</span> sovereign governance
+              </div>
+              <h3 style="font-size: 1.85rem; line-height: 1.25; margin-bottom: 16px; font-weight: 800; color: #fff;">Sovereign governance and compliance platform.</h3>
+              <p style="font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+                Deploy in private clouds (BYOS) or dedicated nodes. Retain full custody of keys, configure SAML/SCIM, govern policy catalogs across entities, and export cryptographic audit trails.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button onclick="openContactModal('enterprise')" class="btn btn-primary" style="padding: 12px 24px;">Request Regulated Access</button>
+                <a href="/legal/security" class="btn btn-secondary" style="padding: 12px 24px;">View Trust Layer</a>
+              </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 24px;">
+              <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.05em;">Enterprise Focus Area</div>
+              <div class="feature-chips-container">
+                <span class="feature-chip">UACP6</span>
+                <span class="feature-chip">Consent catalogs</span>
+                <span class="feature-chip">Audit chain</span>
+                <span class="feature-chip">Regulated evidence</span>
+                <span class="feature-chip">BYOS/Private deployment</span>
+                <span class="feature-chip">SAML/SCIM</span>
+                <span class="feature-chip">Model registry</span>
+                <span class="feature-chip">Compliance exports</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Script for Audience Switching -->
+    <script>
+      function switchAudience(type) {
+        const panels = document.querySelectorAll('.audience-panel');
+        const pills = document.querySelectorAll('.audience-pill');
+        
+        panels.forEach(p => {
+          p.classList.remove('active');
+          p.style.display = 'none';
+        });
+        pills.forEach(pill => {
+          pill.classList.remove('active');
+        });
+        
+        const targetPanel = document.getElementById('panel-' + type);
+        const targetPill = document.getElementById('pill-' + type);
+        
+        if (targetPanel && targetPill) {
+          targetPanel.style.display = 'block';
+          // force reflow to play transition smoothly
+          targetPanel.offsetHeight;
+          targetPanel.classList.add('active');
+          targetPill.classList.add('active');
+        }
+      }
+    </script>
+  </div>
+</section>
+
+<!-- Marketplace Products Section -->
+<section class="section section-alt" id="marketplace-products" style="border-top: 1px solid var(--border); padding-bottom: 60px;">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:48px">
+      <span class="label">Ecosystem</span>
+      <h2>Marketplace products built for governed execution</h2>
+      <p class="subtitle" style="margin:16px auto 0; max-width: 760px; font-size: 0.95rem; color: var(--text-secondary);">
+        Available as part of the Veklom product ecosystem. High-performance modules and products built to expand your sovereign runtime limits.
+      </p>
+    </div>
+    
+    <div class="model-grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; max-width: 800px; margin: 0 auto;">
+      <!-- PY03 IronGrid API -->
+      <div class="model-card" style="position: relative; border: 1px solid var(--border); transition: border-color 0.3s ease;">
+        <span class="model-icon">⚡</span>
+        <div class="model-kicker" style="color: var(--primary);">Runtime Module</div>
+        <h3 style="margin-top: 10px; font-size: 1.25rem;">PY03 IronGrid API</h3>
+        <p style="margin: 12px 0 20px; font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary);">
+          High-performance route optimization and concurrency sandbox for agent/runtime workloads.
+        </p>
+        <div class="model-features" style="margin-bottom: 24px;">
+          <span class="model-tag">Route optimizer</span>
+          <span class="model-tag">Concurrency sandbox</span>
+          <span class="model-tag">Veklom core</span>
+        </div>
+        <a href="https://github.com/reprewindai-dev/pyo3-irongrid-api" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center;">View Repository</a>
+      </div>
+      
+      <!-- Lockerphycer -->
+      <div class="model-card" style="position: relative; border: 1px solid var(--border); transition: border-color 0.3s ease;">
+        <span class="model-icon">🔒</span>
+        <div class="model-kicker" style="color: var(--veklom-amber);">Marketplace Product</div>
+        <h3 style="margin-top: 10px; font-size: 1.25rem;">Lockerphycer</h3>
+        <p style="margin: 12px 0 20px; font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary);">
+          A Veklom marketplace product for controlled, governed execution workflows.
+        </p>
+        <div class="model-features" style="margin-bottom: 24px;">
+          <span class="model-tag">Governed workflows</span>
+          <span class="model-tag">Security locker</span>
+          <span class="model-tag">Product demo</span>
+        </div>
+        <a href="/lockerphycer" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; border-color: var(--veklom-amber); color: var(--veklom-amber);">Open Lockerphycer demo</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- V3 Black Box Embed -->
+<section class="section" id="v3-blackbox">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:32px">
+      <span class="label">V3 Black Box</span>
+      <h2>Messy intent in. Governed execution out.</h2>
+      <p class="subtitle" style="margin:8px auto 0">Public preview: the top rail and deterministic core are visible while internal operational panes stay masked.</p>
+    </div>
+    
+    <div class="v3-blackbox-frame" aria-label="Veklom V3 public preview">
+      <div class="v3-public-preview-badge">Public preview</div>
+      <div class="v3-side-mask-left"></div>
+      <div class="v3-side-mask-right"></div>
+      <div class="v3-bottom-mask"></div>
+      <div class="v3-blackbox-inner">
+        <iframe src="/gpc/?public_demo=1" title="Veklom V3 deterministic engine public preview" loading="lazy"></iframe>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- What Veklom Controls & Use Cases -->
 <section class="section">
   <div class="container">
-    <div style="text-align:center;margin-bottom:48px">
-      <span class="label">Workflow</span>
-      <h2>From demo to production in 6 steps</h2>
-    </div>
-    <div style="max-width:700px;margin:0 auto">
-      <div class="step"><div class="step-num">1</div><div><h3>Test in Playground</h3><p style="color:var(--text-secondary)">Start with a vertical workflow idea — support triage, claims intake, contract review.</p></div></div>
-      <div class="step"><div class="step-num">2</div><div><h3>Compile with GPC</h3><p style="color:var(--text-secondary)">Extract workflow, risks, policy requirements, cost controls, and deployment path.</p></div></div>
-      <div class="step"><div class="step-num">3</div><div><h3>Build with Models, Tool Hub & Pipelines</h3><p style="color:var(--text-secondary)">Package the plan into a repeatable workflow using approved models and tools.</p></div></div>
-      <div class="step"><div class="step-num">4</div><div><h3>Govern with policy, vault & approvals</h3><p style="color:var(--text-secondary)">Human review, evidence capture, policy packs, and approval gates attached.</p></div></div>
-      <div class="step"><div class="step-num">5</div><div><h3>Deploy into private/BYOS runtime</h3><p style="color:var(--text-secondary)">Govern private runtimes like a single-node vLLM server behind the BYOS backend.</p></div></div>
-      <div class="step"><div class="step-num">6</div><div><h3>Monitor, bill, archive & replay</h3><p style="color:var(--text-secondary)">Full telemetry, billing, archive records, and replayable evidence for defense.</p></div></div>
+    <div class="grid-2" style="align-items: start; gap: 48px;">
+      
+      <!-- Left: What Veklom Controls -->
+      <div>
+        <span class="label">Governance Scope</span>
+        <h2 style="margin-top: 12px; margin-bottom: 16px;">What Veklom controls</h2>
+        <p style="color:var(--text-secondary); margin-bottom: 24px;">
+          Every agent call, repository hook, and container tool execution routes through our isolated proxy layer to ensure absolute compliance.
+        </p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Agent actions</div>
+            <div class="control-desc">Every call, every single step audited</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Repository access</div>
+            <div class="control-desc">Read, write, fine-grained scopes</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Tool execution</div>
+            <div class="control-desc">Allow, block, or human approvals</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Policy gates (GPC)</div>
+            <div class="control-desc">Enforced prior to runtime execution</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Runtime activity</div>
+            <div class="control-desc">Live telemetry + historical replay</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Cost & tokens</div>
+            <div class="control-desc">Per agent, per job, token limits</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Audit evidence</div>
+            <div class="control-desc">SHA-256 sealed blocks of execution</div>
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span class="control-dot"></span>Boundaries</div>
+            <div class="control-desc">Hosted → sovereign deployments</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right: Use Cases -->
+      <div>
+        <span class="label">Practical Application</span>
+        <h2 style="margin-top: 12px; margin-bottom: 16px;">What teams use it for</h2>
+        <p style="color:var(--text-secondary); margin-bottom: 24px;">
+          Empower platform and security teams with out-of-the-box templates designed for immediate integration.
+        </p>
+        
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div class="card" style="padding: 24px;">
+            <span class="usecase-tag">Engineering</span>
+            <h3 style="font-size: 1.15rem; margin-bottom: 6px;">Pre-deployment repo reviews</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+              Connect your repository and ask an agent to review it. Veklom tells you what's verified, what's risky, what needs approval, and what gets blocked — before touching production.
+            </p>
+          </div>
+          
+          <div class="card" style="padding: 24px;">
+            <span class="usecase-tag">Engineering</span>
+            <h3 style="font-size: 1.15rem; margin-bottom: 6px;">AI coding-agent oversight</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+              Let Copilot, Cursor, or custom corporate agents operate inside your codebase — with every action logged, policy-gated, and fully revertable. Stop flying blind on agent activity.
+            </p>
+          </div>
+          
+          <div class="card" style="padding: 24px;">
+            <span class="usecase-tag governance">Governance</span>
+            <h3 style="font-size: 1.15rem; margin-bottom: 6px;">LangChain / chain workflow control</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+              Run multi-step LangChain pipelines through our GPC layer. Each node in the chain gets its own policy check, spend limit, and automated audit entry.
+            </p>
+          </div>
+          
+          <div class="card" style="padding: 24px;">
+            <span class="usecase-tag governance">Governance</span>
+            <h3 style="font-size: 1.15rem; margin-bottom: 6px;">Audit-ready execution records</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+              Every agent action produces a SHA-256 signed evidence block — timestamped, immutable, and exportable. Instantly answer compliance: what ran, when, and who approved it.
+            </p>
+          </div>
+        </div>
+      </div>
+      
     </div>
   </div>
 </section>
@@ -154,7 +853,7 @@
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
       <span class="label">Why Veklom</span>
-      <h2>Most AI tools help you call a model.<br>Veklom helps you <span style="color:var(--orange-500)">govern the workflow</span> around it.</h2>
+      <h2>Sovereign AI should be portable, provable, and economically predictable.<br><span style="color:var(--orange-500)">Veklom is built for that.</span></h2>
     </div>
     <div style="overflow-x:auto">
       <table class="compare-table">
@@ -179,6 +878,7 @@
           <tr><td>Operating Reserve billing</td><td class="check">●</td><td class="cross">Subscription</td><td class="cross">Token-based</td><td class="cross">Subscription</td><td class="cross">Pay-per-use</td></tr>
           <tr><td>Marketplace with vendor payouts</td><td class="check">●</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="check">Partial</td></tr>
           <tr><td>120-agent autonomous workforce</td><td class="check">●</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td></tr>
+          <tr><td>x402 agent micropayments (USDC)</td><td class="check">●</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td></tr>
         </tbody>
       </table>
     </div>
@@ -189,80 +889,164 @@
 <section class="section" id="pricing">
   <div class="container">
     <div style="text-align:center;margin-bottom:48px">
-      <span class="label">Pricing</span>
-      <h2>Activate once. Fund your reserve. Pay for governed execution.</h2>
-      <p class="subtitle" style="margin:12px auto 0">No subscriptions. No token fiction. No surprise invoices.</p>
+      <span class="label">Pricing &amp; Packaging</span>
+      <h2>Transparent Pricing. Enterprise-Ready Governance.</h2>
+      <p class="subtitle" style="margin:12px auto 0">Start with a 30-day pilot. Scale to your full AI governance program. No hidden fees, no infrastructure lock-in.</p>
+      
+      <!-- Billing Cycle Toggle Switch -->
+      <div style="display:inline-flex;align-items:center;gap:12px;margin-top:24px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);padding:6px 12px;border-radius:30px;">
+        <span style="font-size:0.85rem;font-weight:600;color:var(--text-muted);" id="toggle-monthly-text">Monthly</span>
+        <button id="billing-toggle-btn" onclick="toggleBillingCycle()" style="width:42px;height:24px;border-radius:12px;background:#f97316;border:none;position:relative;cursor:pointer;padding:0;transition:background 0.3s;">
+          <span id="billing-toggle-knob" style="width:18px;height:18px;border-radius:50%;background:#ffffff;position:absolute;top:3px;left:3px;transition:left 0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+        </button>
+        <span style="font-size:0.85rem;font-weight:600;color:#ffffff;display:flex;align-items:center;gap:6px;" id="toggle-annual-text">
+          Annual <span style="background:hsla(24,95%,53%,0.15);color:hsl(24,95%,53%);font-size:0.7rem;padding:2px 8px;border-radius:10px;font-weight:700;">Save 20%</span>
+        </span>
+      </div>
     </div>
-    <div class="pricing-grid">
-      <!-- Free -->
+    
+    <div class="pricing-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
+      <!-- Starter -->
       <div class="card pricing-card">
-        <span class="label">Free Evaluation</span>
-        <div class="price" style="margin-top:8px">$0</div>
-        <div class="price-sub">No card required</div>
-        <ul>
-          <li>15 governed Playground runs</li>
-          <li>3 compare runs</li>
-          <li>20 policy tests</li>
-          <li>2 watermarked exports</li>
-          <li>BYOK provider testing</li>
-          <li>Tools browsing</li>
+        <span class="label">Starter</span>
+        <div class="price" style="margin-top:8px" id="pc-starter-price">$2,000</div>
+        <div class="price-sub" id="pc-starter-period">/mo (billed $24,000/yr)</div>
+        <ul id="pc-starter-features">
+          <li>Up to 5 models / agents</li>
+          <li>1M governed executions / month</li>
+          <li>ExecutionIdentity (up to 5 identities)</li>
+          <li>Policy Governance Layer — standard rules</li>
+          <li>Evidence Ledger — 12-month retention</li>
+          <li>SOC 2 evidence export (PDF)</li>
+          <li>Slack + email support (48hr SLA)</li>
+          <li>Vault, AWS, GCP integrations</li>
         </ul>
-        <a href="/workspace/login" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Start Free →</a>
+        <button onclick="openContactModal('starter')" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Start Pilot &rarr;</button>
+        <p style="text-align:center;font-size:0.75rem;color:var(--text-muted);margin-top:12px;">30-day pilot at $0. No credit card required.</p>
       </div>
-      <!-- Founding -->
+      
+      <!-- Growth -->
       <div class="card pricing-card card-highlight">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="label">Founding</span>
-          <span class="badge badge-orange">Most chosen</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <span class="label">Most Popular</span>
+          <span class="badge badge-orange">Growth</span>
         </div>
-        <div class="price" style="margin-top:8px">$395</div>
-        <div class="price-sub">One-time activation + $150 min reserve</div>
-        <ul>
-          <li>Playground run — $0.25</li>
-          <li>Compare run — $0.75</li>
-          <li>UACP compile — $1.50</li>
-          <li>Pipeline test — $0.25</li>
-          <li>Endpoint test — $0.50</li>
-          <li>BYOK Gov Calls — $6/1,000</li>
-          <li>Managed Gov Calls — $12/1,000</li>
+        <div class="price" style="margin-top:8px" id="pc-pro-price">$6,800</div>
+        <div class="price-sub" id="pc-pro-period">/mo (billed $81,600/yr)</div>
+        <ul id="pc-pro-features">
+          <li>Up to 25 models / agents</li>
+          <li>10M governed executions / month</li>
+          <li>ExecutionIdentity — unlimited instances per agent</li>
+          <li>Policy Governance Layer — advanced rules</li>
+          <li>Evidence Ledger — unlimited retention</li>
+          <li>SOC 2, HIPAA, ISO 27001 exports</li>
+          <li>EU AI Act documentation module</li>
+          <li>Real-time policy violation alerts</li>
+          <li>Dedicated Customer Success Manager</li>
+          <li>99.9% SLA with incident response</li>
+          <li>All Starter integrations + snowflake/db/lc</li>
         </ul>
-        <a href="/workspace/login" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:24px">Activate →</a>
+        <button onclick="openContactModal('growth')" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:24px">Start Pilot &rarr;</button>
+        <p style="text-align:center;font-size:0.75rem;color:var(--text-muted);margin-top:12px;">Includes 30-day pilot. Dedicated SE assigned.</p>
       </div>
-      <!-- Standard -->
+      
+      <!-- Enterprise -->
       <div class="card pricing-card">
-        <span class="label">Standard</span>
-        <div class="price" style="margin-top:8px">$795</div>
-        <div class="price-sub">One-time activation + $300 min reserve</div>
+        <span class="label">Enterprise</span>
+        <div class="price" style="margin-top:8px">Custom</div>
+        <div class="price-sub">For regulated enterprises &amp; platforms</div>
         <ul>
-          <li>Playground run — $0.40</li>
-          <li>Compare run — $1.20</li>
-          <li>UACP compile — $2.00</li>
-          <li>Pipeline test — $0.40</li>
-          <li>Endpoint test — $0.80</li>
-          <li>BYOK Gov Calls — $8/1,000</li>
-          <li>Managed Gov Calls — $16/1,000</li>
+          <li>Unlimited models / agents</li>
+          <li>Custom execution volume</li>
+          <li>Multi-tenant, federated identity</li>
+          <li>Custom PGL engine integration</li>
+          <li>Evidence Ledger — on-prem or VPC option</li>
+          <li>All compliance frameworks + custom mapping</li>
+          <li>FedRAMP In Process package (GovCloud)</li>
+          <li>HIPAA BAA included</li>
+          <li>Dedicated Solutions Engineer (embedded)</li>
+          <li>White-glove onboarding (&lt; 1 business day)</li>
+          <li>Custom SLA (99.99% available)</li>
+          <li>On-prem / air-gapped deployment option</li>
         </ul>
-        <a href="/workspace/login" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Activate →</a>
-      </div>
-      <!-- Regulated -->
-      <div class="card pricing-card">
-        <span class="label">Regulated / Enterprise</span>
-        <div class="price" style="margin-top:8px">$2,500+</div>
-        <div class="price-sub">Private terms + $2,500 min reserve</div>
-        <ul>
-          <li>BYOK Gov Calls — $10/1,000</li>
-          <li>Managed Gov Calls — $20/1,000</li>
-          <li>Private deployment</li>
-          <li>Procurement & security review</li>
-          <li>Custom SLA</li>
-        </ul>
-        <a href="mailto:sales@veklom.com" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Talk to Sales →</a>
+        <button onclick="openContactModal('enterprise')" class="btn btn-secondary" style="width:100%;justify-content:center;margin-top:24px">Talk to Sales &rarr;</button>
       </div>
     </div>
   </div>
 </section>
 
+<script>
+let billingAnnual = true; // default annual view
+let starterMonthly = 2500;
+let starterAnnual = 2000;
+let growthMonthly = 8500;
+let growthAnnual = 6800;
+
+function updatePricingDisplay() {
+  if (billingAnnual) {
+    document.getElementById('pc-starter-price').textContent = '$' + starterAnnual.toLocaleString();
+    document.getElementById('pc-starter-period').textContent = '/mo (billed $' + (starterAnnual * 12).toLocaleString() + '/yr)';
+    document.getElementById('pc-pro-price').textContent = '$' + growthAnnual.toLocaleString();
+    document.getElementById('pc-pro-period').textContent = '/mo (billed $' + (growthAnnual * 12).toLocaleString() + '/yr)';
+  } else {
+    document.getElementById('pc-starter-price').textContent = '$' + starterMonthly.toLocaleString();
+    document.getElementById('pc-starter-period').textContent = '/mo (billed monthly)';
+    document.getElementById('pc-pro-price').textContent = '$' + growthMonthly.toLocaleString();
+    document.getElementById('pc-pro-period').textContent = '/mo (billed monthly)';
+  }
+}
+
+function toggleBillingCycle() {
+  billingAnnual = !billingAnnual;
+  const knob = document.getElementById('billing-toggle-knob');
+  const btn = document.getElementById('billing-toggle-btn');
+  const textM = document.getElementById('toggle-monthly-text');
+  const textA = document.getElementById('toggle-annual-text');
+  
+  if (billingAnnual) {
+    knob.style.left = '21px'; // move right (annual)
+    btn.style.background = '#f97316';
+    textM.style.color = 'var(--text-muted)';
+    textA.style.color = '#ffffff';
+  } else {
+    knob.style.left = '3px'; // move left (monthly)
+    btn.style.background = '#475569';
+    textM.style.color = '#ffffff';
+    textA.style.color = 'var(--text-muted)';
+  }
+  updatePricingDisplay();
+}
+
+// Set initial visual toggle state
+document.addEventListener('DOMContentLoaded', () => {
+  const knob = document.getElementById('billing-toggle-knob');
+  if (knob) knob.style.left = '21px';
+  updatePricingDisplay();
+});
+
+(async function loadPricing() {
+  try {
+    const res = await fetch('/api/v1/subscriptions/plans');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data || !data.plans) return;
+    const starter = data.plans.find(p => p.id === 'starter');
+    const pro = data.plans.find(p => p.id === 'growth' || p.id === 'pro');
+    if (!starter || !pro) return;
+    
+    // Read the dynamic milestone step pricing
+    starterMonthly = starter.starter_monthly || starterMonthly;
+    starterAnnual = starter.starter_annual || starterAnnual;
+    growthMonthly = pro.growth_monthly || growthMonthly;
+    growthAnnual = pro.growth_annual || growthAnnual;
+    
+    updatePricingDisplay();
+  } catch(e) { /* keep static fallback values */ }
+})();
+</script>
+
 <!-- Platform Transparency Pulse -->
+
 <section class="section section-alt" id="pulse">
   <div class="container">
     <div style="text-align:center;margin-bottom:40px">
@@ -279,27 +1063,17 @@
   </div>
 </section>
 
-<!-- Uptime Monitor -->
-<section class="section" id="uptime">
-  <div class="container">
-    <div style="text-align:center;margin-bottom:40px">
-      <span class="label">Uptime Monitor</span>
-      <h2>System status</h2>
-    </div>
-    <div id="uptime-dashboard" class="grid-3" style="max-width:800px;margin:0 auto">
-      <!-- populated by JS -->
-    </div>
-  </div>
-</section>
-
 <!-- Vendor / Customer Hook -->
-<section class="section section-alt">
-  <div class="container" style="text-align:center">
-    <h2>You just watched it work.<br>Now run it on <span style="color:var(--orange-500)">your data</span>.</h2>
-    <p class="subtitle" style="margin:16px auto 32px">Free Evaluation — 15 governed runs, no card, no key exposure. Keep every audit artifact you generate.</p>
+<section class="section section-alt" style="border-top: 1px solid var(--border);">
+  <div class="container" style="text-align:center; max-width: 800px; margin: 0 auto;">
+    <span class="label">Get Started</span>
+    <h2 style="margin-top: 16px;">We want to use agents. We just don't trust them near production yet.</h2>
+    <p class="subtitle" style="margin:24px auto 32px; font-size: 1.2rem; line-height: 1.6; color: var(--veklom-amber);">
+      Good. Run them through Veklom first. Test, govern, and prove AI execution — before anything matters.
+    </p>
     <div class="hero-cta">
-      <a href="/workspace/login" class="btn btn-primary">Start Free Evaluation →</a>
-      <a href="mailto:sales@veklom.com" class="btn btn-secondary">Talk to Sales</a>
+      <a href="/workspace/login" class="btn btn-primary" style="padding: 14px 32px;">Start a governed review</a>
+      <a href="/docs" class="btn btn-secondary" style="padding: 14px 32px;">Read the docs</a>
     </div>
   </div>
 </section>
@@ -345,7 +1119,7 @@
       </div>
       <div class="footer-col">
         <h4>Resources</h4>
-        <a href="#uptime">Status</a>
+        <a href="/uptime">Status</a>
         <a href="/docs">Docs</a>
         <a href="#feedback">Feedback</a>
       </div>
@@ -353,12 +1127,115 @@
         <h4>Legal</h4>
         <a href="/legal/terms">Terms</a>
         <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/license">License (EULA)</a>
+        <a href="/legal/vendor-agreement">Vendor Agreement</a>
+        <a href="/legal/dsa">DSA</a>
         <a href="mailto:security@veklom.com">Security</a>
       </div>
     </div>
   </div>
 </footer>
 
+
+
 <script src="/static/js/veklom.js"></script>
+
+<!-- Termly Compliance Badge -->
+<script
+  type="text/javascript"
+  src="https://app.termly.io/resource-blocker/REPLACE_ME_TERMLY_ID"
+></script>
+
+<!-- Contact / Sales Modal -->
+<div id="contact-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+  <div style="background:#0f0f13;border:1px solid rgba(124,58,237,0.35);border-radius:16px;padding:40px;max-width:480px;width:90%;position:relative;box-shadow:0 24px 80px rgba(0,0,0,0.6);">
+    <button onclick="closeContactModal()" style="position:absolute;top:16px;right:16px;background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    <div style="text-align:center;margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Talk to Sales</span>
+      <p style="color:#64748b;font-size:13px;margin-top:6px;">We'll reply within 1-2 business days.</p>
+    </div>
+    <form id="contact-form" style="display:flex;flex-direction:column;gap:14px;">
+      <input id="ct-name" placeholder="Your name" style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input id="ct-email" type="email" placeholder="Work email *" required style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input id="ct-company" placeholder="Company" style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;">
+      <input type="hidden" id="ct-type" value="general">
+      <textarea id="ct-message" rows="4" placeholder="Tell us about your use case, team size, or timeline..." style="padding:11px 14px;border-radius:8px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:14px;outline:none;resize:vertical;"></textarea>
+      <button type="submit" id="ct-submit" class="btn btn-primary" style="justify-content:center;padding:13px;font-size:15px;">Send Message &rarr;</button>
+      <div id="ct-result" style="text-align:center;font-size:14px;display:none;"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openContactModal(type) {
+  document.getElementById('contact-modal').style.display = 'flex';
+  document.getElementById('ct-type').value = type || 'general';
+  document.getElementById('ct-result').style.display = 'none';
+  document.getElementById('ct-result').textContent = '';
+  document.getElementById('ct-submit').disabled = false;
+  document.getElementById('ct-submit').textContent = 'Send Message →';
+  document.body.style.overflow = 'hidden';
+}
+function closeContactModal() {
+  document.getElementById('contact-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.getElementById('contact-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeContactModal();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeContactModal();
+});
+document.getElementById('contact-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('ct-submit');
+  const result = document.getElementById('ct-result');
+  const email = document.getElementById('ct-email').value.trim();
+  const message = document.getElementById('ct-message').value.trim();
+  if (!email || !message) {
+    result.style.display = 'block';
+    result.style.color = '#f87171';
+    result.textContent = 'Please fill in your email and message.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  result.style.display = 'none';
+  try {
+    const res = await fetch('/api/v1/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('ct-name').value.trim(),
+        email: email,
+        company: document.getElementById('ct-company').value.trim(),
+        message: message,
+        type: document.getElementById('ct-type').value
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      result.style.color = '#34d399';
+      result.textContent = data.message || 'Sent! We\'ll be in touch soon.';
+      result.style.display = 'block';
+      btn.textContent = '✓ Sent';
+      setTimeout(closeContactModal, 2800);
+    } else {
+      result.style.color = '#f87171';
+      result.textContent = data.detail || 'Something went wrong. Please try again.';
+      result.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Send Message →';
+    }
+  } catch(err) {
+    result.style.color = '#f87171';
+    result.textContent = 'Network error. Please email sales@veklom.com directly.';
+    result.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Send Message →';
+  }
+});
+</script>
+
 </body>
 </html>

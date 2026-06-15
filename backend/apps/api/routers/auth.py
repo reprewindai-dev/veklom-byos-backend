@@ -1227,11 +1227,8 @@ async def github_login(request: Request, token: Optional[str] = None, next: Opti
     state = _build_github_state(user_id, next_url=next)
     from urllib.parse import urlencode
     
-    redirect_uri = _github_redirect_uri(request)
-        
     params = {
         "client_id": oauth_values["client_id"],
-        "redirect_uri": redirect_uri,
         "scope": "user:email read:user",
         "state": state,
     }

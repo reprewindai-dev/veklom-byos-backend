@@ -967,7 +967,7 @@ async def enforce_route_access(request, call_next):
 
     # GPC — paid plan required (sovereign / pro / enterprise)
     if path.startswith("/gpc") or path.startswith("/gpc-engine"):
-        if request.query_params.get("public_demo") == "1":
+        if path.startswith("/gpc/assets") or path.startswith("/gpc-engine/assets") or request.query_params.get("public_demo") == "1":
             return await call_next(request)
         user = await _get_user_from_request(request)
         allowed = False
@@ -1100,6 +1100,9 @@ async def root(request: Request):
         if lockerphycer_index.exists():
             return FileResponse(str(lockerphycer_index))
         return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
+    gpc_index = GPC_DIR / "index.html"
+    if gpc_index.exists():
+        return FileResponse(str(gpc_index))
     return await _serve_frontend(None)
 
 

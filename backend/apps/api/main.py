@@ -522,6 +522,24 @@ async def internal_error(request: Request, exc):
 
 # --- Import and register all routers ---
 from backend.apps.api.routers import (
+    agent_arena,
+    authority,
+    authority_runs,
+    benchmarks,
+    build_release,
+    cappo,
+    evidence,
+    evidence_pack,
+    pgl_adapter,
+    pgl_onboarding,
+    governed,
+    pricing,
+    referrals,
+    well_known,
+    mcp,
+    agent_memory,
+    agent_evaluation,
+    agent_guardrails,
     admin,
     agents,
     genome,
@@ -627,6 +645,10 @@ app.include_router(monitoring.router, prefix="/api/v1")
 
 # Marketplace, vendors, listings, plugins
 app.include_router(marketplace.router, prefix="/api/v1")
+
+# Benchmarks
+app.include_router(benchmarks.router, prefix="/api/v1")
+app.include_router(benchmarks.router, prefix="/api")
 
 # Agentic Commerce (ACP/ACS) — sell every revenue rail through AI agents
 app.include_router(agentic_commerce.router, prefix="/api/v1")
@@ -1668,3 +1690,48 @@ body { background: #050505; color: #e0e0e0; font-family: system-ui, -apple-syste
 <script type="module" src="/gpc/assets/gpc.js"></script>
 </body>
 </html>"""
+
+
+# Well-known manifests (no prefix)
+app.include_router(well_known.router)
+
+# Authority - Runtime Authority Pack
+app.include_router(authority.router, prefix="/api/v1")
+app.include_router(authority_runs.router, prefix="/api/v1")
+
+# PGL Adapter - Agent Management
+app.include_router(pgl_adapter.router, prefix="/api/v1")
+app.include_router(pgl_onboarding.router, prefix="/api/v1")
+app.include_router(governed.router, prefix="/api/v1")
+
+# CAPPO - Internal Execution Authority
+app.include_router(cappo.router, prefix="/api/v1")
+
+# Evidence - Evidence Pack System
+app.include_router(evidence.router, prefix="/api/v1")
+app.include_router(evidence_pack.router, prefix="/api/v1")
+
+# Agent Arena - AuthorityRun Integration
+app.include_router(agent_arena.router, prefix="/api/v1")
+
+# Build & Release - Governed Deployment Pipeline
+app.include_router(build_release.router, prefix="/api/v1")
+
+# Referral system
+app.include_router(referrals.router, prefix="/api/v1")
+
+# Pricing tiers
+app.include_router(pricing.router, prefix="/api/v1")
+
+# AI Agents Stack 2026 - Six-Layer Architecture
+# Layer 2: Protocols and Tools (MCP Support)
+app.include_router(mcp.router, prefix="/api/v1")
+
+# Layer 3: Memory and Context
+app.include_router(agent_memory.router, prefix="/api/v1")
+
+# Layer 5: Evaluation and Observability
+app.include_router(agent_evaluation.router, prefix="/api/v1")
+
+# Layer 6: Guardrails and Safety
+app.include_router(agent_guardrails.router, prefix="/api/v1")

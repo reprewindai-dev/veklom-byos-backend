@@ -30,6 +30,8 @@ try:
             pool_size=20,
             max_overflow=30,
             pool_timeout=60,
+            pool_pre_ping=True,
+            connect_args={"timeout": 10, "command_timeout": 10},
         )
 except Exception as e:
     print(f"WARNING: Database engine creation failed: {e}. Falling back to in-memory SQLite.")

@@ -37,32 +37,21 @@ export const NAV: NavSection[] = [
   {
     title: 'Workspace',
     items: [
-      { id: 'overview', label: 'Overview', icon: Activity },
-      { id: 'playground', label: 'Playground', icon: Terminal, badge: 'LIVE' },
-      { id: 'marketplace', label: 'Marketplace', icon: Store },
+      { id: 'overview', label: 'Control Center', icon: Activity },
+      { id: 'audit-trace', label: 'Audit & Trace', icon: LineChart },
     ],
   },
   {
-    title: 'Infrastructure',
+    title: 'Gateway',
     items: [
-      { id: 'models', label: 'Models', icon: Cpu },
-      { id: 'pipelines', label: 'Pipelines', icon: GitFork },
-      { id: 'deployments', label: 'Deployments', icon: Server },
+      { id: 'gateway', label: 'Routing Configs', icon: Server },
+      { id: 'governance', label: 'Governance', icon: ShieldCheck },
     ],
   },
   {
-    title: 'Governance',
+    title: 'Testing',
     items: [
-      { id: 'vault', label: 'Vault', icon: KeyRound },
-      { id: 'compliance', label: 'Compliance', icon: ShieldCheck },
-    ],
-  },
-  {
-    title: 'Operations',
-    items: [
-      { id: 'monitoring', label: 'Monitoring', icon: LineChart },
-      { id: 'billing', label: 'Billing', icon: CreditCard },
-      { id: 'team', label: 'Team', icon: Users },
+      { id: 'arena', label: 'Agent Arena', icon: Terminal, badge: 'LIVE' },
     ],
   },
   {

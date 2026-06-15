@@ -30,6 +30,9 @@ from backend.db.models.internal_operators import (
 from backend.db.models.telemetry import AgentCall
 from backend.db.models.run import VeklomRun
 from backend.db.models.agentic_commerce import AgenticCheckoutSession
+from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake, SyntheticProbeLog
+from backend.db.models.pricing import PricingTier, TierFeature, TierUpgrade
+from backend.db.models.referral import ReferralCode, Referral, ReferralPayout
 
 __all__ = [
     # existing
@@ -43,7 +46,9 @@ __all__ = [
     "AgentCall",
     "VeklomRun",
     "AgenticCheckoutSession",
+    "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog",
     "MarketplaceListing", "Pipeline", "PipelineRun", "Deployment", "Vendor",
+
     # UACP V3 institutional ownership
     "Account", "AgentUser", "Agent", "AgentSkill",
     "GenomeVersion",

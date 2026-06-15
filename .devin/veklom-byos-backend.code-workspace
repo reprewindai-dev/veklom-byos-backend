@@ -5,6 +5,18 @@
 			"path": ".."
 		},
 		{
+			"name": "veklom-control-plane",
+			"path": "../veklom-control-plane"
+		},
+		{
+			"name": "veklomdiscovery",
+			"path": "../veklomdiscovery"
+		},
+		{
+			"name": "uacpv3",
+			"path": "../uacpv3"
+		},
+		{
 			"name": "truth command center",
 			"path": "../../../truth command center"
 		}

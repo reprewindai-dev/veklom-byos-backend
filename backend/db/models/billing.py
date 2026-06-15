@@ -2,7 +2,8 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, JSON, Boolean
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, JSON, Boolean, ForeignKey
+from sqlalchemy.orm import relationship
 
 from backend.core.database.database import Base
 from backend.db.models.user import _utcnow, _uuid
@@ -35,8 +36,11 @@ class Subscription(Base):
     current_period_start = Column(DateTime(timezone=True), nullable=True)
     current_period_end = Column(DateTime(timezone=True), nullable=True)
     activation_fee_paid = Column(Boolean, default=False)
+    pricing_tier_id = Column(String(36), ForeignKey("pricing_tiers.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+    pricing_tier = relationship("PricingTier", back_populates="subscriptions")
 
 
 class BudgetRule(Base):

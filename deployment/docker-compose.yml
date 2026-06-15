@@ -1,0 +1,190 @@
+version: '3.8'
+
+services:
+  # Backend Services
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: veklom_byos
+      POSTGRES_USER: veklom
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veklom_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veklom"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://veklom:${POSTGRES_PASSWORD:-veklom_password}@postgres:5432/veklom_byos
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY:-your_secret_key_here}
+      - ENVIRONMENT=production
+      - RUST_LOG=info
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./backend_logs:/app/logs
+
+  # Governance Gateway (Inside MCP)
+  governance-gateway:
+    build:
+      context: ../governance-gateway
+      dockerfile: Dockerfile
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - AUTHORITY_URL=http://backend:8000/api/v1/authority
+      - PGL_URL=http://backend:8000/api/v1/pgl
+      - AUDIT_URL=http://backend:8000/api/v1/evidence
+      - GATEWAY_PORT=8080
+      - RUST_LOG=info
+    ports:
+      - "8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./gateway_logs:/app/logs
+
+  # Edge Gateway (Edge MCP)
+  edge-gateway:
+    build:
+      context: ../edge-gateway
+      dockerfile: Dockerfile
+    environment:
+      - BACKEND_URL=http://governance-gateway:8080
+      - EDGE_GATEWAY_PORT=8081
+      - RUST_LOG=info
+      - X402_FACILITATOR_URL=${X402_FACILITATOR_URL:-https://api.x402.org}
+      - X402_FACILITATOR_API_KEY=${X402_FACILITATOR_API_KEY:-your_api_key}
+      - ALLOWED_DOMAINS=${ALLOWED_DOMAINS:-api.example.com,api.veklom.com}
+    ports:
+      - "8081:8081"
+    depends_on:
+      governance-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./edge_logs:/app/logs
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ../veklom-control-plane
+      dockerfile: Dockerfile
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_GOVERNANCE_URL=http://localhost:8080
+      - NEXT_PUBLIC_EDGE_URL=http://localhost:8081
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+      - governance-gateway
+      - edge-gateway
+
+  # Reverse Proxy (Traefik)
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@veklom.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8088:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    depends_on:
+      - frontend
+      - edge-gateway
+
+  # Monitoring (Prometheus)
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    depends_on:
+      - backend
+      - governance-gateway
+      - edge-gateway
+
+  # Monitoring (Grafana)
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    driver: bridge

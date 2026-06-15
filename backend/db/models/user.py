@@ -66,6 +66,7 @@ class User(Base):
 
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
+    referral_codes = relationship("ReferralCode", back_populates="user", cascade="all, delete-orphan")
 
 
 class Session(Base):

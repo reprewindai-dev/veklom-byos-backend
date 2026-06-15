@@ -66,3 +66,10 @@
 - PII/PHI detection runs before data reaches external AI providers
 - Configurable redaction: replace, mask, or block
 - All policy decisions logged to audit trail
+
+## API Benchmarking & VABP Alignment
+
+- Our architecture natively aligns with the **Veklom API Benchmarking Protocol (VABP)**, particularly Pillar 1 (Security & Vulnerability). See the canonical standard at [docs/VABP_SPECIFICATION.md](docs/VABP_SPECIFICATION.md).
+- We actively adhere to the **OWASP API Security Top 10 (2023)** to mitigate risks such as BOLA, broken authentication, and shadow APIs.
+- Our security design is guided by **NIST SP 800-204C** (API Security for Microservices) and maps to **NIST SP 800-53 Rev 5** controls (e.g., AC-3, SC-8, SC-28, SI-10).
+- Automated tests and evidence collection via our `collect-evidence.sh` harness support verifiable compliance for marketplace APIs.

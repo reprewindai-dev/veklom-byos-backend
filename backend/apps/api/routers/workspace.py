@@ -280,42 +280,31 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
 
 # --- Audit Logs ---
 @router.get("/audit/logs")
-async def audit_logs(limit: int = 20, offset: int = 0, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Paginated audit logs for the workspace."""
-    workspace_id = user.workspace_id or "default"
-
-    result = await db.execute(
-        select(AuditLog)
-        .where(AuditLog.workspace_id == workspace_id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-    logs = result.scalars().all()
-
-    total = await db.scalar(
-        select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id)
-    ) or 0
-
-    return {
-        "logs": [
-            {
-                "id": log.id,
-                "action": log.action,
-                "resource_type": log.resource_type,
-                "resource_id": log.resource_id,
-                "user_id": log.user_id,
-                "ip_address": log.ip_address,
-                "user_agent": log.user_agent,
-                "hash_chain": log.hash_chain,
-                "created_at": log.created_at.isoformat() if log.created_at else None
-            }
-            for log in logs
-        ],
-        "total": total,
-        "limit": limit,
-        "offset": offset
-    }
+async def audit_logs(limit: int = 20, offset: int = 0, user=Depends(get_current_user)):
+    """Paginated audit logs for the workspace, proxied to PGL ledger."""
+    import httpx
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"http://localhost:8000/v1/audit/ledger/traces?limit={limit}&offset={offset}",
+                timeout=10.0
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            mapped_logs = []
+            for trace in data.get("traces", []):
+                mapped_logs.append({
+                    "id": trace["run_id"],
+                    "actor_user_id": trace["agent_id"] or "system",
+                    "action": "EXECUTE",
+                    "resource": trace["prompt"][:50] + "..." if trace["prompt"] else "Unknown",
+                    "status": "success" if trace["status"] == "COMPLETED" else "error",
+                    "ip_address": trace["execution_id"] or "no-ei",
+                    "created_at": trace["created_at"]
+                })
+            return {"logs": mapped_logs, "total": len(mapped_logs), "limit": limit, "offset": offset}
+    except Exception as e:
+        return {"logs": [], "total": 0, "limit": limit, "offset": offset}
 
 
 # --- Autonomous Decisions ---

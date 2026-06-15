@@ -6,6 +6,10 @@ import { Overview } from './pages/Overview';
 import { PageStub } from './pages/PageStub';
 import { me, type AuthUser } from './api/auth';
 import { getToken, clearSession, onUnauthorized } from './lib/http';
+import { AgentArena } from './pages/AgentArena';
+import { AuditTrace } from './pages/AuditTrace';
+import { GatewayConfig } from './pages/GatewayConfig';
+import { Governance } from './pages/Governance';
 import './index.css';
 
 const navigate = (id: string) => {
@@ -17,28 +21,14 @@ function renderPage(route: string): React.ReactNode {
   switch (base) {
     case 'overview':
       return <Overview onNavigate={navigate} />;
-    case 'playground':
-      return <PageStub title="Playground" routes={['POST /api/v1/playground/inference', 'GET /api/v1/playground/sessions', 'GET /api/v1/ai/models']} />;
-    case 'marketplace':
-      return <PageStub title="Marketplace" routes={['GET /api/v1/marketplace/listings', 'GET /api/v1/marketplace/listings/{id}']} />;
-    case 'models':
-      return <PageStub title="Models" routes={['GET /api/v1/workspace/models', 'PATCH /api/v1/workspace/models/{id}', 'GET /api/v1/workspace/models/{id}/versions']} />;
-    case 'pipelines':
-      return <PageStub title="Pipelines" routes={['GET /api/v1/pipelines', 'POST /api/v1/pipelines', 'POST /api/v1/pipelines/{id}/run']} />;
-    case 'deployments':
-      return <PageStub title="Deployments" routes={['GET /api/v1/deployments', 'POST /api/v1/deployments']} />;
-    case 'vault':
-      return <PageStub title="Vault" routes={['GET /api/v1/workspace/api-keys', 'POST /api/v1/workspace/api-keys', 'DELETE /api/v1/workspace/api-keys/{id}']} />;
-    case 'compliance':
-      return <PageStub title="Compliance" routes={['GET /api/v1/compliance/regulations', 'POST /api/v1/compliance/check']} />;
-    case 'monitoring':
-      return <PageStub title="Monitoring" routes={['GET /api/v1/monitoring/events', 'GET /api/v1/workspace/observability']} />;
-    case 'billing':
-      return <PageStub title="Billing" routes={['GET /api/v1/wallet/balance', 'GET /api/v1/subscriptions/plans', 'GET /api/v1/billing/invoices']} />;
-    case 'team':
-      return <PageStub title="Team" routes={['GET /api/v1/workspace/members', 'POST /api/v1/workspace/members/invite']} />;
-    case 'settings':
-      return <PageStub title="Settings" routes={['GET /api/v1/workspace/settings', 'PATCH /api/v1/workspace/settings']} />;
+    case 'audit-trace':
+      return <AuditTrace />;
+    case 'gateway':
+      return <GatewayConfig />;
+    case 'governance':
+      return <Governance />;
+    case 'arena':
+      return <AgentArena />;
     case 'search':
       return <PageStub title="Search" routes={['GET /api/v1/workspace/search?q=']} />;
     default:

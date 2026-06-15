@@ -1,14 +1,842 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Veklom GPC Engine</title>
-    <script type="module" crossorigin src="/gpc/assets/index-D0sAOoyV.js"></script>
-    <link rel="stylesheet" crossorigin href="/gpc/assets/index-DuKz5wfR.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPC — Governed Plan Compiler | Veklom Sovereign AI Hub</title>
+<meta name="description" content="Turn messy AI ideas into governed plans before they become pipelines. The missing middle between a promising AI test and a workflow that security, compliance, operations, and finance can approve.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+<script>
+// API Configuration for standalone deployment
+window.__VEKLOM_API_BASE__ = 'https://api.veklom.com/api/v1';
+</script>
+<style>
+:root {
+  --vk-bg: #050505;
+  --vk-surface: #0a0a0a;
+  --vk-border: rgba(255, 184, 0, 0.1);
+  --vk-text: #f4f4f5;
+  --vk-text-dim: #a1a1a6;
+  --vk-accent: #FFB800;
+  --vk-accent-glow: rgba(255, 184, 0, 0.15);
+  --vk-gradient: linear-gradient(135deg, #FFB800 0%, #E69D00 50%, #B37A00 100%);
+}
 
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--vk-bg);
+  color: var(--vk-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Scanner overlay */
+.scanner {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255,255,255,0.008) 2px,
+    rgba(255,255,255,0.008) 4px
+  );
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+/* === BLACK BOX LAYOUT === */
+.blackbox-wrapper {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* Hidden side panels */
+.side-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 320px;
+  background: #020202;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+.side-panel.left { left: -320px; }
+.side-panel.right { right: -320px; }
+
+/* GPC center panel */
+.gpc-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+  z-index: 10;
+}
+
+/* Header */
+.gpc-header {
+  height: 64px;
+  border-bottom: 1px solid var(--vk-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  background: var(--vk-surface);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(12px);
+}
+
+.gpc-logo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.gpc-logo h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--vk-accent);
+}
+
+.gpc-logo .lock {
+  width: 24px;
+  height: 24px;
+  background: var(--vk-gradient);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.gpc-nav {
+  display: flex;
+  gap: 24px;
+}
+
+.gpc-nav a {
+  color: var(--vk-text-dim);
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.gpc-nav a.active,
+.gpc-nav a:hover {
+  color: var(--vk-accent);
+  background: rgba(255, 184, 0, 0.1);
+}
+
+/* Main content area */
+.gpc-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 32px;
+  gap: 32px;
+}
+
+/* Intent Input Section */
+.intent-section {
+  background: var(--vk-surface);
+  border: 1px solid var(--vk-border);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.intent-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.intent-header h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vk-text);
+}
+
+.intent-input {
+  width: 100%;
+  min-height: 120px;
+  padding: 16px;
+  background: var(--vk-bg);
+  border: 1px solid var(--vk-border);
+  border-radius: 8px;
+  color: var(--vk-text);
+  font-family: inherit;
+  font-size: 0.875rem;
+  resize: vertical;
+}
+
+.intent-input:focus {
+  outline: none;
+  border-color: var(--vk-accent);
+  box-shadow: 0 0 0 3px var(--vk-accent-glow);
+}
+
+.compile-button {
+  margin-top: 16px;
+  padding: 12px 24px;
+  background: var(--vk-gradient);
+  color: var(--vk-bg);
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compile-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(255, 184, 0, 0.3);
+}
+
+.compile-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Compliance Options */
+.compliance-section {
+  background: var(--vk-surface);
+  border: 1px solid var(--vk-border);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.compliance-header h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vk-text);
+  margin-bottom: 16px;
+}
+
+.option-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.option-chip {
+  padding: 8px 16px;
+  background: var(--vk-bg);
+  border: 1px solid var(--vk-border);
+  border-radius: 20px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.option-chip:hover {
+  border-color: var(--vk-accent);
+}
+
+.option-chip.active {
+  background: var(--vk-gradient);
+  color: var(--vk-bg);
+  border-color: transparent;
+}
+
+/* Tab Panels */
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+/* Signal Feed Panel */
+.signal-panel {
+  background: var(--vk-surface);
+  border: 1px solid var(--vk-border);
+  border-radius: 12px;
+  padding: 24px;
+  min-height: 400px;
+}
+
+.signal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.signal-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vk-text);
+}
+
+.signal-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: #00ff88;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: #00ff88;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.plans-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plan-output {
+  background: var(--vk-bg);
+  border: 1px solid var(--vk-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.plan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(255, 184, 0, 0.05);
+  border-bottom: 1px solid var(--vk-border);
+}
+
+.plan-title {
+  font-weight: 600;
+  color: var(--vk-text);
+}
+
+.plan-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.plan-status.compiled {
+  background: rgba(0, 255, 136, 0.1);
+  color: #00ff88;
+}
+
+.plan-body {
+  padding: 16px;
+}
+
+.plan-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plan-node {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--vk-surface);
+  border: 1px solid var(--vk-border);
+  border-radius: 8px;
+}
+
+.node-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.node-icon.classical {
+  background: rgba(255, 184, 0, 0.1);
+  color: var(--vk-accent);
+}
+
+.node-icon.quantum {
+  background: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
+}
+
+.node-info {
+  flex: 1;
+}
+
+.node-desc {
+  font-size: 0.875rem;
+  color: var(--vk-text);
+  margin-bottom: 4px;
+}
+
+.node-tag {
+  font-size: 0.75rem;
+  color: var(--vk-text-dim);
+  font-family: 'Geist Mono', monospace;
+}
+
+.node-entropy {
+  font-size: 0.75rem;
+  color: var(--vk-accent);
+  font-family: 'Geist Mono', monospace;
+}
+
+/* Toast notification */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--vk-surface);
+  border: 1px solid var(--vk-border);
+  border-radius: 8px;
+  padding: 16px;
+  color: var(--vk-text);
+  font-size: 0.875rem;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.3s;
+  z-index: 1000;
+  max-width: 300px;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Footer */
+.gpc-footer {
+  padding: 24px 32px;
+  border-top: 1px solid var(--vk-border);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--vk-text-dim);
+}
+
+.gpc-footer a {
+  color: var(--vk-accent);
+  text-decoration: none;
+}
+
+.gpc-footer a:hover {
+  text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .gpc-header {
+    padding: 0 16px;
+  }
+  
+  .gpc-nav {
+    display: none;
+  }
+  
+  .gpc-main {
+    padding: 16px;
+  }
+  
+  .option-chips {
+    gap: 6px;
+  }
+  
+  .option-chip {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+}
+</style>
+</head>
+<body>
+<div class="scanner"></div>
+
+<div class="blackbox-wrapper">
+  <!-- Hidden Operations (left side - not visible to public) -->
+  <div class="side-panel left" aria-hidden="true">
+    <div style="padding: 20px; opacity: 0.3">
+      <h3>Operations</h3>
+      <p>Internal control systems</p>
+    </div>
+  </div>
+
+  <!-- GPC Center Panel -->
+  <div class="gpc-center">
+    <!-- Header -->
+    <header class="gpc-header">
+      <div class="gpc-logo">
+        <div class="lock">🔒</div>
+        <h1>Governed Plan Compiler</h1>
+      </div>
+      <nav class="gpc-nav">
+        <a href="#tab-intent" id="tab-intent" class="active">Intent</a>
+        <a href="#tab-execution" id="tab-execution">Execution</a>
+        <a href="#tab-ops" id="tab-ops">Operations</a>
+      </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="gpc-main">
+      <!-- Intent Input Section -->
+      <section class="intent-section">
+        <div class="intent-header">
+          <h2>Plan Intent</h2>
+        </div>
+        <textarea 
+          id="intentInput" 
+          class="intent-input" 
+          placeholder="Describe your AI workflow intent...&#10;&#10;Example: Create a web scraping pipeline that extracts product prices from e-commerce sites, with GDPR compliance and budget limits."
+        ></textarea>
+        <button id="compileBtn" class="compile-button">
+          <span>Compile Governed Plan</span>
+        </button>
+      </section>
+
+      <!-- Compliance Section -->
+      <section class="compliance-section">
+        <div class="compliance-header">
+          <h2>Compliance Framework</h2>
+        </div>
+        <div class="option-chips">
+          <div class="option-chip active" data-compliance="gdpr">GDPR</div>
+          <div class="option-chip active" data-compliance="ccpa">CCPA</div>
+          <div class="option-chip" data-compliance="hipaa">HIPAA</div>
+          <div class="option-chip" data-compliance="sox">SOX</div>
+          <div class="option-chip" data-compliance="pci">PCI-DSS</div>
+          <div class="option-chip" data-compliance="soc2">SOC 2</div>
+        </div>
+      </section>
+
+      <!-- Tab Panels -->
+      <div id="panel-signal" class="tab-panel active">
+        <div class="signal-panel">
+          <div class="signal-header">
+            <h3>Signal Feed</h3>
+            <div class="signal-status">
+              <div class="status-dot"></div>
+              <span>Live</span>
+            </div>
+          </div>
+          <div id="plansContainer" class="plans-container">
+            <!-- Plans will be rendered here -->
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-probability" class="tab-panel">
+        <div class="signal-panel">
+          <div class="signal-header">
+            <h3>Probability Routing</h3>
+            <button id="btn-recalc" class="compile-button">Re-calculate</button>
+          </div>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--vk-border);">
+                  <th style="padding: 12px; text-align: left; color: var(--vk-text-dim); font-size: 0.875rem;">Model</th>
+                  <th style="padding: 12px; text-align: left; color: var(--vk-text-dim); font-size: 0.875rem;">Weight</th>
+                  <th style="padding: 12px; text-align: left; color: var(--vk-text-dim); font-size: 0.875rem;">Entropy</th>
+                  <th style="padding: 12px; text-align: left; color: var(--vk-text-dim); font-size: 0.875rem;">Success</th>
+                  <th style="padding: 12px; text-align: left; color: var(--vk-text-dim); font-size: 0.875rem;">Latency</th>
+                  <th style="padding: 12px; text-align: left; color: var(--vk-text-dim); font-size: 0.875rem;">Governance</th>
+                </tr>
+              </thead>
+              <tbody id="matrix-tbody">
+                <!-- Matrix will be rendered here -->
+              </tbody>
+            </table>
+          </div>
+          <div id="calc-logs-container" style="display: none; margin-top: 16px;">
+            <div style="background: var(--vk-bg); border: 1px solid var(--vk-border); border-radius: 8px; padding: 16px;">
+              <div id="calc-logs" style="font-family: 'Geist Mono', monospace; font-size: 0.75rem; line-height: 1.5; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-deterministic" class="tab-panel">
+        <div class="signal-panel">
+          <div class="signal-header">
+            <h3>Deterministic Operations</h3>
+          </div>
+          <div style="text-align: center; padding: 40px; color: var(--vk-text-dim);">
+            <div style="font-size: 3rem; margin-bottom: 16px;">⚙️</div>
+            <p>Deterministic operations panel</p>
+            <p style="font-size: 0.875rem; margin-top: 8px;">Coming soon</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="gpc-footer">
+      <p>
+        © Veklom · Sovereign Control Node &nbsp;|&nbsp;
+        SOC2-ready · HIPAA-aware · EU-sovereign &nbsp;|&nbsp;
+        Zero key exposure &nbsp;|&nbsp;
+        <a href="/">Back to Hub</a>
+      </p>
+    </footer>
+  </div>
+
+  <!-- Hidden Marketplace (right side - not visible to public) -->
+  <div class="side-panel right" aria-hidden="true">
+    <div style="padding: 20px; opacity: 0.3">
+      <h3>Marketplace</h3>
+      <p>Tools, models, and governance packs</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = window.__VEKLOM_API_BASE__ || '/api/v1';
+let authToken = localStorage.getItem('veklom_token') || '';
+
+function getHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (authToken) h['Authorization'] = `Bearer ${authToken}`;
+  return h;
+}
+
+// Compliance toggles
+document.querySelectorAll('.option-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    // Only toggle for non-tab option chips
+    if (!chip.id.startsWith('btn-') && chip.dataset.compliance) {
+      chip.classList.toggle('active');
+    }
+  });
+});
+
+// Tab navigation switcher
+const tabPanels = {
+  'tab-intent': 'panel-signal',
+  'tab-execution': 'panel-probability',
+  'tab-ops': 'panel-deterministic'
+};
+
+document.querySelectorAll('.gpc-nav a').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.gpc-nav a').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    // Show selected panel, hide others
+    Object.keys(tabPanels).forEach(id => {
+      const panel = document.getElementById(tabPanels[id]);
+      if (panel) {
+        if (id === tab.id) {
+          panel.style.display = 'block';
+        } else {
+          panel.style.display = 'none';
+        }
+      }
+    });
+  });
+});
+
+// Compile plans signal feed
+async function compilePlan() {
+  const intent = document.getElementById('intentInput').value.trim();
+  if (!intent) return;
+
+  const btn = document.getElementById('compileBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> Compiling...';
+
+  const compliance = Array.from(document.querySelectorAll('.option-chip.active'))
+    .map(c => c.dataset.compliance)
+    .filter(Boolean);
+
+  try {
+    const res = await fetch(`${API_BASE}/gpc/intent-to-plan`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ 
+        intent, 
+        compliance, 
+        provider: 'gemini', 
+        model: 'gemini-2.5-flash',
+        budget_usdc: 0.015
+      }),
+    });
+
+    if (!res.ok) throw new Error('Compilation failed');
+
+    const plan = await res.json();
+    renderPlan(plan);
+    document.getElementById('intentInput').value = '';
+    showToast('Governed Plan Compiled successfully');
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>Compile Governed Plan</span>';
+  }
+}
+
+function renderPlan(plan) {
+  const container = document.getElementById('plansContainer');
+  const nodes = plan.graph?.nodes || [];
+  const html = `
+    <div class="plan-output">
+      <div class="plan-header">
+        <span class="plan-title">${plan.name || 'Governed Plan'}</span>
+        <span class="plan-status compiled">Compiled</span>
+      </div>
+      <div class="plan-body">
+        <div class="plan-graph">
+          ${nodes.map(n => `
+            <div class="plan-node">
+              <div class="node-icon ${n.type || 'classical'}">${n.type === 'quantum' ? '⚛' : '◆'}</div>
+              <div class="node-info">
+                <div class="node-desc">${n.description}</div>
+                <div class="node-tag">${n.policy_tag || ''}</div>
+              </div>
+              <div class="node-entropy">Δ ${(n.entropy || 0).toFixed(2)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  container.insertAdjacentHTML('afterbegin', html);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// Probability Routing Simulation Logic
+const initialModels = [
+  { name: 'vk-model-llama3-70b', weight: 0.45, entropy: 0.14, success: 0.992, latency: '143ms', gov: 'HIPAA Active' },
+  { name: 'vk-model-mixtral-8x22b', weight: 0.30, entropy: 0.21, success: 0.985, latency: '121ms', gov: 'SOC 2 Active' },
+  { name: 'vk-model-claude35-sonnet', weight: 0.15, entropy: 0.08, success: 0.997, latency: '240ms', gov: 'PCI-DSS Active' },
+  { name: 'vk-model-gpt4o-sovereign', weight: 0.10, entropy: 0.33, success: 0.978, latency: '195ms', gov: 'Audit Only' }
+];
+
+function renderMatrix(models) {
+  const tbody = document.getElementById('matrix-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = models.map(m => `
+    <tr>
+      <td style="color: #ffffff; font-weight: bold;">${m.name}</td>
+      <td style="color: var(--vk-accent); font-weight: bold;">${(m.weight * 100).toFixed(0)}%</td>
+      <td>Δ ${m.entropy.toFixed(2)}</td>
+      <td style="color: #34d399; font-weight: 500;">${(m.success * 100).toFixed(1)}%</td>
+      <td style="color: var(--vk-text-dim);">${m.latency}</td>
+      <td><span style="font-size: 10px; background: rgba(255, 184, 0, 0.05); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255, 184, 0, 0.15); color: var(--vk-accent); font-family: monospace;">${m.gov}</span></td>
+    </tr>
+  `).join('');
+}
+
+// Initial Matrix Load
+renderMatrix(initialModels);
+
+async function simulateMatrix() {
+  const btn = document.getElementById('btn-recalc');
+  const logsContainer = document.getElementById('calc-logs-container');
+  const logsDiv = document.getElementById('calc-logs');
+  
+  if (!btn || !logsContainer || !logsDiv) return;
+  
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> Re-calculating...';
+  logsContainer.style.display = 'block';
+  logsDiv.innerHTML = '';
+  
+  const addLog = (text, delay) => new Promise(res => {
+    setTimeout(() => {
+      logsDiv.innerHTML += `<div style="margin-bottom: 6px; line-height: 1.5;"><span style="color: var(--vk-accent)">[SYSTEM CONTROL CLOCK]</span> ${text}</div>`;
+      logsDiv.scrollTop = logsDiv.scrollHeight;
+      res();
+    }, delay);
+  });
+  
+  await addLog('Initiating sovereign path calculation sequence...', 120);
+  await addLog('Syncing metrics telemetry data: GET /api/v1/platform/pulse', 200);
+  await addLog('Processing active routing constraints: CLOCKWEIGHT HETZNER vs AWS US-East-1', 250);
+  await addLog('Computing Shannon Entropy matrices across sovereign nodes...', 300);
+  await addLog('Model vk-model-llama3-70b identified as optimal low-entropy candidate (Δ 0.14)', 200);
+  await addLog('Active compliance boundaries matching: Vault token verification PASSED', 180);
+  await addLog('Optimizing probability vector layout for sovereign model pathways...', 220);
+  
+  // Randomize weights slightly for realistic live calculation look
+  const newModels = initialModels.map(m => {
+    const deviation = (Math.random() - 0.5) * 0.12;
+    const newWeight = Math.max(0.05, Math.min(0.8, m.weight + deviation));
+    return { ...m, weight: newWeight };
+  });
+  
+  // Re-normalize weights so sum is 1.0
+  const total = newModels.reduce((acc, curr) => acc + curr.weight, 0);
+  newModels.forEach(m => m.weight = m.weight / total);
+  
+  renderMatrix(newModels);
+  await addLog('Probability matrix updated. Sovereign routing optimized.', 150);
+  
+  btn.disabled = false;
+  btn.innerHTML = 'Re-calculate';
+}
+
+// Event Listeners
+document.getElementById('compileBtn').addEventListener('click', compilePlan);
+document.getElementById('btn-recalc')?.addEventListener('click', simulateMatrix);
+
+// Initialize first panel as visible
+document.getElementById('panel-signal').style.display = 'block';
+
+// Auto-focus intent input
+document.getElementById('intentInput')?.focus();
+</script>
+</body>
+</html>

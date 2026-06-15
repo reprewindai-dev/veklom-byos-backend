@@ -1100,9 +1100,6 @@ async def root(request: Request):
         if lockerphycer_index.exists():
             return FileResponse(str(lockerphycer_index))
         return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
-    gpc_index = GPC_DIR / "index.html"
-    if gpc_index.exists():
-        return FileResponse(str(gpc_index))
     return await _serve_frontend(None)
 
 

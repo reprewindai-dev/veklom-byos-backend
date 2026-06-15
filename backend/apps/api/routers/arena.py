@@ -6,7 +6,9 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
 from backend.core.config.settings import settings
-from backend.core.logging.logger import logger
+import logging
+
+logger = logging.getLogger("arena")
 
 router = APIRouter(tags=["Arena"])
 

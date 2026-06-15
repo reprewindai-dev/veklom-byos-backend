@@ -1,0 +1,6 @@
+{
+  "name": "Veklom Agent Authority Runtime",
+  "description": "Interactive optimizer dashboard demonstrating MCP resource anomaly detection, F-distribution statistical mapping, real-time alert webhooks, and 120-agent concurrency queue simulations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

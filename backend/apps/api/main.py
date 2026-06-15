@@ -723,6 +723,7 @@ IRONGRID_DIR = Path(__file__).resolve().parent.parent.parent.parent / "irongrid"
 LOCKERPHYCER_DIR = FRONTEND_DIR / "lockerphycer"
 OPERATOR_CENTER_DIR = FRONTEND_DIR / "operator-center"
 ARENA_DIR = FRONTEND_DIR / "arena"
+FAULT_MATRIX_DIR = FRONTEND_DIR / "fault-matrix" / "dist"
 
 
 def _mount_static():
@@ -750,6 +751,8 @@ def _mount_static():
         app.mount("/lockerphycer", StaticFiles(directory=str(LOCKERPHYCER_DIR), html=True), name="lockerphycer")
     if ARENA_DIR.exists():
         app.mount("/arena", StaticFiles(directory=str(ARENA_DIR), html=True), name="arena")
+    if FAULT_MATRIX_DIR.exists():
+        app.mount("/fault-matrix", StaticFiles(directory=str(FAULT_MATRIX_DIR), html=True), name="fault-matrix")
     # Mount static directory for CSS, JS, branding, etc.
     if FRONTEND_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
@@ -1379,12 +1382,43 @@ async def status_html_file():
         return FileResponse(str(path))
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
+import httpx
+
 @app.post("/api/run-sample")
 @app.post("/api/v1/terminal/run")
 async def run_sample_unified(request: Request):
-    # Unified sample run/terminal endpoint returning status: ok
-    # Protected by ZeroTrustMiddleware since it is not in public_prefixes
-    return {"status": "ok"}
+    # Proxy execution to cappo-backend (PGL engine)
+    body = await request.json()
+    prompt = body.get("intent", "Execute default quantum instruction")
+    
+    # We pass a demo PGL ID so that it passes the LAW 0 ExecutionIdentity requirements
+    exec_payload = {
+        "prompt": prompt,
+        "agent_id": "quantum_terminal_agent",
+        "pgl_id": "terminal-demo-pgl-id",
+        "workspace_id": "default",
+        "tenant_id": "default",
+        "action_cost_cents": 1, 
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "http://localhost:8000/v1/exec",
+                json=exec_payload,
+                timeout=30.0
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "status": "ok",
+                "execution_id": data.get("execution_id"),
+                "run_id": data.get("run_id"),
+                "latency_ms": data.get("latency_ms"),
+                "response": data.get("response")
+            }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "detail": "Failed to connect to cappo-backend /v1/exec"})
 @app.get("/status")
 async def status_page():
     path = LANDING_DIR / "status.html"

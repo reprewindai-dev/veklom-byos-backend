@@ -747,12 +747,15 @@ OPERATOR_CENTER_DIR = FRONTEND_DIR / "operator-center"
 ARENA_DIR = FRONTEND_DIR / "arena"
 FAULT_MATRIX_DIR = FRONTEND_DIR / "fault-matrix" / "dist"
 UACPV3_DIR = Path(__file__).resolve().parent.parent.parent.parent / "uacpv3" / "dist"
+WORKSPACE_NEXT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "static" / "workspace-next"
 
 
 def _mount_static():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+    if WORKSPACE_NEXT_DIR.exists():
+        app.mount("/workspace-next", StaticFiles(directory=str(WORKSPACE_NEXT_DIR), html=True), name="workspace-next")
     if SOVEREIGN_CONTROL_NODE_DIR.exists():
         app.mount("/control-plane-next", StaticFiles(directory=str(SOVEREIGN_CONTROL_NODE_DIR), html=True), name="control-plane-next")
     if OPERATOR_CENTER_DIR.exists():

@@ -34,6 +34,7 @@ from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake,
 from backend.db.models.pricing import PricingTier, TierFeature, TierUpgrade
 from backend.db.models.referral import ReferralCode, Referral, ReferralPayout
 
+
 __all__ = [
     # existing
     "User", "Session", "APIKey", "Asset",
@@ -74,5 +75,7 @@ __all__ = [
     "InternalOperatorEscalation",
     "InternalOperatorBudget",
     "InternalOperatorProviderUsage",
-    "InternalOperatorApproval"
+    "InternalOperatorApproval",
+    # benchmarks & trust leaderboard
+    "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog",
 ]

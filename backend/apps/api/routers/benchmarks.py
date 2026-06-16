@@ -334,6 +334,75 @@ SOVEREIGNTY_METADATA = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# VABP — Veklom API Benchmarking Protocol scoring per API
+# Pillars: Security & Vulnerability, Performance & Reliability, Data Compliance
+# Trust Score = weighted composite out of 1000
+# ---------------------------------------------------------------------------
+
+VABP_SCORES: dict[str, dict] = {
+    "Stripe Payment Intents": {
+        "trustScore": 962,
+        "pillars": {
+            "security": {"score": 98, "label": "Security & Vulnerability", "bolaPass": True, "shadowApiMatch": 100, "injectionResilience": 99},
+            "performance": {"score": 97, "label": "Performance & Reliability", "maxRps": 14200, "rateLimitGrace": True, "degradationClean": True},
+            "compliance": {"score": 94, "label": "Data Compliance & Privacy", "dataExfiltration": "pass", "tlsVersion": "1.3", "pglIntegration": True},
+        },
+        "badges": ["PCI-DSS L1", "OWASP Pass", "SOC 2 Type II", "NIST SP 800-228"],
+        "certifiedAt": "2026-06-01T00:00:00Z",
+    },
+    "FedNow Instant Settlement": {
+        "trustScore": 978,
+        "pillars": {
+            "security": {"score": 99, "label": "Security & Vulnerability", "bolaPass": True, "shadowApiMatch": 100, "injectionResilience": 100},
+            "performance": {"score": 96, "label": "Performance & Reliability", "maxRps": 8900, "rateLimitGrace": True, "degradationClean": True},
+            "compliance": {"score": 99, "label": "Data Compliance & Privacy", "dataExfiltration": "pass", "tlsVersion": "1.3", "pglIntegration": True},
+        },
+        "badges": ["FIPS 140-2 L3", "OWASP Pass", "FFIEC", "NIST SP 800-228", "FedRAMP Ready"],
+        "certifiedAt": "2026-05-15T00:00:00Z",
+    },
+    "CIHI Health Data Gateway": {
+        "trustScore": 871,
+        "pillars": {
+            "security": {"score": 88, "label": "Security & Vulnerability", "bolaPass": True, "shadowApiMatch": 96, "injectionResilience": 91},
+            "performance": {"score": 82, "label": "Performance & Reliability", "maxRps": 3200, "rateLimitGrace": True, "degradationClean": False},
+            "compliance": {"score": 93, "label": "Data Compliance & Privacy", "dataExfiltration": "pass", "tlsVersion": "1.2", "pglIntegration": True},
+        },
+        "badges": ["PIPEDA", "PHIPA", "OWASP Pass", "ISO 27799"],
+        "certifiedAt": "2026-05-20T00:00:00Z",
+    },
+    "TBS Open Government API": {
+        "trustScore": 812,
+        "pillars": {
+            "security": {"score": 84, "label": "Security & Vulnerability", "bolaPass": True, "shadowApiMatch": 92, "injectionResilience": 87},
+            "performance": {"score": 76, "label": "Performance & Reliability", "maxRps": 1800, "rateLimitGrace": False, "degradationClean": False},
+            "compliance": {"score": 88, "label": "Data Compliance & Privacy", "dataExfiltration": "pass", "tlsVersion": "1.2", "pglIntegration": False},
+        },
+        "badges": ["ITSG-33", "OWASP Pass"],
+        "certifiedAt": "2026-04-10T00:00:00Z",
+    },
+    "Gemini 2.5 Flash": {
+        "trustScore": 941,
+        "pillars": {
+            "security": {"score": 95, "label": "Security & Vulnerability", "bolaPass": True, "shadowApiMatch": 99, "injectionResilience": 96},
+            "performance": {"score": 98, "label": "Performance & Reliability", "maxRps": 22000, "rateLimitGrace": True, "degradationClean": True},
+            "compliance": {"score": 90, "label": "Data Compliance & Privacy", "dataExfiltration": "pass", "tlsVersion": "1.3", "pglIntegration": True},
+        },
+        "badges": ["SOC 2 Type II", "ISO 27001", "ISO 42001 (AI)", "OWASP Pass", "NIST SP 800-228"],
+        "certifiedAt": "2026-06-10T00:00:00Z",
+    },
+    "National Grid ESO Carbon Intensity": {
+        "trustScore": 724,
+        "pillars": {
+            "security": {"score": 72, "label": "Security & Vulnerability", "bolaPass": True, "shadowApiMatch": 88, "injectionResilience": 78},
+            "performance": {"score": 68, "label": "Performance & Reliability", "maxRps": 950, "rateLimitGrace": False, "degradationClean": False},
+            "compliance": {"score": 79, "label": "Data Compliance & Privacy", "dataExfiltration": "pass", "tlsVersion": "1.2", "pglIntegration": False},
+        },
+        "badges": ["UK GDPR", "NIS Regulations"],
+        "certifiedAt": "2026-03-22T00:00:00Z",
+    },
+}
+
 
 async def _ensure_seed_data(session: AsyncSession) -> None:
     count = await session.scalar(select(func.count(BenchmarkAPI.id)))
@@ -382,10 +451,12 @@ async def get_leaderboard():
         apis = result.scalars().all()
 
     rows = []
-    for a in apis:
+    for idx, a in enumerate(apis):
         sovereignty = SOVEREIGNTY_METADATA.get(a.name, {})
+        vabp = VABP_SCORES.get(a.name, {})
         rows.append({
             "id": a.id,
+            "rank": idx + 1,
             "name": a.name,
             "category": a.category,
             "sovereignTier": a.sovereign_tier,
@@ -403,6 +474,7 @@ async def get_leaderboard():
             "totalStaked": a.total_staked,
             "status": a.status,
             "sovereignty": sovereignty,
+            "vabp": vabp,
         })
     return {"apis": rows, "count": len(rows), "timestamp": int(time.time())}
 

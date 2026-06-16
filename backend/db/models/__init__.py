@@ -30,6 +30,7 @@ from backend.db.models.internal_operators import (
 from backend.db.models.telemetry import AgentCall
 from backend.db.models.run import VeklomRun
 from backend.db.models.agentic_commerce import AgenticCheckoutSession
+from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake, SyntheticProbeLog
 
 __all__ = [
     # existing
@@ -69,5 +70,7 @@ __all__ = [
     "InternalOperatorEscalation",
     "InternalOperatorBudget",
     "InternalOperatorProviderUsage",
-    "InternalOperatorApproval"
+    "InternalOperatorApproval",
+    # benchmarks & trust leaderboard
+    "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog",
 ]

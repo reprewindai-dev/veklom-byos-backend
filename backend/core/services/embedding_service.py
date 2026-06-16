@@ -2,12 +2,24 @@
 
 import asyncio
 import json
-import numpy as np
-from typing import List, Dict, Any, Optional, Tuple
-from sentence_transformers import SentenceTransformer
-import asyncpg
 import logging
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone
+
+import asyncpg
+
+try:
+    import numpy as np
+    from sentence_transformers import SentenceTransformer
+    _EMBEDDINGS_AVAILABLE = True
+except ImportError:
+    np = None  # type: ignore
+    SentenceTransformer = None  # type: ignore
+    _EMBEDDINGS_AVAILABLE = False
+    logging.getLogger(__name__).warning(
+        "sentence_transformers not installed — VectorEmbeddingService will be unavailable. "
+        "Add sentence-transformers to requirements.txt to enable vector search."
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +34,13 @@ class VectorEmbeddingService:
     
     async def initialize(self, database_url: str):
         """Initialize the embedding service with database connection"""
+        if not _EMBEDDINGS_AVAILABLE:
+            logger.warning(
+                "sentence_transformers is not installed. "
+                "VectorEmbeddingService.initialize() is a no-op. "
+                "Install sentence-transformers to enable this feature."
+            )
+            return
         try:
             # Load the sentence transformer model
             self.model = SentenceTransformer('all-MiniLM-L6-v2')

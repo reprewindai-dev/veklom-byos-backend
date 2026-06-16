@@ -7,8 +7,7 @@ from typing import Dict, Any, List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, func, case
-import numpy as np
-import pandas as pd
+
 from dataclasses import dataclass
 import logging
 

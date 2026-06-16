@@ -566,7 +566,8 @@ from backend.apps.api.routers import (
     smoke,
     edge,
     x402,
-    arena
+    arena,
+    benchmarks
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -709,6 +710,9 @@ app.include_router(exec_router.router, prefix="/api/v1/v1")
 
 # Veklom Authority Arena simulation endpoints
 app.include_router(arena.router)
+
+# Benchmark Arena — Trust Leaderboard, Staking, Gemini Schema Compiler
+app.include_router(benchmarks.router, prefix="/api/v1")
 
 
 # --- Frontend static files ---

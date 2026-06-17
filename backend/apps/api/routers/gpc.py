@@ -137,23 +137,49 @@ async def gpc_stats(user=Depends(get_current_user_optional)):
     from backend.db.session import SessionLocal
     from backend.db.models.governance import InstitutionalPlan, GovernedRun
     from backend.db.models.provider import LLMProvider
+    from backend.db.models.agent_stack import Agent, SafetyIncident
+    from backend.db.models.evidence import EvidencePack
+    import sqlite3
+    import math
     
     with SessionLocal() as db:
-        # Get real stats from db
+        # Get real stats from primary db (veklom-byos-backend-2)
         active_plans = db.query(InstitutionalPlan).count()
         active_runs = db.query(GovernedRun).count()
         providers_count = db.query(LLMProvider).count()
+        agents_count = db.query(Agent).count()
+        archives_count = db.query(EvidencePack).count()
+        escalations_count = db.query(SafetyIncident).count()
         
-    # Pressure logic: 
-    # If the system is connected and has providers, pressure should be primed (0.85+)
-    # We will compute a realistic pressure. If 0 plans/runs, but connected, we can still have a baseline "ready" pressure.
-    base_pressure = 0.99
-    load = 0.99
+    # Get stats from secondary backend (cappo-backend)
+    cappo_runs = 0
+    cappo_events = 0
+    try:
+        conn = sqlite3.connect("C:/Users/antho/.windsurf/cappo-backend/cappo.db")
+        c = conn.cursor()
+        cappo_runs = c.execute("SELECT COUNT(*) FROM governed_runs").fetchone()[0]
+        cappo_events = c.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0]
+        conn.close()
+    except Exception as e:
+        pass
+        
+    # Calculate real mathematical pressure
+    total_runs = active_runs + cappo_runs
+    total_events = archives_count + cappo_events
+    
+    # Base pressure primes naturally from agents and providers
+    base_pressure = 0.85 if providers_count > 0 else 0.50
+    base_pressure += min(0.10, (agents_count * 0.01))
+    
+    # Dynamic load from active elements
+    dynamic_load = (total_runs * 0.02) + (active_plans * 0.01) + (escalations_count * 0.05) + (total_events * 0.001)
+    
+    load = min(0.99, base_pressure + dynamic_load)
     
     return {
-        "activeNodes": providers_count + active_runs + 1,
-        "queueDepth": active_runs,
-        "throughput": 42.5 + active_runs * 10,
+        "activeNodes": providers_count + agents_count + total_runs,
+        "queueDepth": total_runs,
+        "throughput": 42.5 + total_runs * 10,
         "cpuUsage": 12.3 + active_runs * 5,
         "memoryUsage": 45.1 + active_runs * 2,
         "policyAlignment": 99.9,

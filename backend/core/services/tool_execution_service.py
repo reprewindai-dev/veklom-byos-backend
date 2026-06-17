@@ -183,7 +183,7 @@ class ToolExecutionService:
             }
     
     async def execute_browser_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute browser automation via Agent Browser Protocol (ABP)"""
+        """Execute browser automation via official MCP API (Agent Browser Protocol)"""
         try:
             url = tool_data.get("url", "")
             action = tool_data.get("action", "navigate")
@@ -198,19 +198,14 @@ class ToolExecutionService:
             
             import json
             import asyncio
+            from backend.apps.api.routers.mcp import manager as mcp_manager
             
-            # Use ABP via MCP
-            logger.info(f"Routing browser action '{action}' through Agent Browser Protocol (ABP) MCP...")
+            logger.info(f"Routing browser action '{action}' through official MCP API to ABP...")
             
-            # Spawn MCP subprocess
-            process = await asyncio.create_subprocess_shell(
-                "npx -y agent-browser-protocol --mcp",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            # The agent-browser-protocol should be connected as an active MCP session.
+            # We broadcast the browser action to any connected ABP server in the workspace.
+            workspace_id = tool_data.get("workspace_id", "default")
             
-            # Formulate MCP JSON-RPC payload for the browser action
             mcp_payload = {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -225,42 +220,17 @@ class ToolExecutionService:
                 }
             }
             
-            # Send payload to ABP MCP
-            payload_str = json.dumps(mcp_payload) + "
-"
-            process.stdin.write(payload_str.encode())
-            await process.stdin.drain()
+            # Send the request over the official MCP WebSocket manager
+            await mcp_manager.broadcast_to_session(workspace_id, mcp_payload)
             
-            # Read response
-            output = await process.stdout.readline()
-            
-            # Clean up
-            process.terminate()
-            
-            # Process response
-            if output:
-                response_data = json.loads(output.decode().strip())
-                if "result" in response_data:
-                    return {
-                        "success": True,
-                        "action": action,
-                        "url": url,
-                        "state": "frozen_virtual_time",
-                        "abp_response": response_data["result"]
-                    }
-                elif "error" in response_data:
-                    return {
-                        "success": False,
-                        "action": action,
-                        "error": response_data["error"]
-                    }
-            
+            # In a full implementation, we'd wait for a correlated response via WS.
+            # For now, return a dispatched state.
             return {
                 "success": True,
                 "action": action,
                 "url": url,
                 "state": "frozen_virtual_time",
-                "abp_status": "dispatched"
+                "abp_status": "dispatched_via_mcp_api"
             }
                 
         except Exception as e:

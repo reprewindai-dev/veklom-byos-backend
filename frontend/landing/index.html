@@ -696,36 +696,35 @@
     </div>
     
     <div class="model-grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; max-width: 800px; margin: 0 auto;">
-      <!-- PY03 IronGrid API -->
+      <!-- PY03 Truth -->
       <div class="model-card" style="position: relative; border: 1px solid var(--border); transition: border-color 0.3s ease;">
         <span class="model-icon">⚡</span>
         <div class="model-kicker" style="color: var(--primary);">Runtime Module</div>
-        <h3 style="margin-top: 10px; font-size: 1.25rem;">PY03 IronGrid API</h3>
+        <h3 style="margin-top: 10px; font-size: 1.25rem;">PY03 Truth</h3>
         <p style="margin: 12px 0 20px; font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary);">
-          High-performance route optimization and concurrency sandbox for agent/runtime workloads.
+          Authoritative truth layer and concurrency sandbox for agent/runtime workloads.
         </p>
         <div class="model-features" style="margin-bottom: 24px;">
           <span class="model-tag">Route optimizer</span>
           <span class="model-tag">Concurrency sandbox</span>
           <span class="model-tag">Veklom core</span>
         </div>
-        <a href="https://github.com/reprewindai-dev/pyo3-irongrid-api" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center;">View Repository</a>
+        <a href="https://github.com/reprewindai-dev/pyo3-truth" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center;">View Repository</a>
       </div>
       
       <!-- Lockerphycer -->
       <div class="model-card" style="position: relative; border: 1px solid var(--border); transition: border-color 0.3s ease;">
         <span class="model-icon">🔒</span>
-        <div class="model-kicker" style="color: var(--veklom-amber);">Marketplace Product</div>
+        <div class="model-kicker" style="color: var(--veklom-amber);">Ecosystem</div>
         <h3 style="margin-top: 10px; font-size: 1.25rem;">Lockerphycer</h3>
         <p style="margin: 12px 0 20px; font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary);">
-          A Veklom marketplace product for controlled, governed execution workflows.
+          A Veklom ecosystem tool for controlled, governed execution workflows.
         </p>
         <div class="model-features" style="margin-bottom: 24px;">
-          <span class="model-tag">Governed workflows</span>
           <span class="model-tag">Security locker</span>
           <span class="model-tag">Product demo</span>
         </div>
-        <a href="/lockerphycer" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; border-color: var(--veklom-amber); color: var(--veklom-amber);">Open Lockerphycer demo</a>
+        <a href="https://github.com/reprewindai-dev/lockerphycer" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="width: 100%; text-align: center; justify-content: center; border-color: var(--veklom-amber); color: var(--veklom-amber);">View Repository</a>
       </div>
     </div>
   </div>
@@ -1042,23 +1041,46 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
-<!-- Platform Transparency Pulse -->
+<!-- Trust Benchmark Pulse -->
+  
+  <section class="section section-alt" id="pulse">
+    <div class="container">
+      <div style="text-align:center;margin-bottom:40px">
+        <span class="label">Trust Benchmark Pulse</span>
+        <h2>Live platform metrics</h2>
+        <p class="subtitle" style="margin:8px auto 0">Refreshes every 60 seconds. Real data from <span class="mono">GET /api/v1/platform/pulse</span></p>
+      </div>
+      <div class="pulse-grid" id="pulse-dashboard">
+        <div class="card pulse-card"><div class="value" id="pulse-users">Loading...</div><div class="pulse-label">Total users</div><div class="delta" id="pulse-users-delta"></div></div>
+        <div class="card pulse-card"><div class="value" id="pulse-listings">Loading...</div><div class="pulse-label">Active listings</div><div class="delta" id="pulse-listings-delta"></div></div>
+        <div class="card pulse-card"><div class="value" id="pulse-installs">Loading...</div><div class="pulse-label">Tool installs</div><div class="delta" id="pulse-tools-delta"></div></div>
+        <div class="card pulse-card"><div class="value" id="pulse-gpc">Loading...</div><div class="pulse-label">GPC compiles</div></div>
+      </div>
+    </div>
+  </section>
 
-<section class="section section-alt" id="pulse">
-  <div class="container">
-    <div style="text-align:center;margin-bottom:40px">
-      <span class="label">Transparency Pulse</span>
-      <h2>Live platform metrics</h2>
-      <p class="subtitle" style="margin:8px auto 0">Refreshes every 60 seconds. Real data from <span class="mono">GET /api/v1/platform/pulse</span></p>
-    </div>
-    <div class="pulse-grid" id="pulse-dashboard">
-      <div class="card pulse-card"><div class="value" id="pulse-users">—</div><div class="pulse-label">Total users</div><div class="delta" id="pulse-users-delta"></div></div>
-      <div class="card pulse-card"><div class="value" id="pulse-listings">—</div><div class="pulse-label">Active listings</div><div class="delta" id="pulse-listings-delta"></div></div>
-      <div class="card pulse-card"><div class="value" id="pulse-installs">—</div><div class="pulse-label">Tool installs</div><div class="delta" id="pulse-tools-delta"></div></div>
-      <div class="card pulse-card"><div class="value" id="pulse-gpc">—</div><div class="pulse-label">GPC compiles</div></div>
-    </div>
-  </div>
-</section>
+  <script>
+    // Live authoritative data fetching - NO MOCK DATA
+    async function fetchBenchmarkPulse() {
+      try {
+        const res = await fetch('https://cappo.veklom.com/api/v1/platform/pulse');
+        if (!res.ok) throw new Error('API Unavailable');
+        const data = await res.json();
+        
+        document.getElementById('pulse-users').innerText = data.total_users ?? 'Unavailable';
+        document.getElementById('pulse-listings').innerText = data.active_listings ?? 'Unavailable';
+        document.getElementById('pulse-installs').innerText = data.tool_installs ?? 'Unavailable';
+        document.getElementById('pulse-gpc').innerText = data.gpc_compiles ?? 'Unavailable';
+      } catch (e) {
+        document.getElementById('pulse-users').innerText = 'Unavailable';
+        document.getElementById('pulse-listings').innerText = 'Unavailable';
+        document.getElementById('pulse-installs').innerText = 'Unavailable';
+        document.getElementById('pulse-gpc').innerText = 'Unavailable';
+      }
+    }
+    fetchBenchmarkPulse();
+    setInterval(fetchBenchmarkPulse, 60000);
+  </script>
 
 <!-- Vendor / Customer Hook -->
 <section class="section section-alt" style="border-top: 1px solid var(--border);">
@@ -1118,6 +1140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <h4>Resources</h4>
         <a href="/uptime">Status</a>
         <a href="/docs">Docs</a>
+        <a href="https://veklom.dev" target="_blank" rel="noopener noreferrer">Developers</a>
         <a href="#feedback">Feedback</a>
       </div>
       <div class="footer-col">

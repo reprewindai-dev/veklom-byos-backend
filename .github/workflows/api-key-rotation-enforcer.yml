@@ -1,0 +1,65 @@
+﻿name: Secret Rotation Guardian
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      force_rotate:
+        description: 'Comma-separated secret names to force into rotation, e.g. CLOUDFLARE_API_TOKEN,STRIPE_SECRET_KEY'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  rotation-guardian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install psycopg2-binary
+
+      - name: Audit provider secrets and internal API keys
+        id: audit
+        env:
+          GH_TOKEN: ${{ secrets.SECRET_ROTATION_GH_TOKEN || github.token }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FORCE_ROTATE_SECRETS: ${{ github.event.inputs.force_rotate }}
+        run: |
+          python backend/scripts/secret_rotation_audit.py
+
+      - name: Open rotation issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="[SECURITY] Secret rotation guardian requires action"
+          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment --repo "$GITHUB_REPOSITORY" "$EXISTING" --body-file secret-rotation-report.md
+          else
+            # Prevent duplicate issues from cron spam
+            ISSUE_COUNT=$(gh issue list --repo "$GITHUB_REPOSITORY" --search "in:title \"$TITLE\" is:open" --json number | jq length)
+            if [ "$ISSUE_COUNT" -eq 0 ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" \
+                --title "$TITLE" \
+                --body-file secret-rotation-report.md
+            else
+              echo "An open issue already exists for \"$TITLE\", skipping."
+            fi
+          fi
+
+      - name: Upload rotation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-rotation-report
+          path: secret-rotation-report.md

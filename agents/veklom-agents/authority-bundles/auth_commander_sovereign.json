@@ -1,0 +1,21 @@
+{
+  "bundle_id": "auth_commander_sovereign",
+  "role": "Commander",
+  "agents": [
+    "agent_000"
+  ],
+  "allowed_mcp_servers": [
+    "uacp-mcp",
+    "billing-mcp",
+    "devops-mcp",
+    "governance-mcp",
+    "all"
+  ],
+  "allowed_tools": [
+    "*"
+  ],
+  "denied_tools": [],
+  "approval_required": [],
+  "audit_level": "forensic",
+  "notes": "Full sovereign access. Every action logged."
+}

@@ -1,0 +1,59 @@
+name: Operator Watch
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  operator-watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run backend operator watch
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL || 'https://api.veklom.com' }}
+          INTERNAL_OPERATOR_TOKEN: ${{ secrets.INTERNAL_OPERATOR_TOKEN || secrets.INTERNAL_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${INTERNAL_OPERATOR_TOKEN:-}" || (
+            echo "INTERNAL_OPERATOR_TOKEN/INTERNAL_API_KEY is missing. Create a superuser-owned API key with AUTOMATION or ADMIN scope and save it as the GitHub Actions secret INTERNAL_OPERATOR_TOKEN."
+            exit 1
+          )
+          RESPONSE="$(curl -fsS -X POST \
+            -H "Authorization: Bearer ${INTERNAL_OPERATOR_TOKEN}" \
+            "${BACKEND_URL%/}/api/v1/internal/operators/watch")"
+          echo "$RESPONSE"
+          STATUS="$(python - <<'PY' "$RESPONSE"
+          import json, sys
+          print(json.loads(sys.argv[1]).get("status", "unknown"))
+          PY
+          )"
+          if [ "$STATUS" = "critical" ]; then
+            echo "Operator watch detected critical backend health pressure."
+            exit 1
+          fi
+
+      - name: Open incident issue on critical watch failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > operator-watch-incident.md <<EOF
+          Workflow: $GITHUB_WORKFLOW
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Impact: backend operator watch detected critical pressure or could not run.
+          Action: Check the workflow log, verify INTERNAL_OPERATOR_TOKEN exists, then check /api/v1/internal/operators/digest and backend alerts.
+          EOF
+          # Prevent duplicate issues from cron spam
+          ISSUE_COUNT=$(gh issue list --repo "$GITHUB_REPOSITORY" --search "in:title \"[OPS] Operator watch requires attention\" is:open" --json number | jq length)
+          if [ "$ISSUE_COUNT" -eq 0 ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "[OPS] Operator watch requires attention" \
+              --body-file operator-watch-incident.md
+          else
+            echo "An open issue already exists for \"[OPS] Operator watch requires attention\", skipping."
+          fi

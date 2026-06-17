@@ -139,9 +139,9 @@ async def list_providers(user=Depends(get_current_user)):
     Returns:
         dict: Mapping with keys:
             - "default_order": dict mapping provider ID to numeric priority.
-            - "providers": list of provider IDs in the default sequence (e.g., ["ollama", "groq", "huggingface", "gemini", "openai"]).
+            - "providers": list of provider IDs in the default sequence (e.g., ["ollama", "groq", "huggingface", "ollama", "groq", "huggingface", "gemini", "openai"]).
     """
-    return {"default_order": provider_order({}), "providers": ["ollama", "groq", "huggingface", "gemini", "openai"]}
+    return {"default_order": provider_order({}), "providers": ["ollama", "groq", "huggingface", "ollama", "groq", "huggingface", "gemini", "openai"]}
 
 
 @router.post("/predict-cost")

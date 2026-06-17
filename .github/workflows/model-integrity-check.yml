@@ -1,0 +1,66 @@
+name: Model Integrity Check
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  model-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify public demo LLM path is healthy
+        run: |
+          set -euo pipefail
+          HEALTH=$(curl -fsS --retry 3 --retry-delay 10 --retry-all-errors https://api.veklom.com/api/v1/demo/pipeline/health)
+          echo "$HEALTH"
+          echo "$HEALTH" | grep -q '"llm_ok":true'
+          echo "$HEALTH" | grep -q '"groq_fallback_enabled":true'
+
+      - name: Verify authenticated exec model responds
+        env:
+          CI_API_KEY: ${{ secrets.CI_API_KEY }}
+          RUN_AUTH_MODEL_CHECK: ${{ vars.RUN_AUTH_MODEL_CHECK || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ "$RUN_AUTH_MODEL_CHECK" != "true" ]; then
+            echo "Authenticated /v1/exec probe disabled; public LLM health is the required canary."
+            exit 0
+          fi
+          if [ -z "${CI_API_KEY:-}" ]; then
+            echo "CI_API_KEY not configured; skipping authenticated /v1/exec probe"
+            exit 0
+          fi
+          RESPONSE=$(curl -fsS -X POST https://api.veklom.com/v1/exec \
+            -H "X-API-Key: ${CI_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"model":"qwen2.5:0.5b","prompt":"Reply with only: OK","max_tokens":5}' \
+            --retry 3 --retry-delay 10 --retry-all-errors \
+            --max-time 30)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -Eiq 'ok|response|result|audit'
+
+      - name: Open incident issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > incident.md <<EOF
+          Workflow: $GITHUB_WORKFLOW
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Commit: $GITHUB_SHA
+          Impact: public LLM health or authenticated model probe failed.
+          EOF
+          # Prevent duplicate issues from cron spam
+          ISSUE_COUNT=$(gh issue list --repo "$GITHUB_REPOSITORY" --search "in:title \"[OPS] Model integrity check failed\" is:open" --json number | jq length)
+          if [ "$ISSUE_COUNT" -eq 0 ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "[OPS] Model integrity check failed" \
+              --body-file incident.md
+          else
+            echo "An open issue already exists for \"[OPS] Model integrity check failed\", skipping."
+          fi

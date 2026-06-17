@@ -1,0 +1,68 @@
+name: Token Wallet Drift Check
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check wallet balance against transaction ledger in production network
+        env:
+          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$HETZNER_SSH_PRIVATE_KEY" > ~/.ssh/veklom-deploy
+          chmod 600 ~/.ssh/veklom-deploy
+          ssh-keyscan -H 5.78.135.11 >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/veklom-deploy -o IdentitiesOnly=yes root@5.78.135.11 <<'REMOTE'
+          set -euo pipefail
+          cd /data/coolify/applications/zjhp30ys1jlk8yaoxc96h2zd
+          SERVICE="$(docker compose config --services | head -n 1)"
+          docker compose exec -T "$SERVICE" python - <<'PY'
+          import os
+          import sys
+          import psycopg2
+
+          conn = psycopg2.connect(os.environ["DATABASE_URL"])
+          cur = conn.cursor()
+          cur.execute(
+              """
+              WITH ledger AS (
+                SELECT
+                  wallet_id,
+                  workspace_id,
+                  SUM(amount)::bigint AS ledger_sum,
+                  MAX(created_at) AS last_transaction_at
+                FROM token_transactions
+                GROUP BY wallet_id, workspace_id
+              )
+              SELECT
+                w.workspace_id,
+                w.balance,
+                COALESCE(l.ledger_sum, 0) AS ledger_sum,
+                ABS(w.balance - COALESCE(l.ledger_sum, 0)) AS drift,
+                l.last_transaction_at
+              FROM token_wallets w
+              LEFT JOIN ledger l ON l.wallet_id = w.id
+              WHERE ABS(w.balance - COALESCE(l.ledger_sum, 0)) > 100
+              ORDER BY drift DESC
+              LIMIT 50
+              """
+          )
+          rows = cur.fetchall()
+          if rows:
+              print(f"WALLET DRIFT DETECTED in {len(rows)} workspaces:")
+              for workspace_id, balance, ledger_sum, drift, last_seen in rows:
+                  print(
+                      f"workspace={workspace_id} balance={balance} "
+                      f"ledger_sum={ledger_sum} drift={drift} last_transaction_at={last_seen}"
+                  )
+              sys.exit(1)
+
+          print("No wallet drift detected")
+          PY
+          REMOTE

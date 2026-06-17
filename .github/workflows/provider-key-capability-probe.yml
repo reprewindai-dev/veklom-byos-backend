@@ -1,0 +1,85 @@
+name: Provider Key Capability Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe provider key-management capability
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPORT=provider-key-capability-report.md
+          {
+            echo "## Provider Key Capability Probe"
+            echo
+            echo "This probe is non-destructive. It checks whether normal provider keys can inspect account/key-management surfaces. It does not create, rotate, delete, or print any secret value."
+            echo
+            echo "| Provider | Check | Result | Meaning |"
+            echo "| --- | --- | --- | --- |"
+          } > "$REPORT"
+
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            CF_VERIFY=$(curl -sS -o /tmp/cf-verify.json -w "%{http_code}" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/user/tokens/verify" || true)
+            echo "| Cloudflare | token verify | HTTP $CF_VERIFY | 200 means token is valid for its current scopes. |" >> "$REPORT"
+
+            CF_LIST=$(curl -sS -o /tmp/cf-tokens.json -w "%{http_code}" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/user/tokens" || true)
+            echo "| Cloudflare | list/manage user tokens | HTTP $CF_LIST | 200 suggests token-management read authority; 403/401 means this normal token cannot manage replacement tokens. |" >> "$REPORT"
+          else
+            echo "| Cloudflare | skipped | missing secret | CLOUDFLARE_API_TOKEN is not configured. |" >> "$REPORT"
+          fi
+
+          if [ -n "${STRIPE_SECRET_KEY:-}" ]; then
+            STRIPE_ACCOUNT=$(curl -sS -o /tmp/stripe-account.json -w "%{http_code}" \
+              -u "$STRIPE_SECRET_KEY:" \
+              "https://api.stripe.com/v1/account" || true)
+            echo "| Stripe | account retrieve | HTTP $STRIPE_ACCOUNT | 200 means billing key works for normal Stripe API calls. Stripe API key creation is not exposed by the public API surface used by this repo. |" >> "$REPORT"
+          else
+            echo "| Stripe | skipped | missing secret | STRIPE_SECRET_KEY is not configured. |" >> "$REPORT"
+          fi
+
+          if [ -n "${RESEND_API_KEY:-}" ]; then
+            RESEND_DOMAINS=$(curl -sS -o /tmp/resend-domains.json -w "%{http_code}" \
+              -H "Authorization: Bearer $RESEND_API_KEY" \
+              "https://api.resend.com/domains" || true)
+            echo "| Resend | domains list | HTTP $RESEND_DOMAINS | 200 means email key works for normal Resend API calls. Key creation still requires account-level authority if Resend exposes it. |" >> "$REPORT"
+          else
+            echo "| Resend | skipped | missing secret | RESEND_API_KEY is not configured. |" >> "$REPORT"
+          fi
+
+          cat "$REPORT"
+
+      - name: Update capability issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="[SECURITY] Provider key capability probe"
+          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment --repo "$GITHUB_REPOSITORY" "$EXISTING" --body-file provider-key-capability-report.md
+          else
+            # Prevent duplicate issues from cron spam
+            ISSUE_COUNT=$(gh issue list --repo "$GITHUB_REPOSITORY" --search "in:title \"$TITLE\" is:open" --json number | jq length)
+            if [ "$ISSUE_COUNT" -eq 0 ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" \
+                --title "$TITLE" \
+                --body-file provider-key-capability-report.md
+            else
+              echo "An open issue already exists for \"$TITLE\", skipping."
+            fi
+          fi

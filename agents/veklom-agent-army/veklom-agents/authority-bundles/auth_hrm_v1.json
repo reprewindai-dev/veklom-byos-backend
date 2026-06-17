@@ -1,0 +1,33 @@
+{
+  "bundle_id": "auth_hrm_v1",
+  "role": "HRM Workforce",
+  "agents": [
+    "agent_114",
+    "agent_115",
+    "agent_116",
+    "agent_117",
+    "agent_118",
+    "agent_119"
+  ],
+  "allowed_mcp_servers": [
+    "governance-mcp",
+    "telemetry-mcp"
+  ],
+  "allowed_tools": [
+    "governance.read_ledger",
+    "governance.read_agent_status",
+    "governance.update_rank",
+    "governance.update_status",
+    "telemetry.read_signals",
+    "telemetry.read_metrics"
+  ],
+  "denied_tools": [
+    "governance.issue_penalty",
+    "governance.terminate_agent",
+    "billing.*",
+    "stripe.*",
+    "devops.*"
+  ],
+  "approval_required": [],
+  "audit_level": "standard"
+}

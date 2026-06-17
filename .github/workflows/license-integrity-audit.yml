@@ -1,0 +1,104 @@
+name: Nightly License Integrity Audit
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install -e backend
+
+      - name: Run license integrity audit
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          LICENSE_ADMIN_TOKEN: ${{ secrets.LICENSE_ADMIN_TOKEN }}
+        run: |
+          python - <<'EOF'
+          import asyncio, httpx, os
+
+          LICENSE_URL = "https://license.veklom.com"
+          ADMIN_TOKEN = os.environ["LICENSE_ADMIN_TOKEN"]
+
+          REQUIRED_PUBLIC_PATHS = {"/health", "/status", "/issue", "/activate", "/verify", "/deactivate"}
+
+          def extract_licenses(payload):
+              if isinstance(payload, list):
+                  return payload
+              if isinstance(payload, dict):
+                  for key in ("licenses", "items", "data", "results"):
+                      value = payload.get(key)
+                      if isinstance(value, list):
+                          return value
+              raise RuntimeError(f"Unexpected /admin/licenses response shape: {type(payload).__name__}")
+
+          def license_label(license_row):
+              if not isinstance(license_row, dict):
+                  return "[invalid-row]"
+              return license_row.get("license_id") or license_row.get("id") or license_row.get("key_prefix") or "[unknown]"
+
+          async def audit():
+              async with httpx.AsyncClient(timeout=20.0) as client:
+                  health = await client.get(f"{LICENSE_URL}/health")
+                  health.raise_for_status()
+                  print(f"License server health: {health.status_code}")
+
+                  spec = await client.get(f"{LICENSE_URL}/openapi.json")
+                  spec.raise_for_status()
+                  paths = set((spec.json().get("paths") or {}).keys())
+                  missing_paths = sorted(REQUIRED_PUBLIC_PATHS - paths)
+                  if missing_paths:
+                      raise RuntimeError(f"License server contract missing paths: {missing_paths}")
+
+                  if "/admin/licenses" not in paths:
+                      print("No /admin/licenses endpoint is deployed; verified live license server contract only.")
+                      return
+
+                  r = await client.get(
+                      f"{LICENSE_URL}/admin/licenses",
+                      headers={"X-Admin-Token": ADMIN_TOKEN}
+                  )
+                  r.raise_for_status()
+                  licenses = extract_licenses(r.json())
+                  active = [l for l in licenses if isinstance(l, dict) and l.get("status") == "active"]
+                  print(f"Active licenses: {len(active)}")
+
+                  issues = []
+                  for lic in active:
+                      license_key = lic.get("license_key")
+                      if not license_key:
+                          issues.append(f"{license_label(lic)}:missing-license-key")
+                          continue
+                      v = await client.post(
+                          f"{LICENSE_URL}/verify",
+                          json={"license_key": license_key,
+                                "machine_fingerprint": lic.get("machine_fingerprint", "")}
+                      )
+                      if v.status_code != 200:
+                          issues.append(f"{license_label(lic)}:verify-{v.status_code}")
+
+                  if issues:
+                      print(f"INTEGRITY ISSUES: {issues}")
+                      exit(1)
+                  else:
+                      print(f"All {len(active)} licenses verified clean")
+
+          asyncio.run(audit())
+          EOF
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+            -H 'Content-type: application/json' \
+            -d '{"text":"LICENSE INTEGRITY AUDIT FAILED - check GitHub Actions immediately"}'

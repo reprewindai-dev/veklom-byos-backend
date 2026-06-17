@@ -1,0 +1,47 @@
+{
+  "bundle_id": "auth_engineering_v1",
+  "role": "Engineering",
+  "agents": [
+    "agent_001",
+    "agent_002",
+    "agent_003",
+    "agent_004",
+    "agent_005",
+    "agent_006",
+    "agent_007",
+    "agent_008"
+  ],
+  "allowed_mcp_servers": [
+    "repo-mcp",
+    "ci-mcp",
+    "devops-mcp"
+  ],
+  "allowed_tools": [
+    "repo.read_file",
+    "repo.write_file",
+    "repo.create_pr",
+    "repo.list_files",
+    "ci.trigger_pipeline",
+    "ci.get_status",
+    "ci.get_logs",
+    "ci.get_failures",
+    "devops.build_image",
+    "devops.deploy_staging",
+    "devops.get_logs",
+    "db.run_migration",
+    "db.query_readonly"
+  ],
+  "denied_tools": [
+    "billing.*",
+    "stripe.*",
+    "governance.issue_certificate",
+    "devops.deploy_production",
+    "db.drop_table",
+    "db.delete_all"
+  ],
+  "approval_required": [
+    "devops.deploy_production",
+    "db.alter_table"
+  ],
+  "audit_level": "standard"
+}

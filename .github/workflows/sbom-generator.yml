@@ -1,0 +1,59 @@
+name: SBOM Generator
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit and cyclonedx
+        run: pip install pip-audit cyclonedx-bom
+
+      - name: Install project deps
+        run: pip install -e backend
+
+      - name: Generate SBOM (CycloneDX JSON)
+        run: |
+          cyclonedx-py environment \
+            --output-format json \
+            --output-file sbom-$(date +%Y-%m-%d).json
+
+      - name: Run vulnerability audit
+        run: |
+          pip-audit \
+            --output json \
+            --output-file vuln-audit-$(date +%Y-%m-%d).json || true
+          cat vuln-audit-$(date +%Y-%m-%d).json
+
+      - name: Upload SBOM to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          aws s3 cp sbom-$DATE.json \
+            s3://$R2_BUCKET/sbom/sbom-$DATE.json \
+            --endpoint-url $R2_ENDPOINT
+          aws s3 cp vuln-audit-$DATE.json \
+            s3://$R2_BUCKET/sbom/vuln-audit-$DATE.json \
+            --endpoint-url $R2_ENDPOINT
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            sbom-*.json
+            vuln-audit-*.json

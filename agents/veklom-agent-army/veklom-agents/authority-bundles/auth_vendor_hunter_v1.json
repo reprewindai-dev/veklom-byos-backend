@@ -1,0 +1,50 @@
+{
+  "bundle_id": "auth_vendor_hunter_v1",
+  "role": "Vendor Hunter",
+  "agents": [
+    "agent_010",
+    "agent_011",
+    "agent_012",
+    "agent_013",
+    "agent_014",
+    "agent_015",
+    "agent_016",
+    "agent_017",
+    "agent_018",
+    "agent_019",
+    "agent_020",
+    "agent_021",
+    "agent_022",
+    "agent_023",
+    "agent_024",
+    "agent_025",
+    "agent_026",
+    "agent_027",
+    "agent_028",
+    "agent_029"
+  ],
+  "allowed_mcp_servers": [
+    "crawler-mcp",
+    "search-mcp",
+    "email-mcp"
+  ],
+  "allowed_tools": [
+    "crawler.fetch_page",
+    "crawler.parse_github",
+    "crawler.parse_huggingface",
+    "search.web_search",
+    "email.draft_outreach"
+  ],
+  "denied_tools": [
+    "email.send",
+    "billing.*",
+    "stripe.*",
+    "devops.*",
+    "repo.write_file",
+    "governance.*"
+  ],
+  "approval_required": [
+    "email.send"
+  ],
+  "audit_level": "standard"
+}

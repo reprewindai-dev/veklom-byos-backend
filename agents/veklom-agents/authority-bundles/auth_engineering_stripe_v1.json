@@ -1,0 +1,34 @@
+{
+  "bundle_id": "auth_engineering_stripe_v1",
+  "role": "Stripe Engineer",
+  "agents": [
+    "agent_001"
+  ],
+  "allowed_mcp_servers": [
+    "repo-mcp",
+    "stripe-mcp",
+    "ci-mcp"
+  ],
+  "allowed_tools": [
+    "repo.read_file",
+    "repo.write_file",
+    "repo.create_pr",
+    "stripe.create_payment_intent",
+    "stripe.create_connect_account",
+    "stripe.verify_webhook",
+    "stripe.get_balance",
+    "stripe.list_payouts",
+    "ci.run_tests",
+    "ci.get_logs"
+  ],
+  "denied_tools": [
+    "stripe.issue_refund",
+    "stripe.delete_account",
+    "governance.*",
+    "billing.modify_plan"
+  ],
+  "approval_required": [
+    "stripe.issue_refund"
+  ],
+  "audit_level": "forensic"
+}

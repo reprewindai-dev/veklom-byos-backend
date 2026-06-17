@@ -576,7 +576,7 @@ class OperatorEngine:
                 .where(InternalOperatorBudget.worker_id == worker_id)
             )).scalar_one_or_none()
             
-            if budget_row and provider in ("openai", "gemini"):
+            if budget_row and provider in ("ollama", "openai", "gemini"):
                 if budget_row.daily_spent_usd >= budget_row.daily_cap_usd:
                     print(f"[engine] {worker_id}: budget cap reached, skipping tick")
                     return

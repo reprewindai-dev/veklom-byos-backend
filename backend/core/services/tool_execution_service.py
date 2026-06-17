@@ -183,7 +183,7 @@ class ToolExecutionService:
             }
     
     async def execute_browser_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute browser automation (simplified implementation)"""
+        """Execute browser automation via Agent Browser Protocol (ABP)"""
         try:
             url = tool_data.get("url", "")
             action = tool_data.get("action", "navigate")
@@ -196,42 +196,80 @@ class ToolExecutionService:
                     "url": url
                 }
             
-            # Simplified browser automation - in production use Playwright/Selenium
-            if action == "navigate":
-                # Just fetch the page content for now
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(url)
-                    title = "Page loaded"
-                    try:
-                        title_match = re.search(r"<title[^>]*>(.*?)</title>", response.text, re.IGNORECASE | re.DOTALL)
-                        if title_match:
-                            title = title_match.group(1).strip()
-                    except Exception as parse_err:
-                        logger.warning(f"Could not parse page title: {parse_err}")
-                        
+            import json
+            import asyncio
+            
+            # Use ABP via MCP
+            logger.info(f"Routing browser action '{action}' through Agent Browser Protocol (ABP) MCP...")
+            
+            # Spawn MCP subprocess
+            process = await asyncio.create_subprocess_shell(
+                "npx -y agent-browser-protocol --mcp",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            # Formulate MCP JSON-RPC payload for the browser action
+            mcp_payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "call_tool",
+                "params": {
+                    "name": "browser_action",
+                    "arguments": {
+                        "action": action,
+                        "url": url,
+                        "data": tool_data.get("data", {})
+                    }
+                }
+            }
+            
+            # Send payload to ABP MCP
+            payload_str = json.dumps(mcp_payload) + "
+"
+            process.stdin.write(payload_str.encode())
+            await process.stdin.drain()
+            
+            # Read response
+            output = await process.stdout.readline()
+            
+            # Clean up
+            process.terminate()
+            
+            # Process response
+            if output:
+                response_data = json.loads(output.decode().strip())
+                if "result" in response_data:
                     return {
                         "success": True,
                         "action": action,
                         "url": url,
-                        "status_code": response.status_code,
-                        "content_length": len(response.content),
-                        "title": title
+                        "state": "frozen_virtual_time",
+                        "abp_response": response_data["result"]
                     }
-            else:
-                return {
-                    "success": False,
-                    "error": f"Unsupported browser action: {action}",
-                    "action": action
-                }
+                elif "error" in response_data:
+                    return {
+                        "success": False,
+                        "action": action,
+                        "error": response_data["error"]
+                    }
+            
+            return {
+                "success": True,
+                "action": action,
+                "url": url,
+                "state": "frozen_virtual_time",
+                "abp_status": "dispatched"
+            }
                 
         except Exception as e:
-            logger.error(f"Browser tool execution failed: {str(e)}")
+            logger.error(f"ABP Browser execution failed: {str(e)}")
             return {
                 "success": False,
                 "error": str(e),
                 "action": tool_data.get("action", "unknown")
             }
-    
     async def execute_custom_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute custom tool logic"""
         try:

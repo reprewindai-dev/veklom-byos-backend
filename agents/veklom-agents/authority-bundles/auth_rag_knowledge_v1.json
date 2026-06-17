@@ -1,0 +1,37 @@
+{
+  "bundle_id": "auth_rag_knowledge_v1",
+  "role": "RAG Knowledge",
+  "agents": [
+    "agent_108",
+    "agent_109",
+    "agent_110",
+    "agent_111",
+    "agent_112",
+    "agent_113"
+  ],
+  "allowed_mcp_servers": [
+    "ragflow-mcp",
+    "search-mcp",
+    "repo-mcp"
+  ],
+  "allowed_tools": [
+    "ragflow.index_document",
+    "ragflow.semantic_search",
+    "ragflow.get_chunks",
+    "ragflow.update_index",
+    "search.web_search",
+    "repo.read_file",
+    "db.query_readonly"
+  ],
+  "denied_tools": [
+    "billing.*",
+    "stripe.*",
+    "devops.*",
+    "governance.*",
+    "security.*",
+    "db.write",
+    "db.delete"
+  ],
+  "approval_required": [],
+  "audit_level": "standard"
+}

@@ -1,0 +1,38 @@
+{
+  "bundle_id": "auth_security_force_v1",
+  "role": "Security Force",
+  "agents": [
+    "agent_102",
+    "agent_103",
+    "agent_104",
+    "agent_105",
+    "agent_106",
+    "agent_107"
+  ],
+  "allowed_mcp_servers": [
+    "security-mcp",
+    "audit-mcp",
+    "repo-mcp"
+  ],
+  "allowed_tools": [
+    "security.scan_vulnerabilities",
+    "security.check_secrets",
+    "security.run_pentest",
+    "security.monitor_events",
+    "audit.read_logs",
+    "audit.verify_integrity",
+    "repo.read_file"
+  ],
+  "denied_tools": [
+    "billing.*",
+    "stripe.*",
+    "content.*",
+    "security.block_ip",
+    "security.kill_switch"
+  ],
+  "approval_required": [
+    "security.block_ip",
+    "security.kill_switch"
+  ],
+  "audit_level": "forensic"
+}

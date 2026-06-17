@@ -1,0 +1,98 @@
+[
+  {
+    "agent": "authority-bundles",
+    "pgl_id": "pgl_53e08bc555f248c1901a6963d848bdd2",
+    "run_id": "run_mock_07b752bc",
+    "status": "cleared"
+  },
+  {
+    "agent": "enforcement",
+    "pgl_id": "pgl_44b91869d1bf4cc5b7eebf2fb5130be7",
+    "run_id": "run_mock_e0d974a8",
+    "status": "cleared"
+  },
+  {
+    "agent": "eyes-visual",
+    "pgl_id": "pgl_ad2b4091662a4f8cab96db9369ff3b68",
+    "run_id": "run_mock_6564f780",
+    "status": "cleared"
+  },
+  {
+    "agent": "governance",
+    "pgl_id": "pgl_4fc78f89a0f248bebb5202ea7206bf76",
+    "run_id": "run_mock_893c24da",
+    "status": "cleared"
+  },
+  {
+    "agent": "hrm-workforce",
+    "pgl_id": "pgl_6a4fffa9910c4a3e8b254b40dbfc2186",
+    "run_id": "run_mock_7f62d67d",
+    "status": "cleared"
+  },
+  {
+    "agent": "memory",
+    "pgl_id": "pgl_5c8cc5dfa2ed46fbba80ad564b675250",
+    "run_id": "run_mock_76a4f41a",
+    "status": "cleared"
+  },
+  {
+    "agent": "phase0-scaffolding",
+    "pgl_id": "pgl_2d671011f4c249018af8d97c264b03ce",
+    "run_id": "run_mock_3a0d0db4",
+    "status": "cleared"
+  },
+  {
+    "agent": "phase1-engineering",
+    "pgl_id": "pgl_5bc0cea88775464b898ee517211feaa1",
+    "run_id": "run_mock_5d303858",
+    "status": "cleared"
+  },
+  {
+    "agent": "phase2-vendor-acquisition",
+    "pgl_id": "pgl_76ea502096c14ff4a9e7bb3ae73a579f",
+    "run_id": "run_mock_ca729e81",
+    "status": "cleared"
+  },
+  {
+    "agent": "phase3-user-acquisition",
+    "pgl_id": "pgl_5e2b11c46f1e4699b93506850d4e7b17",
+    "run_id": "run_mock_f884ad1a",
+    "status": "cleared"
+  },
+  {
+    "agent": "phase4-retention-revenue",
+    "pgl_id": "pgl_cff679779bdf4c448787b125ab49f23a",
+    "run_id": "run_mock_1f0fec31",
+    "status": "cleared"
+  },
+  {
+    "agent": "phase5-daily-operations",
+    "pgl_id": "pgl_3d2f8657cab54fc094b0f6152b757c2a",
+    "run_id": "run_mock_1031b854",
+    "status": "cleared"
+  },
+  {
+    "agent": "rag-knowledge",
+    "pgl_id": "pgl_330cd7eb96224b678fe9e31424ff1455",
+    "run_id": "run_mock_851e3732",
+    "status": "cleared"
+  },
+  {
+    "agent": "security-force",
+    "pgl_id": "pgl_edafde9594bf49c2b233a3ab694e347b",
+    "run_id": "run_mock_e13933ae",
+    "status": "cleared"
+  },
+  {
+    "agent": "skills",
+    "pgl_id": "pgl_51a923bd8c53422e808446d6e540ae7e",
+    "run_id": "run_mock_fd98fd78",
+    "status": "cleared"
+  },
+  {
+    "agent": "special-governance",
+    "pgl_id": "pgl_95ffb53e405b4f92a2118acb84b54d97",
+    "run_id": "run_mock_26fe2d9e",
+    "status": "cleared"
+  }
+]

@@ -1,0 +1,38 @@
+{
+  "bundle_id": "auth_growth_v1",
+  "role": "Growth",
+  "agents": [
+    "agent_040",
+    "agent_041",
+    "agent_042",
+    "agent_043",
+    "agent_044"
+  ],
+  "allowed_mcp_servers": [
+    "browser-mcp",
+    "search-mcp",
+    "content-mcp"
+  ],
+  "allowed_tools": [
+    "browser.navigate",
+    "browser.screenshot",
+    "browser.get_text",
+    "search.web_search",
+    "search.get_page",
+    "content.write_blog",
+    "content.publish_social",
+    "analytics.read_metrics"
+  ],
+  "denied_tools": [
+    "billing.*",
+    "stripe.*",
+    "devops.*",
+    "repo.write_file",
+    "governance.*",
+    "db.*"
+  ],
+  "approval_required": [
+    "content.publish_blog"
+  ],
+  "audit_level": "standard"
+}

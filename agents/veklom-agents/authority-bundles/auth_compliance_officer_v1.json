@@ -1,0 +1,34 @@
+{
+  "bundle_id": "auth_compliance_officer_v1",
+  "role": "Compliance Officer",
+  "agents": [
+    "agent_079"
+  ],
+  "allowed_mcp_servers": [
+    "governance-mcp",
+    "audit-mcp",
+    "repo-mcp"
+  ],
+  "allowed_tools": [
+    "governance.issue_penalty_l1",
+    "governance.issue_penalty_l2",
+    "governance.issue_penalty_l3",
+    "governance.read_ledger",
+    "audit.scan_commits",
+    "audit.verify_hash_chain",
+    "audit.read_logs",
+    "repo.read_file"
+  ],
+  "denied_tools": [
+    "governance.issue_penalty_l4",
+    "governance.issue_penalty_l5",
+    "governance.terminate_agent",
+    "devops.*",
+    "stripe.*"
+  ],
+  "approval_required": [
+    "governance.issue_penalty_l4",
+    "governance.issue_penalty_l5"
+  ],
+  "audit_level": "forensic"
+}

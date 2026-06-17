@@ -40,6 +40,8 @@ class ToolExecutionService:
             "api.openai.com", "api.anthropic.com", "api.google.com",
             "github.com", "api.github.com", "jsonplaceholder.typicode.com"
         ]
+        self._abp_process: Optional[asyncio.subprocess.Process] = None
+        self._abp_request_id = 0
     
     async def execute_filesystem_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute real filesystem operations with security checks"""
@@ -182,34 +184,53 @@ class ToolExecutionService:
                 "url": tool_data.get("url", "unknown")
             }
     
+    async def _get_abp_process(self) -> asyncio.subprocess.Process:
+        """Get or spawn the long-lived ABP MCP sidecar."""
+        if self._abp_process is None or self._abp_process.returncode is not None:
+            self._abp_process = await asyncio.create_subprocess_exec(
+                "npx.cmd", "-y", "agent-browser-protocol", "--mcp",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            # MCP handshake — required before any call_tool
+            await self._abp_send({
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "veklom-byos-backend", "version": "1.0.0"}
+                }
+            })
+            await self._abp_read()  # consume initialize response
+        return self._abp_process
+
+    async def _abp_send(self, payload: dict):
+        proc = self._abp_process
+        line = json.dumps(payload) + "\n"
+        proc.stdin.write(line.encode('utf-8'))
+        await proc.stdin.drain()
+
+    async def _abp_read(self) -> dict:
+        proc = self._abp_process
+        raw = await asyncio.wait_for(proc.stdout.readline(), timeout=30)
+        return json.loads(raw.decode('utf-8').strip())
+
     async def execute_browser_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute browser automation via official MCP API (Agent Browser Protocol)"""
+        """Execute browser automation via Agent Browser Protocol (ABP) MCP sidecar."""
         try:
             url = tool_data.get("url", "")
             action = tool_data.get("action", "navigate")
-            
-            # Security: Validate URL
-            if not self._is_safe_url(url):
-                return {
-                    "success": False,
-                    "error": "Unsafe URL for browser automation",
-                    "url": url
-                }
-            
-            import json
-            import asyncio
-            from backend.apps.api.routers.mcp import manager as mcp_manager
-            
-            logger.info(f"Routing browser action '{action}' through official MCP API to ABP...")
-            
-            # The agent-browser-protocol should be connected as an active MCP session.
-            # We broadcast the browser action to any connected ABP server in the workspace.
-            workspace_id = tool_data.get("workspace_id", "default")
-            
-            mcp_payload = {
+
+            await self._get_abp_process()
+
+            self._abp_request_id += 1
+            await self._abp_send({
                 "jsonrpc": "2.0",
-                "id": 1,
-                "method": "call_tool",
+                "id": self._abp_request_id,
+                "method": "tools/call",          # correct MCP method name
                 "params": {
                     "name": "browser_action",
                     "arguments": {
@@ -218,28 +239,31 @@ class ToolExecutionService:
                         "data": tool_data.get("data", {})
                     }
                 }
-            }
-            
-            # Send the request over the official MCP WebSocket manager
-            await mcp_manager.broadcast_to_session(workspace_id, mcp_payload)
-            
-            # In a full implementation, we'd wait for a correlated response via WS.
-            # For now, return a dispatched state.
-            return {
-                "success": True,
-                "action": action,
-                "url": url,
-                "state": "frozen_virtual_time",
-                "abp_status": "dispatched_via_mcp_api"
-            }
-                
+            })
+
+            response = await self._abp_read()
+
+            if "result" in response:
+                return {
+                    "success": True,
+                    "action": action,
+                    "url": url,
+                    "state": "settled",
+                    "abp_response": response["result"]
+                }
+            else:
+                return {
+                    "success": False,
+                    "action": action,
+                    "error": response.get("error", "Unknown ABP error")
+                }
+
+        except asyncio.TimeoutError:
+            self._abp_process = None  # force respawn next call
+            return {"success": False, "error": "ABP timeout — process reset"}
         except Exception as e:
             logger.error(f"ABP Browser execution failed: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e),
-                "action": tool_data.get("action", "unknown")
-            }
+            return {"success": False, "error": str(e), "action": tool_data.get("action", "unknown")}
     async def execute_custom_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute custom tool logic"""
         try:

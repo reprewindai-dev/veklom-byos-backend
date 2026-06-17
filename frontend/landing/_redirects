@@ -1,8 +1,0 @@
-/status /status.html 200
-/status.html /status.html 200
-/legal/license /license.html 200
-/legal/license.html /license.html 200
-/license /legal/license 301
-/legal/vendor-agreement /vendor-agreement.html 200
-/legal/vendor-agreement.html /vendor-agreement.html 200
-/vendor-agreement /legal/vendor-agreement 301

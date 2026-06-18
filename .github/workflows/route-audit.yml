@@ -21,10 +21,10 @@ jobs:
           cache: pip
 
       - name: Install backend
-        run: pip install -e backend
+        run: pip install -e .
 
       - name: Run route contract audit
-        run: python backend/scripts/audit_routes.py
+        run: python audit.py
 
       - name: Open incident issue on failure
         if: failure()

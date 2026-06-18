@@ -229,6 +229,10 @@ class Settings(BaseSettings):
     UACPV4_BASE_URL: str = "http://uacpv4:8002"
     UACPV4_TIMEOUT_MS: int = 15000
 
+    # GnomLedger (Real PGL System)
+    GNOMLEDGER_URL: str = "http://localhost:8000"  # GnomLedger runs on port 8000
+    GNOMLEDGER_API_KEY: str = ""
+
     # Keeping old JWT variables mapped to new ones for backward compatibility during refactor
     @property
     def JWT_SECRET_KEY(self) -> str:

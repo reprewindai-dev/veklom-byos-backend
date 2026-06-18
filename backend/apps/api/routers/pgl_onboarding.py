@@ -302,73 +302,100 @@ async def generate_agent_certificate(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Step 3: Issue first agent birth certificate — writes a PGLCertificate
-    row of kind='birth' and a 'certificate_issued' ledger event.
+    """Step 3: Register agent with GnomLedger (real PGL) to get UBC ID.
+    
+    This calls GnomLedger's /agents endpoint to register the agent and receive
+    the Universal Blockchain Connection (UBC) ID. This ID is used throughout
+    the system for tracking.
     """
+    from backend.core.services.pgl_client import PGLClient
+    
     workspace_id = str(current_user.workspace_id)
     actor_id = str(current_user.id)
 
     agent_name = certificate_data.get("agent_name", "Primary Agent")
+    agent_id = f"agent_{uuid.uuid4().hex[:16]}"
 
-    genome_data = {
+    genome_payload = {
         "agent_name": agent_name,
         "agent_type": certificate_data.get("agent_type", "autonomous"),
         "capabilities": certificate_data.get("capabilities", []),
         "safety_rules": certificate_data.get("safety_rules", ["no_secrets"]),
-        "jurisdiction": certificate_data.get("jurisdiction", "US"),
-        "declared_purpose": certificate_data.get("declared_purpose", ""),
-        "intended_use": certificate_data.get("intended_use", ""),
-        "risk_category": certificate_data.get("risk_category", "low"),
-        "workspace_id": workspace_id,
-        "version": "1.0.0",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    genome_hash = _canonical_hash(genome_data)
-
-    constitution_data = {
         "tools": certificate_data.get("tools", ["governance", "policy-check"]),
         "permissions": certificate_data.get("permissions", ["read"]),
-        "safety_rules": certificate_data.get("safety_rules", ["no_secrets"]),
+        "workspace_id": workspace_id,
+        "version": "1.0.0",
     }
-    constitution_hash = _canonical_hash(constitution_data)
 
-    certificate_id = f"cert_{uuid.uuid4().hex[:24]}"
+    try:
+        # Register agent with GnomLedger (real PGL system)
+        pgl_client = PGLClient()
+        gnomledger_response = await pgl_client.register_agent(
+            agent_id=agent_id,
+            name=agent_name,
+            creator=actor_id,
+            jurisdiction=certificate_data.get("jurisdiction", "US"),
+            declared_purpose=certificate_data.get("declared_purpose", ""),
+            genome_payload=genome_payload,
+            parent_agent_ids=certificate_data.get("parent_agent_ids"),
+        )
+        
+        # Extract UBC ID from GnomLedger response
+        ubc_id = gnomledger_response.get("certificate_id") or gnomledger_response.get("agent_id")
+        
+        # Write local PGLCertificate record with UBC ID for tracking
+        genome_hash = _canonical_hash(genome_payload)
+        constitution_data = {
+            "tools": certificate_data.get("tools", ["governance", "policy-check"]),
+            "permissions": certificate_data.get("permissions", ["read"]),
+            "safety_rules": certificate_data.get("safety_rules", ["no_secrets"]),
+        }
+        constitution_hash = _canonical_hash(constitution_data)
 
-    cert = PGLCertificate(
-        certificate_id=certificate_id,
-        kind="birth",
-        workspace_id=workspace_id,
-        actor_id=actor_id,
-        genome_hash=genome_hash,
-        constitution_hash=constitution_hash,
-        status="active",
-    )
-    db.add(cert)
+        cert = PGLCertificate(
+            certificate_id=ubc_id,  # Use UBC ID from GnomLedger
+            kind="birth",
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            genome_hash=genome_hash,
+            constitution_hash=constitution_hash,
+            status="active",
+        )
+        db.add(cert)
 
-    event = await _write_ledger_event(
-        db,
-        workspace_id=workspace_id,
-        actor_id=actor_id,
-        event_type="certificate_issued",
-        payload={
-            "certificate_id": certificate_id,
+        event = await _write_ledger_event(
+            db,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            event_type="agent_registered_with_gnomledger",
+            payload={
+                "certificate_id": ubc_id,
+                "agent_id": agent_id,
+                "genome_hash": genome_hash,
+                "constitution_hash": constitution_hash,
+                "agent_name": agent_name,
+                "gnomledger_response": gnomledger_response,
+            },
+            certificate_id=ubc_id,
+        )
+
+        await db.commit()
+
+        return {
+            "certificate_id": ubc_id,  # UBC ID from GnomLedger
+            "agent_id": agent_id,
             "genome_hash": genome_hash,
             "constitution_hash": constitution_hash,
-            "agent_name": agent_name,
-        },
-        certificate_id=certificate_id,
-    )
-
-    await db.commit()
-
-    return {
-        "certificate_id": certificate_id,
-        "genome_hash": genome_hash,
-        "constitution_hash": constitution_hash,
-        "ledger_event_hash": event.event_hash,
-        "status": "issued",
-        "message": "Birth certificate written to pgl_certificates table",
-    }
+            "ledger_event_hash": event.event_hash,
+            "status": "registered",
+            "message": "Agent registered with GnomLedger and UBC ID assigned",
+            "gnomledger_response": gnomledger_response,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to register agent with GnomLedger: {str(e)}"
+        )
 
 
 # ---------------------------------------------------------------------------

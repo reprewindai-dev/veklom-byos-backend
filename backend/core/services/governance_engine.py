@@ -16,9 +16,11 @@ from backend.core.services.guardrail_service import guardrail_service
 from backend.core.services.certificate_service import CertificateService
 from backend.core.services.memory_fabric_service import MemoryFabricService
 from backend.core.services.policy_registry_service import PolicyRegistryService
+from backend.core.services.pgl_client import PGLClient
 from backend.db.models.genome import GenomeVersion
 from backend.db.models.ledger import LedgerEvent
 from backend.db.models.agent import Agent
+from backend.db.models.governed_run import GovernedRun
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,7 @@ class GovernanceEngine:
         # 2. Risk scoring & Tier assignment
         task_type = request_body.get("task_type") or genome.payload.get("task_profile", {}).get("task_type", "general")
         org_id = request_body.get("org_id") or "default_org"
+        workspace_id = request_body.get("workspace_id") or "default_workspace"
         risk_profile = await MemoryFabricService.get_org_risk_profile(db, org_id)
 
         # Dynamic risk calculation
@@ -226,7 +229,43 @@ class GovernanceEngine:
             output_signature=output_hash[:16]
         )
 
-        # 10. Issue Execution Certificate
+        # 10. Create ledger event in GnomLedger (real PGL) with UBC ID tracking
+        run_id = trace_id  # Use trace_id as run_id for PGL
+        
+        try:
+            pgl_client = PGLClient()
+            
+            # Get agent's UBC ID from GnomLedger
+            agent_info = await pgl_client.get_agent(str(agent_id))
+            ubc_id = agent_info.get("certificate_id") if agent_info else None
+            
+            # Create ledger event in GnomLedger
+            ledger_event = await pgl_client.create_ledger_event(
+                agent_id=str(agent_id),
+                event_type="governed_execution",
+                details={
+                    "trace_id": trace_id,
+                    "input_hash": input_hash,
+                    "output_hash": output_hash,
+                    "tier": tier,
+                    "rewrite_applied": rewrite_applied,
+                    "governance_decision": f"APPROVED_TIER_{tier}",
+                    "risk_tier": tier,
+                    "genome_hash": genome_hash,
+                    "workspace_id": workspace_id,
+                }
+            )
+            pgl_identity = {
+                "ledger_event_id": ledger_event.get("id"),
+                "agent_id": str(agent_id),
+                "ubc_id": ubc_id,  # Universal Blockchain Connection ID for tracking
+                "source": "gnomledger"
+            }
+        except Exception as e:
+            logger.warning(f"Failed to create GnomLedger event: {str(e)} - continuing without PGL")
+            pgl_identity = {}
+
+        # 11. Issue Execution Certificate
         overhead_ms = int((time.time() - start_time) * 1000)
         cert = await CertificateService.issue_execution_certificate(
             db=db,
@@ -241,6 +280,27 @@ class GovernanceEngine:
             constitution_version=ledger_event.constitution_version
         )
 
+        # 12. Create GovernedRun record with PGL identity
+        governed_run = GovernedRun(
+            run_id=run_id,
+            workspace_id=workspace_id,
+            tenant_id=org_id,
+            state="completed",
+            governance_decision=f"APPROVED_TIER_{tier}",
+            risk_tier=tier,
+            pgl_identity=pgl_identity,
+            hashes={
+                "genome_hash": genome_hash,
+                "input_hash": input_hash,
+                "output_hash": output_hash,
+            },
+            approved_budget_cents=token_cost * 100,
+            scope={"task_type": task_type, "tier": tier},
+            request_payload={"messages": messages, "task_type": task_type},
+            result_payload={"output": llm_output, "watchtower_results": watchtower_results},
+        )
+        db.add(governed_run)
+
         await db.commit()
 
         return {
@@ -250,7 +310,9 @@ class GovernanceEngine:
             "governance_tier": tier,
             "rewrite_applied": rewrite_applied,
             "execution_certificate_jwt": cert.certificate_jwt,
-            "governance_overhead_ms": overhead_ms
+            "governance_overhead_ms": overhead_ms,
+            "pgl_identity": pgl_identity,
+            "run_id": run_id
         }
 
     @classmethod

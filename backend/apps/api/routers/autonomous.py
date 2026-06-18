@@ -93,11 +93,14 @@ async def autonomous_train(body: dict, user=Depends(get_current_user), db: Async
             "message": f"Not enough execution samples to train models. Need at least {min_samples}, got {count}."
         }
 
-    # Real fit + persist of the spend-forecast model.
-    spend_model = await forecast_svc.train_and_persist(db, workspace_id)
+    # Real fit + persist of the spend-forecast model is now dispatched to Celery
+    from backend.core.tasks import train_forecast_models_task
+    task = train_forecast_models_task.delay(workspace_id)
 
     return {
         "success": True,
+        "job_id": task.id,
+        "status": "queued",
         "samples_used": count,
         "cost_predictor": {
             "trained": spend_model["trained"],

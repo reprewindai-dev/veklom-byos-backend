@@ -65,7 +65,38 @@ services:
       timeout: 5s
       retries: 5
 
-  # Ollama Local AI (optional - for local development)
+  # Celery Background Worker
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: veklom-celery-worker
+    env_file:
+      - .env.production
+    environment:
+      - APP_ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    command: celery -A backend.core.celery_app worker --loglevel=info
+    restart: unless-stopped
+
+  # Celery Beat Scheduler
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: veklom-celery-beat
+    env_file:
+      - .env.production
+    environment:
+      - APP_ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    command: celery -A backend.core.celery_app beat --loglevel=info
+    restart: unless-stopped
   # In production, Ollama should run on the host server via systemd
   ollama:
     image: ollama/ollama:latest

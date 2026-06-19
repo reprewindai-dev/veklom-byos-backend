@@ -479,13 +479,13 @@ async def not_found(request: Request, exc):
         query_str = f"?{request.url.query}" if request.url.query else ""
         if subpath and not subpath.endswith("/") and not "." in subpath:
             subpath = f"{subpath}/"
-        return RedirectResponse(url=f"/control-plane-next/{subpath}{query_str}", status_code=307)
+        return RedirectResponse(url=f"https://control.veklom.com/{subpath}{query_str}", status_code=307)
     
     if request.url.path in ("/login", "/signup"):
         from fastapi.responses import RedirectResponse
         query_str = f"?{request.url.query}" if request.url.query else ""
         path_name = request.url.path.lstrip("/")
-        return RedirectResponse(url=f"/control-plane-next/{path_name}/{query_str}", status_code=302)
+        return RedirectResponse(url=f"https://control.veklom.com/{path_name}/{query_str}", status_code=302)
 
     if is_github:
         index_path = WORKSPACE_DIR / "index.html"
@@ -798,7 +798,7 @@ def _mount_static():
 async def redirect_workspace_root(request: Request):
     from fastapi.responses import RedirectResponse
     query_str = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"/control-plane-next/dashboard/{query_str}", status_code=307)
+    return RedirectResponse(url=f"https://control.veklom.com/dashboard/{query_str}", status_code=307)
 
 
 @app.get("/control-plane-next/subscription/")
@@ -806,7 +806,7 @@ async def redirect_workspace_root(request: Request):
 async def redirect_subscription_to_billing(request: Request):
     from fastapi.responses import RedirectResponse
     query_str = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"/control-plane-next/billing/{query_str}", status_code=307)
+    return RedirectResponse(url=f"https://control.veklom.com/billing/{query_str}", status_code=307)
 
 
 @app.get("/arena")
@@ -990,7 +990,7 @@ async def enforce_route_access(request, call_next):
                             headers: {"Content-Type": "application/json"},
                             body: JSON.stringify({industry: ind})
                         });
-                        if (res.ok) window.location.href = "/control-plane-next/";
+                        if (res.ok) window.location.href = "https://control.veklom.com/";
                         else alert("Error saving config");
                     }
                     </script>

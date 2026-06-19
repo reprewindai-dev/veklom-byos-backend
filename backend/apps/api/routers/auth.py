@@ -36,6 +36,7 @@ from backend.db.models.workspace import Workspace, WorkspaceMember
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+CONTROL_PLANE_URL = "https://control.veklom.com"
 
 # ---------------------------------------------------------------------------
 # Request / Response schemas
@@ -345,12 +346,12 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User, next_
         user (User): User model instance serialized into localStorage as "veklom_user".
     
     Returns:
-        str: Complete HTML page as a string containing a script that writes the tokens and user to localStorage and performs a client-side redirect to "/workspace/#/overview".
+        str: Complete HTML page as a string containing a script that writes the tokens and user to localStorage and performs a client-side redirect to the control plane dashboard.
     """
     if next_url and (next_url.startswith("/") or next_url.startswith("https://") or next_url.startswith("http://")):
         frontend_workspace_url = next_url
     else:
-        frontend_workspace_url = f"{settings.FRONTEND_URL.rstrip('/')}/workspace/#/overview"
+        frontend_workspace_url = f"{CONTROL_PLANE_URL}/dashboard/"
     payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -651,7 +652,7 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
             user.status = "active"
             await db.commit()
             
-        return RedirectResponse(url="https://veklom.com/control-plane-next/login?verified=true", status_code=302)
+        return RedirectResponse(url=f"{CONTROL_PLANE_URL}/login?verified=true", status_code=302)
     except JWTError:
         raise HTTPException(status_code=400, detail="Invalid or expired verification token")
 
@@ -719,8 +720,7 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request, db: Asy
             settings.SECRET_KEY,
             algorithm=settings.ALGORITHM
         )
-        # Using frontend URL instead of API URL for the email link
-        reset_url = f"https://veklom.com/control-plane-next/reset-password?token={reset_token}"
+        reset_url = f"{CONTROL_PLANE_URL}/reset-password?token={reset_token}"
         
         reset_html = f"""
         <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
@@ -915,7 +915,7 @@ async def logout(request: Request, db: AsyncSession = Depends(get_db)):
 
     if request.method == "GET":
         from fastapi.responses import RedirectResponse
-        resp = RedirectResponse(url="/control-plane-next/login/", status_code=302)
+        resp = RedirectResponse(url=f"{CONTROL_PLANE_URL}/login/", status_code=302)
     else:
         resp = JSONResponse(content={"message": "Logged out successfully"})
         
@@ -1208,6 +1208,7 @@ async def github_status():
 @router.get("/github/config-status")
 async def github_config_status():
     return _github_config_status()
+
 @router.get("/github/login")
 async def github_login(request: Request, token: Optional[str] = None, next: Optional[str] = None):
     if not _github_oauth_configured():
@@ -1388,18 +1389,13 @@ async def github_callback(
     next_url = next_url_from_state or request.cookies.get("github_next_url") or ""
 
     if request.method == "GET":
-        frontend_url = settings.FRONTEND_URL.rstrip("/")
-        if "localhost" in frontend_url:
-            frontend_url = _external_origin(request)
-            
         if next_url and (next_url.startswith("/") or next_url.startswith("https://") or next_url.startswith("http://")):
-            # Make sure relative URLs are appended to frontend_url
             if next_url.startswith("/"):
-                final_url = f"{frontend_url}{next_url}"
+                final_url = f"{CONTROL_PLANE_URL}{next_url}"
             else:
                 final_url = next_url
         else:
-            final_url = f"{frontend_url}/control-plane-next/dashboard/"
+            final_url = f"{CONTROL_PLANE_URL}/dashboard/"
             
         response = HTMLResponse(content=_github_bridge_html(app_access_token, app_refresh_token, user, final_url))
         response.delete_cookie("github_next_url")
@@ -1414,189 +1410,3 @@ async def github_callback(
         "is_new_user": is_new,
         "github_username": github_username,
     }
-
-
-@router.get("/github/repos")
-async def github_repos(user=Depends(get_current_user)):
-    if not user.github_access_token:
-        raise HTTPException(status_code=400, detail="GitHub not connected.")
-    decrypted_token = decrypt_token(user.github_access_token)
-    if not decrypted_token:
-        raise HTTPException(status_code=400, detail="Failed to decrypt GitHub token.")
-    
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            "https://api.github.com/user/repos",
-            headers={"Authorization": f"Bearer {decrypted_token}", "Accept": "application/json"},
-            params={"sort": "updated", "per_page": 50, "type": "owner"},
-        )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=400, detail="Failed to fetch repos")
-        return {"repos": resp.json()}
-
-
-class RepoSelectRequest(BaseModel):
-    repo_full_name: str
-
-@router.post("/github/repos/select")
-async def select_github_repo(body: RepoSelectRequest, request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """
-    Record the user's selection of a GitHub repository and create an audit log entry.
-    
-    Parameters:
-        body (RepoSelectRequest): Request body containing `repo_full_name` of the repository to select.
-        request (Request): HTTP request used to extract client IP and user-agent for the audit entry.
-    
-    Raises:
-        HTTPException: If the current user has no GitHub access token (status 400).
-    
-    Returns:
-        dict: {"message": "Repository selected and authorized", "repo": <repo_full_name>} indicating the selected repository.
-    
-    Side effects:
-        Persists an audit event in the database tying the authenticated user's workspace to the selected GitHub repository.
-    """
-    if not user.github_access_token:
-        raise HTTPException(status_code=400, detail="GitHub not connected.")
-
-    # Always use the authenticated user's workspace_id for audit logging
-    audit_workspace_id = user.workspace_id or "default"
-
-    # Fetch and update workspace with the selected repository details
-    if user.workspace_id:
-        result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
-        workspace = result.scalar_one_or_none()
-        if workspace:
-            workspace.selected_repo = body.repo_full_name
-            workspace.selected_repo_branch = "main"  # default
-            workspace.github_provider = "github"
-            workspace.github_selected_by = user.id
-            workspace.github_selected_at = datetime.utcnow()
-
-    await log_audit_event(
-        db=db,
-        user_id=user.id,
-        action="repo_connected",
-        workspace_id=audit_workspace_id,
-        resource_type="github_repo",
-        resource_id=body.repo_full_name,
-        details={"repo": body.repo_full_name, "provider": "github"},
-        ip_address=request.client.host if request.client else "unknown",
-        user_agent=request.headers.get("user-agent", "unknown")
-    )
-    
-    await db.commit()
-
-    return {"message": "Repository selected and authorized", "repo": body.repo_full_name}
-
-
-@router.get("/connected-accounts")
-async def connected_accounts(user=Depends(get_current_user)):
-    return {
-        "github_configured": _github_oauth_configured(),
-        "github_connected": bool(user.github_id and user.github_access_token),
-        "github_username": user.github_username,
-        "github_account_id": user.github_id,
-    }
-
-
-@router.delete("/connected-accounts/github")
-async def unlink_github_account(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if not user.github_id:
-        raise HTTPException(status_code=400, detail="GitHub is not connected.")
-    user.github_id = None
-    user.github_username = None
-    user.github_access_token = None
-    user.updated_at = datetime.utcnow()
-    await db.commit()
-    return {"message": "GitHub account disconnected"}
-
-
-@router.delete("/sessions/revoke")
-async def revoke_sessions(user=Depends(get_current_user)):
-    return {"message": "All sessions revoked"}
-
-
-def _apikey_dict(k) -> dict:
-    from datetime import datetime, timezone
-    last_used = None
-    if getattr(k, "last_used", None):
-        diff = (datetime.now(timezone.utc) - k.last_used.replace(tzinfo=timezone.utc) if k.last_used.tzinfo is None else datetime.now(timezone.utc) - k.last_used)
-        secs = int(diff.total_seconds())
-        if secs < 120:
-            last_used = "now"
-        elif secs < 3600:
-            last_used = f"{secs // 60} min ago"
-        elif secs < 86400:
-            last_used = f"{secs // 3600} hr ago"
-        else:
-            last_used = f"{secs // 86400} days ago"
-    created = None
-    if getattr(k, "created_at", None):
-        created = k.created_at.strftime("%Y-%m-%d") if hasattr(k.created_at, "strftime") else str(k.created_at)[:10]
-    return {
-        "id": k.id,
-        "name": k.name,
-        "prefix": k.key_prefix or "",
-        "scope": k.scopes if isinstance(getattr(k, "scopes", None), list) else ["chat:write"],
-        "created": created or "—",
-        "lastUsed": last_used or "—",
-        "status": "active" if k.is_active else "revoked",
-    }
-
-
-@router.post("/pgl-onboard")
-async def onboard_pgl(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Provision a Provenance Governance Layer (PGL) identity for the user."""
-    import uuid
-    import base64
-    from cryptography.hazmat.primitives.asymmetric import ed25519
-    from cryptography.hazmat.primitives import serialization
-    from backend.db.models.pgl import PGLIdentity
-
-    if getattr(user, "pgl_id", None):
-        return {"success": True, "pgl_id": user.pgl_id, "message": "PGL already connected."}
-        
-    pgl_id = str(uuid.uuid4())
-    
-    # Generate Ed25519 keypair
-    private_key = ed25519.Ed25519PrivateKey.generate()
-    public_key = private_key.public_key()
-    
-    public_bytes = public_key.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw
-    )
-    public_key_b64 = base64.b64encode(public_bytes).decode('utf-8')
-    
-    identity = PGLIdentity(
-        id=pgl_id,
-        tenant_id=user.workspace_id or "default",
-        primary_public_key=public_key_b64,
-        key_type="ed25519"
-    )
-    db.add(identity)
-    
-    user.pgl_id = pgl_id
-    await db.commit()
-    await db.refresh(user)
-    
-    return {
-        "success": True,
-        "user_id": user.id,
-        "tenant_id": user.workspace_id,
-        "pgl_id": user.pgl_id,
-        "identity": {
-            "id": pgl_id,
-            "key_type": "ed25519",
-            "primary_public_key": public_key_b64,
-        }
-    }
-
-def _default_api_keys():
-    return [
-        {"id": "k1", "name": "production-chat", "prefix": "vk_live_8h2x", "scope": ["chat:write", "embeddings:read"], "created": "2026-04-12", "lastUsed": "2 min ago", "status": "active"},
-        {"id": "k2", "name": "rag-ingest", "prefix": "vk_live_q01p", "scope": ["embeddings:write", "pipelines:invoke"], "created": "2026-03-04", "lastUsed": "9 min ago", "status": "active"},
-        {"id": "k3", "name": "ci-test-runner", "prefix": "vk_test_42aa", "scope": ["chat:write", "completions:write"], "created": "2026-04-29", "lastUsed": "1 hr ago", "status": "rotating"},
-    ]
-

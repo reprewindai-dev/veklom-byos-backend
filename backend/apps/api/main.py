@@ -1670,14 +1670,19 @@ def _fallback_html():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Veklom Sovereign AI Hub</title>
-<script src="/config.js"></script>
-<link rel="stylesheet" href="/static/css/brand.css">
+<title>Veklom API</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+  .container { text-align: center; }
+  h1 { font-size: 2rem; font-weight: 600; margin-bottom: 0.5rem; }
+  p { color: #888; }
+</style>
 </head>
 <body>
-<div id="root"></div>
-<script type="module" src="/assets/index-EUKZeqk4.js"></script>
-<link rel="stylesheet" href="/assets/index-WqgIFi2m.css">
+<div class="container">
+  <h1>Veklom API</h1>
+  <p>System Operational.</p>
+</div>
 </body>
 </html>"""
 

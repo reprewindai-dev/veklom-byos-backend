@@ -1223,6 +1223,14 @@ async def github_login(request: Request, token: Optional[str] = None, next: Opti
         except Exception:
             pass
 
+    # Dynamic frontend routing: sniff origin from referer
+    referer = request.headers.get("referer") or request.headers.get("origin")
+    if referer and next and next.startswith("/"):
+        from urllib.parse import urlparse
+        parsed = urlparse(referer)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        next = f"{origin}{next}"
+
     # Encode next_url directly in state so it survives the cross-domain GitHub round-trip.
     # A cookie set on veklom.com is NOT sent to api.veklom.com (different subdomain).
     state = _build_github_state(user_id, next_url=next)

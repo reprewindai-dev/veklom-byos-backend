@@ -25,6 +25,16 @@ class GenomeVersion(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     genome_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     note: Mapped[str] = mapped_column(String(255))
+    
+    # Merkle trees & layer hashing
+    model_layer_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    prompt_layer_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    policy_layer_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    watchtower_layer_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    task_profile_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    merkle_root: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
+    parent_genome_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     agent: Mapped["Agent"] = relationship(back_populates="genome_versions")  # noqa: F821

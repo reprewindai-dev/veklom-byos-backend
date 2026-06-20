@@ -31,6 +31,16 @@ class LedgerEvent(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     prev_event_hash: Mapped[str | None] = mapped_column(String(128))
     event_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    
+    # Enhanced governance columns from migration 002
+    org_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    policy_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    constitution_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    override_applied: Mapped[bool] = mapped_column(nullable=False, default=False)
+    override_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    genome_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     agent: Mapped["Agent"] = relationship(back_populates="ledger_events")  # noqa: F821

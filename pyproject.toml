@@ -52,6 +52,7 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["backend/tests"]
+pythonpath = ["."]
 
 [tool.setuptools.packages.find]
 include = ["backend*"]

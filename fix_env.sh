@@ -17,8 +17,8 @@ sed -i '/^GITHUB_REDIRECT_URI=/d' "$ENV"
 # 4. Ensure file ends with newline, then append
 echo "" >> "$ENV"
 echo "GITHUB_CLIENT_ID=Ov23lijPnrtxwjtoP2vk" >> "$ENV"
-echo "GITHUB_CLIENT_SECRET=e07fff39c8ebdf90b31dc6920ca52d6839d67c3c" >> "$ENV"
-echo "GITHUB_REDIRECT_URI=https://veklom.com/auth/github/callback" >> "$ENV"
+echo "GITHUB_CLIENT_SECRET=<NEW_SECRET>" >> "$ENV"
+echo "GITHUB_REDIRECT_URI=https://api.veklom.com/api/v1/auth/github/callback" >> "$ENV"
 
 # 5. Remove blank lines
 sed -i '/^$/d' "$ENV"

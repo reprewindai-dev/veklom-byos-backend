@@ -338,25 +338,24 @@ def _prefers_json(request: Request) -> bool:
 
 def _github_bridge_html(access_token: str, refresh_token: str, user: User, next_url: str = None) -> str:
     """
-    Render an HTML document that stores the provided access token, refresh token, and user payload into localStorage and then redirects the browser to the workspace overview.
-    
-    Parameters:
-        access_token (str): JWT or access token to persist to localStorage as "veklom_token".
-        refresh_token (str): Refresh token to persist to localStorage as "veklom_refresh_token".
-        user (User): User model instance serialized into localStorage as "veklom_user".
-    
-    Returns:
-        str: Complete HTML page as a string containing a script that writes the tokens and user to localStorage and performs a client-side redirect to the control plane dashboard.
+    Render an HTML document that stores the provided access token, refresh token, and user payload into localStorage 
+    and then redirects the browser to the workspace overview.
     """
     if next_url and (next_url.startswith("/") or next_url.startswith("https://") or next_url.startswith("http://")):
         frontend_workspace_url = next_url
     else:
         frontend_workspace_url = f"{CONTROL_PLANE_URL}/dashboard/"
+        
+    # Append tokens to URL so the frontend can read them across domains
+    separator = "&" if "?" in frontend_workspace_url else "?"
+    redirect_with_tokens = f"{frontend_workspace_url}{separator}veklom_token={access_token}&veklom_refresh_token={refresh_token}"
+    
     payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "user": _user_dict(user),
         "frontend_workspace_url": frontend_workspace_url,
+        "redirect_with_tokens": redirect_with_tokens,
     }
     encoded = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     return f"""<!doctype html>
@@ -403,10 +402,12 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User, next_
   </div>
   <script>
     const payload = {encoded};
+    // Attempt local storage for same-domain setups
     localStorage.setItem("veklom_token", payload.access_token);
     localStorage.setItem("veklom_refresh_token", payload.refresh_token);
     localStorage.setItem("veklom_user", JSON.stringify(payload.user));
-    window.location.replace(payload.frontend_workspace_url);
+    // Redirect using URL parameters for cross-domain auth handoff
+    window.location.replace(payload.redirect_with_tokens);
   </script>
 </body>
 </html>"""

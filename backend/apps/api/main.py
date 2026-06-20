@@ -1463,12 +1463,13 @@ async def status_page():
 from fastapi.responses import RedirectResponse
 
 async def _serve_frontend(request: Request):
-    """
-    The monolithic Vite frontend was deleted in favor of the standalone Next.js 
-    control plane. Redirect all bare traffic on veklom.com to control.veklom.com.
-    """
-    path = request.url.path if request else "/"
-    return RedirectResponse(url=f"https://control.veklom.com{path}", status_code=302)
+    landing_index = LANDING_DIR / "index.html"
+    static_index = FRONTEND_DIR / "index.html"
+    if landing_index.exists():
+        return FileResponse(str(landing_index))
+    elif static_index.exists():
+        return FileResponse(str(static_index))
+    return HTMLResponse(content=_fallback_html(), status_code=200)
 
 
 @app.get("/terminal")

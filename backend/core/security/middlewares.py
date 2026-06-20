@@ -47,7 +47,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback"
         )
         
-        if path == "/" or any(path.startswith(prefix) for prefix in public_prefixes):
+        if path == "/" or request.method == "OPTIONS" or any(path.startswith(prefix) for prefix in public_prefixes):
             return await call_next(request)
             
         auth_header = request.headers.get("Authorization")
@@ -96,11 +96,14 @@ class BudgetCheckMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         is_paid_path = (
-            path.startswith("/api/v1/ai") or
-            path.startswith("/api/v1/playground/inference") or
-            path.startswith("/api/v1/exec") or
-            path.startswith("/v1/chat/completions") or
-            (path.startswith("/api/v1/pipelines") and path.endswith("/run"))
+            request.method != "OPTIONS" and
+            (
+                path.startswith("/api/v1/ai") or
+                path.startswith("/api/v1/playground/inference") or
+                path.startswith("/api/v1/exec") or
+                path.startswith("/v1/chat/completions") or
+                (path.startswith("/api/v1/pipelines") and path.endswith("/run"))
+            )
         )
         
         workspace_id = None

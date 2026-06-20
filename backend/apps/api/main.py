@@ -386,7 +386,8 @@ _CORS_ORIGIN_REGEX = (
     r"usercontent\.goog|"           # AI Studio applet sandboxes
     r"aistudio\.google\.com|"
     r"run\.app|"                    # Cloud Run
-    r"web\.app|firebaseapp\.com"    # Firebase Hosting
+    r"web\.app|firebaseapp\.com|"   # Firebase Hosting
+    r"vercel\.app"                  # Vercel
     r")"
 )
 

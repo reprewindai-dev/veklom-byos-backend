@@ -1,5 +1,9 @@
 # DEPLOYMENT.md — Production Deployment Guide
 
+> **IMPORTANT ARCHITECTURAL NOTE**
+> This repository (`veklom-byos-backend`) contains **only the FastAPI backend engine and auxiliary services**. 
+> The frontend control plane (`veklom-control-plane`) has been decoupled and must be deployed as a completely separate standalone service (via Coolify or Vercel). Do not attempt to merge them or serve the frontend through FastAPI.
+
 ## Supported Deployment Targets
 
 | Method | Recommended For |

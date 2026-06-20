@@ -7,11 +7,11 @@ Read completely before touching anything. Violations break the live site.
 
 ## Live Site
 
-- **URL:** https://veklom.com
-- **Workspace:** https://veklom.com/control-plane-next/dashboard/
+- **Backend API:** `https://api.veklom.com`
+- **Control Plane (Standalone):** `https://control.veklom.com`
 - **Server:** Hetzner VPS `5.78.135.11`
-- **Internal port:** `8088`
-- **Proxy:** Cloudflare (443 → 8088 via Traefik on the server)
+- **Internal port (Backend):** `8088`
+- **Proxy:** Coolify Reverse Proxy (Traefik)
 
 ---
 
@@ -35,7 +35,7 @@ No password. Key-only auth. This always works.
 | Docker image | `veklom-local:latest` |
 | Docker network | `coolify` |
 | Env file | `/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env` |
-| Traefik config | `/data/coolify/proxy/dynamic/veklom.yaml` |
+| Traefik config | Coolify Auto-Generated (Routes `api.veklom.com` to port `8088`) |
 
 ---
 
@@ -114,18 +114,18 @@ sleep 3 && curl -sk -H "Host: veklom.com" https://localhost/health
 
 ---
 
-## The Correct Workspace — NEVER REPLACE THIS
-
-The true, sovereign workspace is served at `/control-plane-next/` and its assets live in:
-```
-frontend/sovereign-control-node/
-```
+## The Correct Workspace Architecture — DECOUPLED
 
 **ABSOLUTE RULES — DO NOT VIOLATE**
-1. **The only valid frontend directory is `frontend/sovereign-control-node/`.**
-2. **ALL OTHER FRONTENDS ARE GARBAGE AND HAVE BEEN DELETED.** Do not look for `frontend/static/workspace` or `frontend/veklom-workspace` or `frontend/static/veklom-control-plane`. If you try to restore them, you will break the live site and anger the user.
-3. This is a prebuilt static Next.js export (`out/` directory). Do not attempt to run `npm install` or `npm run build` in this repo. The source code for this frontend is maintained elsewhere.
-4. The backend routes `/workspace`, `/login`, and `/signup` all redirect to `/control-plane-next/`.
+1. **The Backend (`veklom-byos-backend`) and Frontend (`veklom-control-plane`) are DECOUPLED.**
+2. The Backend runs as a standalone FastAPI service on Coolify (`api.veklom.com`).
+3. The Frontend runs as a completely independent Next.js service on Coolify/Vercel (`control.veklom.com`).
+4. **DO NOT ATTEMPT TO COPY THE NEXT.JS APP INTO THE BACKEND REPOSITORY.** The monolithic design where FastAPI served the frontend out of `frontend/sovereign-control-node/` has been permanently abandoned.
+5. All legacy Vite frontend directories (`frontend/static/workspace`, etc.) are garbage and have been deleted.
+6. The backend root route `/` serves a static API status page, and `/workspace`, `/login`, and `/signup` routes in the backend are strictly redirects to the standalone frontend (`https://control.veklom.com/`).
+7. Cross-Origin Resource Sharing (CORS) is explicitly configured to allow `https://control.veklom.com` and `https://veklom-control-plane.vercel.app`.
+8. The `ZeroTrustMiddleware` and `BudgetCheckMiddleware` explicitly allow `OPTIONS` preflight requests to bypass authentication. Do not break this or you will break the frontend login flow.
+
 
 ---
 
@@ -145,7 +145,7 @@ frontend/sovereign-control-node/
 - **Entry point:** `backend/apps/api/main.py` (FastAPI)
 - **Run command:** `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8088`
 - **All API routes:** prefixed `/api/v1/`
-- **Static mounts:** `/control-plane-next`, `/command-center`, `/irongrid`, `/terminal`, `/gpc-engine`
+- **Static mounts:** `/command-center`, `/irongrid`, `/terminal`, `/gpc-engine` (Note: the `veklom-control-plane` is NOT mounted here, it runs separately).
 
 ---
 

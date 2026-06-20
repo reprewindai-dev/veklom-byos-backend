@@ -1,0 +1,1656 @@
+{
+  "version": "1.1.0",
+  "updatedAt": "2026-05-09T00:00:00.000Z",
+  "updatedBy": "control-plane-ops",
+  "pillars": [
+    {
+      "id": "governance",
+      "name": "Governance",
+      "mandate": "Keep the institution constitutional and replayable.",
+      "kpi": "Policy SLA"
+    },
+    {
+      "id": "product",
+      "name": "Product",
+      "mandate": "Translate institutional objectives into offers and UX.",
+      "kpi": "Activation rate"
+    },
+    {
+      "id": "engineering",
+      "name": "Engineering",
+      "mandate": "Ship reliable execution systems and control-plane primitives.",
+      "kpi": "Deployment quality"
+    },
+    {
+      "id": "growth",
+      "name": "Growth",
+      "mandate": "Acquire demand and compound distribution.",
+      "kpi": "Qualified pipeline"
+    },
+    {
+      "id": "sales",
+      "name": "Sales",
+      "mandate": "Convert pipeline into retained revenue.",
+      "kpi": "Closed ARR"
+    },
+    {
+      "id": "operations",
+      "name": "Operations",
+      "mandate": "Run queues, approvals, service delivery, and worker throughput.",
+      "kpi": "Cycle time"
+    },
+    {
+      "id": "finance",
+      "name": "Finance",
+      "mandate": "Protect margin, billing, and capital allocation.",
+      "kpi": "Gross margin"
+    },
+    {
+      "id": "compliance-risk",
+      "name": "Compliance / Risk",
+      "mandate": "Constrain execution by law, policy, and exposure.",
+      "kpi": "Risk incidents"
+    },
+    {
+      "id": "knowledge-research",
+      "name": "Knowledge / Research",
+      "mandate": "Turn public signals into institutional edge.",
+      "kpi": "Signal-to-shipment ratio"
+    }
+  ],
+  "committees": [
+    {
+      "id": "founder-council",
+      "name": "Founder Council",
+      "purpose": "Final approval, veto, and escalation authority.",
+      "authority": "constitutional",
+      "chair": "UACP V3",
+      "members": [
+        "UACP V3",
+        "Policy Steward",
+        "Revenue Operator"
+      ],
+      "escalation": "Direct founder override",
+      "allowedActions": [
+        "approve_plans",
+        "veto_runs",
+        "reassign_committees"
+      ],
+      "vetoConditions": [
+        "regulatory breach",
+        "margin-negative execution",
+        "missing research evidence"
+      ],
+      "pillarIds": [
+        "governance",
+        "finance",
+        "compliance-risk"
+      ]
+    },
+    {
+      "id": "signal-council",
+      "name": "Signal Council",
+      "purpose": "Convert live research and market signals into opportunities and operating pressure.",
+      "authority": "advisory",
+      "chair": "Research Director",
+      "members": [
+        "Research Scout",
+        "Competitor Analyst",
+        "Model Council Chair"
+      ],
+      "escalation": "Founder Council",
+      "allowedActions": [
+        "publish_briefs",
+        "recommend_targets",
+        "open_investigations"
+      ],
+      "vetoConditions": [
+        "no live sources",
+        "low-evidence thesis"
+      ],
+      "pillarIds": [
+        "knowledge-research",
+        "growth",
+        "product"
+      ]
+    },
+    {
+      "id": "execution-board",
+      "name": "Execution Board",
+      "purpose": "Route approved work into governed runs and service delivery.",
+      "authority": "operational",
+      "chair": "Operations Marshal",
+      "members": [
+        "Workflow Captain",
+        "Engineering Lead",
+        "Revenue Operator"
+      ],
+      "escalation": "Founder Council",
+      "allowedActions": [
+        "queue_runs",
+        "assign_skills",
+        "open_approvals"
+      ],
+      "vetoConditions": [
+        "unapproved skill usage",
+        "missing archive evidence"
+      ],
+      "pillarIds": [
+        "operations",
+        "engineering",
+        "sales"
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "id": "marketing-competitive-analysis",
+      "name": "marketing-competitive-analysis",
+      "category": "skill",
+      "description": "Research competitors and expose positioning, workflow, and execution gaps using public evidence.",
+      "allowedTools": [
+        "read",
+        "browser"
+      ],
+      "source": "internal-registry/market-systems",
+      "ref": "v1.4.0",
+      "treeSha": "sha-9d8c1f1",
+      "status": "approved",
+      "governingCommitteeId": "signal-council",
+      "usableByCommitteeIds": [
+        "growth-intelligence",
+        "builder-systems",
+        "vendor-network"
+      ],
+      "requiredEvidence": [
+        "public-source references",
+        "competitor artifact snapshot"
+      ],
+      "publishRisk": "medium",
+      "pillarIds": [
+        "growth",
+        "knowledge-research"
+      ]
+    },
+    {
+      "id": "sales-call-prep",
+      "name": "sales-call-prep",
+      "category": "skill",
+      "description": "Prepare operator-grade account context, call strategy, and objection handling.",
+      "allowedTools": [
+        "read",
+        "browser",
+        "write"
+      ],
+      "source": "internal-registry/revenue-systems",
+      "ref": "v2.0.1",
+      "treeSha": "sha-4ac77aa",
+      "status": "approved",
+      "governingCommitteeId": "execution-board",
+      "usableByCommitteeIds": [
+        "growth-intelligence",
+        "marketplace-operations"
+      ],
+      "requiredEvidence": [
+        "account context",
+        "offer framing"
+      ],
+      "publishRisk": "medium",
+      "pillarIds": [
+        "sales",
+        "growth"
+      ]
+    },
+    {
+      "id": "legal-compliance",
+      "name": "legal-compliance",
+      "category": "skill",
+      "description": "Constrain privacy, regulatory, and data subject workflows before execution.",
+      "allowedTools": [
+        "read",
+        "write"
+      ],
+      "source": "internal-registry/risk-systems",
+      "ref": "v1.9.3",
+      "treeSha": "sha-c13f9b2",
+      "status": "approved",
+      "governingCommitteeId": "founder-council",
+      "usableByCommitteeIds": [
+        "governance-evidence",
+        "vendor-network",
+        "experience-assurance"
+      ],
+      "requiredEvidence": [
+        "claim text",
+        "policy rationale"
+      ],
+      "publishRisk": "high",
+      "pillarIds": [
+        "compliance-risk",
+        "governance"
+      ]
+    },
+    {
+      "id": "finance-audit-support",
+      "name": "finance-audit-support",
+      "category": "skill",
+      "description": "Support audit evidence, revenue control checks, and operating reviews.",
+      "allowedTools": [
+        "read",
+        "write"
+      ],
+      "source": "internal-registry/finance-systems",
+      "ref": "v1.1.8",
+      "treeSha": "sha-f82a11d",
+      "status": "review",
+      "governingCommitteeId": "founder-council",
+      "usableByCommitteeIds": [
+        "governance-evidence",
+        "marketplace-operations"
+      ],
+      "requiredEvidence": [
+        "pricing memo",
+        "reserve exposure trace"
+      ],
+      "publishRisk": "high",
+      "pillarIds": [
+        "finance",
+        "governance"
+      ]
+    },
+    {
+      "id": "outreach-sequencing",
+      "name": "outreach-sequencing",
+      "category": "skill",
+      "description": "Prepare governed email, DM, and follow-up sequences tied to approved positioning and archiveable claims.",
+      "allowedTools": [
+        "read",
+        "write"
+      ],
+      "source": "internal-registry/revenue-systems",
+      "ref": "v1.3.0",
+      "treeSha": "sha-28bd930",
+      "status": "approved",
+      "governingCommitteeId": "execution-board",
+      "usableByCommitteeIds": [
+        "growth-intelligence",
+        "marketplace-operations"
+      ],
+      "requiredEvidence": [
+        "approved offer framing",
+        "founder-approved claims"
+      ],
+      "publishRisk": "medium",
+      "pillarIds": [
+        "growth",
+        "sales"
+      ]
+    },
+    {
+      "id": "buyer-pain-diagnostic",
+      "name": "buyer-pain-diagnostic",
+      "category": "skill",
+      "description": "Turn regulated and enterprise workflow pain into source-backed diagnostic briefs and demo narratives.",
+      "allowedTools": [
+        "read",
+        "browser",
+        "write"
+      ],
+      "source": "internal-registry/research-systems",
+      "ref": "v1.1.0",
+      "treeSha": "sha-e17a511",
+      "status": "approved",
+      "governingCommitteeId": "signal-council",
+      "usableByCommitteeIds": [
+        "growth-intelligence",
+        "governance-evidence"
+      ],
+      "requiredEvidence": [
+        "industry sources",
+        "workflow pain summary"
+      ],
+      "publishRisk": "medium",
+      "pillarIds": [
+        "knowledge-research",
+        "growth",
+        "sales"
+      ]
+    },
+    {
+      "id": "governed-offer-packaging",
+      "name": "governed-offer-packaging",
+      "category": "skill",
+      "description": "Turn approved buyer pain and opportunity briefs into monetizable Veklom package framing with archive requirements.",
+      "allowedTools": [
+        "read",
+        "write"
+      ],
+      "source": "internal-registry/product-systems",
+      "ref": "v2.2.0",
+      "treeSha": "sha-2028ab1",
+      "status": "approved",
+      "governingCommitteeId": "execution-board",
+      "usableByCommitteeIds": [
+        "builder-systems",
+        "marketplace-operations"
+      ],
+      "requiredEvidence": [
+        "approved opportunity brief",
+        "pricing path"
+      ],
+      "publishRisk": "medium",
+      "pillarIds": [
+        "product",
+        "sales",
+        "operations"
+      ]
+    },
+    {
+      "id": "archive-integrity-check",
+      "name": "archive-integrity-check",
+      "category": "skill",
+      "description": "Verify archive completeness, lineage, and replayability before a run or artifact is treated as institutional truth.",
+      "allowedTools": [
+        "read",
+        "write"
+      ],
+      "source": "internal-registry/evidence-systems",
+      "ref": "v1.6.4",
+      "treeSha": "sha-cc3914f",
+      "status": "approved",
+      "governingCommitteeId": "founder-council",
+      "usableByCommitteeIds": [
+        "governance-evidence",
+        "experience-assurance"
+      ],
+      "requiredEvidence": [
+        "run archive reference",
+        "event lineage"
+      ],
+      "publishRisk": "high",
+      "pillarIds": [
+        "governance",
+        "knowledge-research"
+      ]
+    },
+    {
+      "id": "demo-proof-check",
+      "name": "demo-proof-check",
+      "category": "skill",
+      "description": "Inspect demo and website surfaces for unsupported claims, broken proof paths, and buyer-facing trust gaps.",
+      "allowedTools": [
+        "read",
+        "browser",
+        "write"
+      ],
+      "source": "internal-registry/experience-systems",
+      "ref": "v1.4.2",
+      "treeSha": "sha-7d33ace",
+      "status": "approved",
+      "governingCommitteeId": "execution-board",
+      "usableByCommitteeIds": [
+        "experience-assurance",
+        "growth-intelligence"
+      ],
+      "requiredEvidence": [
+        "demo path",
+        "archive or source proof"
+      ],
+      "publishRisk": "medium",
+      "pillarIds": [
+        "product",
+        "sales",
+        "governance"
+      ]
+    },
+    {
+      "id": "vendor-screening",
+      "name": "vendor-screening",
+      "category": "skill",
+      "description": "Qualify vendors and partners for risk, reliability, license fit, and margin contribution before activation.",
+      "allowedTools": [
+        "read",
+        "write"
+      ],
+      "source": "internal-registry/vendor-systems",
+      "ref": "v1.0.7",
+      "treeSha": "sha-61e30f0",
+      "status": "approved",
+      "governingCommitteeId": "founder-council",
+      "usableByCommitteeIds": [
+        "vendor-network",
+        "governance-evidence"
+      ],
+      "requiredEvidence": [
+        "vendor profile",
+        "risk and license notes"
+      ],
+      "publishRisk": "high",
+      "pillarIds": [
+        "compliance-risk",
+        "finance",
+        "operations"
+      ]
+    },
+    {
+      "id": "freshness-report",
+      "name": "freshness-report",
+      "category": "skill",
+      "description": "Measure whether workers, signals, and surfaces are fresh enough to be trusted for active execution.",
+      "allowedTools": [
+        "read",
+        "write"
+      ],
+      "source": "internal-registry/runtime-systems",
+      "ref": "v1.2.5",
+      "treeSha": "sha-bd2ab91",
+      "status": "approved",
+      "governingCommitteeId": "execution-board",
+      "usableByCommitteeIds": [
+        "experience-assurance",
+        "marketplace-operations"
+      ],
+      "requiredEvidence": [
+        "worker heartbeat",
+        "signal sync state"
+      ],
+      "publishRisk": "low",
+      "pillarIds": [
+        "operations",
+        "product",
+        "knowledge-research"
+      ]
+    },
+    {
+      "id": "founder-review-routing",
+      "name": "founder-review-routing",
+      "category": "skill",
+      "description": "Route regulated, high-risk, or weakly evidenced claims into founder review before publishing or outreach.",
+      "allowedTools": [
+        "read",
+        "write"
+      ],
+      "source": "internal-registry/governance-systems",
+      "ref": "v1.8.1",
+      "treeSha": "sha-88ad290",
+      "status": "approved",
+      "governingCommitteeId": "founder-council",
+      "usableByCommitteeIds": [
+        "governance-evidence",
+        "growth-intelligence",
+        "experience-assurance"
+      ],
+      "requiredEvidence": [
+        "claim text",
+        "risk rationale"
+      ],
+      "publishRisk": "high",
+      "pillarIds": [
+        "governance",
+        "compliance-risk",
+        "sales"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "id": "competitive-intelligence",
+      "name": "Competitive intelligence",
+      "category": "workflow",
+      "description": "Monitor launches, pricing shifts, and partnership signals with live public-source evidence.",
+      "outcome": "Competitor weakness map",
+      "pillarIds": [
+        "growth",
+        "knowledge-research"
+      ]
+    },
+    {
+      "id": "model-council",
+      "name": "Model council",
+      "category": "workflow",
+      "description": "Run multi-model or deterministic council deliberation and capture convergence or dissent.",
+      "outcome": "Committee vote packet",
+      "pillarIds": [
+        "governance",
+        "knowledge-research"
+      ]
+    },
+    {
+      "id": "product-teardown",
+      "name": "Product teardown",
+      "category": "workflow",
+      "description": "Capture pricing, onboarding, feature gaps, and UX weaknesses from public artifacts.",
+      "outcome": "Actionable disruption brief",
+      "pillarIds": [
+        "product",
+        "growth",
+        "sales"
+      ]
+    },
+    {
+      "id": "competitor-raid",
+      "name": "Competitor raid",
+      "category": "workflow",
+      "description": "Turn competitor launches, pricing gaps, and workflow failures into attack plans and counter-positioning packets.",
+      "outcome": "Competitive attack brief",
+      "pillarIds": [
+        "growth",
+        "sales",
+        "knowledge-research",
+        "product"
+      ]
+    },
+    {
+      "id": "vendor-recruitment",
+      "name": "Vendor recruitment",
+      "category": "workflow",
+      "description": "Source, qualify, and activate vendors, affiliates, and integration partners under governed outreach and screening rules.",
+      "outcome": "Vendor pipeline packet",
+      "pillarIds": [
+        "growth",
+        "sales",
+        "operations",
+        "compliance-risk"
+      ]
+    }
+  ],
+  "escalationRules": [
+    {
+      "id": "missing-live-evidence",
+      "name": "Missing live evidence",
+      "description": "Escalate when a plan or run reaches governance without attributable live research.",
+      "trigger": "No live research references are attached to the plan or run.",
+      "route": [
+        "signal-council",
+        "founder-council"
+      ],
+      "severity": "high",
+      "ownerCommitteeId": "founder-council",
+      "pillarIds": [
+        "governance",
+        "knowledge-research",
+        "compliance-risk"
+      ]
+    },
+    {
+      "id": "unapproved-skill-attempt",
+      "name": "Unapproved skill attempt",
+      "description": "Escalate when execution requires a skill that is not approved in the registry.",
+      "trigger": "A governed run requests a skill outside the approved registry set.",
+      "route": [
+        "execution-board",
+        "founder-council"
+      ],
+      "severity": "critical",
+      "ownerCommitteeId": "execution-board",
+      "pillarIds": [
+        "operations",
+        "engineering",
+        "governance"
+      ]
+    },
+    {
+      "id": "regulated-objective-review",
+      "name": "Regulated objective review",
+      "description": "Escalate regulated, privacy, or compliance-heavy objectives through explicit founder review.",
+      "trigger": "The intent or evidence indicates regulated, privacy, legal, or compliance-sensitive work.",
+      "route": [
+        "founder-council"
+      ],
+      "severity": "high",
+      "ownerCommitteeId": "founder-council",
+      "pillarIds": [
+        "compliance-risk",
+        "governance",
+        "sales"
+      ]
+    }
+  ],
+  "operatorCommittees": [
+    {
+      "id": "marketplace-operations",
+      "name": "Marketplace Operations",
+      "purpose": "Run marketplace health, intake, routing, and operational arbitration.",
+      "chair": "Operations Marshal",
+      "sponsor": "Founder Council",
+      "decisionFramework": "RAPID",
+      "cadencePerDay": 3,
+      "regroupIntervalMinutes": 480,
+      "successMetrics": [
+        "Cycle time",
+        "Qualified pipeline",
+        "Gross margin"
+      ],
+      "pillarIds": [
+        "operations",
+        "sales",
+        "finance"
+      ],
+      "workerIds": [
+        "herald",
+        "harvest",
+        "bouncer",
+        "gauge",
+        "arbiter"
+      ]
+    },
+    {
+      "id": "governance-evidence",
+      "name": "Governance & Evidence",
+      "purpose": "Protect evidence integrity, policy judgment, and escalation discipline.",
+      "chair": "Policy Steward",
+      "sponsor": "Founder Council",
+      "decisionFramework": "RAPID",
+      "cadencePerDay": 3,
+      "regroupIntervalMinutes": 480,
+      "successMetrics": [
+        "Policy SLA",
+        "Risk incidents",
+        "Signal-to-shipment ratio"
+      ],
+      "pillarIds": [
+        "governance",
+        "finance",
+        "compliance-risk",
+        "knowledge-research"
+      ],
+      "workerIds": [
+        "ledger",
+        "oracle",
+        "builder-arbiter",
+        "sheriff"
+      ]
+    },
+    {
+      "id": "growth-intelligence",
+      "name": "Growth & Intelligence",
+      "purpose": "Convert public signals and buyer motion into governed growth actions.",
+      "chair": "Revenue Operator",
+      "sponsor": "Founder Council",
+      "decisionFramework": "RAPID",
+      "cadencePerDay": 3,
+      "regroupIntervalMinutes": 480,
+      "successMetrics": [
+        "Qualified pipeline",
+        "Closed ARR",
+        "Signal-to-shipment ratio"
+      ],
+      "pillarIds": [
+        "growth",
+        "sales",
+        "knowledge-research"
+      ],
+      "workerIds": [
+        "signal",
+        "scout",
+        "spyglass",
+        "raider",
+        "mint",
+        "welcome"
+      ]
+    },
+    {
+      "id": "builder-systems",
+      "name": "Builder Systems",
+      "purpose": "Discover, shape, and forge builder opportunities without bypassing governance.",
+      "chair": "Engineering Lead",
+      "sponsor": "Execution Board",
+      "decisionFramework": "DACI",
+      "cadencePerDay": 3,
+      "regroupIntervalMinutes": 480,
+      "successMetrics": [
+        "Deployment quality",
+        "Activation rate",
+        "Signal-to-shipment ratio"
+      ],
+      "pillarIds": [
+        "engineering",
+        "product",
+        "knowledge-research"
+      ],
+      "workerIds": [
+        "builder-scout",
+        "builder-forge",
+        "builder-arbiter"
+      ]
+    },
+    {
+      "id": "experience-assurance",
+      "name": "Experience Assurance",
+      "purpose": "Keep the product experience truthful, fresh, and regression-resistant.",
+      "chair": "Experience Lead",
+      "sponsor": "Execution Board",
+      "decisionFramework": "RACI",
+      "cadencePerDay": 3,
+      "regroupIntervalMinutes": 480,
+      "successMetrics": [
+        "Activation rate",
+        "Cycle time",
+        "Risk incidents"
+      ],
+      "pillarIds": [
+        "product",
+        "operations",
+        "compliance-risk"
+      ],
+      "workerIds": [
+        "sentinel",
+        "mirror",
+        "polish",
+        "glide",
+        "pulse",
+        "sheriff",
+        "welcome"
+      ]
+    },
+    {
+      "id": "vendor-network",
+      "name": "Vendor Network",
+      "purpose": "Source, recruit, qualify, and activate external vendors, affiliates, and distribution partners.",
+      "chair": "Channel Lead",
+      "sponsor": "Founder Council",
+      "decisionFramework": "DACI",
+      "cadencePerDay": 3,
+      "regroupIntervalMinutes": 480,
+      "successMetrics": [
+        "Qualified pipeline",
+        "Closed ARR",
+        "Gross margin"
+      ],
+      "pillarIds": [
+        "growth",
+        "sales",
+        "operations",
+        "compliance-risk",
+        "finance"
+      ],
+      "workerIds": [
+        "vendor-scout",
+        "vendor-recruiter",
+        "vendor-auditor"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "herald",
+      "displayName": "Herald",
+      "committeeId": "marketplace-operations",
+      "primaryPillar": "operations",
+      "secondaryPillars": [
+        "sales"
+      ],
+      "purpose": "Announce, route, and log incoming marketplace actions and operator-facing triggers.",
+      "schedule": "Every 15 minutes",
+      "intervalMinutes": 15,
+      "inputSources": [
+        "events",
+        "archives",
+        "research-signals"
+      ],
+      "allowedActions": [
+        "route_notifications",
+        "write_run_digest",
+        "open_escalation"
+      ],
+      "forbiddenActions": [
+        "modify_registry",
+        "approve_payouts"
+      ],
+      "outputArtifact": "marketplace-intake-digest",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "next_run",
+        "heartbeat"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "harvest",
+      "displayName": "Harvest",
+      "committeeId": "marketplace-operations",
+      "primaryPillar": "operations",
+      "secondaryPillars": [
+        "growth"
+      ],
+      "purpose": "Collect live demand, inventory, and signal opportunities into governed execution queues.",
+      "schedule": "Every 30 minutes",
+      "intervalMinutes": 30,
+      "inputSources": [
+        "research-signals",
+        "telemetry",
+        "events"
+      ],
+      "allowedActions": [
+        "collect_signals",
+        "score_queue_pressure",
+        "write_ops_digest"
+      ],
+      "forbiddenActions": [
+        "bypass_committee_review"
+      ],
+      "outputArtifact": "harvest-queue-brief",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "queue_pressure"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "bouncer",
+      "displayName": "Bouncer",
+      "committeeId": "marketplace-operations",
+      "primaryPillar": "compliance-risk",
+      "secondaryPillars": [
+        "operations"
+      ],
+      "purpose": "Gate unsafe or out-of-policy actions before they enter the live execution floor.",
+      "schedule": "Every 10 minutes",
+      "intervalMinutes": 10,
+      "inputSources": [
+        "events",
+        "runs",
+        "telemetry"
+      ],
+      "allowedActions": [
+        "deny_unsafe_admission",
+        "flag_policy_mismatch",
+        "write_gate_report"
+      ],
+      "forbiddenActions": [
+        "override_founder_veto"
+      ],
+      "outputArtifact": "admission-gate-report",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "blocked_actions"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "gauge",
+      "displayName": "Gauge",
+      "committeeId": "marketplace-operations",
+      "primaryPillar": "operations",
+      "secondaryPillars": [
+        "finance",
+        "growth"
+      ],
+      "purpose": "Track operating telemetry, route health, conversion, and usage drift.",
+      "schedule": "Every 15 minutes",
+      "intervalMinutes": 15,
+      "inputSources": [
+        "telemetry",
+        "observability",
+        "runs"
+      ],
+      "allowedActions": [
+        "write_telemetry_snapshot",
+        "flag_metric_anomaly",
+        "recommend_followup"
+      ],
+      "forbiddenActions": [
+        "change_metrics_history"
+      ],
+      "outputArtifact": "telemetry-digest",
+      "archiveEventType": "telemetry_snapshot_written",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "last_snapshot",
+        "heartbeat"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "ledger",
+      "displayName": "Ledger",
+      "committeeId": "governance-evidence",
+      "primaryPillar": "governance",
+      "secondaryPillars": [
+        "finance",
+        "compliance-risk"
+      ],
+      "purpose": "Protect evidence truth, archive integrity, and traceability across runs.",
+      "schedule": "Every 15 minutes",
+      "intervalMinutes": 15,
+      "inputSources": [
+        "archives",
+        "runs",
+        "events"
+      ],
+      "allowedActions": [
+        "verify_archive_lineage",
+        "write_evidence_report",
+        "flag_missing_evidence"
+      ],
+      "forbiddenActions": [
+        "delete_archive_records"
+      ],
+      "outputArtifact": "evidence-integrity-report",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "archive_coverage"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "signal",
+      "displayName": "Signal",
+      "committeeId": "growth-intelligence",
+      "primaryPillar": "growth",
+      "secondaryPillars": [
+        "knowledge-research"
+      ],
+      "purpose": "Turn live public-source evidence into actionable market pressure summaries.",
+      "schedule": "Every 30 minutes",
+      "intervalMinutes": 30,
+      "inputSources": [
+        "research-signals",
+        "research-status"
+      ],
+      "allowedActions": [
+        "summarize_signal_pressure",
+        "rank_opportunities",
+        "write_growth_brief"
+      ],
+      "forbiddenActions": [
+        "invent_sources"
+      ],
+      "outputArtifact": "signal-pressure-brief",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "signal_count"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "oracle",
+      "displayName": "Oracle",
+      "committeeId": "governance-evidence",
+      "primaryPillar": "knowledge-research",
+      "secondaryPillars": [
+        "governance"
+      ],
+      "purpose": "Interpret live evidence into governance-ready judgment packets.",
+      "schedule": "Hourly",
+      "intervalMinutes": 60,
+      "inputSources": [
+        "research-signals",
+        "plans",
+        "archives"
+      ],
+      "allowedActions": [
+        "write_council_brief",
+        "surface_uncertainty",
+        "recommend_escalation"
+      ],
+      "forbiddenActions": [
+        "self-approve_governance"
+      ],
+      "outputArtifact": "council-judgment-packet",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "brief_count"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "mint",
+      "displayName": "Mint",
+      "committeeId": "growth-intelligence",
+      "primaryPillar": "finance",
+      "secondaryPillars": [
+        "growth",
+        "sales"
+      ],
+      "purpose": "Translate demand and workflow pressure into monetization and pricing recommendations.",
+      "schedule": "Hourly",
+      "intervalMinutes": 60,
+      "inputSources": [
+        "telemetry",
+        "plans",
+        "research-signals"
+      ],
+      "allowedActions": [
+        "write_pricing_digest",
+        "flag_margin_risk",
+        "recommend_offer_changes"
+      ],
+      "forbiddenActions": [
+        "execute_billing_changes"
+      ],
+      "outputArtifact": "monetization-brief",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "pricing_pressure"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "scout",
+      "displayName": "Scout",
+      "committeeId": "growth-intelligence",
+      "primaryPillar": "knowledge-research",
+      "secondaryPillars": [
+        "growth"
+      ],
+      "purpose": "Search for competitor weakness, broken workflows, and opportunity gaps.",
+      "schedule": "Every 45 minutes",
+      "intervalMinutes": 45,
+      "inputSources": [
+        "research-signals",
+        "events",
+        "archives"
+      ],
+      "allowedActions": [
+        "scan_opportunities",
+        "write_gap_map",
+        "recommend_builder_targets"
+      ],
+      "forbiddenActions": [
+        "copy_external_products"
+      ],
+      "outputArtifact": "gap-map",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "gap_count"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "spyglass",
+      "displayName": "Spyglass",
+      "committeeId": "growth-intelligence",
+      "primaryPillar": "knowledge-research",
+      "secondaryPillars": [
+        "growth",
+        "sales"
+      ],
+      "purpose": "Track competitor launches, pricing moves, distribution changes, and weak surfaces that can be attacked.",
+      "schedule": "Every 30 minutes",
+      "intervalMinutes": 30,
+      "inputSources": [
+        "research-signals",
+        "archives",
+        "events"
+      ],
+      "allowedActions": [
+        "monitor_competitors",
+        "write_competitor_dossier",
+        "flag_attack_surface"
+      ],
+      "forbiddenActions": [
+        "invent_competitor_claims"
+      ],
+      "outputArtifact": "competitor-dossier",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "competitor_count"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "raider",
+      "displayName": "Raider",
+      "committeeId": "growth-intelligence",
+      "primaryPillar": "growth",
+      "secondaryPillars": [
+        "sales",
+        "product"
+      ],
+      "purpose": "Convert competitor weaknesses into campaigns, offer attacks, and counter-positioning packets.",
+      "schedule": "Hourly",
+      "intervalMinutes": 60,
+      "inputSources": [
+        "research-signals",
+        "plans",
+        "archives"
+      ],
+      "allowedActions": [
+        "write_attack_brief",
+        "rank_counter_moves",
+        "route_counter_positioning"
+      ],
+      "forbiddenActions": [
+        "launch_unapproved_campaigns"
+      ],
+      "outputArtifact": "competitive-attack-brief",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "attack_vectors"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "arbiter",
+      "displayName": "Arbiter",
+      "committeeId": "marketplace-operations",
+      "primaryPillar": "governance",
+      "secondaryPillars": [
+        "operations"
+      ],
+      "purpose": "Resolve conflicts in marketplace routing and adjudicate queue priorities.",
+      "schedule": "Every 30 minutes",
+      "intervalMinutes": 30,
+      "inputSources": [
+        "plans",
+        "runs",
+        "events"
+      ],
+      "allowedActions": [
+        "rank_queue_priority",
+        "write_adjudication_note",
+        "open_escalation"
+      ],
+      "forbiddenActions": [
+        "edit_registry_without_admin"
+      ],
+      "outputArtifact": "queue-adjudication-note",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "pending_conflicts"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "builder-scout",
+      "displayName": "Builder Scout",
+      "committeeId": "builder-systems",
+      "primaryPillar": "knowledge-research",
+      "secondaryPillars": [
+        "engineering",
+        "product"
+      ],
+      "purpose": "Locate builder opportunities that can become original tools or repair kits.",
+      "schedule": "Every 90 minutes",
+      "intervalMinutes": 90,
+      "inputSources": [
+        "research-signals",
+        "archives",
+        "plans"
+      ],
+      "allowedActions": [
+        "open_builder_opportunity",
+        "write_clean_room_brief",
+        "recommend_scope"
+      ],
+      "forbiddenActions": [
+        "clone_external_repos"
+      ],
+      "outputArtifact": "builder-opportunity-brief",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "opportunity_count"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "builder-forge",
+      "displayName": "Builder Forge",
+      "committeeId": "builder-systems",
+      "primaryPillar": "engineering",
+      "secondaryPillars": [
+        "product"
+      ],
+      "purpose": "Turn approved builder opportunities into governed implementation packets.",
+      "schedule": "Every 120 minutes",
+      "intervalMinutes": 120,
+      "inputSources": [
+        "plans",
+        "archives",
+        "events"
+      ],
+      "allowedActions": [
+        "prepare_build_spec",
+        "write_acceptance_packet",
+        "flag_missing_dependencies"
+      ],
+      "forbiddenActions": [
+        "ship_without_approval"
+      ],
+      "outputArtifact": "builder-implementation-packet",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "unapproved-skill-attempt",
+      "statusFields": [
+        "status",
+        "last_run",
+        "active_specs"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "builder-arbiter",
+      "displayName": "Builder Arbiter",
+      "committeeId": "governance-evidence",
+      "primaryPillar": "governance",
+      "secondaryPillars": [
+        "engineering",
+        "knowledge-research"
+      ],
+      "purpose": "Judge builder proposals for legal, policy, and operational admissibility.",
+      "schedule": "Every 90 minutes",
+      "intervalMinutes": 90,
+      "inputSources": [
+        "plans",
+        "archives",
+        "research-signals"
+      ],
+      "allowedActions": [
+        "approve_builder_route",
+        "deny_builder_route",
+        "write_builder_decision"
+      ],
+      "forbiddenActions": [
+        "implement_code_changes"
+      ],
+      "outputArtifact": "builder-decision-record",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "builder_decisions"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "sentinel",
+      "displayName": "Sentinel",
+      "committeeId": "experience-assurance",
+      "primaryPillar": "product",
+      "secondaryPillars": [
+        "operations"
+      ],
+      "purpose": "Watch end-to-end product uptime and execution path health.",
+      "schedule": "Every 15 minutes",
+      "intervalMinutes": 15,
+      "inputSources": [
+        "telemetry",
+        "events",
+        "runs"
+      ],
+      "allowedActions": [
+        "verify_route_health",
+        "write_uptime_report",
+        "escalate_outage"
+      ],
+      "forbiddenActions": [
+        "mask_failures"
+      ],
+      "outputArtifact": "uptime-report",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "route_health",
+        "heartbeat"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "mirror",
+      "displayName": "Mirror",
+      "committeeId": "experience-assurance",
+      "primaryPillar": "product",
+      "secondaryPillars": [
+        "engineering"
+      ],
+      "purpose": "Compare UI truth against backend truth and expose drift.",
+      "schedule": "Every 15 minutes",
+      "intervalMinutes": 15,
+      "inputSources": [
+        "telemetry",
+        "observability",
+        "archives"
+      ],
+      "allowedActions": [
+        "compare_surface_truth",
+        "write_drift_report",
+        "flag_mismatch"
+      ],
+      "forbiddenActions": [
+        "rewrite_archives"
+      ],
+      "outputArtifact": "truth-drift-report",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "drift_count",
+        "heartbeat"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "polish",
+      "displayName": "Polish",
+      "committeeId": "experience-assurance",
+      "primaryPillar": "product",
+      "secondaryPillars": [
+        "sales"
+      ],
+      "purpose": "Guard product quality, clarity, and finish in customer-facing flows.",
+      "schedule": "Hourly",
+      "intervalMinutes": 60,
+      "inputSources": [
+        "plans",
+        "archives",
+        "events"
+      ],
+      "allowedActions": [
+        "write_quality_report",
+        "flag_clutter",
+        "recommend_copy_fix"
+      ],
+      "forbiddenActions": [
+        "deploy_unreviewed_ui"
+      ],
+      "outputArtifact": "quality-pass-report",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "quality_findings",
+        "heartbeat"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "glide",
+      "displayName": "Glide",
+      "committeeId": "experience-assurance",
+      "primaryPillar": "product",
+      "secondaryPillars": [
+        "sales"
+      ],
+      "purpose": "Inspect onboarding and user motion for friction and conversion drag.",
+      "schedule": "Every 45 minutes",
+      "intervalMinutes": 45,
+      "inputSources": [
+        "telemetry",
+        "plans",
+        "research-signals"
+      ],
+      "allowedActions": [
+        "write_onboarding_report",
+        "flag_friction",
+        "recommend_flow_change"
+      ],
+      "forbiddenActions": [
+        "alter_conversion_data"
+      ],
+      "outputArtifact": "flow-friction-report",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "friction_count"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "pulse",
+      "displayName": "Pulse",
+      "committeeId": "experience-assurance",
+      "primaryPillar": "operations",
+      "secondaryPillars": [
+        "product"
+      ],
+      "purpose": "Keep live command panels, telemetry cards, and freshness indicators honest.",
+      "schedule": "Every 15 minutes",
+      "intervalMinutes": 15,
+      "inputSources": [
+        "telemetry",
+        "events",
+        "observability"
+      ],
+      "allowedActions": [
+        "measure_panel_freshness",
+        "write_staleness_report",
+        "flag_stale_surface"
+      ],
+      "forbiddenActions": [
+        "fabricate_refreshes"
+      ],
+      "outputArtifact": "panel-freshness-report",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "freshness_state",
+        "heartbeat"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "sheriff",
+      "displayName": "Sheriff",
+      "committeeId": "governance-evidence",
+      "primaryPillar": "compliance-risk",
+      "secondaryPillars": [
+        "product",
+        "governance"
+      ],
+      "purpose": "Catch regressions, unsafe drift, and policy violations before they compound.",
+      "schedule": "Every 15 minutes",
+      "intervalMinutes": 15,
+      "inputSources": [
+        "runs",
+        "events",
+        "telemetry",
+        "archives"
+      ],
+      "allowedActions": [
+        "flag_regression",
+        "write_incident_report",
+        "open_escalation"
+      ],
+      "forbiddenActions": [
+        "suppress_policy_findings"
+      ],
+      "outputArtifact": "regression-watch-report",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "regression_count",
+        "heartbeat"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "welcome",
+      "displayName": "Welcome",
+      "committeeId": "growth-intelligence",
+      "primaryPillar": "sales",
+      "secondaryPillars": [
+        "growth",
+        "product"
+      ],
+      "purpose": "Own first-contact clarity, evaluator entry paths, and guided next actions.",
+      "schedule": "Every 30 minutes",
+      "intervalMinutes": 30,
+      "inputSources": [
+        "plans",
+        "telemetry",
+        "research-signals"
+      ],
+      "allowedActions": [
+        "write_entrypoint_brief",
+        "recommend_next_action",
+        "flag_missing_guidance"
+      ],
+      "forbiddenActions": [
+        "change_pricing_unilaterally"
+      ],
+      "outputArtifact": "welcome-journey-brief",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "journey_health"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "vendor-scout",
+      "displayName": "Vendor Scout",
+      "committeeId": "vendor-network",
+      "primaryPillar": "growth",
+      "secondaryPillars": [
+        "sales",
+        "operations"
+      ],
+      "purpose": "Find vendors, affiliates, and integration partners that expand distribution or service capacity.",
+      "schedule": "Hourly",
+      "intervalMinutes": 60,
+      "inputSources": [
+        "research-signals",
+        "events",
+        "archives"
+      ],
+      "allowedActions": [
+        "source_vendor_leads",
+        "write_vendor_map",
+        "score_partner_fit"
+      ],
+      "forbiddenActions": [
+        "approve_vendor_contracts"
+      ],
+      "outputArtifact": "vendor-lead-map",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "vendor_count"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "vendor-recruiter",
+      "displayName": "Vendor Recruiter",
+      "committeeId": "vendor-network",
+      "primaryPillar": "sales",
+      "secondaryPillars": [
+        "growth",
+        "operations"
+      ],
+      "purpose": "Run governed outreach, qualification, and follow-up for vendors and channel partners.",
+      "schedule": "Every 90 minutes",
+      "intervalMinutes": 90,
+      "inputSources": [
+        "plans",
+        "research-signals",
+        "events"
+      ],
+      "allowedActions": [
+        "prepare_vendor_outreach",
+        "qualify_vendor_interest",
+        "write_recruitment_brief"
+      ],
+      "forbiddenActions": [
+        "sign_binding_agreements"
+      ],
+      "outputArtifact": "vendor-recruitment-brief",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "missing-live-evidence",
+      "statusFields": [
+        "status",
+        "last_run",
+        "qualified_vendors"
+      ],
+      "requiredSecrets": []
+    },
+    {
+      "id": "vendor-auditor",
+      "displayName": "Vendor Auditor",
+      "committeeId": "vendor-network",
+      "primaryPillar": "compliance-risk",
+      "secondaryPillars": [
+        "finance",
+        "operations"
+      ],
+      "purpose": "Vet vendor economics, policy exposure, reliability, and onboarding readiness before activation.",
+      "schedule": "Every 120 minutes",
+      "intervalMinutes": 120,
+      "inputSources": [
+        "plans",
+        "archives",
+        "events",
+        "telemetry"
+      ],
+      "allowedActions": [
+        "screen_vendor_risk",
+        "write_vendor_decision",
+        "flag_margin_exposure"
+      ],
+      "forbiddenActions": [
+        "override_compliance_review"
+      ],
+      "outputArtifact": "vendor-activation-decision",
+      "archiveEventType": "worker_run_completed",
+      "escalationRuleId": "regulated-objective-review",
+      "statusFields": [
+        "status",
+        "last_run",
+        "vendor_decisions"
+      ],
+      "requiredSecrets": []
+    }
+  ],
+  "minimumLiveWorkerIds": [
+    "gauge",
+    "ledger",
+    "sentinel",
+    "mirror",
+    "pulse",
+    "sheriff",
+    "polish"
+  ]
+}

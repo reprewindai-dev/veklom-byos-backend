@@ -1,0 +1,108 @@
+services:
+  - type: web
+    name: uacpv3-control-plane
+    runtime: node
+    rootDir: .
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: USER_EMAIL
+        value: founder@company.com
+      - key: CONTACT_EMAIL
+        value: founder@company.com
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: HF_TOKEN
+        sync: false
+      - key: HF_MODEL
+        value: openai/gpt-oss-120b
+      - key: HF_BASE_URL
+        value: https://router.huggingface.co/v1
+      - key: OLLAMA_BASE_URL
+        value: http://127.0.0.1:11434
+      - key: OLLAMA_MODEL
+        sync: false
+      - key: OLLAMA_API_KEY
+        sync: false
+      - key: UACP_MODEL_PROVIDER_ORDER
+        value: gemini,groq,huggingface
+      - key: UACP_MODEL_PROVIDER
+        value: gemini
+      - key: UACP_ENABLE_GEMINI_PRIMARY
+        value: "true"
+      - key: ALLOW_GEMINI_FALLBACK
+        value: "true"
+      - key: UACP_ADMIN_KEY
+        sync: false
+      - key: UACP_INTERNAL_API_KEY
+        sync: false
+      - key: UACP_BACKEND_BASE_URL
+        sync: false
+      - key: UACP_BACKEND_TIMEOUT_MS
+        value: "8000"
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: UACP_RATE_LIMIT_TRUST_ACCESS_TIER_HEADER
+        value: "false"
+      - key: UACP_RATE_LIMIT_PUBLIC_FREE_LIMIT
+        value: "10"
+      - key: UACP_RATE_LIMIT_PUBLIC_PAID_LIMIT
+        value: "60"
+      - key: UACP_RATE_LIMIT_HEAVY_FREE_LIMIT
+        value: "3"
+      - key: UACP_RATE_LIMIT_HEAVY_PAID_LIMIT
+        value: "20"
+      - key: UACP_RATE_LIMIT_REFRESH_FREE_LIMIT
+        value: "2"
+      - key: UACP_RATE_LIMIT_REFRESH_PAID_LIMIT
+        value: "12"
+      - key: QSTASH_URL
+        value: https://qstash.upstash.io
+      - key: QSTASH_TOKEN
+        sync: false
+      - key: QSTASH_CURRENT_SIGNING_KEY
+        sync: false
+      - key: QSTASH_NEXT_SIGNING_KEY
+        sync: false
+      - key: UACP_PUBLIC_BASE_URL
+        value: https://uacpv3.onrender.com
+      - key: UACP_QSTASH_QUEUE_NAME
+        value: uacp-worker-conveyor
+      - key: UACP_QSTASH_CONVEYOR_SCHEDULE_ID
+        value: uacp-v3-worker-conveyor
+      - key: UACP_QSTASH_CONVEYOR_CRON
+        value: "*/5 * * * *"
+      - key: UPSTASH_SEARCH_REST_URL
+        sync: false
+      - key: UPSTASH_SEARCH_REST_TOKEN
+        sync: false
+      - key: UACP_SEARCH_INDEX
+        value: default
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL_MODE
+        value: "require"
+      - key: UACP_COLD_STORAGE_DIR
+        value: /opt/render/project/src/data/cold-store
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: UACP_OUTBOUND_REPLY_TO
+        sync: false
+      - key: UACP_OUTBOUND_MAX_SENDS_PER_RUN
+        value: "2"
+      - key: DEFAULT_RESEARCH_QUERY
+        value: ai governance orchestration workflow observability api mcp deployment compliance

@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: quantum-uacp-v0
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true

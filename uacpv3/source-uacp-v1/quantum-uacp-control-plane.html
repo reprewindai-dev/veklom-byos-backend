@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantum UACP Control Plane</title>
+  <meta name="description" content="Quantum UACP v0.1 governed hybrid orchestration control plane prototype" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&f[]=cabinet-grotesk@500,700&display=swap" rel="stylesheet">
+  <style>
+    :root, [data-theme="light"] {
+      --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+      --text-sm: clamp(0.875rem, 0.8rem + 0.35vw, 1rem);
+      --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+      --text-lg: clamp(1.125rem, 1rem + 0.75vw, 1.5rem);
+      --text-xl: clamp(1.5rem, 1.2rem + 1.25vw, 2.25rem);
+      --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+      --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
+      --space-12: 3rem; --space-16: 4rem;
+      --radius-sm: 0.375rem; --radius-md: 0.5rem; --radius-lg: 0.75rem; --radius-xl: 1rem; --radius-full: 9999px;
+      --font-display: 'Cabinet Grotesk', 'Inter', sans-serif;
+      --font-body: 'Satoshi', 'Inter', sans-serif;
+      --color-bg: #f7f6f2; --color-surface: #f9f8f5; --color-surface-2: #fbfbf9; --color-surface-offset: #f3f0ec;
+      --color-surface-accent: color-mix(in oklch, #01696f 8%, #f9f8f5);
+      --color-divider: #dcd9d5; --color-border: #d4d1ca; --color-text: #28251d; --color-text-muted: #66645f; --color-text-faint: #9a9892;
+      --color-text-inverse: #f9f8f4; --color-primary: #01696f; --color-primary-hover: #0c4e54; --color-primary-highlight: #cedcd8;
+      --color-warning: #964219; --color-error: #a12c7b; --color-success: #437a22; --color-blue: #006494;
+      --shadow-sm: 0 1px 2px oklch(0.2 0.01 80 / 0.06); --shadow-md: 0 4px 12px oklch(0.2 0.01 80 / 0.08); --shadow-lg: 0 12px 32px oklch(0.2 0.01 80 / 0.12);
+      --content-wide: 1280px; --transition-interactive: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    [data-theme="dark"] {
+      --color-bg: #121313; --color-surface: #181a1a; --color-surface-2: #1f2121; --color-surface-offset: #232626;
+      --color-surface-accent: color-mix(in oklch, #4f98a3 10%, #181a1a);
+      --color-divider: #2b2d2d; --color-border: #343838; --color-text: #d7dbdb; --color-text-muted: #9ea4a4; --color-text-faint: #6d7373;
+      --color-text-inverse: #0f1111; --color-primary: #4f98a3; --color-primary-hover: #68aebb; --color-primary-highlight: #263234;
+      --color-warning: #d08a4d; --color-error: #d163a7; --color-success: #76af54; --color-blue: #6ca8d7;
+      --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.2); --shadow-md: 0 4px 12px oklch(0 0 0 / 0.28); --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.42);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; }
+    body { min-height: 100dvh; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); font-size: var(--text-base); }
+    img, svg { display: block; max-width: 100%; }
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; border: none; background: none; }
+    a { color: inherit; text-decoration: none; }
+    :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; border-radius: var(--radius-sm); }
+    .shell { display: grid; grid-template-columns: 280px 1fr; min-height: 100dvh; }
+    .sidebar {
+      position: sticky; top: 0; height: 100dvh; padding: var(--space-6); background: linear-gradient(180deg, var(--color-surface), var(--color-surface-2));
+      border-right: 1px solid color-mix(in oklch, var(--color-text) 10%, transparent); display: flex; flex-direction: column; gap: var(--space-6);
+    }
+    .brand { display: flex; align-items: center; gap: var(--space-3); }
+    .logo { width: 38px; height: 38px; color: var(--color-primary); }
+    .brand-copy h1 { font-family: var(--font-display); font-size: 1.1rem; letter-spacing: -0.03em; }
+    .brand-copy p { color: var(--color-text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.14em; }
+    .nav { display: grid; gap: var(--space-2); }
+    .nav button {
+      display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; text-align: left; padding: 0.95rem 1rem;
+      border-radius: var(--radius-lg); color: var(--color-text-muted); border: 1px solid transparent; transition: all var(--transition-interactive);
+    }
+    .nav button.active, .nav button:hover { background: var(--color-surface-accent); color: var(--color-text); border-color: color-mix(in oklch, var(--color-primary) 20%, transparent); }
+    .nav small { font-size: var(--text-xs); color: var(--color-text-faint); }
+    .sidebar-meta { margin-top: auto; display: grid; gap: var(--space-3); }
+    .meta-card { padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface-offset); border: 1px solid color-mix(in oklch, var(--color-text) 10%, transparent); box-shadow: var(--shadow-sm); }
+    .meta-card h3 { font-size: var(--text-sm); margin-bottom: var(--space-2); }
+    .meta-card p { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.5; }
+    .main { min-width: 0; }
+    .topbar {
+      position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+      padding: var(--space-4) var(--space-6); background: color-mix(in oklch, var(--color-bg) 84%, transparent); backdrop-filter: blur(18px);
+      border-bottom: 1px solid color-mix(in oklch, var(--color-text) 8%, transparent);
+    }
+    .topbar h2 { font-family: var(--font-display); font-size: var(--text-xl); letter-spacing: -0.04em; }
+    .topbar p { color: var(--color-text-muted); font-size: var(--text-sm); }
+    .topbar-actions { display: flex; align-items: center; gap: var(--space-3); }
+    .pill, .theme-toggle, .primary-btn, .secondary-btn {
+      display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0.75rem 1rem; border-radius: var(--radius-full);
+      border: 1px solid color-mix(in oklch, var(--color-text) 10%, transparent); background: var(--color-surface); box-shadow: var(--shadow-sm);
+    }
+    .primary-btn { background: var(--color-primary); color: var(--color-text-inverse); border-color: transparent; }
+    .primary-btn:hover { background: var(--color-primary-hover); }
+    .secondary-btn:hover, .theme-toggle:hover { background: var(--color-surface-offset); }
+    .content { padding: var(--space-6); display: grid; gap: var(--space-6); max-width: var(--content-wide); }
+    .hero-grid { display: grid; grid-template-columns: 1.3fr 0.9fr; gap: var(--space-6); }
+    .panel {
+      background: linear-gradient(180deg, color-mix(in oklch, var(--color-surface) 88%, transparent), var(--color-surface));
+      border: 1px solid color-mix(in oklch, var(--color-text) 10%, transparent); border-radius: var(--radius-xl); box-shadow: var(--shadow-md);
+      padding: var(--space-5);
+    }
+    .panel h3 { font-size: var(--text-lg); font-family: var(--font-display); letter-spacing: -0.03em; margin-bottom: var(--space-2); }
+    .muted { color: var(--color-text-muted); }
+    .label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.14em; color: var(--color-text-faint); }
+    .hero-title { font-family: var(--font-display); font-size: clamp(2rem, 1.4rem + 2vw, 3.5rem); line-height: 0.96; letter-spacing: -0.05em; max-width: 13ch; margin-bottom: var(--space-4); }
+    .hero-copy { max-width: 64ch; color: var(--color-text-muted); margin-bottom: var(--space-5); }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+    .kpi-grid, .triptych, .ops-grid { display: grid; gap: var(--space-4); }
+    .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+    .triptych { grid-template-columns: repeat(3, 1fr); }
+    .ops-grid { grid-template-columns: 1.1fr 0.9fr; }
+    .kpi { padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface-2); border: 1px solid color-mix(in oklch, var(--color-text) 8%, transparent); }
+    .kpi strong { display: block; font-family: var(--font-display); font-size: 2rem; letter-spacing: -0.05em; margin: 0.35rem 0; }
+    .badge { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.35rem 0.7rem; border-radius: var(--radius-full); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; }
+    .ok { background: color-mix(in oklch, var(--color-success) 16%, transparent); color: var(--color-success); }
+    .warn { background: color-mix(in oklch, var(--color-warning) 16%, transparent); color: var(--color-warning); }
+    .err { background: color-mix(in oklch, var(--color-error) 16%, transparent); color: var(--color-error); }
+    .info { background: color-mix(in oklch, var(--color-primary) 16%, transparent); color: var(--color-primary); }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
+    .section-head p { color: var(--color-text-muted); max-width: 56ch; }
+    .flow { display: grid; gap: var(--space-3); }
+    .flow-step {
+      display: grid; grid-template-columns: 40px 1fr auto; gap: var(--space-4); align-items: center; padding: var(--space-4);
+      border-radius: var(--radius-lg); background: var(--color-surface-2); border: 1px solid color-mix(in oklch, var(--color-text) 8%, transparent);
+    }
+    .step-index { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--color-surface-accent); color: var(--color-primary); font-weight: 700; }
+    .step-meta h4 { margin-bottom: 0.2rem; }
+    .step-meta p { color: var(--color-text-muted); font-size: var(--text-sm); }
+    .mini-table { width: 100%; border-collapse: collapse; }
+    .mini-table th, .mini-table td { text-align: left; padding: 0.85rem 0.6rem; border-bottom: 1px solid color-mix(in oklch, var(--color-text) 8%, transparent); font-size: var(--text-sm); }
+    .mini-table th { color: var(--color-text-faint); text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--text-xs); }
+    .timeline { display: grid; gap: var(--space-3); }
+    .event { display: grid; grid-template-columns: 14px 1fr auto; gap: var(--space-3); align-items: start; }
+    .dot { width: 10px; height: 10px; margin-top: 0.38rem; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 6px color-mix(in oklch, var(--color-primary) 16%, transparent); }
+    .event-card { padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface-2); border: 1px solid color-mix(in oklch, var(--color-text) 8%, transparent); }
+    .event-card h4 { margin-bottom: 0.2rem; }
+    .event-card p { color: var(--color-text-muted); font-size: var(--text-sm); }
+    .event time { color: var(--color-text-faint); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; }
+    .code-block {
+      padding: var(--space-4); border-radius: var(--radius-lg); background: #0d1010; border: 1px solid #243031; color: #b7d1d3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.88rem; overflow: auto;
+    }
+    .surface-stack { display: grid; gap: 0.75rem; }
+    .surface-box { border-radius: var(--radius-lg); padding: var(--space-4); border: 1px solid color-mix(in oklch, var(--color-text) 10%, transparent); }
+    .s1 { background: var(--color-bg); }
+    .s2 { background: var(--color-surface); margin-left: 1rem; }
+    .s3 { background: var(--color-surface-2); margin-left: 2rem; }
+    .s4 { background: var(--color-surface-offset); margin-left: 3rem; }
+    .status-row { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+    .hidden { display: none !important; }
+    @media (max-width: 1100px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { position: relative; height: auto; border-right: none; border-bottom: 1px solid color-mix(in oklch, var(--color-text) 8%, transparent); }
+      .hero-grid, .ops-grid, .triptych, .kpi-grid { grid-template-columns: 1fr; }
+      .content { padding: var(--space-4); }
+      .topbar { padding: var(--space-4); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Quantum UACP logo">
+          <path d="M14 18H38L50 30V50H26L14 38V18Z" stroke="currentColor" stroke-width="4"/>
+          <path d="M24 24H40L44 28V40H28L24 36V24Z" stroke="currentColor" stroke-width="4" opacity="0.65"/>
+          <path d="M18 46L28 36" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+        <div class="brand-copy">
+          <p>Governed Hybrid Runtime</p>
+          <h1>Quantum UACP</h1>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Primary navigation">
+        <button class="active" data-view="intent"><span>Intent Console</span><small>01</small></button>
+        <button data-view="graph"><span>Execution Graph</span><small>02</small></button>
+        <button data-view="ops"><span>Ops / Control Plane</span><small>03</small></button>
+      </nav>
+      <div class="sidebar-meta">
+        <div class="meta-card">
+          <h3>Core rule</h3>
+          <p>Planner proposes. Gateway authorizes. Executor runs. Evidence proves.</p>
+        </div>
+        <div class="meta-card">
+          <h3>v0 hard limits</h3>
+          <p>One template, one provider, explicit state transitions, no hidden backend substitution, replay required for success.</p>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="viewTitle">Intent Console</h2>
+          <p id="viewSubtitle">Structured intent intake with policy precheck before any execution side effect.</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="pill"><span class="label">Provider</span><strong>provider-a-qpu-1</strong></div>
+          <button class="theme-toggle" data-theme-toggle aria-label="Switch theme">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+          <button class="primary-btn">Create Intent</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section id="intent" class="view">
+          <div class="hero-grid">
+            <div class="panel">
+              <div class="label">Surface 01</div>
+              <h3 class="hero-title">Make quantum workloads look like governed infrastructure.</h3>
+              <p class="hero-copy">The intake layer converts operator intent into a typed, reviewable object before planning, approval, and execution. v0 keeps the planner constrained to one supported workflow template so the control plane remains deterministic.</p>
+              <div class="hero-actions">
+                <button class="primary-btn">Submit Intent</button>
+                <button class="secondary-btn">Open Sample Payload</button>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="section-head">
+                <div>
+                  <div class="label">Design system proof</div>
+                  <h3>Surface stack</h3>
+                </div>
+                <span class="badge info">Light + dark ready</span>
+              </div>
+              <div class="surface-stack">
+                <div class="surface-box s1">--color-bg</div>
+                <div class="surface-box s2">--color-surface</div>
+                <div class="surface-box s3">--color-surface-2</div>
+                <div class="surface-box s4">--color-surface-offset</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi"><span class="label">Open intents</span><strong>14</strong><span class="muted">2 awaiting normalization</span></div>
+            <div class="kpi"><span class="label">Policy holds</span><strong>3</strong><span class="muted">Remote QPU threshold exceeded</span></div>
+            <div class="kpi"><span class="label">Auto-allow rate</span><strong>71%</strong><span class="muted">Simulator-only under budget</span></div>
+            <div class="kpi"><span class="label">Replay coverage</span><strong>100%</strong><span class="muted">Success requires artifact completeness</span></div>
+          </div>
+
+          <div class="triptych">
+            <div class="panel">
+              <div class="section-head"><div><div class="label">Typed object</div><h3>QuantumJobIntent</h3></div><span class="badge ok">Canonical</span></div>
+              <div class="code-block">{
+  "orgId": "org_demo",
+  "actorId": "founder_demo",
+  "workloadType": "hybrid-vqe",
+  "objective": "Estimate a low-energy state under cost and latency limits",
+  "constraints": {
+    "maxCostUsd": 10,
+    "maxLatencyS": 120,
+    "region": "us-east",
+    "allowRemoteQpu": true
+  }
+}</div>
+            </div>
+            <div class="panel">
+              <div class="section-head"><div><div class="label">Precheck</div><h3>Policy gate</h3></div><span class="badge warn">Approval likely</span></div>
+              <div class="flow">
+                <div class="flow-step"><div class="step-index">1</div><div class="step-meta"><h4>Normalize request</h4><p>No freeform NL goes to execution services.</p></div><span class="badge ok">Typed</span></div>
+                <div class="flow-step"><div class="step-index">2</div><div class="step-meta"><h4>Check constraints</h4><p>Budget, latency, region, and remote hardware allowance.</p></div><span class="badge info">Policy</span></div>
+                <div class="flow-step"><div class="step-index">3</div><div class="step-meta"><h4>Emit intent.created</h4><p>Sequence-ordered event is persisted before planning.</p></div><span class="badge ok">Logged</span></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="section-head"><div><div class="label">Critical rules</div><h3>Non-negotiables</h3></div><span class="badge err">Locked</span></div>
+              <div class="status-row">
+                <span class="badge info">No direct NL-to-executor</span>
+                <span class="badge info">One workflow template</span>
+                <span class="badge info">One provider only</span>
+                <span class="badge info">No hidden substitution</span>
+                <span class="badge info">Replay required</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="graph" class="view hidden">
+          <div class="section-head">
+            <div>
+              <div class="label">Surface 02</div>
+              <h3>Execution Graph</h3>
+              <p>Planner chooses one supported template, then the gateway and policy layers determine whether the plan can proceed automatically or requires approval.</p>
+            </div>
+            <span class="badge info">hybrid-vqe-v1</span>
+          </div>
+
+          <div class="ops-grid">
+            <div class="panel">
+              <div class="section-head"><div><div class="label">Deterministic plan</div><h3>Step graph</h3></div><span class="badge ok">Revision 1</span></div>
+              <div class="flow">
+                <div class="flow-step"><div class="step-index">1</div><div class="step-meta"><h4>preprocess</h4><p>CPU executor prepares parameter set and validates constraints.</p></div><span class="badge ok">cpu</span></div>
+                <div class="flow-step"><div class="step-index">2</div><div class="step-meta"><h4>ansatz</h4><p>Template-defined structure only; no runtime mutation of plan steps.</p></div><span class="badge ok">cpu</span></div>
+                <div class="flow-step"><div class="step-index">3</div><div class="step-meta"><h4>simulate</h4><p>Local or cloud simulator validates feasibility before hardware escalation.</p></div><span class="badge info">simulator</span></div>
+                <div class="flow-step"><div class="step-index">4</div><div class="step-meta"><h4>qpu_run</h4><p>Allowed only after policy decision and approval threshold checks pass.</p></div><span class="badge warn">remote_qpu</span></div>
+                <div class="flow-step"><div class="step-index">5</div><div class="step-meta"><h4>reconstruct</h4><p>Return results into deterministic post-processing path.</p></div><span class="badge ok">cpu</span></div>
+                <div class="flow-step"><div class="step-index">6</div><div class="step-meta"><h4>score</h4><p>Finalize run metadata and prepare replay package inputs.</p></div><span class="badge ok">cpu</span></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="section-head"><div><div class="label">Plan summary</div><h3>Authorization snapshot</h3></div><span class="badge warn">Approval required</span></div>
+              <table class="mini-table">
+                <tbody>
+                  <tr><th>Estimated cost</th><td>$18.40</td></tr>
+                  <tr><th>Estimated latency</th><td>96s</td></tr>
+                  <tr><th>Eligible backends</th><td>sim-local-1, sim-cloud-1, provider-a-qpu-1</td></tr>
+                  <tr><th>Policy effect</th><td>require_approval</td></tr>
+                  <tr><th>Plan hash</th><td>3a44c9…7f2b</td></tr>
+                  <tr><th>Policy hash</th><td>71ab2d…91ce</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="triptych">
+            <div class="panel">
+              <div class="label">Canonical object</div>
+              <h3>QuantumExecutionPlan</h3>
+              <p class="muted">Plan state is separate from run state. This prevents ambiguity between “planned” and “running.”</p>
+              <div class="status-row" style="margin-top: 1rem;">
+                <span class="badge ok">planned</span>
+                <span class="badge warn">approval_required</span>
+                <span class="badge info">auto_allowed</span>
+                <span class="badge ok">approved</span>
+                <span class="badge err">denied</span>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="label">Gateway boundary</div>
+              <h3>Run guard</h3>
+              <p class="muted">A dedicated gateway service prevents illegal state jumps, validates selected backend against policy, and centralizes run-start authorization.</p>
+            </div>
+            <div class="panel">
+              <div class="label">Replay integrity</div>
+              <h3>Snapshot pinning</h3>
+              <p class="muted">Run records pin plan revision, executor versions, backend snapshot, and policy snapshot so replay is evidence, not approximation.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="ops" class="view hidden">
+          <div class="section-head">
+            <div>
+              <div class="label">Surface 03</div>
+              <h3>Ops / Control Plane View</h3>
+              <p>Operate live runs, approvals, and evidence packages from a backend-truth model. Critical run state is never derived only in the UI.</p>
+            </div>
+            <span class="badge ok">State machine enforced</span>
+          </div>
+
+          <div class="ops-grid">
+            <div class="panel">
+              <div class="section-head"><div><div class="label">Active runs</div><h3>Run registry</h3></div><span class="badge info">Backend truth</span></div>
+              <table class="mini-table">
+                <thead>
+                  <tr><th>Run</th><th>Plan</th><th>Backend</th><th>State</th><th>Current step</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>run_1042</td><td>plan_r1</td><td>sim-local-1</td><td><span class="badge ok">running</span></td><td>simulate</td></tr>
+                  <tr><td>run_1041</td><td>plan_r1</td><td>provider-a-qpu-1</td><td><span class="badge warn">pending</span></td><td>approval wait</td></tr>
+                  <tr><td>run_1039</td><td>plan_r1</td><td>sim-cloud-1</td><td><span class="badge err">failed</span></td><td>reconstruct</td></tr>
+                  <tr><td>run_1038</td><td>plan_r1</td><td>provider-a-qpu-1</td><td><span class="badge ok">succeeded</span></td><td>replay.finalize</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel">
+              <div class="section-head"><div><div class="label">Approval queue</div><h3>Decision gate</h3></div><span class="badge warn">2 pending</span></div>
+              <div class="flow">
+                <div class="flow-step"><div class="step-index">A</div><div class="step-meta"><h4>plan_r1 / provider-a-qpu-1</h4><p>Cost threshold crossed. Awaiting operator_1 decision.</p></div><span class="badge warn">pending</span></div>
+                <div class="flow-step"><div class="step-index">B</div><div class="step-meta"><h4>plan_r2 / region mismatch</h4><p>Denied by policy snapshot before run creation.</p></div><span class="badge err">denied</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="triptych">
+            <div class="panel">
+              <div class="label">Event feed</div>
+              <h3>Ordered lifecycle</h3>
+              <div class="timeline" style="margin-top: 1rem;">
+                <div class="event"><div class="dot"></div><div class="event-card"><h4>step.started</h4><p>run_1042 entered simulate with sequence_no 8491.</p></div><time>00:03:21</time></div>
+                <div class="event"><div class="dot"></div><div class="event-card"><h4>policy.require_approval</h4><p>run_1041 held because remote QPU budget exceeded threshold.</p></div><time>00:02:54</time></div>
+                <div class="event"><div class="dot"></div><div class="event-card"><h4>replay.generated</h4><p>run_1038 replay package passed completeness contract.</p></div><time>23:58:40</time></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="label">Failure model</div>
+              <h3>Hard-stop classes</h3>
+              <div class="status-row" style="margin-top: 1rem;">
+                <span class="badge err">illegal_state_transition</span>
+                <span class="badge err">idempotency_conflict</span>
+                <span class="badge err">policy_snapshot_missing</span>
+                <span class="badge err">backend_snapshot_missing</span>
+                <span class="badge err">plan_revision_mismatch</span>
+                <span class="badge err">replay_incomplete</span>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="label">Evidence pack</div>
+              <h3>ReplayArtifact</h3>
+              <p class="muted">Success is blocked if plan hash, policy hash, backend snapshot hash, or result hash cannot be finalized and preserved.</p>
+              <div class="code-block" style="margin-top: 1rem;">{
+  "runId": "run_1038",
+  "planHash": "3a44c9...7f2b",
+  "policyHash": "71ab2d...91ce",
+  "backendSnapshotHash": "aa99ef...1020",
+  "resultHash": "ff29bc...881a"
+}</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const tabs = document.querySelectorAll('[data-view]');
+      const views = document.querySelectorAll('.view');
+      const title = document.getElementById('viewTitle');
+      const subtitle = document.getElementById('viewSubtitle');
+      const map = {
+        intent: {
+          title: 'Intent Console',
+          subtitle: 'Structured intent intake with policy precheck before any execution side effect.'
+        },
+        graph: {
+          title: 'Execution Graph',
+          subtitle: 'Template-selected deterministic planning with approval and backend eligibility visibility.'
+        },
+        ops: {
+          title: 'Ops / Control Plane View',
+          subtitle: 'Live runs, approval queue, ordered events, and replay-backed evidence integrity.'
+        }
+      };
+
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const view = tab.dataset.view;
+          tabs.forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          views.forEach(v => v.classList.add('hidden'));
+          document.getElementById(view).classList.remove('hidden');
+          title.textContent = map[view].title;
+          subtitle.textContent = map[view].subtitle;
+        });
+      });
+
+      const toggle = document.querySelector('[data-theme-toggle]');
+      const root = document.documentElement;
+      let mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.setAttribute('data-theme', mode);
+      const renderIcon = () => {
+        toggle.innerHTML = mode === 'dark'
+          ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
+          : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+        toggle.setAttribute('aria-label', 'Switch to ' + (mode === 'dark' ? 'light' : 'dark') + ' mode');
+      };
+      renderIcon();
+      toggle.addEventListener('click', () => {
+        mode = mode === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', mode);
+        renderIcon();
+      });
+    })();
+  </script>
+</body>
+</html>

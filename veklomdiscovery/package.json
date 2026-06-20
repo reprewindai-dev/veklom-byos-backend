@@ -1,0 +1,35 @@
+{
+  "name": "veklom-id",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@base-org/account": "^2.5.6",
+    "@coinbase/x402": "^2.1.0",
+    "@tanstack/react-query": "^5.101.0",
+    "@vercel/analytics": "^2.0.1",
+    "@x402/core": "^2.14.0",
+    "@x402/evm": "^2.14.0",
+    "@x402/next": "^2.14.0",
+    "lucide-react": "^0.468.0",
+    "next": "^16.2.9",
+    "ox": "^0.9.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "viem": "^2.45.0",
+    "wagmi": "^3.6.16"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.1.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  }
+}

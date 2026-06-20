@@ -1,0 +1,100 @@
+version: '3.9'
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: uacp
+      POSTGRES_USER: uacp
+      POSTGRES_PASSWORD: uacp
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uacp -d uacp"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  gateway:
+    image: python:3.11-slim
+    working_dir: /app
+    command: sh -c "pip install fastapi uvicorn[standard] httpx pydantic && uvicorn main:app --host 0.0.0.0 --port 8000"
+    volumes:
+      - ./apps/gateway:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - planner
+      - policy
+      - orchestrator
+  planner:
+    image: python:3.11-slim
+    working_dir: /app
+    command: sh -c "pip install fastapi uvicorn[standard] pydantic && uvicorn main:app --host 0.0.0.0 --port 8001"
+    volumes:
+      - ./apps/planner:/app
+    ports:
+      - "8001:8001"
+  policy:
+    image: python:3.11-slim
+    working_dir: /app
+    command: sh -c "pip install fastapi uvicorn[standard] pydantic && uvicorn main:app --host 0.0.0.0 --port 8002"
+    volumes:
+      - ./apps/policy:/app
+    ports:
+      - "8002:8002"
+  orchestrator:
+    image: python:3.11-slim
+    working_dir: /app
+    command: sh -c "pip install fastapi uvicorn[standard] httpx redis pydantic && uvicorn main:app --host 0.0.0.0 --port 8003"
+    volumes:
+      - ./apps/orchestrator:/app
+    ports:
+      - "8003:8003"
+    depends_on:
+      - redis
+      - telemetry
+      - audit
+  worker:
+    image: python:3.11-slim
+    working_dir: /app
+    command: sh -c "pip install httpx redis && python worker.py"
+    volumes:
+      - ./apps/worker:/app
+    depends_on:
+      - redis
+      - mcp-server
+      - telemetry
+      - audit
+  telemetry:
+    image: python:3.11-slim
+    working_dir: /app
+    command: sh -c "pip install fastapi uvicorn[standard] asyncpg pydantic && uvicorn main:app --host 0.0.0.0 --port 8004"
+    volumes:
+      - ./apps/telemetry:/app
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  audit:
+    image: python:3.11-slim
+    working_dir: /app
+    command: sh -c "pip install fastapi uvicorn[standard] asyncpg pydantic && uvicorn main:app --host 0.0.0.0 --port 8005"
+    volumes:
+      - ./apps/audit:/app
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  mcp-server:
+    image: python:3.11-slim
+    working_dir: /app
+    command: sh -c "pip install fastapi uvicorn[standard] pydantic && uvicorn main:app --host 0.0.0.0 --port 8006"
+    volumes:
+      - ./apps/mcp-server:/app
+    ports:
+      - "8006:8006"

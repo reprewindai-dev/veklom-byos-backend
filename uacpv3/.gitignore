@@ -1,0 +1,11 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+*.err
+.env*
+!.env.example
+data/control-plane-state.json
+data/cold-store/

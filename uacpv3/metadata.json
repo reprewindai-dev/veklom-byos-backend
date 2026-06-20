@@ -1,0 +1,6 @@
+{
+  "name": "Quantum UACP v0",
+  "description": "A hybrid quantum/classical workflow orchestration prototype featuring an intent console, execution graph, and control plane governed by deterministic AI planning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

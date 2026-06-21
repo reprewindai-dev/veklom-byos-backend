@@ -36,6 +36,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/v1/openapi.json", "/api/v1/sys/health", "/api/v1/sys/gpu",
             "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
             "/api/v1/workspace/overview/live", "/api/v1/integrations/pagerduty",
+            "/api/v1/pgl/registry", "/api/v1/capi/execute",
             "/api/v1/receipts", "/api/v1/evidence/verify",
             "/api/v1/ai/inference", "/api/v1/ai/chat", "/api/v1/gpc/compile",
             "/api/v1/gpc/intent-to-plan", "/api/v1/gpc/runs", "/api/v1/pipelines/trigger",

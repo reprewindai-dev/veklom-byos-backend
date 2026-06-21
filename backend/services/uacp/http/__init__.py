@@ -80,6 +80,54 @@ async def check_replay(jti: str, trace_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Quota tracking
+# ---------------------------------------------------------------------------
+
+_fallback_quota: Dict[str, int] = {}
+MAX_QUOTA = 1000
+
+async def track_quota(workspace_id: str) -> Dict[str, Any]:
+    """
+    Track and return remaining quota for a workspace.
+    Uses Redis with an in-memory dictionary fallback.
+    """
+    now = datetime.now(timezone.utc)
+    # Next reset is the first day of the next month
+    if now.month == 12:
+        next_month = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        next_month = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    reset_at = next_month.isoformat()
+
+    key = f"quota:uacp:{workspace_id}:{now.year}:{now.month}"
+
+    used = 0
+    if redis_cache.enabled and redis_cache.client:
+        try:
+            # Increment usage
+            used = await redis_cache.client.incr(key)
+            # If it's a new key, set TTL to roughly a month + 1 day
+            if used == 1:
+                await redis_cache.client.expire(key, 32 * 24 * 3600)
+        except Exception as e:
+            logger.warning(f"Redis quota tracking failed: {e}")
+            # Fallback to in-memory
+            _fallback_quota[key] = _fallback_quota.get(key, 0) + 1
+            used = _fallback_quota[key]
+    else:
+        # Fallback to in-memory
+        _fallback_quota[key] = _fallback_quota.get(key, 0) + 1
+        used = _fallback_quota[key]
+
+    remaining = max(0, MAX_QUOTA - used)
+
+    return {
+        "remaining": remaining,
+        "reset_at": reset_at
+    }
+
+
+# ---------------------------------------------------------------------------
 # Decision endpoint
 # ---------------------------------------------------------------------------
 
@@ -126,14 +174,14 @@ async def decide(
     # Calculate latency
     latency_ms = (time.time() - start_time) * 1000
     
+    # Track quota
+    quota_info = await track_quota(request.workspace_id)
+
     # Build response
     response = DecideResponse(
         decision=result.to_dict(),
         latency_ms=latency_ms,
-        quota={
-            "remaining": 1000,  # TODO: Implement quota tracking
-            "reset_at": "2026-05-29T00:00:00Z"
-        },
+        quota=quota_info,
         observability={
             "trace_id": trace_id,
             "jti": jti,

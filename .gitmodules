@@ -1,0 +1,9 @@
+[submodule "uacpv3"]
+	path = uacpv3
+	url = https://github.com/reprewindai-dev/uacpv3.git
+[submodule "veklom-byos-backend"]
+	path = veklom-byos-backend
+	url = https://github.com/reprewindai-dev/veklom-byos-backend.git
+[submodule "veklomdiscovery"]
+	path = veklomdiscovery
+	url = https://github.com/reprewindai-dev/veklomdiscovery.git

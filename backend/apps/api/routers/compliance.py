@@ -277,21 +277,76 @@ async def create_compliance_report(body: dict, user=Depends(get_current_user)):
 
 
 @router.get("/compliance/frameworks")
-async def list_frameworks(user=Depends(get_current_user)):
+async def list_frameworks(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """All 6 compliance frameworks with live scores and evidence counts."""
-    return [
-        {k: v for k, v in fw.items() if k != "controls"}
-        for fw in _FRAMEWORKS.values()
-    ]
+    from sqlalchemy import func
+    from backend.db.models.security import ComplianceCheck, AuditLog
+    
+    ws = getattr(user, "workspace_id", "default") or "default"
+    
+    # Get audit log count to dynamically adjust evidence counts
+    audit_count = await db.scalar(select(func.count(AuditLog.id)).where(AuditLog.workspace_id == ws)) or 0
+    
+    # Query latest checks for each framework
+    stmt = select(ComplianceCheck).where(ComplianceCheck.workspace_id == ws)
+    res = await db.execute(stmt)
+    checks = res.scalars().all()
+    
+    # Build check map by regulation
+    check_map = {}
+    for c in checks:
+        reg_key = c.regulation.lower().replace("-", "").replace("_", "")
+        # Store the latest check for each regulation
+        if reg_key not in check_map or c.created_at > check_map[reg_key].created_at:
+            check_map[reg_key] = c
+            
+    frameworks = []
+    for key, fw in _FRAMEWORKS.items():
+        fw_copy = {k: v for k, v in fw.items() if k != "controls"}
+        reg_key = fw["id"].lower().replace("-", "").replace("_", "")
+        
+        # Override score dynamically if db records exist
+        if reg_key in check_map:
+            fw_copy["score"] = int(check_map[reg_key].score * 100)
+            
+        # Add live audit count to the evidence count
+        fw_copy["evidence_count"] = fw_copy.get("evidence_count", 0) + audit_count
+        frameworks.append(fw_copy)
+        
+    return frameworks
 
 
 @router.get("/compliance/frameworks/{framework_id}")
-async def get_framework(framework_id: str, user=Depends(get_current_user)):
-    fw = _FRAMEWORKS.get(framework_id.lower().replace("-", "_").replace(" ", "_"))
+async def get_framework(framework_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    from backend.db.models.security import ComplianceCheck, AuditLog
+    
+    fw_key = framework_id.lower().replace("-", "_").replace(" ", "_")
+    fw = _FRAMEWORKS.get(fw_key)
     if not fw:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Framework '{framework_id}' not found")
-    return fw
+        
+    ws = getattr(user, "workspace_id", "default") or "default"
+    
+    # Get live count and score
+    audit_count = await db.scalar(select(func.count(AuditLog.id)).where(AuditLog.workspace_id == ws)) or 0
+    
+    # Get latest check
+    reg_key = fw["id"].upper()
+    stmt = select(ComplianceCheck).where(
+        ComplianceCheck.workspace_id == ws,
+        ComplianceCheck.regulation == reg_key
+    ).order_by(ComplianceCheck.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    latest_check = res.scalar_one_or_none()
+    
+    fw_copy = dict(fw)
+    if latest_check:
+        fw_copy["score"] = int(latest_check.score * 100)
+    fw_copy["evidence_count"] = fw_copy.get("evidence_count", 0) + audit_count
+    
+    return fw_copy
 
 
 @router.get("/compliance/evidence/{framework_id}/export")
@@ -574,20 +629,108 @@ async def content_safety_age_verify_status(user=Depends(get_current_user)):
 
 # --- Audit ---
 @router.get("/audit")
-async def list_audit_logs(start_date: Optional[str] = None, end_date: Optional[str] = None, limit: Optional[int] = 100, user=Depends(get_current_user)):
-    return [{
-        "id": "audit_exec_123",
-        "workspace_id": user.workspace_id,
-        "operation_type": "inference",
-        "provider": "ollama",
-        "model": "qwen2.5:3b",
-        "input_tokens": 142,
-        "output_tokens": 287,
-        "cost": "0.000000",
-        "latency_ms": 1840,
-        "hmac_hash": "sha256:abc123789fedcba",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }]
+async def list_audit_logs(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: Optional[int] = 100,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieve audit logs, mapped to database logs."""
+    limit = min(max(1, limit or 100), 500)
+    workspace_id = getattr(user, "workspace_id", "default") or "default"
+    
+    stmt = select(AuditLog).where(AuditLog.workspace_id == workspace_id)
+    if start_date:
+        try:
+            dt_from = datetime.fromisoformat(start_date)
+            stmt = stmt.where(AuditLog.created_at >= dt_from)
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            dt_to = datetime.fromisoformat(end_date)
+            stmt = stmt.where(AuditLog.created_at <= dt_to)
+        except ValueError:
+            pass
+            
+    stmt = stmt.order_by(AuditLog.created_at.desc()).limit(limit)
+    res = await db.execute(stmt)
+    logs = res.scalars().all()
+    
+    return [
+        {
+            "id": log.id,
+            "workspace_id": log.workspace_id,
+            "operation_type": log.resource_type or "system",
+            "action": log.action,
+            "user_id": log.user_id,
+            "details": log.details,
+            "hmac_hash": log.hash_chain,
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        }
+        for log in logs
+    ]
+
+
+@router.get("/audit/logs")
+async def list_real_audit_logs(
+    user_id: Optional[str] = None,
+    action: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    limit: int = 50,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Query real audit logs from the database with filtering."""
+    # Enforce limit constraints
+    limit = min(max(1, limit), 500)
+    workspace_id = getattr(user, "workspace_id", "default") or "default"
+    
+    stmt = select(AuditLog).where(AuditLog.workspace_id == workspace_id)
+    if user_id:
+        stmt = stmt.where(AuditLog.user_id == user_id)
+    if action:
+        if action.endswith(".*") or action.endswith("*"):
+            prefix = action.rstrip("*").rstrip(".")
+            stmt = stmt.where(AuditLog.action.like(f"{prefix}%"))
+        else:
+            stmt = stmt.where(AuditLog.action == action)
+    if from_date:
+        try:
+            dt_from = datetime.fromisoformat(from_date)
+            stmt = stmt.where(AuditLog.created_at >= dt_from)
+        except ValueError:
+            pass
+    if to_date:
+        try:
+            dt_to = datetime.fromisoformat(to_date)
+            stmt = stmt.where(AuditLog.created_at <= dt_to)
+        except ValueError:
+            pass
+            
+    stmt = stmt.order_by(AuditLog.created_at.desc()).limit(limit)
+    res = await db.execute(stmt)
+    logs = res.scalars().all()
+    
+    return [
+        {
+            "id": log.id,
+            "user_id": log.user_id,
+            "workspace_id": log.workspace_id,
+            "action": log.action,
+            "resource_type": log.resource_type,
+            "resource_id": log.resource_id,
+            "details": log.details,
+            "ip_address": log.ip_address,
+            "user_agent": log.user_agent,
+            "hash_chain": log.hash_chain,
+            "prev_hash": log.prev_hash,
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        }
+        for log in logs
+    ]
 
 
 @router.get("/audit/{log_id}/quality")
@@ -602,13 +745,79 @@ async def audit_log_quality(log_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/audit/logs/{log_id}")
-async def get_audit_log(log_id: str, user=Depends(get_current_user)):
-    return {"id": log_id, "action": "ai.exec", "resource_type": "completion", "details": {"model": "gpt-4o"}, "hash_chain": "sha256:valid"}
+async def get_audit_log(
+    log_id: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieve a specific audit log by ID."""
+    workspace_id = getattr(user, "workspace_id", "default") or "default"
+    stmt = select(AuditLog).where(AuditLog.id == log_id, AuditLog.workspace_id == workspace_id)
+    res = await db.execute(stmt)
+    log = res.scalar_one_or_none()
+    if not log:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Audit log not found")
+    return {
+        "id": log.id,
+        "user_id": log.user_id,
+        "workspace_id": log.workspace_id,
+        "action": log.action,
+        "resource_type": log.resource_type,
+        "resource_id": log.resource_id,
+        "details": log.details,
+        "ip_address": log.ip_address,
+        "user_agent": log.user_agent,
+        "hash_chain": log.hash_chain,
+        "prev_hash": log.prev_hash,
+        "created_at": log.created_at.isoformat() if log.created_at else None
+    }
 
 
 @router.get("/audit/verify/{log_id}")
-async def verify_audit(log_id: str, user=Depends(get_current_user)):
-    return {"log_id": log_id, "verified": True, "hash_valid": True, "chain_intact": True}
+async def verify_audit(
+    log_id: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Verify the cryptographic hash chain integrity of a log entry."""
+    import hashlib
+    import json
+    workspace_id = getattr(user, "workspace_id", "default") or "default"
+    
+    stmt = select(AuditLog).where(AuditLog.id == log_id, AuditLog.workspace_id == workspace_id)
+    res = await db.execute(stmt)
+    log = res.scalar_one_or_none()
+    if not log:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Audit log not found")
+        
+    details = log.details or {}
+    details_str = json.dumps(details, sort_keys=True, default=str)
+    event_data = f"{log.action}:{log.user_id}:{log.workspace_id}:{log.resource_type}:{log.resource_id}:{details_str}:{log.prev_hash or ''}"
+    computed_hash = hashlib.sha256(event_data.encode("utf-8")).hexdigest()
+    
+    hash_valid = computed_hash == log.hash_chain
+    
+    chain_intact = True
+    if log.prev_hash:
+        stmt_prev = select(AuditLog.hash_chain).where(
+            AuditLog.workspace_id == workspace_id,
+            AuditLog.hash_chain == log.prev_hash
+        )
+        res_prev = await db.execute(stmt_prev)
+        prev_exists = res_prev.scalar_one_or_none() is not None
+        if not prev_exists:
+            chain_intact = False
+            
+    return {
+        "log_id": log_id,
+        "verified": hash_valid and chain_intact,
+        "hash_valid": hash_valid,
+        "chain_intact": chain_intact,
+        "computed_hash": computed_hash,
+        "stored_hash": log.hash_chain
+    }
 
 
 @router.get("/audit/compliance-report")

@@ -1,6 +1,8 @@
 import logging
 import httpx
 from backend.core.config.settings import settings
+from backend.core.database.database import get_db_session
+from backend.core.audit import log_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,28 @@ async def send_email_via_resend(to_email: str, subject: str, html_content: str, 
     if not api_key or "YOUR_" in api_key or "NEED_FROM" in api_key:
         logger.warning("[email] RESEND_API_KEY is not configured. Simulating email send.")
         logger.info(f"[email] To: {to_email} | Subject: {subject}\nHTML: {html_content[:200]}...")
+        
+        # Log simulated email
+        try:
+            async with get_db_session() as db:
+                await log_audit_event(
+                    db=db,
+                    user_id="system",
+                    action="email.send.simulated",
+                    workspace_id="default",
+                    resource_type="email",
+                    resource_id="simulated",
+                    details={
+                        "to": to_email,
+                        "subject": subject,
+                        "resend_id": "simulated",
+                        "success": True,
+                        "body_preview": html_content[:200]
+                    }
+                )
+        except Exception as log_err:
+            logger.error(f"[email] Failed to log simulated email to audit: {log_err}")
+            
         return True
 
     url = "https://api.resend.com/emails"
@@ -36,11 +60,15 @@ async def send_email_via_resend(to_email: str, subject: str, html_content: str, 
         "html": html_content
     }
 
+    success = False
+    resend_id = None
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=headers, json=payload, timeout=10.0)
             if response.status_code in (200, 201):
-                logger.info(f"[email] Email sent successfully to {to_email} via Resend. ID: {response.json().get('id')}")
+                resend_id = response.json().get('id')
+                logger.info(f"[email] Email sent successfully to {to_email} via Resend. ID: {resend_id}")
+                success = True
                 return True
             else:
                 logger.error(f"[email] Resend API error: {response.status_code} - {response.text}")
@@ -48,3 +76,25 @@ async def send_email_via_resend(to_email: str, subject: str, html_content: str, 
     except Exception as e:
         logger.error(f"[email] Error sending email via Resend: {e}")
         return False
+    finally:
+        # Log real email send result
+        try:
+            async with get_db_session() as db:
+                await log_audit_event(
+                    db=db,
+                    user_id="system",
+                    action="email.send.success" if success else "email.send.failure",
+                    workspace_id="default",
+                    resource_type="email",
+                    resource_id=resend_id or "failed",
+                    details={
+                        "to": to_email,
+                        "subject": subject,
+                        "resend_id": resend_id,
+                        "success": success,
+                        "body_preview": html_content[:200]
+                    }
+                )
+        except Exception as log_err:
+            logger.error(f"[email] Failed to log email result to audit: {log_err}")
+

@@ -552,6 +552,16 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         await db.commit()
         await db.refresh(user)
 
+        await log_audit_event(
+            db=db,
+            user_id=user.id,
+            action="auth.register",
+            workspace_id=workspace.id,
+            resource_type="user",
+            resource_id=user.id,
+            details={"email": email}
+        )
+
         # Fire-and-forget verification email via Resend
         try:
             import asyncio as _asyncio
@@ -667,6 +677,15 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
         if user.status == "pending_verification":
             user.status = "active"
             await db.commit()
+            await log_audit_event(
+                db=db,
+                user_id=user.id,
+                action="auth.verify_email",
+                workspace_id=user.workspace_id or "default",
+                resource_type="user",
+                resource_id=user.id,
+                details={"email": user.email}
+            )
             
         return RedirectResponse(url=f"{CONTROL_PLANE_URL}/login?verified=true", status_code=302)
     except JWTError:
@@ -725,6 +744,15 @@ async def resend_verification(user=Depends(get_current_user), db: AsyncSession =
                 subject="Verify your Veklom account",
                 html_content=verify_html,
             )
+        )
+        await log_audit_event(
+            db=db,
+            user_id=user.id,
+            action="auth.resend_verification",
+            workspace_id=user.workspace_id or "default",
+            resource_type="user",
+            resource_id=user.id,
+            details={"email": user.email}
         )
         return {"success": True, "message": "Verification email resent"}
     except Exception as e:
@@ -787,6 +815,15 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request, db: Asy
                 html_content=reset_html,
             )
         )
+        await log_audit_event(
+            db=db,
+            user_id=user.id,
+            action="auth.forgot_password_request",
+            workspace_id=user.workspace_id or "default",
+            resource_type="user",
+            resource_id=user.id,
+            details={"email": user.email}
+        )
     except Exception as e:
         import logging
         logging.error(f"Failed to queue reset password email: {e}")
@@ -817,6 +854,16 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
     import sqlalchemy
     from backend.db.models.user import Session
     await db.execute(sqlalchemy.delete(Session).where(Session.user_id == user.id))
+    
+    await log_audit_event(
+        db=db,
+        user_id=user.id,
+        action="auth.reset_password",
+        workspace_id=user.workspace_id or "default",
+        resource_type="user",
+        resource_id=user.id,
+        details={"email": user.email}
+    )
     await db.commit()
     
     return {"message": "Password has been successfully reset. All previous sessions have been revoked."}
@@ -839,6 +886,30 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
                 "reason": "invalid_credentials" if user else "user_not_found"
             }
         )
+        if user:
+            await log_audit_event(
+                db=db,
+                user_id=user.id,
+                action="auth.login_failed",
+                workspace_id=user.workspace_id or "default",
+                resource_type="user",
+                resource_id=user.id,
+                details={"email": email, "reason": "invalid_credentials"},
+                ip_address=request.client.host if request.client else "",
+                user_agent=request.headers.get("user-agent", "")[:512]
+            )
+        else:
+            await log_audit_event(
+                db=db,
+                user_id="anonymous",
+                action="auth.login_failed",
+                workspace_id="default",
+                resource_type="user",
+                resource_id="unknown",
+                details={"email": email, "reason": "user_not_found"},
+                ip_address=request.client.host if request.client else "",
+                user_agent=request.headers.get("user-agent", "")[:512]
+            )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     status_value = (user.status or "").upper()
@@ -852,6 +923,17 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
                 "reason": f"account_{status_value.lower()}"
             }
         )
+        await log_audit_event(
+            db=db,
+            user_id=user.id,
+            action="auth.login_failed",
+            workspace_id=user.workspace_id or "default",
+            resource_type="user",
+            resource_id=user.id,
+            details={"email": email, "reason": f"account_{status_value.lower()}"},
+            ip_address=request.client.host if request.client else "",
+            user_agent=request.headers.get("user-agent", "")[:512]
+        )
         raise HTTPException(status_code=401, detail="Account is locked or suspended")
 
     if status_value == "INACTIVE" or not user.is_active:
@@ -864,9 +946,31 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
                 "reason": "account_inactive"
             }
         )
+        await log_audit_event(
+            db=db,
+            user_id=user.id,
+            action="auth.login_failed",
+            workspace_id=user.workspace_id or "default",
+            resource_type="user",
+            resource_id=user.id,
+            details={"email": email, "reason": "account_inactive"},
+            ip_address=request.client.host if request.client else "",
+            user_agent=request.headers.get("user-agent", "")[:512]
+        )
         raise HTTPException(status_code=401, detail="Account is inactive")
 
     if status_value == "PENDING_VERIFICATION":
+        await log_audit_event(
+            db=db,
+            user_id=user.id,
+            action="auth.login_failed",
+            workspace_id=user.workspace_id or "default",
+            resource_type="user",
+            resource_id=user.id,
+            details={"email": email, "reason": "pending_verification"},
+            ip_address=request.client.host if request.client else "",
+            user_agent=request.headers.get("user-agent", "")[:512]
+        )
         raise HTTPException(status_code=403, detail="Please check your email to verify your account before logging in.")
 
     # Reset failed attempts and log login time
@@ -888,6 +992,17 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         expires_at=datetime.utcnow() + timedelta(hours=1),
     )
     db.add(session)
+    await log_audit_event(
+        db=db,
+        user_id=user.id,
+        action="auth.login",
+        workspace_id=user.workspace_id or "default",
+        resource_type="user",
+        resource_id=user.id,
+        details={"email": email},
+        ip_address=request.client.host if request.client else "",
+        user_agent=request.headers.get("user-agent", "")[:512]
+    )
     await db.commit()
 
     # Track successful login
@@ -951,6 +1066,21 @@ async def logout(request: Request, db: AsyncSession = Depends(get_db)):
         result = await db.execute(select(Session).where(Session.session_token == token))
         session_db = result.scalar_one_or_none()
         if session_db:
+            user_id = session_db.user_id
+            user_res = await db.execute(select(User).where(User.id == user_id))
+            user = user_res.scalar_one_or_none()
+            workspace_id = user.workspace_id if user else "default"
+            await log_audit_event(
+                db=db,
+                user_id=user_id,
+                action="auth.logout",
+                workspace_id=workspace_id or "default",
+                resource_type="user",
+                resource_id=user_id,
+                details={},
+                ip_address=request.client.host if request.client else "",
+                user_agent=request.headers.get("user-agent", "")[:512]
+            )
             await db.delete(session_db)
             await db.commit()
 

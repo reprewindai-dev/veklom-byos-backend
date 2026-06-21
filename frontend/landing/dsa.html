@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Digital Services Act (DSA) Compliance | Veklom</title>
+<meta name="description" content="Veklom's compliance with the EU Digital Services Act (DSA), including contact points and complaint handling mechanisms.">
+<link rel="canonical" href="https://veklom.com/legal/dsa">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20260520-veklom">
+<link rel="stylesheet" href="/static/css/veklom.css">
+<link rel="stylesheet" href="/static/css/brand.css">
+<style>
+.legal-page{padding:128px 0 80px;background:var(--bg-primary)}
+.legal-doc{max-width:920px;margin:0 auto;color:var(--text-secondary);line-height:1.75}
+.legal-doc h1,.legal-doc h2{color:var(--text-primary)}
+.legal-doc h1{font-size:clamp(2.25rem,5vw,4rem);margin-bottom:12px}
+.legal-doc h2{font-size:1.25rem;margin-top:32px;margin-bottom:10px}
+.legal-doc p{margin:10px 0}
+.legal-doc ul{margin:10px 0 10px 24px}
+.legal-meta{font-family:var(--font-mono);color:var(--orange-500);font-size:.9rem;margin-bottom:32px}
+.complaint-form {
+  background: var(--bg-secondary);
+  padding: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #333);
+  margin-top: 24px;
+}
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 8px; color: var(--text-primary); font-weight: 500; }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-primary);
+  border-radius: 4px;
+}
+.submit-btn {
+  background: var(--orange-500);
+  color: #fff;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.submit-btn:hover { background: var(--orange-600); }
+.success-msg { color: #4ade80; display: none; padding: 16px; border: 1px solid #4ade80; border-radius: 4px; background: rgba(74,222,128,0.1); }
+</style>
+
+<!-- x402 Discoverability -->
+<meta name="x402-discoverable" content="true">
+<link rel="payment" href="/.well-known/x402.json">
+</head>
+
+<body>
+<nav class="nav">
+  <div class="container nav-inner">
+    <a href="/" class="nav-brand"><img src="/static/branding/veklom-wordmark.png" alt="Veklom" class="nav-brand-wordmark" width="170" height="42"></a>
+    <div class="nav-links"><a href="/">Home</a><a href="/workspace">Workspace</a><a href="/legal/terms">Terms</a></div>
+  </div>
+</nav>
+<main class="legal-page">
+  <article class="container legal-doc">
+    <h1>Digital Services Act (DSA) Notice</h1>
+    <div class="legal-meta">Effective Date: May 25, 2026 | Last Updated: May 25, 2026</div>
+
+    <h2>1. Introduction and Scope</h2>
+    <p>Veklom is committed to providing a safe, transparent, and legally compliant environment for all our users. This page outlines our obligations and procedures under the European Union's Digital Services Act (Regulation (EU) 2022/2065).</p>
+
+    <h2>2. Single Point of Contact (Articles 11 & 12)</h2>
+    <p>In accordance with the DSA, Veklom has designated a single point of contact for direct communication with Member States' authorities, the European Commission, and the European Board for Digital Services, as well as for recipients of our service.</p>
+    <ul>
+      <li><strong>Email:</strong> legal@veklom.com</li>
+      <li><strong>Languages Supported:</strong> English, French, German</li>
+    </ul>
+
+    <h2>3. Internal Complaint Handling Mechanism (Article 20)</h2>
+    <p>Veklom provides an easy-to-use internal complaint-handling system for our users. If you disagree with a decision we made regarding content removal, account suspension, or restriction of visibility, you have the right to lodge a complaint free of charge.</p>
+    <p>All complaints are reviewed promptly, diligently, and objectively by qualified staff—not solely by automated means. You will be notified of the outcome of your complaint, the reasoning behind the decision, and your options for out-of-court dispute resolution or judicial redress.</p>
+
+    <h2>4. Notice and Action Mechanism (Article 16)</h2>
+    <p>If you encounter content on our platform that you believe is illegal under EU or national law, you can report it using the form below. Please provide a substantiated explanation and specific details (e.g., URL or asset ID) to allow us to locate and evaluate the content.</p>
+
+    <div class="complaint-form" id="complaintContainer">
+      <div id="successMessage" class="success-msg">
+        <strong>Report Submitted Successfully</strong><br>
+        Your report has been received and logged. A tracking ID has been generated, and our legal compliance team will review your submission promptly.
+      </div>
+      <form id="dsaForm">
+        <div class="form-group">
+          <label for="contact_email">Your Email Address</label>
+          <input type="email" id="contact_email" name="contact_email" required placeholder="name@example.com">
+        </div>
+        <div class="form-group">
+          <label for="type">Reason for Report</label>
+          <select id="type" name="type" required>
+            <option value="illegal_content">Illegal Content</option>
+            <option value="ip_infringement">Intellectual Property Infringement</option>
+            <option value="csam">Child Sexual Abuse Material (CSAM)</option>
+            <option value="hate_speech">Hate Speech</option>
+            <option value="other">Other Violation</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="description">Detailed Description & Location (URLs)</label>
+          <textarea id="description" name="description" rows="5" required placeholder="Please provide exact URLs and why you believe this content is illegal."></textarea>
+        </div>
+        <button type="submit" class="submit-btn" id="submitBtn">Submit Report</button>
+      </form>
+    </div>
+
+    <h2>5. Transparency</h2>
+    <p>In accordance with Article 15 of the DSA, we publish regular transparency reports regarding our content moderation activities. For broader details on data handling and terms of service, please refer to our <a href="/legal/terms">Terms of Service</a> and <a href="/legal/privacy">Privacy Policy</a>.</p>
+
+  </article>
+</main>
+
+<script>
+  document.getElementById('dsaForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerText = 'Submitting...';
+
+    const payload = {
+      contact_email: document.getElementById('contact_email').value,
+      type: document.getElementById('type').value,
+      description: document.getElementById('description').value
+    };
+
+    try {
+      const res = await fetch('/api/v1/complaints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (res.ok) {
+        document.getElementById('dsaForm').style.display = 'none';
+        document.getElementById('successMessage').style.display = 'block';
+      } else {
+        alert('An error occurred submitting your report. Please email legal@veklom.com directly.');
+      }
+    } catch (err) {
+      alert('A network error occurred. Please try again.');
+    } finally {
+      btn.disabled = false;
+      btn.innerText = 'Submit Report';
+    }
+  });
+</script>
+</body>
+</html>

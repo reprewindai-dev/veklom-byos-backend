@@ -38,7 +38,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     rm -rf /wheels /root/.cache
 
 COPY backend/ ./backend/
-# COPY frontend/ ./frontend/
+COPY frontend/ ./frontend/
 COPY irongrid/dist/ ./irongrid/dist/
 COPY uacp-quantum-terminal.html .
 

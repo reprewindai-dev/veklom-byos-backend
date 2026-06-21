@@ -391,6 +391,18 @@ _CORS_ORIGIN_REGEX = (
     r")"
 )
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class X402DiscoverableMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-402-Discoverable"] = "true"
+        response.headers["X-402-Payment-URL"] = "/.well-known/x402.json"
+        response.headers["X-Payment-URL"] = "/.well-known/x402.json"
+        return response
+
+app.add_middleware(X402DiscoverableMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -1463,15 +1475,16 @@ async def status_page():
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 
 async def _serve_frontend(request: Request):
-    """
-    The monolithic Vite frontend was deleted in favor of the standalone Next.js 
-    control plane. Redirect all bare traffic on veklom.com to control.veklom.com.
-    """
-    path = request.url.path if request else "/"
-    return RedirectResponse(url=f"https://control.veklom.com{path}", status_code=302)
+    landing_index = LANDING_DIR / "index.html"
+    static_index = FRONTEND_DIR / "index.html"
+    if landing_index.exists():
+        return FileResponse(str(landing_index))
+    elif static_index.exists():
+        return FileResponse(str(static_index))
+    return HTMLResponse(content=_fallback_html(), status_code=200)
 
 
 @app.get("/terminal")

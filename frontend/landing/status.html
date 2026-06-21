@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Status | Veklom</title>
+<meta name="description" content="Veklom system status and uptime information.">
+<link rel="canonical" href="https://veklom.com/status">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20260520-veklom">
+<link rel="stylesheet" href="/static/css/veklom.css">
+<link rel="stylesheet" href="/static/css/brand.css">
+<style>
+.status-page{padding:128px 0 80px;background:var(--bg-primary)}
+.status-container{max-width:800px;margin:0 auto}
+.status-container h1{color:var(--text-primary);font-size:clamp(2.25rem,5vw,4rem);margin-bottom:16px}
+.status-container .subtitle{color:var(--text-secondary);margin-bottom:48px;line-height:1.75}
+.status-overall{display:flex;align-items:center;gap:16px;padding:24px;background:var(--bg-secondary);border-radius:12px;margin-bottom:32px}
+.status-indicator{width:16px;height:16px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.status-indicator.degraded{background:#eab308}
+.status-indicator.down{background:#ef4444}
+.status-text{font-size:1.25rem;font-weight:600;color:var(--text-primary)}
+.status-section{margin-bottom:32px}
+.status-section h2{color:var(--text-primary);font-size:1.25rem;margin-bottom:16px}
+.status-item{display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg-secondary);border-radius:8px;margin-bottom:8px}
+.status-item-name{color:var(--text-primary)}
+.status-item-status{display:flex;align-items:center;gap:8px}
+.status-item-status span{font-size:0.9rem;font-weight:500}
+.status-item-status .operational{color:#22c55e}
+.status-item-status .degraded{color:#eab308}
+.status-item-status .down{color:#ef4444}
+.status-history{margin-top:48px}
+.status-history h2{color:var(--text-primary);font-size:1.25rem;margin-bottom:16px}
+.history-item{padding:16px;background:var(--bg-secondary);border-radius:8px;margin-bottom:8px}
+.history-item-date{color:var(--text-secondary);font-size:0.9rem;margin-bottom:4px}
+.history-item-title{color:var(--text-primary);font-weight:600;margin-bottom:4px}
+.history-item-description{color:var(--text-secondary);font-size:0.9rem}
+</style>
+
+<!-- x402 Discoverability -->
+<meta name="x402-discoverable" content="true">
+<link rel="payment" href="/.well-known/x402.json">
+</head>
+
+<body>
+<nav class="nav">
+  <div class="container nav-inner">
+    <a href="/" class="nav-brand"><img src="/static/branding/veklom-wordmark.png" alt="Veklom" class="nav-brand-wordmark" width="170" height="42"></a>
+    <div class="nav-links"><a href="/">Home</a><a href="/workspace">Workspace</a><a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a></div>
+  </div>
+</nav>
+<main class="status-page">
+  <div class="container status-container">
+    <h1>System Status</h1>
+    <p class="subtitle">Real-time status of Veklom services and infrastructure.</p>
+
+    <div class="status-overall">
+      <div class="status-indicator"></div>
+      <div class="status-text">All Systems Operational</div>
+    </div>
+
+    <div class="status-section">
+      <h2>Core Services</h2>
+      <div class="status-item">
+        <div class="status-item-name">Website & Landing Page</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-name">Workspace Application</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-name">API Services</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-name">Authentication</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-section">
+      <h2>Infrastructure</h2>
+      <div class="status-item">
+        <div class="status-item-name">Compute Routing</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-name">Database</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-name">Cache & Sessions</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-name">Payment Processing (Stripe)</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-section">
+      <h2>Add-On Services</h2>
+      <div class="status-item">
+        <div class="status-item-name">Command Center</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-name">IronGrid (PYO3)</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-name">Quantum Terminal</div>
+        <div class="status-item-status">
+          <span class="operational">● Operational</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-history">
+      <h2>Recent Incidents</h2>
+      <div class="history-item">
+        <div class="history-item-date">May 25, 2026</div>
+        <div class="history-item-title">No incidents reported</div>
+        <div class="history-item-description">All services operating normally.</div>
+      </div>
+    </div>
+
+    <p style="color:var(--text-secondary);margin-top:48px;font-size:0.9rem;">
+      This page is updated manually. For automated status checks, use the <a href="/api/v1/health" style="color:var(--orange-500);">health endpoint</a>.
+    </p>
+  </div>
+</main>
+</body>
+</html>

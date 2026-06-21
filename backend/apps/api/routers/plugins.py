@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.core.security.encryption import encrypt_token
 from backend.core.plugins.manager import plugin_manager
 from backend.db.models.plugin import WorkspacePlugin
 
@@ -117,10 +118,12 @@ async def configure_plugin(plugin_id: str, payload: PluginConfigUpdate, user=Dep
     if not workspace_id:
         raise HTTPException(status_code=400, detail="No active workspace.")
         
-    # TODO: Encrypt config before saving
-    # For now, storing as stringified json or raw dict depending on DB schema
     import json
     
+    # Encrypt config before saving
+    config_json = json.dumps(payload.config)
+    encrypted = encrypt_token(config_json)
+
     result = await db.execute(
         select(WorkspacePlugin).where(
             WorkspacePlugin.workspace_id == workspace_id,
@@ -130,13 +133,13 @@ async def configure_plugin(plugin_id: str, payload: PluginConfigUpdate, user=Dep
     wp = result.scalar_one_or_none()
     
     if wp:
-        wp.encrypted_config = json.dumps(payload.config)
+        wp.encrypted_config = encrypted
     else:
         wp = WorkspacePlugin(
             workspace_id=workspace_id, 
             plugin_id=plugin_id, 
             enabled=False,
-            encrypted_config=json.dumps(payload.config)
+            encrypted_config=encrypted
         )
         db.add(wp)
         

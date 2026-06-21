@@ -385,7 +385,7 @@ _CORS_ORIGIN_REGEX = (
     r"(?:"
     r"([a-z0-9-]+\.)*veklom\.com|"                  # Veklom domains
     r"([a-z0-9-]+\.)*(usercontent\.goog|aistudio\.google\.com)|" # AI Studio sandboxes
-    r"veklom(-[a-z0-9-]+)?\.([a-z0-9-]+\.)*(run\.app|web\.app|firebaseapp\.com|vercel\.app)" # Shared hosting strictly for veklom
+    r"veklom-core-live(-[a-z0-9]+)?\.([a-z0-9-]+\.)*(run\.app|web\.app|firebaseapp\.com|vercel\.app)" # Shared hosting strictly for veklom-core-live
     r")$"
 )
 

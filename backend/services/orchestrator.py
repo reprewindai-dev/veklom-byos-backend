@@ -1,31 +1,31 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.db.models.run import VeklomRun, VeklomRunStatus
 
-class VeklomRunStateMachine:
-    transitions: Dict[VeklomRunStatus, List[VeklomRunStatus]] = {
-        VeklomRunStatus.INTENT_CAPTURED: [VeklomRunStatus.COMPILED, VeklomRunStatus.FAILED],
-        VeklomRunStatus.COMPILED: [VeklomRunStatus.CONTEXTUALIZED, VeklomRunStatus.FAILED],
-        VeklomRunStatus.CONTEXTUALIZED: [VeklomRunStatus.GOVERNED, VeklomRunStatus.FAILED],
-        VeklomRunStatus.GOVERNED: [VeklomRunStatus.HELD, VeklomRunStatus.DENIED, VeklomRunStatus.COMMITTED],
-        VeklomRunStatus.HELD: [VeklomRunStatus.APPROVED, VeklomRunStatus.DENIED, VeklomRunStatus.FAILED], # using FAILED for CANCELLED
-        VeklomRunStatus.APPROVED: [VeklomRunStatus.COMMITTED],
-        VeklomRunStatus.COMMITTED: [VeklomRunStatus.ROUTED, VeklomRunStatus.FAILED],
-        VeklomRunStatus.ROUTED: [VeklomRunStatus.EXECUTING, VeklomRunStatus.FAILED],
-        VeklomRunStatus.EXECUTING: [VeklomRunStatus.ATTESTED, VeklomRunStatus.FAILED],
-        VeklomRunStatus.ATTESTED: [VeklomRunStatus.BILLED, VeklomRunStatus.ROLLED_BACK], # using ROLLED_BACK for ROLLBACK_REQUIRED
-        VeklomRunStatus.BILLED: [VeklomRunStatus.SEALED],
-        VeklomRunStatus.SEALED: [VeklomRunStatus.ROLLED_BACK], # REVIEWED and REPLAYED are not terminal states typically, but could be added
-        VeklomRunStatus.FAILED: [VeklomRunStatus.ROLLED_BACK],
-        VeklomRunStatus.ROLLED_BACK: [],
-        VeklomRunStatus.DENIED: []
+class StateTransitionManager:
+    VALID_TRANSITIONS: Dict[VeklomRunStatus, Set[VeklomRunStatus]] = {
+        VeklomRunStatus.INTENT_CAPTURED: {VeklomRunStatus.COMPILED, VeklomRunStatus.FAILED},
+        VeklomRunStatus.COMPILED: {VeklomRunStatus.CONTEXTUALIZED, VeklomRunStatus.FAILED},
+        VeklomRunStatus.CONTEXTUALIZED: {VeklomRunStatus.GOVERNED, VeklomRunStatus.FAILED},
+        VeklomRunStatus.GOVERNED: {VeklomRunStatus.HELD, VeklomRunStatus.DENIED, VeklomRunStatus.COMMITTED},
+        VeklomRunStatus.HELD: {VeklomRunStatus.APPROVED, VeklomRunStatus.DENIED, VeklomRunStatus.FAILED}, # using FAILED for CANCELLED
+        VeklomRunStatus.APPROVED: {VeklomRunStatus.COMMITTED},
+        VeklomRunStatus.COMMITTED: {VeklomRunStatus.ROUTED, VeklomRunStatus.FAILED},
+        VeklomRunStatus.ROUTED: {VeklomRunStatus.EXECUTING, VeklomRunStatus.FAILED},
+        VeklomRunStatus.EXECUTING: {VeklomRunStatus.ATTESTED, VeklomRunStatus.FAILED},
+        VeklomRunStatus.ATTESTED: {VeklomRunStatus.BILLED, VeklomRunStatus.ROLLED_BACK}, # using ROLLED_BACK for ROLLBACK_REQUIRED
+        VeklomRunStatus.BILLED: {VeklomRunStatus.SEALED},
+        VeklomRunStatus.SEALED: {VeklomRunStatus.ROLLED_BACK}, # REVIEWED and REPLAYED are not terminal states typically, but could be added
+        VeklomRunStatus.FAILED: {VeklomRunStatus.ROLLED_BACK},
+        VeklomRunStatus.ROLLED_BACK: set(),
+        VeklomRunStatus.DENIED: set()
     }
 
     @classmethod
     def can_transition(cls, current_state: VeklomRunStatus, new_state: VeklomRunStatus) -> bool:
-        allowed = cls.transitions.get(current_state, [])
+        allowed = cls.VALID_TRANSITIONS.get(current_state, set())
         return new_state in allowed
 
 class RunOrchestrator:
@@ -33,7 +33,7 @@ class RunOrchestrator:
         self.db = db
 
     async def _update_state(self, run: VeklomRun, new_state: VeklomRunStatus) -> VeklomRun:
-        if not VeklomRunStateMachine.can_transition(run.status, new_state):
+        if not StateTransitionManager.can_transition(run.status, new_state):
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid state transition from {run.status.value} to {new_state.value}"

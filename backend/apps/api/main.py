@@ -767,12 +767,15 @@ ARENA_DIR = FRONTEND_DIR / "arena"
 FAULT_MATRIX_DIR = FRONTEND_DIR / "fault-matrix" / "dist"
 UACPV3_DIR = Path(__file__).resolve().parent.parent.parent.parent / "uacpv3" / "dist"
 WORKSPACE_NEXT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "static" / "workspace-next"
+TERMINAL_DIR = FRONTEND_DIR / "terminal"
 
 
 def _mount_static():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+    if TERMINAL_DIR.exists():
+        app.mount("/terminal", StaticFiles(directory=str(TERMINAL_DIR), html=True), name="terminal")
     if WORKSPACE_NEXT_DIR.exists():
         app.mount("/workspace-next", StaticFiles(directory=str(WORKSPACE_NEXT_DIR), html=True), name="workspace-next")
     if SOVEREIGN_CONTROL_NODE_DIR.exists():
@@ -1485,15 +1488,7 @@ async def _serve_frontend(request: Request):
     elif static_index.exists():
         return FileResponse(str(static_index))
     return HTMLResponse(content=_fallback_html(), status_code=200)
-
-
-@app.get("/terminal")
-async def terminal_page():
-    root_dir = Path(__file__).resolve().parent.parent.parent.parent
-    terminal_path = root_dir / "uacp-quantum-terminal.html"
-    if terminal_path.exists():
-        return FileResponse(str(terminal_path))
-    return JSONResponse(status_code=404, content={"detail": "Quantum Terminal file not found"})
+# The /terminal path is now mounted directly as a static directory serving the built React app from agent-control-need-pgl
 
 
 @app.get("/lockerphycer")

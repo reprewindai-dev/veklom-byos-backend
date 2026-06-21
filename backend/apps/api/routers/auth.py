@@ -565,22 +565,37 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
             verify_url = f"https://api.veklom.com/api/v1/auth/verify-email?token={verify_token}"
             display_name = full_name or email.split("@")[0]
             verify_html = f"""
-            <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
-              <div style="text-align:center;margin-bottom:32px;">
-                <span style="font-size:24px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
-              </div>
-              <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">Verify Your Email</h2>
-              <p style="color:#94a3b8;line-height:1.7;">
-                Hi {display_name},<br><br>
-                Please verify your email address to access the Veklom control plane.
-              </p>
-              <div style="text-align:center;margin:32px 0;">
-                <a href="{verify_url}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
-                  Verify Email &rarr;
-                </a>
-              </div>
-              <p style="color:#94a3b8;line-height:1.7;">Questions? Reply to this email or contact <a href="mailto:sales@veklom.com" style="color:#a78bfa;">sales@veklom.com</a>.</p>
-            </div>
+            <!DOCTYPE html>
+            <html lang="en">
+            <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+            <body style="margin:0;padding:0;background:#0A0A0A;font-family:Inter,Arial,sans-serif;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0A;padding:40px 20px;">
+                <tr><td align="center">
+                  <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#111111;border:1px solid #1f1f1f;border-radius:12px;overflow:hidden;">
+                    <!-- Header -->
+                    <tr><td style="background:#0A0A0A;padding:32px 40px;text-align:center;border-bottom:1px solid #1f1f1f;">
+                      <img src="https://veklom.com/static/branding/veklom-wordmark.png" alt="Veklom" height="40" style="height:40px;display:block;margin:0 auto;">
+                    </td></tr>
+                    <!-- Body -->
+                    <tr><td style="padding:40px;">
+                      <h1 style="color:#FFFFFF;font-size:22px;font-weight:700;margin:0 0 8px;">Verify Your Email</h1>
+                      <div style="width:40px;height:3px;background:#FFB800;margin-bottom:24px;"></div>
+                      <p style="color:#A1A1A6;font-size:15px;line-height:1.7;margin:0 0 16px;">Hi {display_name},</p>
+                      <p style="color:#A1A1A6;font-size:15px;line-height:1.7;margin:0 0 32px;">Please verify your email address to access the Veklom Sovereign AI Hub. Your account is pending verification.</p>
+                      <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:0 0 32px;">
+                        <a href="{verify_url}" style="display:inline-block;padding:16px 40px;background:#FFB800;color:#0A0A0A;text-decoration:none;border-radius:6px;font-weight:700;font-size:15px;letter-spacing:0.02em;">Verify Email &rarr;</a>
+                      </td></tr></table>
+                      <p style="color:#555;font-size:13px;line-height:1.6;margin:0;">This link expires in 24 hours. If you didn't create a Veklom account, you can safely ignore this email.</p>
+                    </td></tr>
+                    <!-- Footer -->
+                    <tr><td style="background:#0A0A0A;padding:24px 40px;border-top:1px solid #1f1f1f;">
+                      <p style="color:#555;font-size:12px;margin:0 0 8px;">Questions? Contact <a href="mailto:sales@veklom.com" style="color:#FFB800;text-decoration:none;">sales@veklom.com</a></p>
+                      <p style="color:#333;font-size:11px;margin:0;">Veklom &mdash; Sovereign AI Hub &bull; <a href="https://veklom.com" style="color:#555;text-decoration:none;">veklom.com</a></p>
+                    </td></tr>
+                  </table>
+                </td></tr>
+              </table>
+            </body></html>
             """
             _asyncio.create_task(
                 send_email_via_resend(
@@ -675,21 +690,34 @@ async def resend_verification(user=Depends(get_current_user), db: AsyncSession =
         verify_url = f"https://api.veklom.com/api/v1/auth/verify-email?token={verify_token}"
         display_name = user.full_name or user.email.split("@")[0]
         verify_html = f"""
-        <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
-            <div style="text-align:center;margin-bottom:32px;">
-            <span style="font-size:24px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
-            </div>
-            <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">Verify Your Email</h2>
-            <p style="color:#94a3b8;line-height:1.7;">
-            Hi {display_name},<br><br>
-            Please verify your email address to access the Veklom control plane.
-            </p>
-            <div style="text-align:center;margin:32px 0;">
-            <a href="{verify_url}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
-                Verify Email &rarr;
-            </a>
-            </div>
-        </div>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+        <body style="margin:0;padding:0;background:#0A0A0A;font-family:Inter,Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0A;padding:40px 20px;">
+            <tr><td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#111111;border:1px solid #1f1f1f;border-radius:12px;overflow:hidden;">
+                <tr><td style="background:#0A0A0A;padding:32px 40px;text-align:center;border-bottom:1px solid #1f1f1f;">
+                  <img src="https://veklom.com/static/branding/veklom-wordmark.png" alt="Veklom" height="40" style="height:40px;display:block;margin:0 auto;">
+                </td></tr>
+                <tr><td style="padding:40px;">
+                  <h1 style="color:#FFFFFF;font-size:22px;font-weight:700;margin:0 0 8px;">Verify Your Email</h1>
+                  <div style="width:40px;height:3px;background:#FFB800;margin-bottom:24px;"></div>
+                  <p style="color:#A1A1A6;font-size:15px;line-height:1.7;margin:0 0 16px;">Hi {display_name},</p>
+                  <p style="color:#A1A1A6;font-size:15px;line-height:1.7;margin:0 0 32px;">Please verify your email address to access the Veklom Sovereign AI Hub. Your account is pending verification.</p>
+                  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:0 0 32px;">
+                    <a href="{verify_url}" style="display:inline-block;padding:16px 40px;background:#FFB800;color:#0A0A0A;text-decoration:none;border-radius:6px;font-weight:700;font-size:15px;letter-spacing:0.02em;">Verify Email &rarr;</a>
+                  </td></tr></table>
+                  <p style="color:#555;font-size:13px;line-height:1.6;margin:0;">This link expires in 24 hours. If you didn't create a Veklom account, you can safely ignore this email.</p>
+                </td></tr>
+                <tr><td style="background:#0A0A0A;padding:24px 40px;border-top:1px solid #1f1f1f;">
+                  <p style="color:#555;font-size:12px;margin:0 0 8px;">Questions? Contact <a href="mailto:sales@veklom.com" style="color:#FFB800;text-decoration:none;">sales@veklom.com</a></p>
+                  <p style="color:#333;font-size:11px;margin:0;">Veklom &mdash; Sovereign AI Hub &bull; <a href="https://veklom.com" style="color:#555;text-decoration:none;">veklom.com</a></p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body></html>
         """
         _asyncio.create_task(
             send_email_via_resend(
@@ -724,21 +752,33 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request, db: Asy
         reset_url = f"{CONTROL_PLANE_URL}/reset-password?token={reset_token}"
         
         reset_html = f"""
-        <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f0f13;color:#e2e8f0;padding:40px;border-radius:12px;">
-            <div style="text-align:center;margin-bottom:32px;">
-            <span style="font-size:24px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Veklom</span>
-            </div>
-            <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">Reset Your Password</h2>
-            <p style="color:#94a3b8;line-height:1.7;">
-            We received a request to reset the password for your Veklom account.
-            </p>
-            <div style="text-align:center;margin:32px 0;">
-            <a href="{reset_url}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
-                Reset Password &rarr;
-            </a>
-            </div>
-            <p style="color:#94a3b8;line-height:1.7;font-size:13px;">If you didn't request this, you can safely ignore this email. This link will expire in 1 hour.</p>
-        </div>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+        <body style="margin:0;padding:0;background:#0A0A0A;font-family:Inter,Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0A;padding:40px 20px;">
+            <tr><td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#111111;border:1px solid #1f1f1f;border-radius:12px;overflow:hidden;">
+                <tr><td style="background:#0A0A0A;padding:32px 40px;text-align:center;border-bottom:1px solid #1f1f1f;">
+                  <img src="https://veklom.com/static/branding/veklom-wordmark.png" alt="Veklom" height="40" style="height:40px;display:block;margin:0 auto;">
+                </td></tr>
+                <tr><td style="padding:40px;">
+                  <h1 style="color:#FFFFFF;font-size:22px;font-weight:700;margin:0 0 8px;">Reset Your Password</h1>
+                  <div style="width:40px;height:3px;background:#FFB800;margin-bottom:24px;"></div>
+                  <p style="color:#A1A1A6;font-size:15px;line-height:1.7;margin:0 0 32px;">We received a request to reset the password for your Veklom account. Click the button below to set a new password.</p>
+                  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:0 0 32px;">
+                    <a href="{reset_url}" style="display:inline-block;padding:16px 40px;background:#FFB800;color:#0A0A0A;text-decoration:none;border-radius:6px;font-weight:700;font-size:15px;letter-spacing:0.02em;">Reset Password &rarr;</a>
+                  </td></tr></table>
+                  <p style="color:#555;font-size:13px;line-height:1.6;margin:0;">If you didn't request this, you can safely ignore this email. This link will expire in 1 hour.</p>
+                </td></tr>
+                <tr><td style="background:#0A0A0A;padding:24px 40px;border-top:1px solid #1f1f1f;">
+                  <p style="color:#555;font-size:12px;margin:0 0 8px;">Questions? Contact <a href="mailto:sales@veklom.com" style="color:#FFB800;text-decoration:none;">sales@veklom.com</a></p>
+                  <p style="color:#333;font-size:11px;margin:0;">Veklom &mdash; Sovereign AI Hub &bull; <a href="https://veklom.com" style="color:#555;text-decoration:none;">veklom.com</a></p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body></html>
         """
         _asyncio.create_task(
             send_email_via_resend(

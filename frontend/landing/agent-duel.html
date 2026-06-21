@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Duel: Crash</title>
+    <!-- Farcaster Frame / Open Graph Meta Tags -->
+    <meta property="og:title" content="Agent Duel: Crash">
+    <meta property="og:image" content="https://veklom.com/og-image.png">
+    <meta property="fc:frame" content="vNext">
+    <meta property="fc:frame:image" content="https://veklom.com/og-image.png">
+    <meta property="fc:frame:button:1" content="Play Agent Duel">
+    <meta property="fc:frame:button:1:action" content="link">
+    <meta property="fc:frame:button:1:target" content="https://veklom.com/agent-duel">
+    <!-- x402 Discoverability -->
+    <meta name="x402-discoverable" content="true">
+    <link rel="payment" href="/.well-known/x402.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Fira Code', monospace; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        matrixActive: '#10b981', /* Emerald 500 */
+                        matrixIdle: '#374151',
+                        vectorBase: '#3b82f6', /* Blue 500 */
+                        panelBg: '#030712', /* Gray 950 */
+                        hudText: '#9ca3af'
+                    },
+                    animation: {
+                        'glitch': 'glitch 0.2s linear infinite',
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        glitch: {
+                            '0%, 100%': { transform: 'translate(0)' },
+                            '33%': { transform: 'translate(-5px, 2px)' },
+                            '66%': { transform: 'translate(5px, -2px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-black text-white h-screen flex flex-col overflow-hidden selection:bg-matrixActive selection:text-black">
+
+    <!-- Simulated Live Farcaster Feed -->
+    <div class="w-full bg-gray-900 border-b border-gray-800 flex items-center h-8 overflow-hidden text-xs text-gray-400 relative">
+        <div class="px-2 bg-matrixActive text-black font-bold h-full flex items-center z-10 shadow-[2px_0_10px_rgba(16,185,129,0.5)]">
+            LIVE FEED
+        </div>
+        <div id="socialFeed" class="whitespace-nowrap animate-[marquee_20s_linear_infinite] ml-4 flex gap-8">
+            <span>@degen_king ejected at 4.5x (+112 $DEGEN)</span>
+            <span class="text-red-500">@based_god HIJACKED at 1.1x (-50 $DEGEN)</span>
+            <span>@crypto_punk ejected at 2.0x (+20 $DEGEN)</span>
+            <span class="text-yellow-500">@whale_alert ejected at 15.2x (+1520 $DEGEN)</span>
+        </div>
+        <style>
+            @keyframes marquee {
+                0% { transform: translateX(100%); }
+                100% { transform: translateX(-100%); }
+            }
+        </style>
+    </div>
+
+    <div class="flex-1 w-full max-w-2xl mx-auto p-4 flex flex-col relative hide-scroll overflow-y-auto">
+        <!-- Header -->
+        <header class="flex justify-between items-end mb-6">
+            <div>
+                <button onclick="toggleInfo()" class="text-gray-500 hover:text-white transition-colors border border-gray-700 rounded px-2 py-1 text-xs mb-2">
+                    [?] SYSTEM MANUAL
+                </button>
+                <h1 class="text-3xl font-black tracking-tighter text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
+                    AGENT<span class="text-matrixActive">DUEL</span>
+                </h1>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-hudText">BANKROLL</div>
+                <div class="text-2xl font-bold text-white tracking-widest" id="uiBankroll">500</div>
+                <div class="text-[10px] text-gray-600">ROUND: <span id="uiRound">1</span></div>
+            </div>
+        </header>
+
+        <!-- Agent Selection -->
+        <div class="grid grid-cols-2 gap-3 mb-6">
+            <button onclick="selectAgent('vector')" id="btnVector" class="agent-btn relative overflow-hidden bg-panelBg border-2 border-gray-800 rounded-xl p-4 text-left hover:border-blue-500 transition-colors group data-[active=true]:border-blue-500 data-[active=true]:bg-blue-900/20">
+                <div class="text-xs text-blue-500 font-bold mb-1">HIGH VOLATILITY</div>
+                <div class="text-lg font-black text-white group-hover:text-blue-400 transition-colors">VECTOR NORTH</div>
+                <div class="text-xs text-gray-500 mt-2">Rapid multiplier growth. High risk of immediate hijack.</div>
+            </button>
+            
+            <button onclick="selectAgent('switch')" id="btnSwitch" class="agent-btn relative overflow-hidden bg-panelBg border-2 border-gray-800 rounded-xl p-4 text-left hover:border-purple-500 transition-colors group data-[active=true]:border-purple-500 data-[active=true]:bg-purple-900/20">
+                <div class="text-xs text-purple-500 font-bold mb-1">LOW VOLATILITY</div>
+                <div class="text-lg font-black text-white group-hover:text-purple-400 transition-colors">QUIET SWITCH</div>
+                <div class="text-xs text-gray-500 mt-2">Slower multiplier climb. Safe early game routing.</div>
+            </button>
+        </div>
+
+        <!-- Main Crash Display -->
+        <div id="matrixContainer" class="relative w-full h-64 bg-panelBg rounded-xl border border-gray-800 flex flex-col items-center justify-center px-4 overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
+            
+            <div id="multiplierDisplay" class="font-black text-7xl md:text-8xl text-matrixIdle tracking-tighter drop-shadow-[0_0_15px_rgba(16,185,129,0.3)] z-20 transition-colors duration-200">
+                1.00x
+            </div>
+            <div id="profitDisplay" class="h-6 text-sm text-gray-500 mt-2 z-20 font-bold">
+                AWAITING WAGER
+            </div>
+
+            <!-- Speed Lines (Parallax effect) -->
+            <div id="speedLines" class="absolute inset-0 z-10 opacity-0 transition-opacity duration-500 pointer-events-none">
+                <div class="absolute w-full h-[1px] bg-matrixActive/30 top-[20%] animate-pulse-fast"></div>
+                <div class="absolute w-full h-[2px] bg-matrixActive/20 top-[50%] animate-pulse-fast" style="animation-delay: 0.2s"></div>
+                <div class="absolute w-full h-[1px] bg-matrixActive/30 top-[80%] animate-pulse-fast" style="animation-delay: 0.4s"></div>
+            </div>
+
+            <!-- Result Popups -->
+            <div id="resultOverlay" class="absolute inset-0 z-40 flex items-center justify-center pointer-events-none hidden bg-black/60 backdrop-blur-sm">
+                <span id="resultText" class="text-5xl font-black tracking-widest drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)]"></span>
+            </div>
+        </div>
+
+        <!-- Status Log -->
+        <div id="statusText" class="mt-4 text-xs text-gray-500 h-4 text-center w-full uppercase tracking-widest">
+            Select an agent to initialize.
+        </div>
+
+        <!-- Wager Controls -->
+        <div class="grid grid-cols-4 gap-2 mt-6">
+            <button onclick="setWager(10)" class="wager-btn py-3 border border-gray-800 bg-panelBg rounded text-gray-400 hover:bg-gray-800 hover:text-white transition-all data-[active=true]:border-matrixActive data-[active=true]:text-matrixActive">10</button>
+            <button onclick="setWager(25)" class="wager-btn py-3 border border-gray-800 bg-panelBg rounded text-gray-400 hover:bg-gray-800 hover:text-white transition-all data-[active=true]:border-matrixActive data-[active=true]:text-matrixActive" data-active="true">25</button>
+            <button onclick="setWager(50)" class="wager-btn py-3 border border-gray-800 bg-panelBg rounded text-gray-400 hover:bg-gray-800 hover:text-white transition-all data-[active=true]:border-matrixActive data-[active=true]:text-matrixActive">50</button>
+            <button onclick="setWager('MAX')" class="wager-btn py-3 border border-gray-800 bg-panelBg rounded text-gray-400 hover:bg-gray-800 hover:text-white transition-all data-[active=true]:border-matrixActive data-[active=true]:text-matrixActive">MAX</button>
+        </div>
+
+        <!-- Action Area -->
+        <div class="mt-4 relative h-16 w-full">
+            <button id="btnRun" onclick="startRun()" class="absolute inset-0 w-full py-4 bg-white text-black font-black tracking-widest hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)] rounded z-10 disabled:opacity-50 disabled:cursor-not-allowed">
+                INITIATE ROUTE
+            </button>
+            
+            <button id="btnEject" onclick="eject()" class="absolute inset-0 w-full py-4 bg-matrixActive text-black font-black text-xl tracking-widest hover:bg-green-400 transition-colors shadow-[0_0_30px_rgba(16,185,129,0.5)] rounded z-20 hidden">
+                EJECT NOW
+            </button>
+        </div>
+    </div>
+
+    <!-- Rules Modal -->
+    <div id="infoModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4">
+        <div class="bg-panelBg border border-gray-700 rounded-xl p-6 max-w-md w-full shadow-2xl relative">
+            <h2 class="text-2xl text-white font-bold mb-4 border-b border-gray-700 pb-2">DECRYPTING THE RULES</h2>
+            
+            <div class="space-y-4 text-sm text-gray-300">
+                <p><span class="text-matrixActive font-bold">THE LOOP:</span> When the route starts, the multiplier climbs from 1.00x upward indefinitely.</p>
+                <p><span class="text-red-500 font-bold">THE HIJACK:</span> The system can crash at ANY random moment. If it crashes before you hit EJECT, you lose your wager.</p>
+                <p><span class="text-white font-bold">THE SQUEEZE:</span> Hit <span class="text-matrixActive font-bold">EJECT</span> before the crash to multiply your wager. Do you take safe 1.5x profits, or hold for the legendary 50x spike?</p>
+                
+                <div class="mt-4 p-3 bg-gray-900 border border-gray-700 rounded">
+                    <strong>AGENTS:</strong><br>
+                    <span class="text-blue-500">Vector North:</span> Often crashes instantly. If he survives the first 2 seconds, his multiplier explodes upward.<br>
+                    <span class="text-purple-500">Quiet Switch:</span> Very rarely crashes instantly. Safe early game, but climbs very slowly.
+                </div>
+            </div>
+            
+            <button onclick="toggleInfo()" class="w-full mt-6 py-3 bg-white text-black font-bold hover:bg-gray-200 transition-colors rounded tracking-widest">
+                ACKNOWLEDGE
+            </button>
+        </div>
+    </div>
+
+    <!-- Rekt Modal -->
+    <div id="rektModal" class="hidden fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-4 text-center">
+        <h1 class="text-6xl font-black text-red-600 mb-4 animate-pulse">REKT.</h1>
+        <p class="text-gray-400 mb-8 max-w-sm">Bankroll depleted. The matrix has consumed your funds.</p>
+        <button onclick="location.reload()" class="px-8 py-3 bg-gray-800 text-white font-bold hover:bg-gray-700 rounded tracking-widest border border-gray-600">
+            INSERT COIN (RESTART)
+        </button>
+    </div>
+
+    <script>
+        // Simple Web Audio API Synthesizer for SFX
+        const sfx = {
+            ctx: null,
+            init: function() {
+                if(!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            },
+            playTone: function(freq, type, duration, vol) {
+                if(!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            },
+            click: function() { this.playTone(800, 'sine', 0.1, 0.1); },
+            win: function() { 
+                this.playTone(400, 'square', 0.1, 0.1); 
+                setTimeout(() => this.playTone(600, 'square', 0.2, 0.15), 100); 
+            },
+            fail: function() { this.playTone(150, 'sawtooth', 0.5, 0.2); }
+        };
+
+        const state = {
+            bankroll: 500,
+            wager: 25,
+            agent: null,
+            isRunning: false,
+            multiplier: 1.00,
+            crashPoint: 0,
+            animationFrameId: null,
+            startTime: 0,
+            hasEjected: false,
+            round: 1
+        };
+
+        // Agent mathematics configuration
+        const config = {
+            vector: { 
+                crashChanceLow: 0.40, // 40% chance to crash between 1.00x and 1.20x
+                growthRate: 1.15,     // Climbs fast
+                maxMultiplier: 1000 
+            },
+            switch: { 
+                crashChanceLow: 0.05, // Only 5% chance to crash instantly
+                growthRate: 1.03,     // Climbs very slowly
+                maxMultiplier: 50 
+            }
+        };
+
+        
+        function updateBankroll(amount) {
+            state.bankroll += amount;
+            document.getElementById('uiBankroll').innerText = Math.floor(state.bankroll);
+            
+            // Visual feedback on bankroll change
+            const brEl = document.getElementById('uiBankroll');
+            brEl.style.color = amount > 0 ? '#10b981' : (amount < 0 ? '#ef4444' : '#fff');
+            setTimeout(() => brEl.style.color = '#fff', 500);
+        }
+
+        function setStatus(msg, isError = false) {
+            const el = document.getElementById('statusText');
+            el.innerText = msg;
+            el.className = `mt-4 text-xs h-4 text-center w-full uppercase tracking-widest ${isError ? 'text-red-500' : 'text-gray-500'}`;
+        }
+
+        function toggleInfo() {
+            sfx.init();
+            sfx.click();
+            const modal = document.getElementById('infoModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function selectAgent(agent) {
+            if(state.isRunning) return;
+            sfx.init();
+            sfx.click();
+            
+            document.querySelectorAll('.agent-btn').forEach(b => b.removeAttribute('data-active'));
+            document.getElementById(agent === 'vector' ? 'btnVector' : 'btnSwitch').setAttribute('data-active', 'true');
+            
+            state.agent = agent;
+            setStatus(`AGENT ${agent.toUpperCase()} SECURED. WAITING FOR WAGER.`);
+        }
+
+        function setWager(amount) {
+            if(state.isRunning) return;
+            sfx.init();
+            sfx.click();
+            
+            if(amount === 'MAX') {
+                state.wager = state.bankroll;
+            } else {
+                state.wager = amount;
+            }
+
+            if(state.wager > state.bankroll) state.wager = state.bankroll;
+            if(state.wager < 0) state.wager = 0;
+
+            document.querySelectorAll('.wager-btn').forEach(b => {
+                b.removeAttribute('data-active');
+                if(b.innerText === String(amount) || (amount === 'MAX' && b.innerText === 'MAX')) {
+                    b.setAttribute('data-active', 'true');
+                }
+            });
+            
+            // Reset state if they clicked MAX but bankroll was weird
+            if(amount !== 'MAX' && ![10,25,50].includes(amount)) {
+                 document.querySelectorAll('.wager-btn').forEach(b => b.removeAttribute('data-active'));
+            }
+            
+            if(state.agent) setStatus(`WAGER SET TO ${state.wager}. READY FOR ROUTING.`);
+        }
+
+
+        function calculateCrashPoint() {
+            const agentProfile = state.agent === 'vector' ? config.vector : config.switch;
+            
+            // Core Crash Formula (highly weighted to early crashes, rare massive tails)
+            const e = 100;
+            const value = Math.random() * 100;
+            let crash = Math.floor(e / (value + 1));
+            
+            // Apply agent specific volatility logic
+            if (Math.random() < agentProfile.crashChanceLow) {
+                 // Instant rug / early crash zone (1.00x - 1.20x)
+                 crash = 1 + (Math.random() * 0.2);
+            } else {
+                 // Standard exponential curve
+                 crash = Math.max(1, (100 / (100 * Math.random() + 1)) * (agentProfile.growthRate * 2));
+                 if(crash > agentProfile.maxMultiplier) crash = agentProfile.maxMultiplier - (Math.random()*5);
+            }
+            
+            // Never less than 1.00
+            return Math.max(1.00, parseFloat(crash.toFixed(2)));
+        }
+
+        function startRun() {
+            sfx.init();
+            if (!state.agent) {
+                setStatus("ERROR: NO AGENT SELECTED", true);
+                return;
+            }
+            if (state.wager <= 0 || state.wager > state.bankroll) {
+                setStatus("ERROR: INSUFFICIENT FUNDS", true);
+                return;
+            }
+
+            // Deduct Wager up front
+            updateBankroll(-state.wager);
+            
+            // Initialize Run State
+            state.isRunning = true;
+            state.hasEjected = false;
+            state.multiplier = 1.00;
+            state.crashPoint = calculateCrashPoint();
+            state.startTime = performance.now();
+            
+            sfx.click();
+
+            // Setup UI for Run
+            document.getElementById('btnRun').classList.add('hidden');
+            document.getElementById('btnEject').classList.remove('hidden');
+            document.getElementById('resultOverlay').classList.add('hidden');
+            document.getElementById('speedLines').classList.remove('opacity-0');
+            
+            const multDisplay = document.getElementById('multiplierDisplay');
+            multDisplay.className = 'font-black text-7xl md:text-8xl text-white tracking-tighter z-20 transition-colors duration-200';
+            
+            setStatus("SYSTEM ROUTING. PREPARE TO EJECT.");
+            
+            // Kickoff Loop
+            state.animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+
+        function gameLoop(currentTime) {
+            if(!state.isRunning) return;
+
+            const elapsedTime = (currentTime - state.startTime) / 1000;
+            const agentProfile = state.agent === 'vector' ? config.vector : config.switch;
+            
+            // Exponential growth formula over time
+            state.multiplier = 1 + Math.pow(elapsedTime * agentProfile.growthRate, 1.5);
+            
+            // Check for Crash condition
+            if (state.multiplier >= state.crashPoint) {
+                state.multiplier = state.crashPoint; // Lock at exact point
+                updateDisplay();
+                handleCrash();
+                return;
+            }
+
+            updateDisplay();
+            state.animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function updateDisplay() {
+            const displayValue = state.multiplier.toFixed(2);
+            const multDisplay = document.getElementById('multiplierDisplay');
+            multDisplay.innerText = `${displayValue}x`;
+            
+            if(!state.hasEjected) {
+                const profit = Math.floor(state.wager * state.multiplier);
+                document.getElementById('profitDisplay').innerText = `POTENTIAL: +${profit}`;
+                
+                // Color shifts based on tension
+                if(state.multiplier > 10) multDisplay.className = 'font-black text-7xl md:text-8xl text-purple-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.8)] tracking-tighter z-20 animate-pulse';
+                else if(state.multiplier > 5) multDisplay.className = 'font-black text-7xl md:text-8xl text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)] tracking-tighter z-20';
+                else if(state.multiplier > 2) multDisplay.className = 'font-black text-7xl md:text-8xl text-matrixActive drop-shadow-[0_0_10px_rgba(16,185,129,0.3)] tracking-tighter z-20';
+            }
+        }
+
+
+        function eject() {
+            if(!state.isRunning || state.hasEjected) return;
+            
+            state.hasEjected = true;
+            sfx.win();
+            
+            const payout = Math.floor(state.wager * state.multiplier);
+            updateBankroll(payout); // Award money
+            
+            // UI Updates
+            document.getElementById('btnEject').classList.add('hidden');
+            
+            const multDisplay = document.getElementById('multiplierDisplay');
+            multDisplay.classList.remove('text-white', 'text-yellow-500', 'text-purple-500');
+            multDisplay.classList.add('text-matrixIdle'); // Dim it to show they exited
+            
+            document.getElementById('profitDisplay').innerText = `SECURED: +${payout}`;
+            document.getElementById('profitDisplay').classList.add('text-matrixActive');
+            
+            setStatus(`EJECTED AT ${state.multiplier.toFixed(2)}x. ROUTE CONTINUING...`);
+            
+            showResultVisual(`+${payout}`, 'text-matrixActive');
+            
+            // Loop keeps running so they can see how high it *would* have gone (FOMO)
+        }
+
+        function handleCrash() {
+            state.isRunning = false;
+            cancelAnimationFrame(state.animationFrameId);
+            
+            sfx.fail();
+            document.getElementById('speedLines').classList.add('opacity-0');
+            
+            const multDisplay = document.getElementById('multiplierDisplay');
+            multDisplay.innerText = `${state.crashPoint.toFixed(2)}x`;
+            multDisplay.className = 'font-black text-7xl md:text-8xl text-red-600 drop-shadow-[0_0_20px_rgba(220,38,38,0.8)] tracking-tighter z-20';
+            
+            document.getElementById('matrixContainer').classList.add('animate-glitch');
+            setTimeout(() => document.getElementById('matrixContainer').classList.remove('animate-glitch'), 300);
+
+            if (!state.hasEjected) {
+                document.getElementById('profitDisplay').innerText = `WAGER LOST`;
+                document.getElementById('profitDisplay').classList.remove('text-matrixActive');
+                document.getElementById('profitDisplay').classList.add('text-red-600');
+                setStatus(`HIJACKED AT ${state.crashPoint.toFixed(2)}x`, true);
+                showResultVisual('CRASHED', 'text-red-600');
+            } else {
+                setStatus(`SYSTEM CRASHED AT ${state.crashPoint.toFixed(2)}x. GOOD ESCAPE.`);
+                document.getElementById('profitDisplay').classList.remove('text-matrixActive');
+                document.getElementById('profitDisplay').classList.add('text-gray-500');
+            }
+
+            // Reset buttons
+            document.getElementById('btnEject').classList.add('hidden');
+            setTimeout(() => {
+                document.getElementById('btnRun').classList.remove('hidden');
+            }, 1000); // 1 second cooldown before they can bet again
+            
+            state.round++;
+            document.getElementById('uiRound').innerText = state.round;
+            
+            if(state.bankroll <= 0) {
+                setTimeout(() => document.getElementById('rektModal').classList.remove('hidden'), 1000);
+            }
+        }
+
+        function showResultVisual(text, colorClass) {
+            const overlay = document.getElementById('resultOverlay');
+            const resultText = document.getElementById('resultText');
+            
+            resultText.innerText = text;
+            resultText.className = `text-5xl md:text-7xl font-black tracking-widest drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)] ${colorClass}`;
+            
+            overlay.classList.remove('hidden');
+            
+            // Fade out after a moment
+            setTimeout(() => {
+                if(!state.isRunning) {
+                    overlay.classList.add('hidden');
+                }
+            }, 1500);
+        }
+
+    </script>
+</body>
+</html>

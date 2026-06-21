@@ -1176,6 +1176,14 @@ async def uptime_page():
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
+@app.get("/agent-duel")
+async def agent_duel_page():
+    path = LANDING_DIR / "agent-duel.html"
+    if path.exists():
+        return FileResponse(str(path))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
 @app.get("/legal/security")
 async def legal_security():
     path = LANDING_DIR / "security.html"

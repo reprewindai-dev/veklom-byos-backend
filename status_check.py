@@ -1,4 +1,5 @@
-import urllib.request, urllib.error, ssl
+import ssl
+from urllib import error, request
 
 urls = [
     "https://veklom.com/workspace",
@@ -47,11 +48,11 @@ ctx.verify_mode = ssl.CERT_NONE
 
 for url in urls:
     try:
-        req = urllib.request.Request(url, method="HEAD")
+        req = request.Request(url, method="HEAD")
         req.add_header("User-Agent", "Mozilla/5.0")
-        resp = urllib.request.urlopen(req, timeout=15, context=ctx)
+        resp = request.urlopen(req, timeout=15, context=ctx)
         print(url + " -> " + str(resp.status))
-    except urllib.error.HTTPError as e:
+    except error.HTTPError as e:
         print(url + " -> " + str(e.code))
     except Exception as e:
         print(url + " -> ERROR: " + str(e))

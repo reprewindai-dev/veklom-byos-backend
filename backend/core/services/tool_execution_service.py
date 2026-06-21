@@ -549,7 +549,8 @@ class ToolExecutionService:
             if algorithm == "sha256":
                 hash_obj = hashlib.sha256(content.encode())
             elif algorithm == "md5":
-                hash_obj = hashlib.md5(content.encode())
+                logger.warning("MD5 is a weak hashing algorithm and should not be used for security purposes. Consider using SHA256.")
+                hash_obj = hashlib.md5(content.encode(), usedforsecurity=False)
             else:
                 return {"success": False, "error": f"Unsupported algorithm: {algorithm}"}
             

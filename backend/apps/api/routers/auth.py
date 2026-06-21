@@ -523,12 +523,13 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         db.add(workspace)
         await db.flush()  # Get workspace.id before creating user
 
+        is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
         user = User(
             email=email,
             hashed_password=get_password_hash(body.password),
             full_name=body.full_name,
-            role="admin",  # They are the admin/owner of their own workspace
-            is_superuser=False,
+            role="SUPER_ADMIN" if is_founder else "admin",
+            is_superuser=True if is_founder else False,
             status="pending_verification",
             workspace_id=workspace.id,
         )
@@ -1013,18 +1014,7 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
     role = (user.role or "USER").upper()
     is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
 
-    # Platform superuser: must have is_superuser flag AND SUPER_ADMIN role AND
-    # email match AND workspace match (all conditions from _require_platform_superuser)
-    from backend.core.config.settings import settings as _settings
-    _email = (user.email or "").lower()
-    _admin_email = (_settings.ADMIN_EMAIL or "").lower()
-    _founder_ws = (_settings.FOUNDER_WORKSPACE_ID or "").strip()
-    is_platform_superuser = (
-        bool(user.is_superuser)
-        and role == "SUPER_ADMIN"
-        and (_admin_email == "" or _email in (_admin_email, "founder@veklom.com", "reprewindai@gmail.com"))
-        and (_founder_ws == "" or user.workspace_id == _founder_ws or _email == "reprewindai@gmail.com")
-    )
+    is_platform_superuser = bool(user.is_superuser) and role == "SUPER_ADMIN"
 
     capabilities = {
         "command_center": is_platform_superuser,
@@ -1347,12 +1337,13 @@ async def github_callback(
         db.add(workspace)
         await db.flush()
 
+        is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
         user = User(
             email=email,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             full_name=full_name,
-            role="admin",  # They are the admin/owner of their own workspace
-            is_superuser=False,
+            role="SUPER_ADMIN" if is_founder else "admin",
+            is_superuser=True if is_founder else False,
             status="active",
             workspace_id=workspace.id,
             github_id=github_id,
@@ -1365,6 +1356,10 @@ async def github_callback(
         await db.commit()
         await db.refresh(user)
     else:
+        is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
+        if is_founder:
+            user.role = "SUPER_ADMIN"
+            user.is_superuser = True
         user.github_id = github_id
         user.github_username = github_username
         user.github_access_token = encrypt_token(gh_access_token)

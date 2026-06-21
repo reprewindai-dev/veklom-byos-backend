@@ -67,7 +67,8 @@ async def process_with_idempotency(
     db: AsyncSession,
     idempotency_key: str,
     body_bytes: bytes,
-    handler
+    handler,
+    is_retry: bool = False
 ) -> WebhookResponse:
     """
     Process webhook with atomic idempotency.
@@ -143,18 +144,26 @@ async def process_with_idempotency(
         await db.rollback()
         
         # Add to dead-letter queue
-        try:
-            dead_letter = WebhookDeadLetter(
-                idempotency_key=idempotency_key,
-                payload=payload,
-                error_message=str(e),
-                retry_count=0,
-                status="pending"
-            )
-            db.add(dead_letter)
-            await db.commit()
-        except Exception as dl_error:
-            print(f"Failed to add to dead-letter queue: {dl_error}")
+        if not is_retry:
+            try:
+                # payload is not available here directly, let's just serialize body_bytes
+                import json
+                try:
+                    payload_dict = json.loads(body_bytes.decode())
+                except:
+                    payload_dict = {"raw_bytes": body_bytes.decode(errors='ignore')}
+
+                dead_letter = WebhookDeadLetter(
+                    idempotency_key=idempotency_key,
+                    payload=payload_dict,
+                    error_message=str(e),
+                    retry_count=0,
+                    status="pending"
+                )
+                db.add(dead_letter)
+                await db.commit()
+            except Exception as dl_error:
+                print(f"Failed to add to dead-letter queue: {dl_error}")
         
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
@@ -162,6 +171,49 @@ async def process_with_idempotency(
 # ---------------------------------------------------------------------------
 # Webhook endpoint
 # ---------------------------------------------------------------------------
+
+
+async def handle_webhook_payload(db: AsyncSession, payload: dict):
+    from sqlalchemy import select
+    if payload.get("type") == "tx_confirmed":
+        # Find the order
+        result = await db.execute(
+            select(Order).where(Order.order_id == payload["order_id"])
+        )
+        order = result.scalar_one_or_none()
+
+        if not order:
+            # Order not found - this is okay for idempotency
+            return
+
+        # Update order status
+        if order.status != "confirmed":
+            order.status = "confirmed"
+            order.tx_hash = payload["tx_hash"]
+            order.updated_at = datetime.now(timezone.utc)
+
+            # Create ledger entry
+            ledger_entry = Ledger(
+                tx_hash=payload["tx_hash"],
+                order_id=payload["order_id"],
+                amount=payload.get("amount", order.amount),
+                direction="credit",
+                note="tx_confirmed"
+            )
+            db.add(ledger_entry)
+
+            # Emit PostHog event
+            try:
+                from backend.core.services.posthog_client import posthog_service
+                posthog_service.payment_confirmed(
+                    distinct_id=order.user_id,
+                    order_id=order.order_id,
+                    tx_hash=payload["tx_hash"],
+                    confirmations=payload.get("confirmations", 1),
+                    status="confirmed"
+                )
+            except Exception as ph_err:
+                print(f"[Webhook PostHog] error emitting event: {ph_err}")
 
 @router.post("/payment")
 async def payment_webhook(
@@ -204,58 +256,10 @@ async def payment_webhook(
     
     # Define the handler that does the actual work
     async def handler():
-        await process_payment_webhook_payload(db, payload)
-
+        await handle_webhook_payload(db, payload)
+    
     # Process with idempotency
     return await process_with_idempotency(db, x_idempotency_key, raw_body, handler)
-
-
-async def process_payment_webhook_payload(db: AsyncSession, payload: dict):
-    """
-    Core logic to process the webhook payload.
-    Separated so it can be reused for dead-letter retries.
-    """
-    from sqlalchemy import select
-
-    if payload["type"] == "tx_confirmed":
-        # Find the order
-        result = await db.execute(
-            select(Order).where(Order.order_id == payload["order_id"])
-        )
-        order = result.scalar_one_or_none()
-
-        if not order:
-            # Order not found - this is okay for idempotency
-            return
-
-        # Update order status
-        if order.status != "confirmed":
-            order.status = "confirmed"
-            order.tx_hash = payload["tx_hash"]
-            order.updated_at = datetime.now(timezone.utc)
-            
-            # Create ledger entry
-            ledger_entry = Ledger(
-                tx_hash=payload["tx_hash"],
-                order_id=payload["order_id"],
-                amount=payload.get("amount", order.amount),
-                direction="credit",
-                note="tx_confirmed"
-            )
-            db.add(ledger_entry)
-            
-            # Emit PostHog event
-            try:
-                from backend.core.services.posthog_client import posthog_service
-                posthog_service.payment_confirmed(
-                    distinct_id=order.user_id,
-                    order_id=order.order_id,
-                    tx_hash=payload["tx_hash"],
-                    confirmations=payload.get("confirmations", 1),
-                    status="confirmed"
-                )
-            except Exception as ph_err:
-                print(f"[Webhook PostHog] error emitting event: {ph_err}")
 
 
 @router.get("/health")

@@ -97,9 +97,50 @@ async def retry_dead_letter_entry(
     
     await db.commit()
     
-    # TODO: Trigger actual webhook retry logic here
+    # Trigger actual webhook retry logic
+    from backend.apps.api.routers.webhook import process_with_idempotency, handle_webhook_payload
+    import json
     
-    return {"status": "retrying", "entry_id": entry_id, "retry_count": entry.retry_count}
+    try:
+        body_bytes = json.dumps(entry.payload).encode()
+
+        async def handler():
+            await handle_webhook_payload(db, entry.payload)
+
+        await process_with_idempotency(
+            db=db,
+            idempotency_key=entry.idempotency_key or f"retry-{entry.id}",
+            body_bytes=body_bytes,
+            handler=handler,
+            is_retry=True
+        )
+
+        # After successful processing
+        # Re-fetch the entry because the db session might have been rolled back or committed
+        query = select(WebhookDeadLetter).where(WebhookDeadLetter.id == entry_id)
+        result = await db.execute(query)
+        updated_entry = result.scalar_one_or_none()
+
+        if updated_entry:
+            updated_entry.status = "resolved"
+            updated_entry.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+
+        return {"status": "resolved", "entry_id": entry_id, "retry_count": entry.retry_count}
+
+    except Exception as e:
+        # If it fails again, we need to re-fetch and update status
+        query = select(WebhookDeadLetter).where(WebhookDeadLetter.id == entry_id)
+        result = await db.execute(query)
+        failed_entry = result.scalar_one_or_none()
+
+        if failed_entry:
+            failed_entry.status = "failed"
+            failed_entry.error_message = str(e)
+            failed_entry.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+
+        return {"status": "failed", "entry_id": entry_id, "retry_count": entry.retry_count, "error": str(e)}
 
 
 @router.delete("/webhook-dead-letter/{entry_id}")

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
-from backend.core.security.auth import get_current_user
+from backend.core.security.auth import get_current_user, require_workspace_access, check_workspace_access
 from backend.db.models.user import User
 from backend.apps.api.services.authority import AuthorityService
 from backend.apps.authority.api.seked import router as seked_router
@@ -21,7 +21,7 @@ async def get_authority_context(
     agent_id: Optional[str] = Query(None, description="Agent ID to get context for"),
     workspace_id: Optional[str] = Query(None, description="Workspace ID to get context for"),
     authority_run_id: Optional[str] = Query(None, description="Authority run ID to get context for"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_access),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -56,14 +56,6 @@ async def get_authority_context(
             authority_run_id=authority_run_id
         )
         
-        # Check workspace access permission if workspace_id is provided
-        if workspace_id and current_user.workspace_id != workspace_id:
-            # TODO: Add proper workspace permission checking
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied to workspace"
-            )
-        
         return context.to_dict()
         
     except ValueError as e:
@@ -79,7 +71,7 @@ async def get_authority_context(
 async def list_authority_bundles(
     workspace_id: Optional[str] = Query(None, description="Filter by workspace ID"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_access),
     db: AsyncSession = Depends(get_db)
 ):
     """List authority bundles accessible to the current user."""
@@ -92,8 +84,6 @@ async def list_authority_bundles(
     
     # Filter by workspace if specified
     if workspace_id:
-        if current_user.workspace_id != workspace_id:
-            raise HTTPException(status_code=403, detail="Access denied to workspace")
         query = query.where(AuthorityBundle.workspace_id == workspace_id)
     else:
         # Only show bundles from user's workspace
@@ -131,7 +121,7 @@ async def list_authority_runs(
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_access),
     db: AsyncSession = Depends(get_db)
 ):
     """List authority runs accessible to the current user."""
@@ -144,8 +134,6 @@ async def list_authority_runs(
     
     # Filter by workspace
     if workspace_id:
-        if current_user.workspace_id != workspace_id:
-            raise HTTPException(status_code=403, detail="Access denied to workspace")
         query = query.where(AuthorityRun.workspace_id == workspace_id)
     else:
         # Only show runs from user's workspace
@@ -209,7 +197,7 @@ async def get_authority_decisions(
     if not run:
         raise HTTPException(status_code=404, detail="Authority run not found")
     
-    if run.workspace_id != current_user.workspace_id:
+    if not check_workspace_access(current_user, run.workspace_id):
         raise HTTPException(status_code=403, detail="Access denied to authority run")
     
     # Get decisions

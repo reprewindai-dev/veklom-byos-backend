@@ -1,6 +1,15 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      (function() {
+        var originalFocus = HTMLElement.prototype.focus;
+        HTMLElement.prototype.focus = function(options) {
+          var opts = options || {};
+          return originalFocus.call(this, Object.assign({}, opts, { preventScroll: true }));
+        };
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
@@ -8,7 +17,6 @@
     <link rel="stylesheet" crossorigin href="/gpc/assets/index-BVvmx_Zt.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
   </body>
 </html>
-

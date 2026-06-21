@@ -90,31 +90,41 @@
 
 <!-- PostHog -->
 <script>
-  !function(t,e){var o,n,p,r;e.__SV=1,(t.posthog=e.posthog||[]).init=function(i,s,a){
-    function c(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),
-      t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}} 
-    p=e.createElement("script"),p.type="text/javascript",p.async=!0,
-    p.src="https://app.posthog.com/static/array.js",r=e.getElementsByTagName("script")[0],r.parentNode.insertBefore(p,r);
-    var u=e.posthog;u._i=[];u.init=function(t,e,o){function n(t,e){var o=e.split(".");
-      2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}} 
-      var p=u;void 0!==o?p=u[o]=[]:o="posthog";p.people=p.people||[];p.toString=function(t){var e="posthog";
-      return"posthog"!==o&&(e+="."+o),t||(e+=" (stub)"),e};p.people.toString=function(){return p.toString(1)+".people (stub)"};
-      var r="capture identify alias people.set people.set_once people.unset reset group".split(" ");
-      for(var i=0;i<r.length;i++)n(p,r[i]);u._i.push([t,e,o])};
-    e.posthog.init(i,s,a)
-  }(document,window);
-  posthog.init('REPLACE_ME_POSTHOG_KEY',{api_host:'https://app.posthog.com'});
+  (function() {
+    var posthogKey = 'REPLACE_ME_POSTHOG_KEY';
+    if (posthogKey && !posthogKey.startsWith('REPLACE_ME')) {
+      !function(t,e){var o,n,p,r;e.__SV=1,(t.posthog=e.posthog||[]).init=function(i,s,a){
+        function c(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),
+          t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}} 
+        p=e.createElement("script"),p.type="text/javascript",p.async=!0,
+        p.src="https://app.posthog.com/static/array.js",r=e.getElementsByTagName("script")[0],r.parentNode.insertBefore(p,r);
+        var u=e.posthog;u._i=[];u.init=function(t,e,o){function n(t,e){var o=e.split(".");
+          2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}} 
+          var p=u;void 0!==o?p=u[o]=[]:o="posthog";p.people=p.people||[];p.toString=function(t){var e="posthog";
+          return"posthog"!==o&&(e+="."+o),t||(e+=" (stub)"),e};p.people.toString=function(){return p.toString(1)+".people (stub)"};
+          var r="capture identify alias people.set people.set_once people.unset reset group".split(" ");
+          for(var i=0;i<r.length;i++)n(p,r[i]);u._i.push([t,e,o])};
+        e.posthog.init(i,s,a)
+      }(document,window);
+      posthog.init(posthogKey,{api_host:'https://app.posthog.com'});
+    }
+  })();
 </script>
 
 <!-- Hotjar -->
 <script>
-  (function(h,o,t,j,a,r){
-    h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};
-    h._hjSettings={hjid: 'REPLACE_ME_HOTJAR_ID', hjsv: 6};
-    a=o.getElementsByTagName('head')[0];
-    r=o.createElement('script');r.async=1;r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;
-    a.appendChild(r);
-  })(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');
+  (function() {
+    var hotjarId = 'REPLACE_ME_HOTJAR_ID';
+    if (hotjarId && !hotjarId.startsWith('REPLACE_ME')) {
+      (function(h,o,t,j,a,r){
+        h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};
+        h._hjSettings={hjid: hotjarId, hjsv: 6};
+        a=o.getElementsByTagName('head')[0];
+        r=o.createElement('script');r.async=1;r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;
+        a.appendChild(r);
+      })(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');
+    }
+  })();
 </script>
 
 <script>
@@ -123,7 +133,9 @@
     btns.forEach(btn => {
       if (btn.innerText && btn.innerText.match(/Demo|Get Started/i)) {
         btn.addEventListener('click', () => {
-          if (window.posthog) window.posthog.capture('cta:demo_clicked');
+          if (window.posthog && typeof window.posthog.capture === 'function') {
+            window.posthog.capture('cta:demo_clicked');
+          }
         });
       }
     });
@@ -132,11 +144,16 @@
 
 <!-- PlaybookUX -->
 <script>
-  (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-  'https://cdn.playbookux.com/snippet/REPLACE_ME_PLAYBOOKUX_KEY'+dl;f.parentNode.insertBefore(j,f);
-  })(window,document,'script','dataLayer','REPLACE_ME_PLAYBOOKUX_KEY');
+  (function() {
+    var playbookKey = 'REPLACE_ME_PLAYBOOKUX_KEY';
+    if (playbookKey && !playbookKey.startsWith('REPLACE_ME')) {
+      (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+      new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+      j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+      'https://cdn.playbookux.com/snippet/'+playbookKey+dl;f.parentNode.insertBefore(j,f);
+      })(window,document,'script','dataLayer',playbookKey);
+    }
+  })();
 </script>
 
 <!-- x402 Discoverability -->
@@ -816,9 +833,16 @@
 <script src="/static/js/veklom.js?v=20260621"></script>
 
 <!-- Termly Compliance Badge -->
-<script
-  type="text/javascript"
-  src="https://app.termly.io/resource-blocker/REPLACE_ME_TERMLY_ID"
-></script>
+<script>
+  (function() {
+    var termlyId = 'REPLACE_ME_TERMLY_ID';
+    if (termlyId && !termlyId.startsWith('REPLACE_ME')) {
+      var script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = 'https://app.termly.io/resource-blocker/' + termlyId;
+      document.head.appendChild(script);
+    }
+  })();
+</script>
 </body>
 </html>

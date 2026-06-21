@@ -381,14 +381,12 @@ if has_valid_endpoint and has_valid_headers:
 # Firebase Hosting) and *.veklom.com call the API cross-origin, in addition to the
 # explicit CORS_ORIGINS list. Regex (not "*") keeps allow_credentials valid.
 _CORS_ORIGIN_REGEX = (
-    r"https://([a-z0-9-]+\.)*("
-    r"veklom\.com|"
-    r"usercontent\.goog|"           # AI Studio applet sandboxes
-    r"aistudio\.google\.com|"
-    r"run\.app|"                    # Cloud Run
-    r"web\.app|firebaseapp\.com|"   # Firebase Hosting
-    r"vercel\.app"                  # Vercel
-    r")"
+    r"https://"
+    r"(?:"
+    r"([a-z0-9-]+\.)*veklom\.com|"                  # Veklom domains
+    r"([a-z0-9-]+\.)*(usercontent\.goog|aistudio\.google\.com)|" # AI Studio sandboxes
+    r"veklom(-[a-z0-9-]+)?\.([a-z0-9-]+\.)*(run\.app|web\.app|firebaseapp\.com|vercel\.app)" # Shared hosting strictly for veklom
+    r")$"
 )
 
 app.add_middleware(

@@ -124,27 +124,20 @@ async def submit_payment(
 
 async def watch_payment_confirmation(order_id: str, tx_hash: str, db: AsyncSession):
     """
-    Async task to watch for transaction confirmation on-chain.
-    
-    This is a simplified version - in production you would:
-    - Use a proper Web3 provider (Alchemy, QuickNode, etc.)
-    - Verify the transaction details (amount, token, recipient)
-    - Handle retries and timeouts
-    - Use webhooks from the provider instead of polling
+    Async task to watch for transaction confirmation on-chain using Web3.
     """
     from sqlalchemy import select
+    from web3 import AsyncWeb3
+    from web3.exceptions import TransactionNotFound, TimeExhausted
+    from backend.core.config.settings import settings
+
+    rpc_url = getattr(settings, "FLASHBLOCKS_RPC_URL", "https://mainnet.base.org")
     
     try:
-        # TODO: Integrate with actual Web3 provider
-        # For now, we'll simulate confirmation after a delay
-        await asyncio.sleep(5)
+        w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(rpc_url))
         
-        # In production, you would do something like:
-        # from web3 import Web3
-        # w3 = Web3(Web3.HTTPProvider(settings.RPC_URL))
-        # receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=600, poll_latency=2)
-        # Verify receipt.status == 1
-        # Verify token contract, amount, and recipient
+        # Wait for transaction receipt
+        receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=600, poll_latency=2)
         
         # Get the payment record
         result = await db.execute(
@@ -153,23 +146,29 @@ async def watch_payment_confirmation(order_id: str, tx_hash: str, db: AsyncSessi
         payment = result.scalar_one_or_none()
         
         if payment:
-            # Mark as confirmed
-            payment.status = "confirmed"
-            payment.confirmations = 2  # Default to 2 confirmations
-            payment.confirmed_at = datetime.now(timezone.utc)
-            await db.commit()
+            # Check receipt status
+            if receipt.get("status") == 1:
+                # Mark as confirmed
+                payment.status = "confirmed"
+                payment.confirmations = 1  # Standard base network confirmation
+                payment.confirmed_at = datetime.now(timezone.utc)
+                await db.commit()
+
+                # Track payment confirmed
+                posthog_service.payment_confirmed(
+                    distinct_id=payment.user_hash,
+                    order_id=order_id,
+                    tx_hash=tx_hash,
+                    confirmations=1,
+                    status="success"
+                )
+            else:
+                # Transaction failed on chain
+                payment.status = "failed"
+                await db.commit()
             
-            # Track payment confirmed
-            posthog_service.payment_confirmed(
-                distinct_id=payment.user_hash,
-                order_id=order_id,
-                tx_hash=tx_hash,
-                confirmations=2,
-                status="success"
-            )
-            
-    except Exception as e:
-        # Mark as failed on error
+    except (TransactionNotFound, TimeExhausted) as e:
+        # Timeout or not found
         try:
             result = await db.execute(
                 select(Payment).where(Payment.order_id == order_id)
@@ -178,7 +177,19 @@ async def watch_payment_confirmation(order_id: str, tx_hash: str, db: AsyncSessi
             if payment:
                 payment.status = "failed"
                 await db.commit()
-        except:
+        except Exception:
+            pass
+    except Exception as e:
+        # Mark as failed on other error
+        try:
+            result = await db.execute(
+                select(Payment).where(Payment.order_id == order_id)
+            )
+            payment = result.scalar_one_or_none()
+            if payment:
+                payment.status = "failed"
+                await db.commit()
+        except Exception:
             pass
 
 

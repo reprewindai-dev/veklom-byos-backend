@@ -270,3 +270,38 @@ async def get_current_user_or_api_key(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or inactive API Key")
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication credentials missing")
+
+
+
+def check_workspace_access(user, target_workspace_id: str) -> bool:
+    """
+    Check if a user has access to a specific workspace.
+    Allows SUPER_ADMIN to access any workspace.
+    """
+    if not target_workspace_id:
+        return True
+
+    if user.workspace_id == target_workspace_id:
+        return True
+
+    role = (getattr(user, "role", "") or "").upper()
+    if role == "SUPER_ADMIN":
+        return True
+
+    return False
+
+
+async def require_workspace_access(
+    workspace_id: Optional[str] = None,
+    current_user = Depends(get_current_user)
+):
+    """
+    FastAPI dependency to ensure the user has access to the requested workspace.
+    If no workspace_id is provided in the request, it passes.
+    """
+    if workspace_id and not check_workspace_access(current_user, workspace_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to workspace"
+        )
+    return current_user

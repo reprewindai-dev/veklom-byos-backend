@@ -97,9 +97,30 @@ async def retry_dead_letter_entry(
     
     await db.commit()
     
-    # TODO: Trigger actual webhook retry logic here
-    
-    return {"status": "retrying", "entry_id": entry_id, "retry_count": entry.retry_count}
+    # Trigger actual webhook retry logic
+    from backend.apps.api.routers.webhook import process_payment_webhook_payload
+    try:
+        await process_payment_webhook_payload(db, entry.payload)
+
+        # On success, mark as resolved
+        entry.status = "resolved"
+        entry.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        return {"status": "resolved", "entry_id": entry_id, "retry_count": entry.retry_count}
+    except Exception as e:
+        await db.rollback()
+
+        # Refresh the entry and update it as failed
+        query = select(WebhookDeadLetter).where(WebhookDeadLetter.id == entry_id)
+        result = await db.execute(query)
+        failed_entry = result.scalar_one()
+
+        failed_entry.status = "failed"
+        failed_entry.error_message = str(e)
+        failed_entry.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+
+        raise HTTPException(status_code=500, detail=f"Retry failed: {str(e)}")
 
 
 @router.delete("/webhook-dead-letter/{entry_id}")

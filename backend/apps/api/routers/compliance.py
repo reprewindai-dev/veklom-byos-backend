@@ -1,7 +1,7 @@
 """Compliance, privacy, content-safety, explainability, evidence, audit routes."""
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.core.privacy import pii as pii_engine
-from backend.db.models.security import AuditLog, ComplianceCheck
+from backend.db.models.security import AuditLog, ComplianceCheck, SecurityEvent
 
 router = APIRouter(tags=["Compliance"])
 
@@ -264,15 +264,113 @@ def _generate_evidence_package(fw: dict, workspace_id: str, email: str) -> str:
 
 
 # --- Compliance ---
-@router.post("/compliance/report")
-async def create_compliance_report(body: dict, user=Depends(get_current_user)):
+async def _compute_compliance(
+    db: AsyncSession,
+    workspace_id: str,
+    regulation: str | None = None,
+    use_stored_checks: bool = True,
+) -> dict[str, Any]:
+    """Compute a compliance score from real workspace data.
+
+    The score blends three live signals — none are hardcoded:
+      * control evidence: the latest persisted ComplianceCheck per regulation
+      * audit-trail integrity: presence + hash-chain continuity of AuditLog rows
+      * open incidents: unresolved SecurityEvent rows (weighted by severity)
+    """
+    reg = (regulation or "").upper()
+
+    # 1. Control evidence — latest persisted check per regulation.
+    control_component: float | None = None
+    failing: list[ComplianceCheck] = []
+    controls_evaluated = 0
+    if use_stored_checks:
+        stmt = select(ComplianceCheck).where(ComplianceCheck.workspace_id == workspace_id)
+        if reg:
+            stmt = stmt.where(ComplianceCheck.regulation == reg)
+        rows = (await db.execute(stmt.order_by(ComplianceCheck.created_at.desc()))).scalars().all()
+        latest: dict[str, ComplianceCheck] = {}
+        for c in rows:
+            latest.setdefault(c.regulation, c)
+        if latest:
+            controls_evaluated = len(latest)
+            control_component = sum(c.score for c in latest.values()) / len(latest) * 100
+            failing = [c for c in latest.values() if c.result != "pass"]
+
+    # 2. Audit-trail integrity — does a tamper-evident chain exist and hold?
+    audit_rows = (
+        await db.execute(
+            select(AuditLog)
+            .where(AuditLog.workspace_id == workspace_id)
+            .order_by(AuditLog.created_at.asc())
+        )
+    ).scalars().all()
+    audit_count = len(audit_rows)
+    chain_intact = True
+    prev = ""
+    for row in audit_rows:
+        if row.prev_hash and row.prev_hash != prev:
+            chain_intact = False
+            break
+        prev = row.hash_chain or prev
+    if audit_count == 0:
+        audit_component = 60.0
+    elif chain_intact:
+        audit_component = 100.0
+    else:
+        audit_component = 40.0
+
+    # 3. Open security incidents.
+    open_events = (
+        await db.execute(
+            select(SecurityEvent).where(
+                SecurityEvent.workspace_id == workspace_id,
+                SecurityEvent.status != "resolved",
+            )
+        )
+    ).scalars().all()
+    open_incidents = len(open_events)
+    high_open = sum(1 for e in open_events if e.severity in ("high", "critical"))
+    incident_penalty = min(40, open_incidents * 3 + high_open * 7)
+
+    if control_component is None:
+        base = audit_component
+    else:
+        base = 0.6 * control_component + 0.4 * audit_component
+    score = int(max(0, min(100, round(base - incident_penalty))))
+
+    findings: list[str] = []
+    recommendations: list[str] = []
+    for c in failing:
+        findings.append(f"{c.regulation}: control check did not pass (score {round(c.score * 100)}%)")
+        recommendations.append(f"Remediate failing {c.regulation} controls and re-run the compliance check")
+    if audit_count == 0:
+        findings.append("No audit-trail evidence recorded for this workspace yet")
+        recommendations.append("Route execution through governed runs so actions are written to the hash-chained audit log")
+    elif not chain_intact:
+        findings.append("Audit-trail hash-chain integrity check failed")
+        recommendations.append("Investigate the audit log — the tamper-evident chain is broken")
+    if open_incidents:
+        findings.append(f"{open_incidents} unresolved security event(s), {high_open} high/critical")
+        recommendations.append("Triage and resolve open security events to restore compliance posture")
+    if not findings:
+        findings.append("All evaluated controls passing; audit trail present and intact")
+    if not recommendations:
+        recommendations.append("Maintain continuous monitoring and periodic control re-tests")
+
     return {
-        "regulation": body.get("regulation", "GDPR").upper(),
-        "period": f"{body.get('start_date', '2026-01-01')} to {body.get('end_date', '2026-01-31')}",
-        "compliance_score": 97,
-        "findings": [
-            { "id": "f1", "severity": "low", "description": "Minor PII logging warning" }
-        ]
+        "score": score,
+        "findings": findings,
+        "recommendations": recommendations,
+        "signals": {
+            "controls_evaluated": controls_evaluated,
+            "control_component": None if control_component is None else round(control_component, 1),
+            "audit_events": audit_count,
+            "audit_chain_intact": chain_intact,
+            "audit_component": audit_component,
+            "open_security_events": open_incidents,
+            "high_severity_open": high_open,
+            "incident_penalty": incident_penalty,
+        },
     }
 
 
@@ -472,12 +570,16 @@ async def list_compliance_checks(user=Depends(get_current_user), db: AsyncSessio
 @router.post("/compliance/check")
 async def compliance_check(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     regulation = body.get("regulation", "hipaa").upper()
-    score_map = {"HIPAA": 0.97, "SOC2": 0.94, "PCI-DSS": 0.91, "GDPR": 0.96, "ISO27001": 0.93, "FEDRAMP": 0.78}
-    score = score_map.get(regulation, 0.90)
+    ws = user.workspace_id or ""
+    # Evaluate live posture (audit-trail integrity + open incidents) rather than
+    # a static per-regulation score. Stored checks are excluded so a check
+    # reflects current state, not previously recorded check scores.
+    posture = await _compute_compliance(db, ws, regulation, use_stored_checks=False)
+    score = round(posture["score"] / 100, 4)
     result = "pass" if score >= 0.85 else "review"
-    findings = [] if score >= 0.85 else ["review_required"]
+    findings = [] if result == "pass" else posture["findings"]
     check = ComplianceCheck(
-        workspace_id=user.workspace_id or "",
+        workspace_id=ws,
         regulation=regulation,
         result=result,
         score=score,
@@ -486,54 +588,54 @@ async def compliance_check(body: dict, user=Depends(get_current_user), db: Async
     db.add(check)
     await db.commit()
     await db.refresh(check)
-    return {"id": check.id, "regulation": regulation, "result": result, "score": score, "findings": findings, "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {
+        "id": check.id,
+        "regulation": regulation,
+        "result": result,
+        "score": score,
+        "findings": findings,
+        "signals": posture["signals"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.get("/compliance/report")
 @router.post("/compliance/report")
-async def compliance_report(body: dict = None, user=Depends(get_current_user)):
-    """Generate compliance report for a specific regulation and date range.
-    
+async def compliance_report(
+    body: dict = None,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a compliance report from the workspace's real audit trail.
+
     Accepts:
-    - regulation: "gdpr", "ccpa", "soc2", "hipaa"
+    - regulation: "gdpr", "ccpa", "soc2", "hipaa", ...
     - start_date: "YYYY-MM-DD"
     - end_date: "YYYY-MM-DD"
-    
-    Returns:
-    - regulation: The regulation name
-    - period: Date range
-    - compliance_score: Overall score (0-100)
-    - findings: List of compliance findings
-    - recommendations: List of recommendations
-    - generated_at: ISO timestamp
+
+    The compliance_score, findings, and recommendations are computed live from
+    persisted ComplianceCheck results, AuditLog hash-chain integrity, and open
+    SecurityEvent incidents for the caller's workspace — not hardcoded.
     """
     body = body or {}
     regulation = (body.get("regulation") or "").upper() or "GDPR"
     start_date = body.get("start_date") or "2026-01-01"
     end_date = body.get("end_date") or "2026-12-31"
-    
-    # Regulation-specific scores and findings
-    regulation_scores = {
-        "GDPR": {"score": 97, "findings": ["Data retention policy in place", "Right to access implemented", "Right to deletion implemented"]},
-        "CCPA": {"score": 95, "findings": ["Do not sell option available", "Data disclosure tracking enabled"]},
-        "SOC2": {"score": 94, "findings": ["Access controls implemented", "Audit logging enabled", "Incident response plan in place"]},
-        "HIPAA": {"score": 96, "findings": ["PHI encryption enabled", "Audit trail complete", "Business associate agreements in place"]},
-    }
-    
-    reg_data = regulation_scores.get(regulation, regulation_scores["GDPR"])
-    
+    ws = getattr(user, "workspace_id", "") or ""
+
+    computed = await _compute_compliance(db, ws, regulation)
+
     return {
         "regulation": regulation,
         "period": f"{start_date} to {end_date}",
-        "compliance_score": reg_data["score"],
-        "findings": reg_data["findings"],
+        "compliance_score": computed["score"],
+        "findings": computed["findings"],
         "recommendations": [
-            { "id": "r1", "description": "Enable automated PII scrubbing on high-risk pipelines" },
-            { "id": "r2", "description": "Continue regular compliance audits" },
-            { "id": "r3", "description": "Maintain up-to-date documentation" },
-            { "id": "r4", "description": "Conduct annual risk assessments" }
+            {"id": f"r{i + 1}", "description": rec}
+            for i, rec in enumerate(computed["recommendations"])
         ],
-        "generated_at": datetime.now(timezone.utc).isoformat()
+        "signals": computed["signals"],
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 

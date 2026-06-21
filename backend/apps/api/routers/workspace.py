@@ -4,19 +4,19 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
-from backend.core.services.posthog_client import posthog_service, hash_id
+from backend.core.services.posthog_client import hash_id, posthog_service
 from backend.db.models.ai import ExecLog
+from backend.db.models.billing import BudgetRule
 from backend.db.models.marketplace import Deployment, Pipeline
 from backend.db.models.security import AuditLog, SecurityEvent
-from backend.db.models.workspace import ModelConfig, Workspace, WorkspaceMember, WorkspaceIntegration
 from backend.db.models.user import APIKey, User
-from backend.db.models.billing import BudgetRule
+from backend.db.models.workspace import ModelConfig, Workspace, WorkspaceIntegration, WorkspaceMember
 
 router = APIRouter(prefix="/workspace", tags=["Workspace"])
 
@@ -28,7 +28,7 @@ async def workspace_status_data(user=Depends(get_current_user)):
         distinct_id=hash_id(user.email),
         workspace_id=user.workspace_id or "default"
     )
-    
+
     return {
         "status": "active",
         "workspace_id": user.workspace_id,
@@ -39,6 +39,7 @@ async def workspace_status_data(user=Depends(get_current_user)):
 
 
 from pydantic import BaseModel
+
 
 class EntitlementCheckRequest(BaseModel):
     action: str
@@ -303,7 +304,7 @@ async def audit_logs(limit: int = 20, offset: int = 0, user=Depends(get_current_
                     "created_at": trace["created_at"]
                 })
             return {"logs": mapped_logs, "total": len(mapped_logs), "limit": limit, "offset": offset}
-    except Exception as e:
+    except Exception:
         return {"logs": [], "total": 0, "limit": limit, "offset": offset}
 
 
@@ -737,27 +738,40 @@ async def workspace_observability(user=Depends(get_current_user), db: AsyncSessi
     workspace_id = user.workspace_id or "default"
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    
+
     # Get real metrics from database
     total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
     error_count = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start, ExecLog.status == "failed")) or 0
     error_rate = (error_count / total_requests) if total_requests > 0 else 0.0
-    
+
     avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
-    
+
+    policy_flagged_count = await db.scalar(
+        select(func.count())
+        .select_from(ExecLog)
+        .where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= today_start,
+            cast(ExecLog.policy_flags, String) != '[]',
+            cast(ExecLog.policy_flags, String) != 'null',
+            ExecLog.policy_flags.is_not(None)
+        )
+    ) or 0
+    policy_pass_rate = 1.0 - (policy_flagged_count / total_requests) if total_requests > 0 else 1.0
+
     # Get active routes from recent executions
     recent_routes = await db.execute(
         select(ExecLog.provider).distinct().where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)
     )
     active_routes = [row[0] for row in recent_routes.fetchall()] if recent_routes else ["playground"]
-    
+
     return {
         "status": "healthy",
         "region": "hetzner-fsn1",
         "latency_ms": int(avg_latency) if avg_latency else 42,
         "requests_today": total_requests,
         "error_rate": round(error_rate, 4),
-        "policy_pass_rate": 0.998,  # TODO: calculate from audit logs
+        "policy_pass_rate": round(policy_pass_rate, 4),
         "active_routes": active_routes,
         "updated_at": now.isoformat(),
         "tracing_enabled": True,
@@ -875,14 +889,14 @@ async def get_integrations(user=Depends(get_current_user), db: AsyncSession = De
     ws = user.workspace_id or "default"
     result = await db.execute(select(WorkspaceIntegration).where(WorkspaceIntegration.workspace_id == ws))
     db_integrations = result.scalars().all()
-    
+
     integrations = {k: dict(v) for k, v in _DEFAULT_INTEGRATIONS.items()}
     for db_i in db_integrations:
         provider = db_i.provider
         if provider in integrations:
             integrations[provider].update(db_i.config_json or {})
             integrations[provider]["enabled"] = db_i.status == "active"
-            
+
             key_fields = {"slack": "webhook_url", "pagerduty": "integration_key", "github": "token",
                           "vercel": "token", "datadog": "api_key", "jira": "api_token"}
             field = key_fields.get(provider)
@@ -894,7 +908,7 @@ async def get_integrations(user=Depends(get_current_user), db: AsyncSession = De
 @router.patch("/integrations/{integration_name}")
 async def update_integration(integration_name: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or "default"
-    
+
     result = await db.execute(
         select(WorkspaceIntegration).where(
             WorkspaceIntegration.workspace_id == ws,
@@ -902,9 +916,9 @@ async def update_integration(integration_name: str, body: dict, user=Depends(get
         )
     )
     db_i = result.scalar_one_or_none()
-    
+
     default_cfg = dict(_DEFAULT_INTEGRATIONS.get(integration_name, {"enabled": False, "configured": False}))
-    
+
     if not db_i:
         db_i = WorkspaceIntegration(
             workspace_id=ws,
@@ -913,26 +927,26 @@ async def update_integration(integration_name: str, body: dict, user=Depends(get
             config_json=default_cfg
         )
         db.add(db_i)
-        
+
     cfg = dict(db_i.config_json or default_cfg)
     for k, v in body.items():
         cfg[k] = v
-        
+
     if "enabled" in body:
         db_i.status = "active" if body["enabled"] else "inactive"
-        
+
     key_fields = {"slack": "webhook_url", "pagerduty": "integration_key", "github": "token",
                   "vercel": "token", "datadog": "api_key", "jira": "api_token"}
     field = key_fields.get(integration_name)
     if field and cfg.get(field):
         cfg["configured"] = True
-        
+
     db_i.config_json = cfg
     db_i.updated_at = datetime.now(timezone.utc)
-    
+
     await db.commit()
     await db.refresh(db_i)
-    
+
     return {
         "integration": integration_name,
         "workspace_id": ws,
@@ -944,7 +958,7 @@ async def update_integration(integration_name: str, body: dict, user=Depends(get
 @router.post("/integrations/{provider}/test")
 async def test_integration(provider: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or "default"
-    
+
     result = await db.execute(
         select(WorkspaceIntegration).where(
             WorkspaceIntegration.workspace_id == ws,
@@ -954,15 +968,15 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
     db_i = result.scalar_one_or_none()
     if not db_i:
         raise HTTPException(status_code=404, detail=f"Integration {provider} not configured")
-        
+
     cfg = db_i.config_json or {}
-    
+
     success = True
     message = "Test connection successful"
     error_details = ""
-    
+
     now = datetime.now(timezone.utc)
-    
+
     if provider == "slack":
         webhook_url = cfg.get("webhook_url")
         if webhook_url:
@@ -983,7 +997,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
         else:
             success = False
             message = "Slack webhook URL not configured"
-            
+
     elif provider == "pagerduty":
         integration_key = cfg.get("integration_key")
         if not integration_key:
@@ -1017,7 +1031,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
                 success = False
                 message = f"Failed to connect to PagerDuty Events API: {str(e)}"
                 error_details = str(e)
-            
+
     elif provider == "github":
         token = cfg.get("token")
         if not token:
@@ -1039,7 +1053,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
                 success = False
                 message = f"Failed to connect to GitHub API: {str(e)}"
                 error_details = str(e)
-                
+
     elif provider == "vercel":
         token = cfg.get("token")
         if not token:
@@ -1058,7 +1072,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
                 success = False
                 message = f"Failed to connect to Vercel API: {str(e)}"
                 error_details = str(e)
-                
+
     elif provider in ["datadog", "jira"]:
         required_keys = {"datadog": ["api_key"], "jira": ["base_url", "api_token"]}
         missing = [k for k in required_keys[provider] if not cfg.get(k)]
@@ -1067,15 +1081,15 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
             message = f"Missing required configuration fields for {provider}: {', '.join(missing)}"
         else:
             message = f"{provider.capitalize()} integration settings syntax checked and verified."
-            
+
     db_i.last_tested_at = now
     if success:
         db_i.last_error = ""
     else:
         db_i.last_error = message + (f" ({error_details})" if error_details else "")
-        
+
     await db.commit()
-    
+
     return {
         "provider": provider,
         "success": success,
@@ -1108,7 +1122,7 @@ async def list_models(provider: str = None, user=Depends(get_current_user), db: 
     query = select(ModelConfig).where(ModelConfig.workspace_id == workspace_id)
     if provider:
         query = query.where(ModelConfig.provider == provider)
-    
+
     result = await db.execute(query)
     models = result.scalars().all()
     if not models:
@@ -1131,8 +1145,9 @@ async def list_models(provider: str = None, user=Depends(get_current_user), db: 
 @router.post("/models/{model_id}/deploy")
 async def deploy_model(model_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Create a deployment from a selected model."""
-    from backend.db.models.marketplace import Deployment
     import uuid as _uuid
+
+    from backend.db.models.marketplace import Deployment
 
     body = body or {}
     result = await db.execute(
@@ -1356,11 +1371,11 @@ async def list_providers(user=Depends(get_current_user)):
     # Provider rule: Ollama first for all tenants
     # Customer tenant: Ollama + tenant BYOK only
     # Founder/admin: Ollama + owner Groq/Gemini/HuggingFace/OpenAI
-    
+
     base_providers = [
         {"id": "ollama", "name": "Ollama", "icon": "cpu", "description": "Local inference", "default": True}
     ]
-    
+
     # Add owner-only providers for admin/founder
     if user.role in ["owner", "admin", "super_admin"]:
         base_providers.extend([
@@ -1369,7 +1384,7 @@ async def list_providers(user=Depends(get_current_user)):
             {"id": "huggingface", "name": "Hugging Face", "icon": "cloud", "description": "Model hub", "default": False},
             {"id": "openai", "name": "OpenAI", "icon": "brain", "description": "GPT models", "default": False}
         ])
-    
+
     return {"providers": base_providers}
 
 
@@ -1405,6 +1420,7 @@ async def ws_api_keys(user=Depends(get_current_user), db: AsyncSession = Depends
 @router.post("/api-keys")
 async def create_ws_key(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     import secrets
+
     from backend.core.security.auth import get_password_hash
 
     raw = f"vk_{secrets.token_urlsafe(32)}"
@@ -1435,7 +1451,7 @@ async def delete_ws_key(key_id: str, user=Depends(get_current_user), db: AsyncSe
 async def list_members(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if not user.workspace_id:
         return [{"id": user.id, "email": user.email, "role": "owner", "joined_at": datetime.now(timezone.utc).isoformat()}]
-        
+
     result = await db.execute(
         select(WorkspaceMember, User)
         .join(User, WorkspaceMember.user_id == User.id)
@@ -1449,7 +1465,7 @@ async def list_members(user=Depends(get_current_user), db: AsyncSession = Depend
             "role": wm.role,
             "joined_at": wm.joined_at.isoformat() if wm.joined_at else None
         })
-        
+
     # If the owner isn't in the members list yet (e.g., legacy data), append them
     if not any(m["id"] == user.id for m in members):
         members.append({
@@ -1458,7 +1474,7 @@ async def list_members(user=Depends(get_current_user), db: AsyncSession = Depend
             "role": "owner",
             "joined_at": datetime.now(timezone.utc).isoformat()
         })
-        
+
     return members
 
 
@@ -1466,22 +1482,23 @@ async def list_members(user=Depends(get_current_user), db: AsyncSession = Depend
 async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if not user.workspace_id:
         raise HTTPException(status_code=400, detail="User is not part of a valid workspace")
-        
+
     email = body.get("email")
     role = body.get("role", "developer")
-    
+
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
-        
+
     # Check if user exists
     user_result = await db.execute(select(User).where(User.email == email))
     target_user = user_result.scalar_one_or_none()
-    
+
     if not target_user:
         # Create a shell user for the invitation
         import secrets
+
         from backend.core.security.auth import get_password_hash
-        
+
         target_user = User(
             email=email,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
@@ -1491,7 +1508,7 @@ async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSes
         db.add(target_user)
         await db.commit()
         await db.refresh(target_user)
-        
+
     # Check if already a member
     member_result = await db.execute(
         select(WorkspaceMember).where(
@@ -1501,7 +1518,7 @@ async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSes
     )
     if member_result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="User is already a member of this workspace")
-        
+
     # Add to workspace
     wm = WorkspaceMember(
         workspace_id=user.workspace_id,
@@ -1512,7 +1529,7 @@ async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSes
     db.add(wm)
     target_user.workspace_id = user.workspace_id
     await db.commit()
-    
+
     return {"message": f"Invitation successfully sent and {email} has been provisioned."}
 
 
@@ -1570,7 +1587,7 @@ async def get_workspace_settings(user=Depends(get_current_user), db: AsyncSessio
     result = await db.execute(select(Workspace).where(Workspace.id == ws_id))
     workspace = result.scalar_one_or_none()
     cfg = workspace.settings_json if workspace else {}
-    
+
     # Query database for authentic integrations status
     try:
         int_result = await db.execute(select(WorkspaceIntegration).where(WorkspaceIntegration.workspace_id == (user.workspace_id or "default")))
@@ -1580,7 +1597,7 @@ async def get_workspace_settings(user=Depends(get_current_user), db: AsyncSessio
             integrations_status[db_i.provider] = db_i.status == "active"
     except Exception:
         integrations_status = {"slack": True, "pagerduty": True, "github": True, "vercel": True, "datadog": False, "jira": False}
-        
+
     return {
         "workspace_name": workspace.name if workspace else "acme-prod",
         "slug": workspace.slug if workspace else "acme.veklom.app",
@@ -1623,6 +1640,7 @@ async def rotate_workspace_secrets(user=Depends(get_current_user), db: AsyncSess
     result = await db.execute(select(APIKey).where(APIKey.workspace_id == (user.workspace_id or ""), APIKey.is_active == True))
     keys = result.scalars().all()
     import secrets as _secrets
+
     from backend.core.security.auth import get_password_hash
     rotated = 0
     for k in keys:
@@ -1639,15 +1657,15 @@ async def delete_workspace(body: dict, user=Depends(get_current_user), db: Async
     """Danger zone: Delete the entire workspace and all its data."""
     if user.role not in ("owner", "super_admin"):
         raise HTTPException(status_code=403, detail="Only workspace owners can delete the workspace")
-    
+
     confirmation = body.get("confirmation", "")
     if confirmation != "DELETE":
         raise HTTPException(status_code=400, detail="Must confirm with 'DELETE' in request body")
-    
+
     ws_id = user.workspace_id or ""
     if not ws_id:
         raise HTTPException(status_code=400, detail="No workspace to delete")
-    
+
     # In a real implementation, this would cascade delete all related data
     # For now, we'll mark the workspace as inactive
     result = await db.execute(select(Workspace).where(Workspace.id == ws_id))
@@ -1656,14 +1674,12 @@ async def delete_workspace(body: dict, user=Depends(get_current_user), db: Async
         workspace.is_active = False
         workspace.name = f"{workspace.name} (deleted)"
         await db.commit()
-    
+
     return {"deleted": True, "workspace_id": ws_id, "message": "Workspace deleted. This action is irreversible."}
 
 
 @router.get("/audit-export")
 async def export_audit_log(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from fastapi.responses import StreamingResponse
-    import io
     ws = user.workspace_id or ""
     result = await db.execute(
         select(AuditLog).where(AuditLog.workspace_id == ws).order_by(AuditLog.created_at.desc()).limit(1000)
@@ -1836,11 +1852,13 @@ async def get_onboarding_vertical(
 
 
 # --- Workspace GitHub Sync ---
-from pydantic import BaseModel
-import httpx
 import uuid
+
+import httpx
+from pydantic import BaseModel
+
 from backend.db.models.agent import Agent
-from backend.db.models.marketplace import Pipeline
+
 
 @router.post("/github/sync")
 async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -1848,25 +1866,25 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     Syncs tenant assets (agents, pipelines) from their connected GitHub repository into their workspace.
     """
     workspace_id = user.workspace_id or "default"
-    
+
     # Check if workspace has a repo configured
     workspace = await db.scalar(select(Workspace).where(Workspace.id == workspace_id))
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
-        
+
     repo = workspace.selected_repo
     if not repo:
         raise HTTPException(status_code=400, detail="No GitHub repository configured for this workspace.")
-        
+
     # Attempt to use real user github_access_token if available, otherwise mock fetch for MVP demo purposes.
     # In a real enterprise system, we would query the GitHub API tree:
     # GET /repos/{owner}/{repo}/git/trees/main?recursive=1
-    
+
     token = user.github_access_token
-    
+
     synced_agents = 0
     synced_pipelines = 0
-    
+
     if token and repo and "/" in repo:
         try:
             async with httpx.AsyncClient() as client:
@@ -1895,7 +1913,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
         # Mock sync for robust UI experience when no token is present
         synced_agents = 3
         synced_pipelines = 2
-        
+
     # Insert mock synced agents
     for i in range(synced_agents):
         agent_id = f"ag_{uuid.uuid4().hex[:12]}"
@@ -1907,7 +1925,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
             status="active"
         )
         db.add(new_agent)
-        
+
     # Insert mock synced pipelines
     for i in range(synced_pipelines):
         pipe_id = f"pipe_{uuid.uuid4().hex[:12]}"
@@ -1919,13 +1937,13 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
             status="active"
         )
         db.add(new_pipe)
-        
+
     try:
         await db.commit()
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error during sync: {e}")
-        
+
     return {
         "status": "success",
         "message": f"Successfully synced {synced_agents} agents and {synced_pipelines} pipelines from {repo}.",

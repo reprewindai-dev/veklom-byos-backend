@@ -523,13 +523,12 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         db.add(workspace)
         await db.flush()  # Get workspace.id before creating user
 
-        is_founder = email.lower() in (settings.ADMIN_EMAIL.lower(), "founder@veklom.com", "reprewindai@gmail.com")
         user = User(
             email=email,
             hashed_password=get_password_hash(body.password),
             full_name=body.full_name,
-            role="SUPER_ADMIN" if is_founder else "admin",
-            is_superuser=True if is_founder else False,
+            role="admin",  # They are the admin/owner of their own workspace
+            is_superuser=False,
             status="pending_verification",
             workspace_id=workspace.id,
         )
@@ -1348,13 +1347,12 @@ async def github_callback(
         db.add(workspace)
         await db.flush()
 
-        is_founder = email.lower() in (settings.ADMIN_EMAIL.lower(), "founder@veklom.com", "reprewindai@gmail.com")
         user = User(
             email=email,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             full_name=full_name,
-            role="SUPER_ADMIN" if is_founder else "admin",
-            is_superuser=True if is_founder else False,
+            role="admin",  # They are the admin/owner of their own workspace
+            is_superuser=False,
             status="active",
             workspace_id=workspace.id,
             github_id=github_id,
@@ -1367,10 +1365,6 @@ async def github_callback(
         await db.commit()
         await db.refresh(user)
     else:
-        is_founder = email.lower() in (settings.ADMIN_EMAIL.lower(), "founder@veklom.com", "reprewindai@gmail.com")
-        if is_founder:
-            user.role = "SUPER_ADMIN"
-            user.is_superuser = True
         user.github_id = github_id
         user.github_username = github_username
         user.github_access_token = encrypt_token(gh_access_token)

@@ -14,8 +14,27 @@ http:
       priority: 1000
       tls:
         certResolver: letsencrypt
+    terminal-http:
+      entryPoints:
+        - http
+      rule: "Host(`terminal.veklom.com`)"
+      service: terminal
+      priority: 1000
+    terminal-https:
+      entryPoints:
+        - https
+      rule: "Host(`terminal.veklom.com`)"
+      service: terminal
+      priority: 1000
+      tls:
+        certResolver: letsencrypt
   services:
     veklom:
       loadBalancer:
         servers:
           - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:8088"
+    terminal:
+      loadBalancer:
+        servers:
+          - url: "http://terminal-veklom:80"
+

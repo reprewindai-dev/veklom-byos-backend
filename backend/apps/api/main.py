@@ -1715,6 +1715,8 @@ app.include_router(authority.router, prefix="/api/v1")
 app.include_router(authority_runs.router, prefix="/api/v1")
 
 # PGL Adapter - Agent Management
+app.include_router(capi.router, prefix="/api/v1")
+app.include_router(pgl.router, prefix="/api/v1")
 app.include_router(pgl_adapter.router, prefix="/api/v1")
 app.include_router(pgl_onboarding.router, prefix="/api/v1")
 app.include_router(governed.router, prefix="/api/v1")

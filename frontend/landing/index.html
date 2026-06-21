@@ -265,19 +265,8 @@
     </div>
     <script>
     (function(){
-      // Prevent page from scrolling to iframe on load
-      var _scrollFixed = false;
-      function lockScrollTop() {
-        if (!_scrollFixed) { window.scrollTo(0, 0); }
-      }
-      window.addEventListener('scroll', lockScrollTop);
       window.addEventListener('load', function() {
-        window.scrollTo(0, 0);
-        // After 600ms allow natural scrolling (enough time to prevent bounce)
-        setTimeout(function() {
-          _scrollFixed = true;
-          window.removeEventListener('scroll', lockScrollTop);
-        }, 600);
+        if (window.scrollY < 200) { window.scrollTo({top: 0, behavior: 'instant'}); }
       });
 
       var iframe = document.querySelector('#terminal-simulation iframe');
@@ -288,8 +277,7 @@
         clearTimeout(timer);
         iframe.style.display='block';
         if(fallback) fallback.style.display='none';
-        // Ensure page scroll stays at top after iframe loads
-        if (window.scrollY < 200) { window.scrollTo(0, 0); }
+        if (window.scrollY < 200) { window.scrollTo({top: 0, behavior: 'instant'}); }
       };
       iframe.onerror = function() { clearTimeout(timer); iframe.style.display='none'; if(fallback) fallback.style.display='flex'; };
     })();

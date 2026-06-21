@@ -31,6 +31,9 @@ impl ExecutionEngine {
             &request.method,
         )?;
         
+        // Step 2.5: Validate with cAPI
+        Self::validate_with_capi(&request, state).await?;
+        
         // Step 3: Check x402 requirements
         if eat_verification::EATVerificationModule::requires_x402_payment(&request.eat) {
             return Err(EdgeGatewayError::X402PaymentRequired);
@@ -245,6 +248,9 @@ impl ExecutionEngine {
             &request.method,
         )?;
         
+        // Validate with cAPI
+        Self::validate_with_capi(&request, state).await?;
+        
         // Execute the request
         let mut result = Self::execute_http_request(&request, &start_time, state).await?;
         
@@ -252,6 +258,67 @@ impl ExecutionEngine {
         result.x402_payment_reference = Some(payment_reference);
         
         Ok(result)
+    }
+
+    /// Validate execution request payload against cAPI
+    async fn validate_with_capi(
+        request: &ExecutionRequestPayload,
+        state: &AppState,
+    ) -> Result<(), EdgeGatewayError> {
+        let capi_url = format!("{}/api/v1/capi/execute", state.config.backend_url.trim_end_matches('/'));
+        
+        let mut payload_map = std::collections::HashMap::new();
+        payload_map.insert("target_url".to_string(), serde_json::Value::String(request.target_url.clone()));
+        payload_map.insert("method".to_string(), serde_json::Value::String(request.method.clone()));
+        if let Some(body) = &request.body {
+            payload_map.insert("body".to_string(), serde_json::Value::String(body.clone()));
+        }
+        
+        let intent = serde_json::json!({
+            "agent_id": request.eat.agent_id,
+            "pgl_id": request.eat.signature,
+            "mission_id": request.eat.authority_run_id,
+            "target_protocol": "http",
+            "action": request.eat.tool_name,
+            "payload": payload_map,
+        });
+        
+        info!("[cAPI Interceptor] Routing execution intent to cAPI: {}", capi_url);
+        
+        let response = state.http_client.post(&capi_url)
+            .json(&intent)
+            .send()
+            .await
+            .map_err(|e| EdgeGatewayError::ExecutionFailed(format!("Failed to connect to cAPI: {}", e)))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            warn!("[cAPI Interceptor] cAPI VETO engaged or error received (status {}): {}", status, error_text);
+            
+            let reason = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&error_text) {
+                if let Some(detail) = json.get("detail") {
+                    if let Some(msg) = detail.get("message") {
+                        msg.as_str().unwrap_or("Unknown cAPI VETO reason").to_string()
+                    } else {
+                        detail.as_str().map(|s| s.to_string()).unwrap_or(detail.to_string())
+                    }
+                } else if let Some(msg) = json.get("message") {
+                    msg.as_str().unwrap_or("Unknown cAPI VETO reason").to_string()
+                } else {
+                    error_text
+                }
+            } else {
+                error_text
+            };
+            
+            return Err(EdgeGatewayError::ScopeViolation(format!(
+                "cAPI Governed Layer validation failed: {}", reason
+            )));
+        }
+        
+        info!("[cAPI Interceptor] cAPI APPROVED execution for EAT {}", request.eat.eat_id);
+        Ok(())
     }
     
     /// Create execution receipt for audit trail

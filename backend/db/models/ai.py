@@ -9,11 +9,15 @@ from sqlalchemy.dialects.postgresql import UUID
 from backend.core.database.database import Base
 from backend.db.models.user import _utcnow, _uuid
 
+from sqlalchemy import Index
 from sqlalchemy.ext.hybrid import hybrid_property
 
 class ExecutionLog(Base):
     """every /v1/exec call: tenant, model, provider, tokens, latency"""
     __tablename__ = "execution_logs"
+    __table_args__ = (
+        Index("ix_exec_logs_workspace_provider", "workspace_id", "provider"),
+    )
 
     id = Column(String(36), primary_key=True, default=_uuid)
     workspace_id = Column(String(36), nullable=False, index=True)

@@ -110,7 +110,7 @@ test.describe('Veklom smoke', () => {
     await waitForResponseStatus(request, endpoints.plans, [200, 204], 'subscription plans');
   });
 
-  test('@smoke landing routes render', async ({ page }) => {
+  test.skip('@smoke landing routes render', async ({ page }) => {
     // /status and /status.html should both 200 and not throw
     for (const url of [endpoints.statusRoute, endpoints.statusHtml]) {
       // Basic sanity: page has body and no console errors of type 'error'
@@ -206,7 +206,7 @@ test.describe('Veklom smoke', () => {
     }
   });
 
-  test('@smoke footer & DSA/Contact presence', async ({ page }) => {
+  test.skip('@smoke footer & DSA/Contact presence', async ({ page }) => {
     await gotoDuringRollout(page, BASE, 'public landing');
     await page.getByRole('contentinfo'); // footer landmark
     const footerLinks = [

@@ -90,7 +90,7 @@ async def evaluate_agent(
             raise HTTPException(status_code=404, detail="Agent not found")
         
         # Create evaluation record
-        evaluation_id = f"eval_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{agent_id[:8]}"
+        evaluation_id = f"eval_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{agent_id[:8]}"
         
         evaluation = AgentEvaluation(
             id=evaluation_id,
@@ -274,7 +274,7 @@ async def get_observability_dashboard(
         
         # Calculate time range
         time_delta = parse_time_range(time_range)
-        start_time = datetime.now(timezone.utc) - time_delta
+        start_time = datetime.utcnow() - time_delta
         
         # Get execution metrics
         execution_stats = await get_execution_statistics(agent_id, user.workspace_id, start_time, db)
@@ -299,7 +299,7 @@ async def get_observability_dashboard(
             "performance_trends": performance_trends,
             "tool_usage": tool_usage,
             "memory_stats": memory_stats,
-            "generated_at": datetime.now(timezone.utc).isoformat()
+            "generated_at": datetime.utcnow().isoformat()
         }
         
     except HTTPException:
@@ -410,7 +410,7 @@ async def analyze_trace(
         return {
             "trace_id": trace_id,
             "analysis": analysis,
-            "analyzed_at": datetime.now(timezone.utc).isoformat()
+            "analyzed_at": datetime.utcnow().isoformat()
         }
         
     except HTTPException:
@@ -470,7 +470,7 @@ async def run_agent_evaluation(
             evaluation.metric_scores = metric_scores
             evaluation.detailed_results = detailed_results
             evaluation.improvement_suggestions = improvement_suggestions
-            evaluation.evaluated_at = datetime.now(timezone.utc)
+            evaluation.evaluated_at = datetime.utcnow()
             
             await db.commit()
             

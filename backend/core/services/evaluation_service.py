@@ -72,7 +72,7 @@ class AgentEvaluationService:
     ) -> Tuple[float, Dict[str, Any]]:
         """Calculate real success rate metric"""
         try:
-            start_time = datetime.now(timezone.utc) - timedelta(days=time_window_days)
+            start_time = datetime.utcnow() - timedelta(days=time_window_days)
             
             # Get execution statistics
             result = await db.execute(
@@ -154,7 +154,7 @@ class AgentEvaluationService:
     ) -> Tuple[float, Dict[str, Any]]:
         """Calculate real latency performance metric"""
         try:
-            start_time = datetime.now(timezone.utc) - timedelta(days=time_window_days)
+            start_time = datetime.utcnow() - timedelta(days=time_window_days)
             
             # Get latency statistics
             result = await db.execute(
@@ -233,7 +233,7 @@ class AgentEvaluationService:
     ) -> Tuple[float, Dict[str, Any]]:
         """Calculate real cost efficiency metric"""
         try:
-            start_time = datetime.now(timezone.utc) - timedelta(days=time_window_days)
+            start_time = datetime.utcnow() - timedelta(days=time_window_days)
             
             # Get cost statistics
             result = await db.execute(
@@ -309,7 +309,7 @@ class AgentEvaluationService:
     ) -> Tuple[float, Dict[str, Any]]:
         """Calculate real safety and compliance metric"""
         try:
-            start_time = datetime.now(timezone.utc) - timedelta(days=time_window_days)
+            start_time = datetime.utcnow() - timedelta(days=time_window_days)
             
             # Get safety incident statistics
             result = await db.execute(

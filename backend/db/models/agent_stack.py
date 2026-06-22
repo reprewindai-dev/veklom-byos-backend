@@ -36,8 +36,8 @@ class LLMRouter(Base):
     
     # Status and metadata
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     agents = relationship("Agent", back_populates="router")
@@ -74,8 +74,8 @@ class MCPTool(Base):
     
     # Status
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class MCPConnection(Base):
@@ -101,8 +101,8 @@ class MCPConnection(Base):
     session_id = Column(String)
     session_expires = Column(DateTime)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # Layer 3: Memory and Context
@@ -120,7 +120,7 @@ class AgentMemory(Base):
     memory_metadata = Column(JSON)
     
     # Temporal and retrieval
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime)
     access_count = Column(Integer, default=0)
     last_accessed = Column(DateTime)
@@ -152,8 +152,8 @@ class ConversationContext(Base):
     key_entities = Column(JSON)  # Extracted entities and relationships
     intent_history = Column(JSON)  # Track intent changes over time
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     agent = relationship("Agent", back_populates="conversations")
@@ -192,8 +192,8 @@ class Agent(Base):
     success_rate = Column(Float, default=0.0)
     avg_execution_time = Column(Float, default=0.0)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     router = relationship("LLMRouter", back_populates="agents")
@@ -233,7 +233,7 @@ class AgentExecution(Base):
     error_message = Column(Text)
     error_type = Column(String)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
     agent = relationship("Agent", back_populates="executions")
@@ -264,7 +264,7 @@ class AgentEvaluation(Base):
     improvement_suggestions = Column(JSON, default=list)
     
     # Metadata
-    evaluated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    evaluated_at = Column(DateTime, default=datetime.utcnow)
     evaluation_version = Column(String)
     
     # Relationships
@@ -282,7 +282,7 @@ class AgentTrace(Base):
     
     # Trace data
     trace_type = Column(String, nullable=False)  # llm_call, tool_call, memory_access, decision
-    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    timestamp = Column(DateTime, default=datetime.utcnow)
     duration_ms = Column(Integer)
     
     # Detailed trace information
@@ -323,8 +323,8 @@ class AgentGuardrail(Base):
     trigger_count = Column(Integer, default=0)
     last_triggered = Column(DateTime)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class SafetyIncident(Base):
@@ -354,8 +354,8 @@ class SafetyIncident(Base):
     impact_score = Column(Float)
     affected_users = Column(JSON, default=list)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # Multi-agent orchestration
@@ -385,8 +385,8 @@ class AgentSwarm(Base):
     total_tasks = Column(Integer, default=0)
     completed_tasks = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # Indexes for performance

@@ -44,6 +44,7 @@ import asyncio
 import hashlib
 import secrets
 import time
+import re
 from datetime import datetime, timezone
 from typing import Any
 import httpx
@@ -347,44 +348,71 @@ async def run_agent(goal: str, session_id: str | None = None) -> dict:
             clean = clean.strip(fence).strip()
 
         # Try to parse JSON
+        parsed_items = []
         try:
             parsed = json.loads(clean)
+            if isinstance(parsed, list):
+                parsed_items = parsed
+            else:
+                parsed_items = [parsed]
         except json.JSONDecodeError:
-            # Model gave prose — treat as final answer
-            log("DONE", "Prose response — treating as final answer")
-            final_answer = raw
+            # Model may have output multiple JSON objects or prose
+            json_matches = re.findall(r'(\{.*?\})', clean, re.DOTALL)
+            if json_matches:
+                for match in json_matches:
+                    try:
+                        p = json.loads(match)
+                        if isinstance(p, dict) and ("tool" in p or "done" in p):
+                            parsed_items.append(p)
+                    except json.JSONDecodeError:
+                        pass
+            
+            if not parsed_items:
+                # Model gave prose — treat as final answer
+                log("DONE", "Prose response — treating as final answer")
+                final_answer = raw
+                break
+
+        done_flag = False
+        observations = []
+
+        for parsed in parsed_items:
+            # Done signal
+            if parsed.get("done"):
+                final_answer = parsed.get("answer", raw)
+                log("DONE", f"Goal achieved in {iteration} iteration(s)")
+                done_flag = True
+                break
+
+            # Tool call
+            tool_name = parsed.get("tool")
+            tool_args = parsed.get("args", {})
+
+            if not tool_name:
+                log("WARN", f"No tool name in JSON: {parsed}")
+                continue
+
+            log("ACT", f"{tool_name}({json.dumps(tool_args)[:120]})")
+
+            if tool_name not in TOOL_MAP:
+                observation = {"error": f"Unknown tool '{tool_name}'. Valid tools: {list(TOOL_MAP.keys())}"}
+            else:
+                try:
+                    observation = await TOOL_MAP[tool_name](**tool_args)
+                except TypeError as exc:
+                    observation = {"error": f"Bad args for {tool_name}: {exc}"}
+                except Exception as exc:
+                    observation = {"error": str(exc)}
+
+            observations.append({"tool": tool_name, "result": observation})
+            obs_str = json.dumps(observation)
+            log("OBSERVE", obs_str[:300])
+
+        if done_flag:
             break
-
-        # Done signal
-        if parsed.get("done"):
-            final_answer = parsed.get("answer", raw)
-            log("DONE", f"Goal achieved in {iteration} iteration(s)")
-            break
-
-        # Tool call
-        tool_name = parsed.get("tool")
-        tool_args = parsed.get("args", {})
-
-        if not tool_name:
-            log("WARN", f"No tool name in JSON: {parsed}")
-            final_answer = str(parsed)
-            break
-
-        log("ACT", f"{tool_name}({json.dumps(tool_args)[:120]})")
-
-        if tool_name not in TOOL_MAP:
-            observation = {"error": f"Unknown tool '{tool_name}'. Valid tools: {list(TOOL_MAP.keys())}"}
-        else:
-            try:
-                observation = await TOOL_MAP[tool_name](**tool_args)
-            except TypeError as exc:
-                observation = {"error": f"Bad args for {tool_name}: {exc}"}
-            except Exception as exc:
-                observation = {"error": str(exc)}
-
-        obs_str = json.dumps(observation)
-        log("OBSERVE", obs_str[:300])
-        messages.append({"role": "user", "content": f"Tool '{tool_name}' result: {obs_str}"})
+            
+        if observations:
+            messages.append({"role": "user", "content": f"Tool results: {json.dumps(observations)}"})
 
     else:
         final_answer = f"[Agent hit max iterations ({MAX_ITER}) without completing goal]"

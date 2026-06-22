@@ -24,42 +24,38 @@ async def get_execution_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get execution status and details."""
+    """Get execution status and details from real DB."""
     
     try:
-        # Mock execution status for demo
+        from backend.db.models.ai import ExecutionLog
+        
+        result = await db.execute(
+            select(ExecutionLog).where(ExecutionLog.id == execution_id)
+        )
+        exec_log = result.scalar_one_or_none()
+        
+        if not exec_log:
+            raise HTTPException(status_code=404, detail="Execution not found in database.")
+            
         return {
-            "execution_id": execution_id,
-            "status": ExecutionStatus.COMPLETED,
-            "priority": ExecutionPriority.NORMAL,
-            "agent_id": "agent_001",
-            "tool_name": "web_search",
-            "tool_parameters": {"query": "test", "limit": 10},
-            "authority_run_id": "run_abc123",
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "duration_ms": 1250,
-            "result": {
-                "success": True,
-                "data": {"results": ["result1", "result2"]},
-                "error": None
-            },
+            "execution_id": exec_log.id,
+            "status": exec_log.status,
+            "agent_id": exec_log.user_id,
+            "tool_name": exec_log.model,
+            "started_at": exec_log.created_at.isoformat() if exec_log.created_at else None,
+            "duration_ms": exec_log.latency_ms,
             "resource_usage": {
-                "cpu_ms": 850,
-                "memory_mb": 45,
-                "network_kb": 120
-            },
-            "policy_compliance": {
-                "violations": [],
-                "warnings": [],
-                "approved": True
+                "tokens_used": exec_log.total_tokens,
+                "cost_usd": exec_log.cost_usd
             }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get execution status: {str(e)}"
+            detail=f"Failed to get execution status from DB: {str(e)}"
         )
 
 
@@ -130,39 +126,37 @@ async def get_execution_history(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get execution history."""
+    """Get genuine execution history from DB."""
     
     try:
+        from backend.db.models.ai import ExecutionLog
+        
+        result = await db.execute(
+            select(ExecutionLog)
+            .where(ExecutionLog.workspace_id == current_user.workspace_id)
+            .order_by(ExecutionLog.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        logs = result.scalars().all()
+        
         return [
             {
-                "execution_id": "exec_003",
-                "agent_id": "agent_001",
-                "tool_name": "automation",
-                "status": ExecutionStatus.COMPLETED,
-                "started_at": "2026-01-15T09:30:00Z",
-                "completed_at": "2026-01-15T09:32:15Z",
-                "duration_ms": 135000,
-                "success": True,
-                "priority": ExecutionPriority.NORMAL
-            },
-            {
-                "execution_id": "exec_004",
-                "agent_id": "agent_002",
-                "tool_name": "data_processing",
-                "status": ExecutionStatus.FAILED,
-                "started_at": "2026-01-15T08:45:00Z",
-                "completed_at": "2026-01-15T08:46:30Z",
-                "duration_ms": 90000,
-                "success": False,
-                "error": "Timeout exceeded",
-                "priority": ExecutionPriority.LOW
+                "execution_id": log.id,
+                "agent_id": log.user_id,
+                "tool_name": log.model,
+                "status": log.status,
+                "started_at": log.created_at.isoformat() if log.created_at else None,
+                "duration_ms": log.latency_ms,
+                "success": log.status == "completed"
             }
+            for log in logs
         ]
         
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get execution history: {str(e)}"
+            detail=f"Failed to fetch genuine execution history: {str(e)}"
         )
 
 

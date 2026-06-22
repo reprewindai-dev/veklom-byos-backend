@@ -9710,6 +9710,21 @@ async function executeRun(runId: string) {
       planId: plan.id,
       artifactId: artifact.id,
     });
+    
+    // GPC PIPELINE BUILDER INTEGRATION
+    // Send the compiled artifact to the Veklom Backend so it is converted into a native Pipeline Graph
+    try {
+      const backendUrl = process.env.UACP_BACKEND_BASE_URL || "http://localhost:8088";
+      fetch(`${backendUrl}/api/v1/pipelines/import-uacp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan,
+          artifact
+        })
+      }).catch(err => console.error("[GPC Integration] Failed to send artifact webhook:", err.message));
+    } catch (e) {}
+
     broadcast({ type: "run_update", data: run });
     captureMetricHistory();
     await persistState();

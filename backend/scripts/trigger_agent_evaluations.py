@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from backend.core.database.database import async_session
-from backend.db.models.agent import Agent
+from backend.db.models.agent import Agent, Account
 from backend.db.models.agent_stack import AgentEvaluation
 from backend.apps.api.routers.agent_evaluation import run_agent_evaluation
 from sqlalchemy import select
@@ -21,8 +21,28 @@ async def main():
         agent = agent_result.scalar_one_or_none()
         
         if not agent:
-            print("No agents found in database.")
-            return
+            print("No agents found. Creating a test account and agent...")
+            account_result = await session.execute(select(Account).limit(1))
+            account = account_result.scalar_one_or_none()
+            if not account:
+                account = Account(name="Test Account")
+                session.add(account)
+                await session.commit()
+                await session.refresh(account)
+
+            agent = Agent(
+                account_id=account.id,
+                agent_id="test-agent-" + str(uuid.uuid4())[:8],
+                name="Test Agent",
+                creator="System",
+                jurisdiction="Global",
+                declared_purpose="Evaluation Testing",
+                status="registered"
+            )
+            session.add(agent)
+            await session.commit()
+            await session.refresh(agent)
+            print(f"Created test agent with ID: {agent.id}")
 
         print(f"Triggering evaluation for agent: {agent.name} (ID: {agent.id})")
         

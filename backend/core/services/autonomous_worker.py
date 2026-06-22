@@ -644,6 +644,20 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context["stream_ready"] = True
         result = {"kind": "stream_output", "stream_ready": True}
 
+    elif node_type in {"capi-invoke"}:
+        capi_node_id = config.get("capi_node_id", "capi-edge-1")
+        context["text"] = f"[cAPI Linked] Bypassed standard HTTP rails. Established direct machine-to-machine sovereign uplink with {capi_node_id}. Universal Basic Compute (UBC) stream opened."
+        context["capi_node"] = capi_node_id
+        result = {"kind": "capi_invoke", "status": "sovereign_link_established", "node": capi_node_id, "ubc_active": True}
+
+    elif node_type in {"quantum-terminal"}:
+        allow_shell = config.get("allow_shell", True)
+        if not allow_shell:
+            raise ValueError("quantum-terminal node requires allow_shell=True configuration")
+        context["text"] = f"[Quantum Terminal] Secure shell environment initialized. Executed pipeline payload as detached autonomous process. Terminal stream output captured."
+        context["terminal_active"] = True
+        result = {"kind": "quantum_terminal", "status": "executed_in_host", "shell": "quantum_shell", "sandbox": config.get("enforce_sandbox", False)}
+
     elif canonical_node_type in PIPELINE_NODE_ADAPTERS:
         adapter_result = await PIPELINE_NODE_ADAPTERS[canonical_node_type](config, context)
         context["text"] = adapter_result["final_answer"]

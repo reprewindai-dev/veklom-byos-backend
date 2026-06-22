@@ -6,7 +6,7 @@ from backend.db.models.ai import ExecLog
 from backend.db.models.billing import WalletTransaction, Subscription, BudgetRule, Invoice
 from backend.db.models.billing_ext import BillingUsage, BillingEvent, AnalyticsEvent
 from backend.db.models.security import AuditLog, SecurityEvent, ComplianceCheck, KillSwitchState
-from backend.db.models.marketplace import MarketplaceListing, Pipeline, PipelineRun, Deployment, Vendor
+from backend.db.models.pipelines import Pipeline, PipelineRun, Deployment
 from backend.db.models.agent import Account, AgentUser, Agent, AgentSkill
 from backend.db.models.genome import GenomeVersion
 from backend.db.models.ledger import LedgerEvent
@@ -29,7 +29,7 @@ from backend.db.models.internal_operators import (
 )
 from backend.db.models.telemetry import AgentCall
 from backend.db.models.run import VeklomRun
-from backend.db.models.agentic_commerce import AgenticCheckoutSession
+
 from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake, SyntheticProbeLog
 from backend.db.models.pricing import PricingTier, TierFeature, TierUpgrade
 from backend.db.models.referral import ReferralCode, Referral, ReferralPayout
@@ -46,10 +46,8 @@ __all__ = [
     "AssetReview",
     "AgentCall",
     "VeklomRun",
-    "AgenticCheckoutSession",
     "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog",
-    "MarketplaceListing", "Pipeline", "PipelineRun", "Deployment", "Vendor",
-
+    "Pipeline", "PipelineRun", "Deployment",
     # UACP V3 institutional ownership
     "Account", "AgentUser", "Agent", "AgentSkill",
     "GenomeVersion",

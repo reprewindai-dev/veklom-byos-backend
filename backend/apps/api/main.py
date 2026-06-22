@@ -557,7 +557,7 @@ from backend.apps.api.routers import (
     agents,
     genome,
     agency,
-    agentic_commerce,
+
     ai,
     auth,
     evaluations,
@@ -664,8 +664,6 @@ app.include_router(marketplace.router, prefix="/api/v1")
 app.include_router(benchmarks.router, prefix="/api/v1")
 app.include_router(benchmarks.router, prefix="/api")
 
-# Agentic Commerce (ACP/ACS) — sell every revenue rail through AI agents
-app.include_router(agentic_commerce.router, prefix="/api/v1")
 
 # Pipelines, deployments, routing, autonomous, edge/canary
 app.include_router(pipelines.router, prefix="/api/v1")

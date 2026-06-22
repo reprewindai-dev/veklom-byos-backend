@@ -457,7 +457,7 @@ async def monitoring_audit_export(
 async def platform_pulse(db: AsyncSession = Depends(get_db)):
     """Real platform counts from the database (no hardcoded vanity numbers)."""
     from backend.db.models.workspace import Workspace
-    from backend.db.models.marketplace import MarketplaceListing
+
     from backend.db.models.run import VeklomRun
 
     async def _count(model) -> int:
@@ -467,18 +467,11 @@ async def platform_pulse(db: AsyncSession = Depends(get_db)):
             return 0
 
     total_workspaces = await _count(Workspace)
-    active_listings = await _count(MarketplaceListing)
+    active_listings = 0
     governed_runs = await _count(VeklomRun)
     exec_total = await _count(ExecutionLog)
 
-    since_7d = datetime.now(timezone.utc) - timedelta(days=7)
-    try:
-        new_listings_7d = int((await db.scalar(
-            select(func.count()).select_from(MarketplaceListing)
-            .where(MarketplaceListing.created_at >= since_7d)
-        )) or 0)
-    except Exception:
-        new_listings_7d = 0
+    new_listings_7d = 0
 
     return {
         "total_workspaces": total_workspaces,

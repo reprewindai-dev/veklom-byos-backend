@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
-from backend.db.models.marketplace import Deployment, Pipeline, PipelineRun
+from backend.db.models.pipelines import Deployment, Pipeline, PipelineRun
 from backend.core.services.autonomous_worker import run_pipeline_background
 import asyncio
 import uuid
@@ -519,7 +519,7 @@ async def run_pipeline(pipeline_id: str, user=Depends(get_current_user), db: Asy
     run_id = str(uuid.uuid4())
     
     # Create a PipelineRun record for tracking
-    from backend.db.models.marketplace import PipelineRun
+    from backend.db.models.pipelines import PipelineRun
     run = PipelineRun(
         id=run_id,
         pipeline_id=pipeline.id,
@@ -568,7 +568,7 @@ async def list_pipeline_runs(pipeline_id: str, user=Depends(get_current_user), d
         HTTPException: 404 if the pipeline does not exist or is not accessible in the caller's workspace.
     """
     from fastapi import HTTPException
-    from backend.db.models.marketplace import PipelineRun
+    from backend.db.models.pipelines import PipelineRun
     
     # Verify pipeline belongs to user's workspace
     pipeline = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
@@ -620,7 +620,7 @@ async def get_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_curre
         HTTPException: 404 if the pipeline or the run is not found or access is denied.
     """
     from fastapi import HTTPException
-    from backend.db.models.marketplace import PipelineRun
+    from backend.db.models.pipelines import PipelineRun
     
     # Verify pipeline belongs to user's workspace
     pipeline = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)
@@ -742,7 +742,7 @@ async def stream_pipeline_run(pipeline_id: str, run_id: str, user=Depends(get_cu
         HTTPException: If the pipeline or the specified run does not exist in the caller's workspace or access is denied.
     """
     from fastapi import HTTPException
-    from backend.db.models.marketplace import PipelineRun
+    from backend.db.models.pipelines import PipelineRun
     
     # Verify pipeline belongs to user's workspace
     pipeline = await _get_or_create_pipeline(pipeline_id, user.workspace_id or "default", db)

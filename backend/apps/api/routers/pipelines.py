@@ -360,6 +360,101 @@ async def _get_or_create_pipeline(pipeline_id: str, workspace_id: str, db: Async
 
 
 # --- Pipelines ---
+@router.post("/pipelines/import-uacp")
+async def import_uacp_pipeline(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    plan = body.get("plan", {})
+    artifact = body.get("artifact", {})
+    
+    pipeline_id = str(uuid.uuid4())
+    name = f"UACP V3: {plan.get('title', 'Compiled Plan')}"
+    
+    nodes = []
+    edges = []
+    configs = {}
+    
+    x_offset = 100
+    prev_id = None
+    
+    def add_node(nid, ntype, label, nclass, config=None):
+        nonlocal x_offset, prev_id
+        nodes.append({"id": nid, "type": ntype, "position": {"x": x_offset, "y": 200}, "data": {"label": label, "nodeType": nclass}})
+        if prev_id:
+            edges.append({"id": f"e-{prev_id}-{nid}", "source": prev_id, "target": nid, "animated": True})
+        if config:
+            configs[nid] = config
+        prev_id = nid
+        x_offset += 250
+        
+    # 1. Input Node
+    if artifact.get("references", []):
+        add_node("input-doc", "input", "UACP Document Context", "doc-loader", {
+            "text": "Loaded UACP references",
+            "requireEvidence": True
+        })
+    else:
+        add_node("input-1", "input", "UACP Trigger", "input")
+        
+    # 2. Policy Gate
+    policy_res = plan.get("policy_result", "sovereign_default")
+    add_node("policy-gate", "routing", "UACP Policy Gate", "policy-gate", {
+        "policy": policy_res,
+        "strategy": "redact",
+        "requireEvidence": True,
+        "redactPii": True
+    })
+    
+    # 3. Agent Skills
+    skills = artifact.get("skillIds", [])
+    if not skills:
+        skills = ["General Reasoning"]
+        
+    for idx, skill in enumerate(skills):
+        add_node(f"skill-{idx}", "agent", f"Skill: {skill}", "agent-node", {
+            "model_provider": "gemini",
+            "model_name": "gemini-2.5-flash",
+            "system_prompt": f"Execute UACP Skill: {skill}\nContext from Plan: {plan.get('intent', '')}",
+            "requireEvidence": True,
+            "max_iterations": 3
+        })
+        
+    # 4. Audit Signer
+    add_node("audit-1", "output", "UACP Audit Signer", "audit-signer", {
+        "requireEvidence": True
+    })
+    
+    # 5. Evidence Receipt
+    add_node("receipt-1", "output", "Governance Receipt", "evidence-receipt", {
+        "requireEvidence": True,
+        "format": "json"
+    })
+    
+    graph_data = {
+        "nodes": nodes,
+        "edges": edges,
+        "node_configs": configs,
+        "viewport": {"x": 0, "y": 0, "zoom": 1}
+    }
+    
+    pipe = Pipeline(
+        id=pipeline_id,
+        workspace_id=user.workspace_id if user else "default",
+        name=name,
+        description=artifact.get("summary", "Compiled by UACP V3"),
+        steps={
+            "template": "UACP_V3",
+            "nodes": len(nodes),
+            "vectorStore": "pgvector",
+            "invocations": 0,
+            "lastRun": "—"
+        },
+        config_json=graph_data
+    )
+    db.add(pipe)
+    await db.commit()
+    
+    return {"status": "imported", "pipeline_id": pipeline_id}
+
+
 @router.get("/pipelines")
 async def list_pipelines(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _get_or_create_pipeline("clinical-rag", user.workspace_id or "default", db)

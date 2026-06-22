@@ -579,7 +579,10 @@ async def platform_uptime(db: AsyncSession = Depends(get_db)):
         "avg_response_time_ms": traffic["avg_latency_ms"],
         "components": components,
         "services": services,
+        "history": history[-30:],
         "incidents": incidents,
+        "simulated": False,
+        "source": "live_components+execution_logs+incident_logs",
     }
 
     await redis_cache.set("platform:uptime:metrics", json.dumps(result), ttl=300) # cache for 5 minutes

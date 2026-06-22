@@ -111,7 +111,7 @@ class AgentMemory(Base):
     __tablename__ = "agent_memories"
     
     id = Column(String, primary_key=True)
-    agent_id = Column(String, ForeignKey("agents.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
     workspace_id = Column(String, nullable=False, index=True)
     
     # Memory types
@@ -138,7 +138,7 @@ class ConversationContext(Base):
     __tablename__ = "conversation_contexts"
     
     id = Column(String, primary_key=True)
-    agent_id = Column(String, ForeignKey("agents.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
     workspace_id = Column(String, nullable=False, index=True)
     user_id = Column(String, nullable=False, index=True)
     
@@ -164,7 +164,7 @@ class Agent(Base):
     """Core agent definition and runtime configuration"""
     __tablename__ = "agents"
     
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True)
     workspace_id = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False)
     description = Column(Text)
@@ -208,7 +208,7 @@ class AgentExecution(Base):
     __tablename__ = "agent_executions"
     
     id = Column(String, primary_key=True)
-    agent_id = Column(String, ForeignKey("agents.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
     workspace_id = Column(String, nullable=False, index=True)
     session_id = Column(String, nullable=False, index=True)
     
@@ -245,7 +245,7 @@ class AgentEvaluation(Base):
     __tablename__ = "agent_evaluations"
     
     id = Column(String, primary_key=True)
-    agent_id = Column(String, ForeignKey("agents.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
     workspace_id = Column(String, nullable=False, index=True)
     evaluation_type = Column(String, nullable=False)  # offline, online, safety, performance
     
@@ -277,7 +277,7 @@ class AgentTrace(Base):
     
     id = Column(String, primary_key=True)
     execution_id = Column(String, ForeignKey("agent_executions.id"), nullable=False, index=True)
-    agent_id = Column(String, nullable=False, index=True)
+    agent_id = Column(Integer, nullable=False, index=True)
     workspace_id = Column(String, nullable=False, index=True)
     
     # Trace data
@@ -305,7 +305,7 @@ class AgentGuardrail(Base):
     __tablename__ = "agent_guardrails"
     
     id = Column(String, primary_key=True)
-    agent_id = Column(String, ForeignKey("agents.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
     workspace_id = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False)
     description = Column(Text)
@@ -332,7 +332,7 @@ class SafetyIncident(Base):
     __tablename__ = "safety_incidents"
     
     id = Column(String, primary_key=True)
-    agent_id = Column(String, ForeignKey("agents.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
     workspace_id = Column(String, nullable=False, index=True)
     execution_id = Column(String, ForeignKey("agent_executions.id"), index=True)
     

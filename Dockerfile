@@ -40,7 +40,6 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 COPY irongrid/dist/ ./irongrid/dist/
-COPY uacp-quantum-terminal.html .
 COPY agents/ ./agents/
 
 RUN mkdir -p /app/logs && chown -R veklom:veklom /app

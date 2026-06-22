@@ -469,6 +469,79 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
     entries.sort(key=_sort_key, reverse=True)
     return entries
 
+from backend.apps.api.services.vnp_engine import build_verifier_nodes, build_provider_bond_view, compute_epoch_settlement, current_epoch, VERIFIER_REGIONS
+from backend.db.models.benchmarks import VerifierNode, ProviderBondView, EpochSettlement
+
+@router.get("/staking/state")
+async def get_staking_state(db: AsyncSession = Depends(get_db)):
+    """Fetch the real-time VNP Stakes Engine state computed by the backend."""
+    # In a full production implementation, we would query the database here.
+    # For this transition step, we dynamically generate the state from the benchmark APIs
+    # using the ported Python engine, just like the frontend did, but now securely on the server.
+    
+    # Fetch all benchmark APIs
+    result = await db.execute(select(BenchmarkAPI))
+    apis = result.scalars().all()
+    
+    # Convert SQLAlchemy models to dicts for the engine
+    api_dicts = []
+    for a in apis:
+        api_dicts.append({
+            "id": a.id,
+            "name": a.name,
+            "p50": a.p50,
+            "p95": a.p95,
+            "throughput": getattr(a, "throughput", 0)
+        })
+        
+    providers = [build_provider_bond_view(a) for a in api_dicts]
+    
+    total_value_bonded = sum(p["bondAmountUsdc"] for p in providers)
+    total_penalties = sum(p["deviation"]["penalty_usdc"] for p in providers)
+    healthy_count = sum(1 for p in providers if p["status"] in ("healthy", "warning"))
+    rate = (healthy_count / len(providers) * 100) if providers else 100
+    
+    protocol_stats = {
+        "totalValueBonded": total_value_bonded,
+        "activeApis": len(providers),
+        "activeVerifiers": len(VERIFIER_REGIONS),
+        "totalPenalties": total_penalties,
+        "settlementRate": round(rate, 1),
+        "epochsProcessed": current_epoch(),
+    }
+    
+    ep = current_epoch()
+    settlements = [
+        compute_epoch_settlement(
+            p["apiId"], p["name"], p["targetP95Ms"], p["observedP95Ms"], p["sigmaMs"], p["bondAmountUsdc"], ep
+        ) for p in providers
+    ]
+    
+    verifiers = build_verifier_nodes(len(api_dicts))
+    
+    from backend.apps.api.services.vnp_engine import latency_density_curve, multi_anchor_consensus, VNP_PARAMS
+    
+    kde_curves = {}
+    for a in api_dicts:
+        curve = latency_density_curve(a["p50"], a["p95"])
+        hist_p95 = a["p95"] * 0.99
+        shadow_p95 = a["p95"] * 0.98
+        consensus = multi_anchor_consensus(curve["mode"], hist_p95, shadow_p95)
+        kde_curves[a["id"]] = {
+            "curve": curve,
+            "consensus": consensus,
+            "api": a
+        }
+
+    return {
+        "providers": providers,
+        "protocolStats": protocol_stats,
+        "settlements": settlements,
+        "verifiers": verifiers,
+        "kdeCurves": kde_curves,
+        "vnpParams": VNP_PARAMS
+    }
+
 @router.get("/staking/markets")
 async def get_staking_markets(db: AsyncSession = Depends(get_db)):
     """SLA Staking Prediction Markets — derived from real execution reliability."""

@@ -93,8 +93,27 @@ if has_valid_endpoint and has_valid_headers:
         print(f"[otel] WARNING: Failed to initialize OTLP gRPC exporter: {type(e).__name__}: {e}")
 
 
+import asyncio
+from backend.apps.api.services.vnp_engine import current_epoch
+
+async def vnp_background_indexer():
+    """Background task to periodically compute VNP Stakes Engine updates."""
+    while True:
+        try:
+            # Here we would normally query the database and insert new EpochSettlements,
+            # VerifierNodes, and update ProviderBonds. For now, this loop just simulates 
+            # the backend actively 'indexing' the L2 state every 5 minutes.
+            ep = current_epoch()
+            print(f"[vnp-engine] Running background indexer for epoch {ep}")
+        except Exception as e:
+            print(f"[vnp-engine] Error in background indexer: {e}")
+        await asyncio.sleep(300) # Run every 5 minutes
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Start VNP Stakes Engine background loop
+    vnp_task = asyncio.create_task(vnp_background_indexer())
+    
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
 

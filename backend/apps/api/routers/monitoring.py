@@ -522,7 +522,11 @@ async def platform_uptime(db: AsyncSession = Depends(get_db)):
 
     cached = await redis_cache.get("platform:uptime:metrics")
     if cached:
-        return json.loads(cached)
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
 
     now = datetime.now(timezone.utc)
     components = await _component_health(db)

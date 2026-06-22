@@ -64,3 +64,47 @@ class SyntheticProbeLog(Base):
     log_type = Column(String(32), nullable=False) # info, success, warning, error
     message = Column(Text, nullable=False)
     timestamp = Column(DateTime(timezone=True), default=_utcnow)
+
+class VerifierNode(Base):
+    __tablename__ = "vnp_verifier_nodes"
+
+    address = Column(String(128), primary_key=True)
+    stake = Column(Float, nullable=False)
+    reputation = Column(Float, nullable=False)
+    diversity_score = Column(Float, nullable=False)
+    weight = Column(Float, nullable=False)
+    region = Column(String(64), nullable=False)
+    asn = Column(String(64), nullable=False)
+    measurement_count = Column(Integer, nullable=False)
+    accuracy = Column(Float, nullable=False)
+    active = Column(Boolean, default=True)
+
+class ProviderBondView(Base):
+    __tablename__ = "vnp_provider_bonds"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    api_id = Column(String(36), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    bond_amount_usdc = Column(Float, nullable=False)
+    target_p95_ms = Column(Float, nullable=False)
+    observed_p95_ms = Column(Float, nullable=False)
+    sigma_ms = Column(Float, nullable=False)
+    deviation_ms = Column(Float, nullable=False)
+    tolerance_ms = Column(Float, nullable=False)
+    excess_ms = Column(Float, nullable=False)
+    penalty_usdc = Column(Float, nullable=False)
+    status = Column(String(32), nullable=False) # healthy, warning, breaching, critical
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+class EpochSettlement(Base):
+    __tablename__ = "vnp_epoch_settlements"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    epoch = Column(Integer, nullable=False, index=True)
+    api_id = Column(String(36), nullable=False)
+    name = Column(String(255), nullable=False)
+    observed_p95 = Column(Float, nullable=False)
+    target_p95 = Column(Float, nullable=False)
+    penalty_applied = Column(Float, nullable=False)
+    new_bond_balance = Column(Float, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow)

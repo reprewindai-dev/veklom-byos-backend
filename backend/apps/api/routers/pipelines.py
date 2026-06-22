@@ -98,6 +98,8 @@ FULL_PIPELINE_NODE_CATALOG = {
                 {"id": "deploy-agent", "name": "Deploy Agent", "type": "output", "description": "Package pipeline as a governed agent contract", "certification": {"status": "real", "adapter": "deploy_agent"}},
                 {"id": "lock-engine", "name": "Lock Engine", "type": "gate", "description": "Freeze the execution contract for replayable deploys", "certification": {"status": "real", "adapter": "lock_engine"}},
                 {"id": "marketplace-tool", "name": "Marketplace Tool", "type": "tool", "description": "Invoke Veklom marketplace capabilities", "certification": {"status": "real", "adapter": "marketplace_tool"}},
+                {"id": "capi-invoke", "name": "cAPI Connection", "type": "integration", "description": "Closed-loop Universal Basic Compute (UBC) via Covenant API", "certification": {"status": "real", "adapter": "capi_invoke", "requires": ["capi_node_id"]}},
+                {"id": "quantum-terminal", "name": "Quantum Terminal", "type": "integration", "description": "Execute governed shell commands in autonomous host environment", "certification": {"status": "real", "adapter": "quantum_terminal", "requires": ["allow_shell"]}},
             ],
         },
         {

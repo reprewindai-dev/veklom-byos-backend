@@ -13,7 +13,7 @@ from backend.core.security.auth import get_current_user
 from backend.core.services.posthog_client import hash_id, posthog_service
 from backend.db.models.ai import ExecLog
 from backend.db.models.billing import BudgetRule
-from backend.db.models.marketplace import Deployment, Pipeline
+from backend.db.models.pipelines import Deployment, Pipeline
 from backend.db.models.security import AuditLog, SecurityEvent
 from backend.db.models.user import APIKey, User
 from backend.db.models.workspace import ModelConfig, Workspace, WorkspaceIntegration, WorkspaceMember
@@ -1147,7 +1147,7 @@ async def deploy_model(model_id: str, body: dict = None, user=Depends(get_curren
     """Create a deployment from a selected model."""
     import uuid as _uuid
 
-    from backend.db.models.marketplace import Deployment
+    from backend.db.models.pipelines import Deployment
 
     body = body or {}
     result = await db.execute(

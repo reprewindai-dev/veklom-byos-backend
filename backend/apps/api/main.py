@@ -573,7 +573,7 @@ from backend.apps.api.routers import (
     health,
     hrm,
     # langchain_ops intentionally not imported - kept off the surface until real
-    marketplace,
+
     monitoring,
     payments,
     pipelines,
@@ -657,8 +657,7 @@ app.include_router(autonomous.router, prefix="/api/v1")
 # Monitoring, metrics, insights, telemetry, platform pulse, suggestions
 app.include_router(monitoring.router, prefix="/api/v1")
 
-# Marketplace, vendors, listings, plugins
-app.include_router(marketplace.router, prefix="/api/v1")
+
 
 # Benchmarks
 app.include_router(benchmarks.router, prefix="/api/v1")

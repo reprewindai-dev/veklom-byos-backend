@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.db.models.workspace import Workspace
-from backend.db.models.marketplace import Deployment
+from backend.db.models.pipelines import Deployment
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +148,8 @@ async def github_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 db.add(new_dep)
             else:
                 # Tenant workspace triggers an asset sync (mocked robustly for MVP)
-                from backend.db.models.marketplace import Agent, Pipeline
+                from backend.db.models.pipelines import Pipeline
+                from backend.db.models.agent import Agent
                 for i in range(2):
                     db.add(Agent(
                         id=f"ag_{uuid.uuid4().hex[:12]}",

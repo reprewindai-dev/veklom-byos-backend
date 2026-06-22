@@ -16,7 +16,7 @@ from backend.core.database.redis_client import redis_client
 from backend.core.ai.provider_router import _configured_provider, run_completion
 from backend.core.privacy import pii as pii_engine
 from backend.db.models.ai import ExecLog
-from backend.db.models.marketplace import PipelineRun
+from backend.db.models.pipelines import PipelineRun
 from sqlalchemy import select, text as sql_text, update
 
 logger = logging.getLogger(__name__)

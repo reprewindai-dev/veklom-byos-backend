@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from backend.core.database.database import async_session
-from backend.db.models.agent_stack import Agent, AgentEvaluation
+from backend.db.models.agent import Agent
+from backend.db.models.agent_stack import AgentEvaluation
 from backend.apps.api.routers.agent_evaluation import run_agent_evaluation
 from sqlalchemy import select
 
@@ -36,10 +37,10 @@ async def main():
         evaluation = AgentEvaluation(
             id=evaluation_id,
             agent_id=agent.id,
-            workspace_id=agent.workspace_id,
+            workspace_id=str(agent.account_id),
             evaluation_type=config["type"],
             evaluation_metrics=config["metrics"],
-            baseline_score=agent.success_rate or 0.0,
+            baseline_score=0.0,
             overall_score=0.0,
             evaluation_version="1.0"
         )
@@ -51,7 +52,7 @@ async def main():
         
     # Run evaluation calculation (run_agent_evaluation will create its own session)
     print("Running background evaluation process...")
-    await run_agent_evaluation(evaluation_id, str(agent.id), config, agent.workspace_id)
+    await run_agent_evaluation(evaluation_id, str(agent.id), config, str(agent.account_id))
     
     # Check results
     async with async_session() as session:

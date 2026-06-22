@@ -85,6 +85,254 @@ class ProbeLogSchema(BaseModel):
 # Rich per-provider seed data aligned with VNP scoring dimensions.
 # These baselines are replaced by real GovernedRun metrics once runs accumulate.
 _PROVIDER_SEED = {
+    "gfr-matrix": {
+        "name": "Gradient Field Routing Matrix",
+        "provider": "Veklom",
+        "category": "Zero-Trust Autonomous Execution",
+        "tier": "Apex",
+        "base_score": 995,
+        "p50": 12.4,
+        "p95": 18.2,
+        "p99": 22.5,
+        "sla": 99.999,
+        "drift": 0.0010,
+        "sovereignTier": 1,
+        "complianceLabels": ["x402-Native", "SOC2", "Decentralized", "TLS 1.3"],
+        "govScore": 99,
+        "devScore": 99,
+        "endpointUrl": "https://api.veklom.com/v1/gfr/execute",
+        "description": "Proprietary zero-trust routing mechanism that catches execution drifts before they hit consensus.",
+        "throughput": 45000,
+        "uptime24h": 100.0,
+        "totalStaked": 250000,
+        "status": "excellent",
+        "mcpSchema": {
+            "name": "gfr_fault_matrix_route",
+            "description": "Evaluate multi-agent drift through the Gradient Field Routing Matrix",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"agent_payload": {"type": "string"}, "consensus_threshold": {"type": "number"}},
+                "required": ["agent_payload"]
+            }
+        }
+    },
+    "vfdp-node": {
+        "name": "Financial Data Plane (VFDP)",
+        "provider": "Veklom",
+        "category": "High-Frequency DeFi",
+        "tier": "Apex",
+        "base_score": 990,
+        "p50": 8.1,
+        "p95": 11.5,
+        "p99": 15.0,
+        "sla": 99.995,
+        "drift": 0.0020,
+        "sovereignTier": 1,
+        "complianceLabels": ["x402-Native", "Financial-Grade", "TLS 1.3"],
+        "govScore": 98,
+        "devScore": 97,
+        "endpointUrl": "https://api.veklom.com/v1/finance/plane",
+        "description": "High-throughput financial plane for real-time asset tracking and SLA staking liquidation.",
+        "throughput": 85000,
+        "uptime24h": 99.99,
+        "totalStaked": 500000,
+        "status": "excellent",
+        "mcpSchema": {
+            "name": "vfdp_liquidation_check",
+            "description": "Check real-time SLA staking liquidation status",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"market_id": {"type": "string"}, "tx_hash": {"type": "string"}},
+                "required": ["market_id"]
+            }
+        }
+    },
+    "agent-duel": {
+        "name": "Base.org Swarm Debate Engine",
+        "provider": "Veklom",
+        "category": "Multi-Agent Consensus",
+        "tier": "Sovereign",
+        "base_score": 950,
+        "p50": 85.0,
+        "p95": 120.0,
+        "p99": 150.0,
+        "sla": 99.95,
+        "drift": 0.0050,
+        "sovereignTier": 2,
+        "complianceLabels": ["Base.org", "Web3", "x402-Ready"],
+        "govScore": 95,
+        "devScore": 92,
+        "endpointUrl": "https://veklom-agent-duel.vercel.app/api/v1/protected",
+        "description": "Multi-agent reasoning debates secured by Base.org x402 payment constraints.",
+        "throughput": 12000,
+        "uptime24h": 99.95,
+        "totalStaked": 75000,
+        "status": "excellent",
+        "mcpSchema": {
+            "name": "swarm_debate_execute",
+            "description": "Execute a decentralized AI debate on Base",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"topic": {"type": "string"}, "agents": {"type": "array"}},
+                "required": ["topic", "agents"]
+            }
+        }
+    },
+    "veklom-id": {
+        "name": "Sovereign Operator Registry",
+        "provider": "Veklom",
+        "category": "Identity Layer",
+        "tier": "Apex",
+        "base_score": 985,
+        "p50": 20.5,
+        "p95": 35.0,
+        "p99": 45.0,
+        "sla": 99.99,
+        "drift": 0.0005,
+        "sovereignTier": 1,
+        "complianceLabels": ["Zero-Knowledge", "x402-Native", "Immutable"],
+        "govScore": 100,
+        "devScore": 95,
+        "endpointUrl": "https://veklom-id.vercel.app/api/v1/identity",
+        "description": "Immutable cryptographic identities for machine-to-machine interactions.",
+        "throughput": 30000,
+        "uptime24h": 100.0,
+        "totalStaked": 150000,
+        "status": "excellent",
+        "mcpSchema": {
+            "name": "verify_operator_identity",
+            "description": "Verify the cryptographic identity of an autonomous operator",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"operator_did": {"type": "string"}, "signature": {"type": "string"}},
+                "required": ["operator_did"]
+            }
+        }
+    },
+    "cappi-gateway": {
+        "name": "Covenant API (cAPI) Gateway",
+        "provider": "CAPPO",
+        "category": "Cryptographic Execution",
+        "tier": "Apex",
+        "base_score": 999,
+        "p50": 5.2,
+        "p95": 8.4,
+        "p99": 11.0,
+        "sla": 99.999,
+        "drift": 0.0001,
+        "sovereignTier": 1,
+        "complianceLabels": ["EAT-Signed", "x402-Native", "Hardware-Enclave"],
+        "govScore": 100,
+        "devScore": 99,
+        "endpointUrl": "https://api.veklom.com/v1/covenant/execute",
+        "description": "Deterministic covenant execution layer enforcing Law 0 constraints with cryptographic EAT signatures.",
+        "throughput": 125000,
+        "uptime24h": 100.0,
+        "totalStaked": 1000000,
+        "status": "excellent",
+        "mcpSchema": {
+            "name": "execute_covenant_api",
+            "description": "Execute a strictly governed covenant task",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"action_payload": {"type": "string"}, "auth_token": {"type": "string"}},
+                "required": ["action_payload"]
+            }
+        }
+    },
+    "sovereign-runtime": {
+        "name": "Sovereign Authority Runtime",
+        "provider": "Veklom",
+        "category": "Moving Autonomous Execution",
+        "tier": "Apex",
+        "base_score": 980,
+        "p50": 25.0,
+        "p95": 38.5,
+        "p99": 49.0,
+        "sla": 99.99,
+        "drift": 0.0015,
+        "sovereignTier": 1,
+        "complianceLabels": ["Decentralized", "Web3", "Deterministic"],
+        "govScore": 97,
+        "devScore": 96,
+        "endpointUrl": "https://api.veklom.com/v1/runtime/invoke",
+        "description": "The deterministic pipeline that executes moving autonomous swarm coordination across physical nodes.",
+        "throughput": 18000,
+        "uptime24h": 99.99,
+        "totalStaked": 300000,
+        "status": "excellent",
+        "mcpSchema": {
+            "name": "trigger_sovereign_runtime",
+            "description": "Trigger the 7-step deterministic execution pipeline",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"swarm_intent": {"type": "string"}},
+                "required": ["swarm_intent"]
+            }
+        }
+    },
+    "mcpapi-v2": {
+        "name": "MCPAPI v2.0 Global Router",
+        "provider": "Veklom",
+        "category": "Protocol Normalization",
+        "tier": "Sovereign",
+        "base_score": 965,
+        "p50": 18.0,
+        "p95": 24.5,
+        "p99": 31.0,
+        "sla": 99.95,
+        "drift": 0.0025,
+        "sovereignTier": 2,
+        "complianceLabels": ["MCP-Standard", "x402-Ready"],
+        "govScore": 95,
+        "devScore": 98,
+        "endpointUrl": "https://api.veklom.com/v1/mcpapi/route",
+        "description": "Universal Model Context Protocol compiler translating fragmented APIs into a unified autonomous standard.",
+        "throughput": 42000,
+        "uptime24h": 99.95,
+        "totalStaked": 85000,
+        "status": "excellent",
+        "mcpSchema": {
+            "name": "mcpapi_compile",
+            "description": "Compile arbitrary API definitions into MCPAPI schemas",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"raw_spec": {"type": "string"}},
+                "required": ["raw_spec"]
+            }
+        }
+    },
+    "uacp-terminal": {
+        "name": "UACP Quantum Terminal",
+        "provider": "Veklom",
+        "category": "Secure Telemetry",
+        "tier": "Sovereign",
+        "base_score": 945,
+        "p50": 45.0,
+        "p95": 60.0,
+        "p99": 75.0,
+        "sla": 99.90,
+        "drift": 0.0050,
+        "sovereignTier": 2,
+        "complianceLabels": ["Zero-Trust", "Telemetry"],
+        "govScore": 92,
+        "devScore": 94,
+        "endpointUrl": "wss://api.veklom.com/terminal",
+        "description": "Unified Agent Control Protocol secure socket interface for real-time swarm visualization.",
+        "throughput": 8500,
+        "uptime24h": 99.90,
+        "totalStaked": 45000,
+        "status": "excellent",
+        "mcpSchema": {
+            "name": "uacp_websocket_stream",
+            "description": "Open a UACP telemetry socket stream",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"auth_token": {"type": "string"}, "agent_id": {"type": "string"}},
+                "required": ["auth_token", "agent_id"]
+            }
+        }
+    },
     "openai": {
         "name": "GPT-4o",
         "provider": "OpenAI",

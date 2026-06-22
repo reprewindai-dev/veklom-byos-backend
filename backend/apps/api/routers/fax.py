@@ -25,9 +25,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/connectors/fax", tags=["Fax Connector"])
 
-# In-memory storage mock for fax queue (since we are not adding new models to keep DB pristine)
-# Faxes will also be registered under the AuditLog table for durable audit sealing.
-FAX_DB: Dict[str, Dict[str, Any]] = {}
+# Faxes will be registered under the AuditLog table for durable audit sealing.
+# We map the full fax record state directly into the AuditLog.details JSON payload.
 
 # ---------------------------------------------------------------------------
 # Pydantic Schemas
@@ -151,7 +150,7 @@ async def inbound_fax_webhook(
         "industry_context": industry
     }
     
-    FAX_DB[fax_id] = fax_record
+    fax_record["timestamp"] = fax_record["timestamp"].isoformat()
     
     # Seal the inbound fax in the durable audit ledger
     audit_detail = {
@@ -163,7 +162,8 @@ async def inbound_fax_webhook(
         "receiver_number": body.receiver_number,
         "ocr_summary": ocr_text[:120] + "...",
         "industry_context": industry,
-        "ingested_at": datetime.now(timezone.utc).isoformat()
+        "ingested_at": datetime.now(timezone.utc).isoformat(),
+        "fax_record": fax_record
     }
     
     audit_log = AuditLog(
@@ -213,7 +213,7 @@ async def send_outbound_fax(
         "industry_context": industry
     }
     
-    FAX_DB[fax_id] = fax_record
+    fax_record["timestamp"] = fax_record["timestamp"].isoformat()
     
     audit_detail = {
         "event_type": "outbound_fax_init",
@@ -223,7 +223,8 @@ async def send_outbound_fax(
         "receiver_number": body.recipient_number,
         "require_approval": body.require_approval,
         "initiated_by": user.id,
-        "evidence_id": evidence_id
+        "evidence_id": evidence_id,
+        "fax_record": fax_record
     }
     
     audit_log = AuditLog(
@@ -242,16 +243,28 @@ async def send_outbound_fax(
 
 @router.get("/inbox", response_model=List[FaxResponse])
 async def get_fax_inbox(
-    user=Depends(get_current_user)
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Retrieves the governed fax transmission ledger (inbox & queue).
-    Used directly by the control plane's workspace human review UI.
+    Retrieves the governed fax transmission ledger (inbox & queue) directly from the database.
     """
-    # Simply return all values in reverse-chronological order
-    faxes = list(FAX_DB.values())
-    faxes.sort(key=lambda x: x["timestamp"], reverse=True)
-    return [FaxResponse(**f) for f in faxes]
+    from sqlalchemy import select
+    
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.resource_type == "fax_connector")
+        .where(AuditLog.action.in_(["CONNECTORS_FAX_INGEST", "CONNECTORS_FAX_SEND"]))
+        .order_by(AuditLog.created_at.desc())
+    )
+    logs = result.scalars().all()
+    
+    faxes = []
+    for log in logs:
+        if isinstance(log.details, dict) and "fax_record" in log.details:
+            faxes.append(FaxResponse(**log.details["fax_record"]))
+            
+    return faxes
 
 
 @router.post("/approve/{fax_id}", response_model=FaxResponse)
@@ -262,22 +275,35 @@ async def approve_fax_workflow(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Enforces compliance sign-off on inbound/outbound queued faxes.
-    If approved, transitions fax status and releases it to downstream systems.
+    Enforces compliance sign-off on inbound/outbound queued faxes via durable DB update.
     """
-    if fax_id not in FAX_DB:
-        raise HTTPException(status_code=404, detail="Fax record not found.")
+    from sqlalchemy import select
+    from sqlalchemy.orm.attributes import flag_modified
+    
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.resource_type == "fax_connector")
+        .where(AuditLog.resource_id == fax_id)
+        .where(AuditLog.action.in_(["CONNECTORS_FAX_INGEST", "CONNECTORS_FAX_SEND"]))
+    )
+    log = result.scalars().first()
+    
+    if not log or not isinstance(log.details, dict) or "fax_record" not in log.details:
+        raise HTTPException(status_code=404, detail="Fax record not found in database.")
         
-    fax = FAX_DB[fax_id]
+    fax = log.details["fax_record"]
     
     if body.approved:
-        # If it was outbound pending, mark as sent. If inbound queue, mark as approved
         fax["status"] = "sent" if fax_id.startswith("fax_out") else "approved"
     else:
         fax["status"] = "rejected"
         
     fax["approved_by"] = user.id
     fax["approval_notes"] = body.reviewer_notes
+    
+    # Save back to JSON field
+    log.details["fax_record"] = fax
+    flag_modified(log, "details")
     
     # Commit audit trial update
     audit_detail = {
@@ -289,15 +315,20 @@ async def approve_fax_workflow(
         "evidence_id": fax["evidence_id"]
     }
     
-    audit_log = AuditLog(
+    approval_log = AuditLog(
         user_id=user.id,
         action="CONNECTORS_FAX_APPROVAL",
         resource_type="fax_connector",
         resource_id=fax_id,
         details={**audit_detail, "status": "success"}
     )
-    db.add(audit_log)
-    await db.commit()
+    db.add(approval_log)
+    
+    try:
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error during approval: {e}")
     
     logger.info(f"[Fax Approval] Fax {fax_id} set to {fax['status']} by reviewer {user.id}")
     return FaxResponse(**fax)
@@ -306,11 +337,23 @@ async def approve_fax_workflow(
 @router.get("/{fax_id}", response_model=FaxResponse)
 async def get_fax_details(
     fax_id: str,
-    user=Depends(get_current_user)
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Fetches comprehensive details of a specific fax.
+    Fetches comprehensive details of a specific fax directly from the database.
     """
-    if fax_id not in FAX_DB:
-        raise HTTPException(status_code=404, detail="Fax record not found.")
-    return FaxResponse(**FAX_DB[fax_id])
+    from sqlalchemy import select
+    
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.resource_type == "fax_connector")
+        .where(AuditLog.resource_id == fax_id)
+        .where(AuditLog.action.in_(["CONNECTORS_FAX_INGEST", "CONNECTORS_FAX_SEND"]))
+    )
+    log = result.scalars().first()
+    
+    if not log or not isinstance(log.details, dict) or "fax_record" not in log.details:
+        raise HTTPException(status_code=404, detail="Fax record not found in database.")
+        
+    return FaxResponse(**log.details["fax_record"])

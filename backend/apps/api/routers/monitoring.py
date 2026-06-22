@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
+from backend.core.services.redis_cache import redis_cache
 from backend.core.security.auth import get_current_user
 from backend.db.models.ai import ExecutionLog, IncidentLog
 
@@ -519,11 +520,17 @@ _SERVICE_DEFS = [
 _STATUS_MAP = {"healthy": "up", "degraded": "degraded", "unhealthy": "down", "unknown": "degraded"}
 
 
+
 @router.get("/platform/uptime")
 async def platform_uptime(db: AsyncSession = Depends(get_db)):
     """Real platform status: live component health, incident-derived 90d history,
     real traffic. No simulated numbers. Where there is no historical probe store,
     the basis is stated explicitly rather than inventing a 99.99%."""
+
+    cached = await redis_cache.get("platform:uptime:metrics")
+    if cached:
+        return json.loads(cached)
+
     now = datetime.now(timezone.utc)
     components = await _component_health(db)
     history, active_incidents, uptime_pct = await _incident_history_90d(db)
@@ -566,7 +573,7 @@ async def platform_uptime(db: AsyncSession = Depends(get_db)):
         "severity": i.severity,
     } for i in inc_rows]
 
-    return {
+    result = {
         "overall_status": overall,
         "headline": headline,
         "updated_at": now.isoformat(),
@@ -579,11 +586,13 @@ async def platform_uptime(db: AsyncSession = Depends(get_db)):
         "avg_response_time_ms": traffic["avg_latency_ms"],
         "components": components,
         "services": services,
-        "history": history[-30:],
         "incidents": incidents,
-        "simulated": False,
-        "source": "live_components+execution_logs+incident_logs",
     }
+
+    await redis_cache.set("platform:uptime:metrics", json.dumps(result), ttl=300) # cache for 5 minutes
+
+    return result
+
 
 
 @router.post("/platform/status-updates")

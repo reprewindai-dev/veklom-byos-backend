@@ -128,7 +128,7 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
         "current_step": "Source" if not resume_context else "Test"
     })
 
-    await asyncio.sleep(0.25)
+    await asyncio.sleep(0.01)
     execution = _build_execution_plan(steps)
     total_steps = len(execution)
     if total_steps == 0:
@@ -141,10 +141,10 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
         return
 
     await _set_lifecycle_stage(transaction_id, "Build", 12)
-    await asyncio.sleep(0.25)
+    await asyncio.sleep(0.01)
     preflight = _preflight_execution_plan(execution)
     await _set_lifecycle_stage(transaction_id, "Validate", 24, {"preflight": preflight})
-    await asyncio.sleep(0.25)
+    await asyncio.sleep(0.01)
     blocking = [item for item in preflight["nodes"] if item["certification"]["status"] in {"unsupported"}]
     if blocking:
         context = {"text": "", "trace": [], "policy": {}, "preflight": preflight}
@@ -198,7 +198,7 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
             tokens = int(context.get("tokens") or max(1, len(str(context.get("text", "")).split())))
             cost = float(context.get("cost") or 0)
             await _log_execution(workspace_id, user_id, provider, model, latency, tokens, cost)
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.01)
 
         except PipelinePausedForApproval as pause:
             await _update_pipeline_run(transaction_id, {
@@ -238,16 +238,16 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
             return
 
     await _set_lifecycle_stage(transaction_id, "Stage", 82, {"trace": context.get("trace", []), "preflight": preflight})
-    await asyncio.sleep(0.25)
+    await asyncio.sleep(0.01)
     await _set_lifecycle_stage(transaction_id, "Gate", 92, {"trace": context.get("trace", []), "preflight": preflight, "policy": context.get("policy", {})})
-    await asyncio.sleep(0.25)
+    await asyncio.sleep(0.01)
     if not context.get("deployment_contract"):
         context["deployment_contract"] = _deploy_contract_node("deploy-endpoint", {"implicit": True}, context) if context.get("audit_seal") or context.get("evidence_pack") else {
             "deployable": False,
             "reason": "No Audit Signer, Evidence Pack, Deploy Endpoint, or Deploy Agent node produced a deployment contract.",
         }
     await _set_lifecycle_stage(transaction_id, "Deploy", 98, {"trace": context.get("trace", []), "preflight": preflight, "deployment_contract": context.get("deployment_contract")})
-    await asyncio.sleep(0.25)
+    await asyncio.sleep(0.01)
 
     final_text = str(context.get("text", ""))
     receipt = _build_run_receipt(transaction_id, context, execution, workspace_id, user_id, "completed")
@@ -1345,16 +1345,7 @@ async def _pgl_register_node(config: dict, context: dict) -> dict:
     record_id = str(config.get("record_id") or f"pgl_{proof_hash.replace('0x', '')[:16]}")
     try:
         async with get_db_session() as db:
-            await db.execute(sql_text(
-                """
-                CREATE TABLE IF NOT EXISTS pipeline_governance_ledger (
-                    id text PRIMARY KEY,
-                    proof_hash text NOT NULL,
-                    evidence jsonb NOT NULL,
-                    created_at timestamptz NOT NULL DEFAULT now()
-                )
-                """
-            ))
+
             await db.execute(sql_text(
                 """
                 INSERT INTO pipeline_governance_ledger (id, proof_hash, evidence)
@@ -1384,17 +1375,7 @@ async def _pgl_lineage_anchor_node(config: dict, context: dict) -> dict:
     record_id = str(config.get("record_id") or f"lineage_{lineage_hash[:16]}")
     try:
         async with get_db_session() as db:
-            await db.execute(sql_text(
-                """
-                CREATE TABLE IF NOT EXISTS pipeline_lineage_anchors (
-                    id text PRIMARY KEY,
-                    lineage_hash text NOT NULL,
-                    parent_hash text NOT NULL,
-                    payload jsonb NOT NULL,
-                    created_at timestamptz NOT NULL DEFAULT now()
-                )
-                """
-            ))
+
             await db.execute(sql_text(
                 """
                 INSERT INTO pipeline_lineage_anchors (id, lineage_hash, parent_hash, payload)

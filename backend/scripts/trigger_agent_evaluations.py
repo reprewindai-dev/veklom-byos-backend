@@ -2,7 +2,7 @@ import asyncio
 import sys
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 # Ensure we can import backend modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -47,7 +47,7 @@ async def main():
         print(f"Triggering evaluation for agent: {agent.name} (ID: {agent.id})")
         
         # Create evaluation record
-        evaluation_id = f"eval_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{str(agent.id)[:8]}"
+        evaluation_id = f"eval_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{str(agent.id)[:8]}"
         
         config = {
             "type": "batch",
@@ -62,7 +62,8 @@ async def main():
             evaluation_metrics=config["metrics"],
             baseline_score=0.0,
             overall_score=0.0,
-            evaluation_version="1.0"
+            evaluation_version="1.0",
+            evaluated_at=datetime.utcnow()
         )
         
         session.add(evaluation)
@@ -81,11 +82,16 @@ async def main():
         )
         completed_eval = eval_result.scalar_one()
         
-        print(f"\n--- Evaluation Complete ---")
+        print("\n--- Evaluation Complete ---")
         print(f"Overall Score: {completed_eval.overall_score:.4f}")
-        print(f"Metric Scores:")
-        for k, v in completed_eval.metric_scores.items():
-            print(f"  - {k}: {v:.4f}")
+        print("Metric Scores:")
+        if completed_eval.metric_scores:
+            for k, v in completed_eval.metric_scores.items():
+                print(f"  - {k}: {v:.4f}")
+        else:
+            print("  No metric scores recorded (evaluation may have failed).")
+            if completed_eval.detailed_results:
+                print(f"  Detailed Results: {completed_eval.detailed_results}")
             
         if completed_eval.improvement_suggestions:
             print("\nSuggestions:")

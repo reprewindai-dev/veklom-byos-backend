@@ -331,7 +331,7 @@ class AgentEvaluationService:
             exec_result = await db.execute(
                 select(func.count(AgentExecution.id)).where(
                     and_(
-                        AgentExecution.agent_id == agent_id,
+                        AgentExecution.agent_id == int(agent_id),
                         AgentExecution.workspace_id == workspace_id,
                         AgentExecution.created_at >= start_time
                     )
@@ -366,7 +366,7 @@ class AgentEvaluationService:
             previous_result = await db.execute(
                 select(func.count(SafetyIncident.id)).where(
                     and_(
-                        SafetyIncident.agent_id == agent_id,
+                        SafetyIncident.agent_id == int(agent_id),
                         SafetyIncident.workspace_id == workspace_id,
                         SafetyIncident.created_at >= previous_start,
                         SafetyIncident.created_at < start_time
@@ -440,7 +440,7 @@ class AgentEvaluationService:
                     func.sum(case((AgentMemory.access_count > 0, 1), else_=0)).label("accessed_memories")
                 ).where(
                     and_(
-                        AgentMemory.agent_id == agent_id,
+                        AgentMemory.agent_id == int(agent_id),
                         AgentMemory.workspace_id == workspace_id
                     )
                 )
@@ -492,7 +492,7 @@ class AgentEvaluationService:
                     func.count(AgentTrace.id).label("total_tool_calls")
                 ).where(
                     and_(
-                        AgentTrace.agent_id == agent_id,
+                        AgentTrace.agent_id == int(agent_id),
                         AgentTrace.workspace_id == workspace_id,
                         AgentTrace.trace_type == "tool_call",
                         AgentTrace.created_at >= start_time
@@ -550,7 +550,7 @@ class AgentEvaluationService:
                     func.avg(AgentExecution.duration_ms).label("avg_duration")
                 ).where(
                     and_(
-                        AgentExecution.agent_id == agent_id,
+                        AgentExecution.agent_id == int(agent_id),
                         AgentExecution.workspace_id == workspace_id,
                         AgentExecution.created_at >= start_time
                     )

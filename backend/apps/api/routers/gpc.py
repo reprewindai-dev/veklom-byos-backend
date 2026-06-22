@@ -10,6 +10,10 @@ from fastapi.responses import StreamingResponse
 from backend.core.security.auth import get_current_user, get_current_user_optional
 from backend.core.services.autonomous_worker import run_gpc_background
 import asyncio
+from backend.core.database.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.db.models.pipelines import Pipeline
+from backend.core.ai.provider_router import run_completion
 
 router = APIRouter(prefix="/gpc", tags=["GPC"])
 
@@ -33,32 +37,88 @@ async def save_plan(body: dict, user=Depends(get_current_user_optional)):
 
 
 @router.post("/intent-to-plan")
-async def intent_to_plan(body: dict, user=Depends(get_current_user_optional)):
+async def intent_to_plan(body: dict, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
     intent = body.get("intent", "")
-    plan_id = str(uuid.uuid4())[:8]
-    return {
-        "id": plan_id,
-        "name": f"Governed Plan: {intent[:50]}",
-        "intent": intent,
-        "graph": {
+    provider = body.get("provider", "ollama")
+    model = body.get("model", "qwen2.5:3b")
+
+    prompt = f"""
+You are an expert AI architecture generator for the Veklom Control Plane.
+A user has provided the following "messy" natural language description for a new data pipeline or agent workflow:
+"{intent}"
+
+Convert this intent into a STRICT valid JSON output matching this structure:
+{{
+  "nodes": [
+    {{"id": "node_id_1", "type": "input", "position": {{"x": 100, "y": 100}}, "data": {{"label": "Node Label", "nodeType": "input"}}}},
+    ...
+  ],
+  "edges": [
+    {{"id": "e_node_id_1_node_id_2", "source": "node_id_1", "target": "node_id_2"}}
+  ],
+  "node_configs": {{
+    "node_id_1": {{"policy": "inherit", "requireEvidence": true}}
+  }}
+}}
+
+Available nodeType values include: "input", "pgvector", "llm-qwen2.5:3b", "output", "policy-gate", "webhook", "ask-human", "human-approval".
+Return ONLY valid JSON and nothing else. Do not wrap in markdown code blocks.
+"""
+
+    try:
+        res = await run_completion({
+            "provider": provider,
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}]
+        })
+        content = res.payload.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+        content = content.strip().removeprefix("```json").removesuffix("```").strip()
+        graph_data = json.loads(content)
+    except Exception as e:
+        # Fallback if LLM fails
+        graph_data = {
             "nodes": [
-                {"id": "n1", "type": "classical", "description": "Input validation & PII scan", "policy_tag": "privacy", "entropy": 0.1},
-                {"id": "n2", "type": "quantum", "description": "AI model selection & routing", "policy_tag": "routing", "entropy": 0.3},
-                {"id": "n3", "type": "classical", "description": "Policy enforcement gate", "policy_tag": "compliance", "entropy": 0.05},
-                {"id": "n4", "type": "quantum", "description": "Governed execution", "policy_tag": "execution", "entropy": 0.4},
-                {"id": "n5", "type": "classical", "description": "Evidence capture & audit", "policy_tag": "audit", "entropy": 0.02},
+                {"id": "n1", "type": "input", "position": {"x": 50, "y": 100}, "data": {"label": "Messy Input", "nodeType": "input"}},
+                {"id": "n2", "type": "routing", "position": {"x": 300, "y": 100}, "data": {"label": "AI Generation", "nodeType": "llm-qwen2.5:3b"}},
+                {"id": "n3", "type": "output", "position": {"x": 550, "y": 100}, "data": {"label": "Execution Output", "nodeType": "output"}},
             ],
             "edges": [
-                {"from": "n1", "to": "n2"},
-                {"from": "n2", "to": "n3"},
-                {"from": "n3", "to": "n4"},
-                {"from": "n4", "to": "n5"},
+                {"id": "e12", "source": "n1", "target": "n2"},
+                {"id": "e23", "source": "n2", "target": "n3"}
             ],
+            "node_configs": {
+                "n1": {"policy": "inherit", "requireEvidence": True},
+                "n2": {"provider": "ollama", "model": "qwen2.5:3b", "policy": "cost_quality_balanced", "requireEvidence": True},
+                "n3": {"outputSchema": "signed_json", "requireEvidence": True}
+            }
+        }
+
+    pipeline_id = str(uuid.uuid4())
+    name = f"GPC Plan: {intent[:40]}"
+    
+    pipe = Pipeline(
+        id=pipeline_id,
+        workspace_id=user.workspace_id if user else "default",
+        name=name,
+        description=f"Generated via GPC for intent: {intent}",
+        steps={
+            "template": "GPC",
+            "nodes": len(graph_data.get("nodes", [])),
+            "vectorStore": "pgvector",
+            "invocations": 0,
+            "lastRun": "—"
         },
+        config_json=graph_data
+    )
+    db.add(pipe)
+    await db.commit()
+
+    return {
+        "id": pipeline_id,
+        "name": name,
+        "intent": intent,
+        "graph": graph_data,
         "status": "compiled",
-        "compliance": body.get("compliance", []),
-        "provider": body.get("provider", "ollama"),
-        "model": body.get("model", "llama3"),
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
 

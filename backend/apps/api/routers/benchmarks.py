@@ -472,6 +472,51 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
 from backend.apps.api.services.vnp_engine import build_verifier_nodes, build_provider_bond_view, compute_epoch_settlement, current_epoch, VERIFIER_REGIONS
 from backend.db.models.benchmarks import VerifierNode, ProviderBondView, EpochSettlement
 
+from pydantic import BaseModel
+from eth_account.messages import encode_defunct
+from web3.auto import w3
+
+class RegisterVerifierRequest(BaseModel):
+    message: str
+    signature: str
+    asn: str
+    region: str
+
+@router.post("/staking/register-verifier")
+async def register_verifier(req: RegisterVerifierRequest, db: AsyncSession = Depends(get_db)):
+    """Registers a new Verifier Node via an EOA wallet signature."""
+    try:
+        # Recover the signing address from the message and signature
+        message_encoded = encode_defunct(text=req.message)
+        recovered_address = w3.eth.account.recover_message(message_encoded, signature=req.signature)
+        
+        # Check if already exists
+        existing = await db.scalar(select(VerifierNode).where(VerifierNode.address == recovered_address))
+        if existing:
+            return {"success": False, "message": "Address already registered"}
+            
+        # Create new real node
+        new_node = VerifierNode(
+            address=recovered_address,
+            stake=0, # They must stake separately
+            reputation=50,
+            diversity_score=0.5,
+            weight=0,
+            region=req.region,
+            asn=req.asn,
+            measurement_count=0,
+            accuracy=100.0,
+            active=True
+        )
+        
+        db.add(new_node)
+        await db.commit()
+        
+        return {"success": True, "address": recovered_address}
+        
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
 @router.get("/staking/state")
 async def get_staking_state(db: AsyncSession = Depends(get_db)):
     """Fetch the real-time VNP Stakes Engine state computed by the backend."""

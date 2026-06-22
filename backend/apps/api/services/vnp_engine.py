@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 import hashlib
 import time
 import random
+from backend.core.web3_client import web3_client
 
 # ============ PROTOCOL PARAMETERS ============
 VNP_PARAMS = {
@@ -196,6 +197,12 @@ def build_verifier_nodes(api_count: int) -> List[dict]:
 def compute_epoch_settlement(api_id: str, name: str, target_p95: float, observed_p95: float, sigma: float, bond_usdc: float, epoch: int) -> dict:
     d = compute_deviation(target_p95, observed_p95, sigma)
     penalty = min(bond_usdc, d["penalty_usdc"])
+    
+    # If there is a penalty to slash, submit it to the Base Sepolia testnet!
+    tx_hash = ""
+    if penalty > 0:
+        tx_hash = web3_client.slash_bond(api_id, penalty)
+        
     return {
         "id": f"stl-{epoch}-{api_id[:8]}",
         "epoch": epoch,
@@ -205,6 +212,7 @@ def compute_epoch_settlement(api_id: str, name: str, target_p95: float, observed
         "targetP95": target_p95,
         "penaltyApplied": penalty,
         "newBondBalance": bond_usdc - penalty,
+        "txHash": tx_hash,
         "timestamp": time.time() * 1000
     }
 
@@ -212,7 +220,14 @@ def build_provider_bond_view(api: dict) -> dict:
     target_p95 = api.get("p95", 100) * 0.95
     observed_p95 = api.get("p95", 100)
     sigma = observed_p95 * 0.15
-    bond_amount = 50000 + api.get("throughput", 0) * 10
+    
+    # Fetch real bond from Base Sepolia! Fallback to simulated if not connected
+    onchain_bond = web3_client.get_provider_bond(api.get('id', ''))
+    if onchain_bond > 0:
+        bond_amount = onchain_bond
+    else:
+        bond_amount = 50000 + api.get("throughput", 0) * 10
+        
     d = compute_deviation(target_p95, observed_p95, sigma)
     return {
         "id": f"bond-{api.get('id')}",

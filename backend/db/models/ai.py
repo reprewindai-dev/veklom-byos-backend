@@ -17,6 +17,7 @@ class ExecutionLog(Base):
     __tablename__ = "execution_logs"
     __table_args__ = (
         Index("ix_exec_logs_workspace_provider", "workspace_id", "provider"),
+        Index("ix_execution_logs_created_at", "created_at"),
     )
 
     id = Column(String(36), primary_key=True, default=_uuid)

@@ -428,9 +428,9 @@ async def run_agent_evaluation(
     workspace_id: str
 ):
     """Run agent evaluation in background"""
-    from backend.core.database.database import get_db_context
+    from backend.core.database.database import get_db_session
     
-    async with get_db_context() as db:
+    async with get_db_session() as db:
         try:
             # Get evaluation metrics
             metrics = config.get("metrics", [m.name for m in STANDARD_METRICS])

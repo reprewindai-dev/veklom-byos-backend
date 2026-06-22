@@ -59,6 +59,7 @@ async def run_mission(goal):
         
     except Exception as e:
         end = time.time()
+        print(f"Exception for goal '{goal}': {repr(e)}")
         await log_to_db(goal, {"goal": goal, "answer": str(e)}, start, end, [], str(e))
 
 async def main():

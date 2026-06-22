@@ -82,11 +82,9 @@ class AgentEvaluationService:
                     func.sum(case((AgentExecution.status == "failed", 1), else_=0)).label("failed"),
                     func.sum(case((AgentExecution.status == "cancelled", 1), else_=0)).label("cancelled")
                 ).where(
-                    and_(
-                        AgentExecution.agent_id == agent_id,
-                        AgentExecution.workspace_id == workspace_id,
-                        AgentExecution.created_at >= start_time
-                    )
+                    AgentExecution.agent_id == int(agent_id),
+                    AgentExecution.workspace_id == workspace_id,
+                    AgentExecution.created_at >= start_time
                 )
             )
             stats = result.first()
@@ -116,7 +114,7 @@ class AgentEvaluationService:
                     func.sum(case((AgentExecution.status == "completed", 1), else_=0)).label("successful")
                 ).where(
                     and_(
-                        AgentExecution.agent_id == agent_id,
+                        AgentExecution.agent_id == int(agent_id),
                         AgentExecution.workspace_id == workspace_id,
                         AgentExecution.created_at >= previous_start,
                         AgentExecution.created_at < start_time
@@ -166,12 +164,10 @@ class AgentEvaluationService:
                     func.percentile_cont(0.95).within_group(AgentExecution.duration_ms).label("p95_duration"),
                     func.count(AgentExecution.id).label("total")
                 ).where(
-                    and_(
-                        AgentExecution.agent_id == agent_id,
-                        AgentExecution.workspace_id == workspace_id,
-                        AgentExecution.duration_ms.isnot(None),
-                        AgentExecution.created_at >= start_time
-                    )
+                    AgentExecution.agent_id == int(agent_id),
+                    AgentExecution.workspace_id == workspace_id,
+                    AgentExecution.duration_ms.isnot(None),
+                    AgentExecution.created_at >= start_time
                 )
             )
             stats = result.first()
@@ -196,7 +192,7 @@ class AgentEvaluationService:
             previous_result = await db.execute(
                 select(func.avg(AgentExecution.duration_ms)).where(
                     and_(
-                        AgentExecution.agent_id == agent_id,
+                        AgentExecution.agent_id == int(agent_id),
                         AgentExecution.workspace_id == workspace_id,
                         AgentExecution.duration_ms.isnot(None),
                         AgentExecution.created_at >= previous_start,
@@ -244,12 +240,10 @@ class AgentEvaluationService:
                     func.max(AgentExecution.cost_estimate).label("max_cost"),
                     func.count(AgentExecution.id).label("total")
                 ).where(
-                    and_(
-                        AgentExecution.agent_id == agent_id,
-                        AgentExecution.workspace_id == workspace_id,
-                        AgentExecution.cost_estimate.isnot(None),
-                        AgentExecution.created_at >= start_time
-                    )
+                    AgentExecution.agent_id == int(agent_id),
+                    AgentExecution.workspace_id == workspace_id,
+                    AgentExecution.cost_estimate.isnot(None),
+                    AgentExecution.created_at >= start_time
                 )
             )
             stats = result.first()
@@ -273,7 +267,7 @@ class AgentEvaluationService:
             previous_result = await db.execute(
                 select(func.avg(AgentExecution.cost_estimate)).where(
                     and_(
-                        AgentExecution.agent_id == agent_id,
+                        AgentExecution.agent_id == int(agent_id),
                         AgentExecution.workspace_id == workspace_id,
                         AgentExecution.cost_estimate.isnot(None),
                         AgentExecution.created_at >= previous_start,
@@ -320,11 +314,9 @@ class AgentEvaluationService:
                     func.sum(case((SafetyIncident.severity == "medium", 1), else_=0)).label("medium_incidents"),
                     func.sum(case((SafetyIncident.severity == "low", 1), else_=0)).label("low_incidents")
                 ).where(
-                    and_(
-                        SafetyIncident.agent_id == agent_id,
-                        SafetyIncident.workspace_id == workspace_id,
-                        SafetyIncident.created_at >= start_time
-                    )
+                    SafetyIncident.agent_id == int(agent_id),
+                    SafetyIncident.workspace_id == workspace_id,
+                    SafetyIncident.created_at >= start_time
                 )
             )
             stats = result.first()

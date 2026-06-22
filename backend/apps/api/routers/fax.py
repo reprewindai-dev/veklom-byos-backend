@@ -11,6 +11,8 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
+import httpx
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
@@ -66,42 +68,53 @@ class FaxResponse(BaseModel):
 # Mock OCR & Classifier AI helpers
 # ---------------------------------------------------------------------------
 
-def simulate_ocr_and_classification(document_url: str) -> tuple[str, str, str]:
+async def perform_ocr_and_classification(document_url: str) -> tuple[str, str, str]:
     """
-    Simulates high-accuracy optical character recognition (OCR) and
-    governed industry document classification.
+    Downloads document and uses OpenAI Vision API for true OCR and classification.
     """
-    url_lower = document_url.lower()
-    if "patient" in url_lower or "medical" in url_lower or "clinical" in url_lower:
-        ocr_text = (
-            "PATIENT intake form. NAME: John Doe. DOB: 08/14/1982. DIAGNOSIS: Essential hypertension. "
-            "PROVIDER: Sovereign Health Partners. POLICY: GVC-88912A. Treatment plan requested."
-        )
-        classification = "PHI_CLINICAL_INTAKE"
-        industry = "Healthcare (HIPAA Regulated)"
-    elif "court" in url_lower or "legal" in url_lower or "brief" in url_lower:
-        ocr_text = (
-            "IN THE DISTRICT COURT of Veklom. CASE NO: 2026-CV-88912. PLAINTIFF: Veklom Corp. "
-            "DEFENDANT: Sovereign Infrastructure Group. MOTION for Summary Judgment."
-        )
-        classification = "LEGAL_COURT_FILING"
-        industry = "Legal Services"
-    elif "invoice" in url_lower or "billing" in url_lower or "claim" in url_lower:
-        ocr_text = (
-            "VEKLOM BILLING & CLAIMS. INVOICE ID: INV-99021. TOTAL DUE: $12,500.00 USDC. "
-            "SERVICE DETAILED: GPU Node Sovereign execution hours. TAX ID: 99-81273."
-        )
-        classification = "FINANCIAL_INVOICE"
-        industry = "Financial Services / Billing"
-    else:
-        ocr_text = (
-            "VEKLOM SECURE INGESTION GATEWAY. Inbound document transmission. "
-            "Lineage: Fax-over-IP (FoIP) server. Check integrity seal."
-        )
-        classification = "UNCLASSIFIED_GOVERNED_DOC"
-        industry = "General Governance"
-        
-    return ocr_text, classification, industry
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            payload = {
+                "model": "gpt-4o",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a highly secure compliance AI. Extract the full text (OCR) from the provided document image. Then classify its industry (e.g. 'Healthcare (HIPAA Regulated)', 'Legal Services', 'Financial Services / Billing') and its specific document type classification (e.g. 'PHI_CLINICAL_INTAKE', 'LEGAL_COURT_FILING', 'FINANCIAL_INVOICE'). Format your output exactly as JSON: {\"ocr_text\": \"...\", \"classification\": \"...\", \"industry\": \"...\"}"
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": document_url
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "response_format": {"type": "json_object"}
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            ai_response = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
+            if ai_response.status_code != 200:
+                logger.error(f"OpenAI API Error: {ai_response.text}")
+                return "OCR failed due to AI API error.", "UNKNOWN", "Unknown"
+                
+            result_json = ai_response.json()
+            content = result_json["choices"][0]["message"]["content"]
+            parsed = json.loads(content)
+            
+            return parsed.get("ocr_text", "No text found"), parsed.get("classification", "UNCLASSIFIED"), parsed.get("industry", "Unknown")
+            
+    except Exception as e:
+        logger.error(f"OCR execution failed: {e}")
+        return f"OCR execution failed: {str(e)}", "ERROR", "Unknown"
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -132,8 +145,8 @@ async def inbound_fax_webhook(
     fax_id = f"fax_in_{uuid.uuid4().hex[:12]}"
     evidence_id = f"evd_{uuid.uuid4().hex[:16]}"
     
-    # Run OCR and classification simulation
-    ocr_text, classification, industry = simulate_ocr_and_classification(body.document_url)
+    # Run true OCR and classification via AI Vision
+    ocr_text, classification, industry = await perform_ocr_and_classification(body.document_url)
     
     fax_record = {
         "fax_id": fax_id,
@@ -196,7 +209,7 @@ async def send_outbound_fax(
     
     status_state = "pending_approval" if body.require_approval else "sent"
     
-    ocr_text, classification, industry = simulate_ocr_and_classification(body.document_url)
+    ocr_text, classification, industry = await perform_ocr_and_classification(body.document_url)
     
     fax_record = {
         "fax_id": fax_id,

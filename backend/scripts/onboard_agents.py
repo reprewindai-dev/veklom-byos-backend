@@ -75,7 +75,7 @@ async def onboard_agents():
                 genome_hash=genome_hash,
                 constitution_hash=constitution_hash,
                 status="active",
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow()
             )
             db.add(pgl_cert)
 
@@ -86,7 +86,7 @@ async def onboard_agents():
                 genome_hash=genome_hash,
                 document_uri=f"pgl://{workspace_id}/{certificate_id}",
                 parent_agent_ids=[],
-                issued_at=datetime.now(timezone.utc)
+                issued_at=datetime.utcnow()
             )
             db.add(birth_cert)
 
@@ -103,7 +103,7 @@ async def onboard_agents():
                 payload={"genome_hash": genome_hash},
                 prev_event_hash=None,
                 event_hash=event_hash,
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow()
             )
             db.add(ledger_event)
             
@@ -122,8 +122,8 @@ async def onboard_agents():
                 description="Default authority bundle generated during onboarding",
                 tags=["default", "auto-generated"],
                 is_active=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             )
             db.add(authority_bundle)
             
@@ -136,7 +136,7 @@ async def onboard_agents():
                 workspace_id=workspace_id,
                 executor_id=actor_id,
                 status="active",
-                start_time=datetime.now(timezone.utc),
+                start_time=datetime.utcnow(),
                 total_actions=0,
                 approved_actions=0,
                 denied_actions=0,
@@ -144,8 +144,8 @@ async def onboard_agents():
                 decisions=[],
                 violations=[],
                 approvals=[],
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             )
             db.add(authority_run)
 

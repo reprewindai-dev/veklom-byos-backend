@@ -639,6 +639,7 @@ from backend.apps.api.routers import (
     arena,
     benchmarks,
     workspace,
+    upload,
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing

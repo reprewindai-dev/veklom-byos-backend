@@ -66,3 +66,15 @@ class KillSwitchState(Base):
     reason = Column(Text, default="")
     activated_at = Column(DateTime(timezone=True), nullable=True)
     deactivated_at = Column(DateTime(timezone=True), nullable=True)
+
+class VnpStakeLog(Base):
+    __tablename__ = "vnp_stake_logs"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    workspace_id = Column(String(36), default="", index=True)
+    api_route = Column(String(128), nullable=False)
+    stake_amount_usdc = Column(Float, default=0.0)
+    latency_ms = Column(Float, default=0.0)
+    sla_threshold_ms = Column(Float, default=800.0)
+    result = Column(String(32), default="yield")  # "yield" or "slashed"
+    created_at = Column(DateTime(timezone=True), default=_utcnow)

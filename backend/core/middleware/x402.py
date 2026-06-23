@@ -21,6 +21,24 @@ import logging
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+import asyncio
+
+async def _persist_vnp_stake_async(workspace_id: str, path: str, stake_amount: float, latency: float, result: str):
+    try:
+        from backend.core.database.database import async_session
+        from backend.db.models.security import VnpStakeLog
+        async with async_session() as db:
+            log = VnpStakeLog(
+                workspace_id=workspace_id,
+                api_route=path,
+                stake_amount_usdc=stake_amount,
+                latency_ms=latency,
+                result=result
+            )
+            db.add(log)
+            await db.commit()
+    except Exception as e:
+        logger.error(f"[VNP Stakes] Failed to persist stake log: {e}")
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -519,6 +537,10 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
         method = request.method
+        
+        # VNP Stakes Engine: Capture Micro-Stake
+        vnp_stake = request.headers.get("X-VNP-Stake")
+        vnp_start_time = time.perf_counter()
 
         # Test-mode bypass — set X402_DISABLED=true to skip all payment enforcement
         if os.environ.get("X402_DISABLED", "").lower() in ("1", "true", "yes"):
@@ -597,6 +619,24 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 response.headers["X-Veklom-Policy-Result"] = receipt["policy_decision"]
                 response.headers["X-Veklom-Receipt-URL"] = f"{VEKLOM_API_BASE}/receipts/{receipt['receipt_id']}"
                 response.headers["X-Payment-Verified"] = "gateway"
+                
+                # VNP Stakes Engine Execution
+                if vnp_stake:
+                    latency_ms = (time.perf_counter() - vnp_start_time) * 1000
+                    response.headers["X-VNP-Latency-Ms"] = f"{latency_ms:.2f}"
+                    if latency_ms > 800.0:  # SLA Missed -> Trigger Micro-Slash
+                        response.headers["X-VNP-Stake-Result"] = "slashed"
+                        stake_result = "slashed"
+                    else:
+                        response.headers["X-VNP-Stake-Result"] = "yield"
+                        stake_result = "yield"
+                    
+                    try:
+                        amt = float(vnp_stake)
+                    except:
+                        amt = 0.001
+                    asyncio.create_task(_persist_vnp_stake_async("default", path, amt, latency_ms, stake_result))
+                        
                 return response
 
         # D. JWT verification bypass
@@ -708,6 +748,24 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                         response.headers["X-Veklom-Cost-USDC"] = str(receipt["amount"])
                         response.headers["X-Veklom-Policy-Result"] = receipt["policy_decision"]
                         response.headers["X-Veklom-Receipt-URL"] = f"{VEKLOM_API_BASE}/receipts/{receipt['receipt_id']}"
+                        
+                        # VNP Stakes Engine Execution
+                        if vnp_stake:
+                            latency_ms = (time.perf_counter() - vnp_start_time) * 1000
+                            response.headers["X-VNP-Latency-Ms"] = f"{latency_ms:.2f}"
+                            if latency_ms > 800.0:
+                                response.headers["X-VNP-Stake-Result"] = "slashed"
+                                stake_result = "slashed"
+                            else:
+                                response.headers["X-VNP-Stake-Result"] = "yield"
+                                stake_result = "yield"
+                                
+                            try:
+                                amt = float(vnp_stake)
+                            except:
+                                amt = 0.001
+                            asyncio.create_task(_persist_vnp_stake_async(ws_id if 'ws_id' in locals() else "default", path, amt, latency_ms, stake_result))
+                                
                         return response
 
         # E. Verify X-Payment-Proof
@@ -731,6 +789,24 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             response.headers["X-Payment-Verified"] = "true"
             if getattr(request.state, "test_proof_mode", False):
                 response.headers["X-Payment-Test-Mode"] = "true"
+                
+            # VNP Stakes Engine Execution
+            if vnp_stake:
+                latency_ms = (time.perf_counter() - vnp_start_time) * 1000
+                response.headers["X-VNP-Latency-Ms"] = f"{latency_ms:.2f}"
+                if latency_ms > 800.0:
+                    response.headers["X-VNP-Stake-Result"] = "slashed"
+                    stake_result = "slashed"
+                else:
+                    response.headers["X-VNP-Stake-Result"] = "yield"
+                    stake_result = "yield"
+                    
+                try:
+                    amt = float(vnp_stake)
+                except:
+                    amt = 0.001
+                asyncio.create_task(_persist_vnp_stake_async("default", path, amt, latency_ms, stake_result))
+                    
             return response
 
         # F. Free tier IP daily quota check

@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from celery import shared_task
 
 # Ensure SQLAlchemy can be run safely inside Celery processes.
-from backend.core.database.database import async_session_maker
+from backend.core.database.database import async_session
 from backend.services import forecast as forecast_svc
 from backend.db.models.ai import ExecLog
 from sqlalchemy import select, delete
@@ -24,7 +24,7 @@ def train_forecast_models_task(workspace_id: str = None):
     logger.info(f"Starting ML training task for workspace {workspace_id or 'all'}")
     
     async def _train():
-        async with async_session_maker() as db:
+        async with async_session() as db:
             # If a specific workspace is provided, train only for that workspace
             # Otherwise, you would fetch all workspaces and train for each.
             ws_id = workspace_id or "default"
@@ -42,7 +42,7 @@ def purge_expired_logs_task(retention_days: int = 90):
     
     async def _purge():
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-        async with async_session_maker() as db:
+        async with async_session() as db:
             # Delete execution logs older than cutoff
             stmt = delete(ExecLog).where(ExecLog.created_at < cutoff)
             result = await db.execute(stmt)

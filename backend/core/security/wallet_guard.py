@@ -4,7 +4,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
-from backend.core.security.auth import get_current_user
+from backend.core.security.auth import get_current_user_or_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +15,16 @@ ENDPOINT_CATALOG = {
     "/api/v1/ai/complete": {"token_cost": 25, "plan": "starter"},
     "/api/v1/cost/predict": {"token_cost": 10, "plan": "starter"},
     "/api/v1/exec": {"token_cost": 50, "plan": "pro"},
+    "/v1/exec": {"token_cost": 50, "plan": "pro"},
+    "/api/ai/exec": {"token_cost": 50, "plan": "pro"},
+    "/ai/exec": {"token_cost": 50, "plan": "pro"},
+    "/api/chat/completions": {"token_cost": 50, "plan": "pro"},
+    "/chat/completions": {"token_cost": 50, "plan": "pro"},
 }
 
 async def token_deduction_guard(
     request: Request,
-    user=Depends(get_current_user),
+    user=Depends(get_current_user_or_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """Intercepts request, calculates cost from catalog, and deducts wallet."""

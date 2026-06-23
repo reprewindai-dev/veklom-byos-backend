@@ -18,6 +18,7 @@ from backend.core.security.auth import get_current_user, get_current_user_or_api
 from backend.core.ai.provider_router import run_completion, stream_completion
 from backend.core.llm.circuit_breaker import CircuitBreaker
 from backend.core.memory.conversation import ConversationMemory
+from backend.core.security.wallet_guard import token_deduction_guard
 from backend.db.models.ai import ExecutionLog, AIAuditLog
 
 router = APIRouter(tags=["LLM Inference Engine"])
@@ -35,7 +36,8 @@ async def exec_prompt(
     body: ExecRequest,
     request: Request,
     user=Depends(get_current_user_or_api_key),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _wallet=Depends(token_deduction_guard)
 ):
     start_time = time.time()
     
@@ -198,7 +200,11 @@ async def exec_prompt(
 # ERC-8021 / Veklom Production Stream Completer compatible endpoints
 @router.post("/chat/completions")
 @router.post("/ai/exec")
-async def exec_stream(request: Request, user=Depends(get_current_user)):
+async def exec_stream(
+    request: Request,
+    user=Depends(get_current_user),
+    _wallet=Depends(token_deduction_guard)
+):
     body = await request.json()
     stream = body.get("stream", True)
 

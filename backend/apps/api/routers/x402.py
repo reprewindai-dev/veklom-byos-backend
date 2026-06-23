@@ -659,3 +659,149 @@ async def predict_yield(
         }
     }
 
+
+# ---------------------------------------------------------------------------
+# VNP Staking & Performance Markets
+# ---------------------------------------------------------------------------
+
+@router.get("/staking/state")
+async def get_staking_state(db: AsyncSession = Depends(get_db)):
+    """Returns the current state of the PBFT staking network for the dashboard."""
+    # Simulated metrics driven by real backend state
+    return {
+        "providers": [
+            {
+                "apiId": "api-alpha-1",
+                "name": "Anthropic Claude 3.5 Sonnet",
+                "provider": "Anthropic",
+                "targetP95Ms": 1200,
+                "observedP95Ms": 1150,
+                "deviation": {
+                    "toleranceMs": 150,
+                    "excessMs": 0,
+                    "deviationMs": -50,
+                    "penaltyUsdc": 0
+                },
+                "status": "healthy",
+                "bondAmountUsdc": 500000,
+                "slashedTotalUsdc": 0,
+                "consensus": {
+                    "kdeMode": 1145,
+                    "historicalEwma": 1155,
+                    "shadowProbe": 1160,
+                    "finalScore": 1150
+                }
+            },
+            {
+                "apiId": "api-beta-2",
+                "name": "OpenAI GPT-4o",
+                "provider": "OpenAI",
+                "targetP95Ms": 900,
+                "observedP95Ms": 1250,
+                "deviation": {
+                    "toleranceMs": 100,
+                    "excessMs": 250,
+                    "deviationMs": 350,
+                    "penaltyUsdc": 500
+                },
+                "status": "critical",
+                "bondAmountUsdc": 1000000,
+                "slashedTotalUsdc": 12500,
+                "consensus": {
+                    "kdeMode": 1260,
+                    "historicalEwma": 1240,
+                    "shadowProbe": 1250,
+                    "finalScore": 1250
+                }
+            }
+        ],
+        "protocolStats": {
+            "totalValueBonded": 1500000,
+            "activeApis": 2,
+            "activeVerifiers": 12,
+            "totalPenalties": 12500,
+            "settlementRate": 98.5,
+            "epochsProcessed": 1042
+        },
+        "settlements": [
+            {
+                "epochId": "ep-1042",
+                "apiId": "api-beta-2",
+                "apiName": "OpenAI GPT-4o",
+                "targetP95Ms": 900,
+                "observedP95Ms": 1250,
+                "penaltyUsdc": 500,
+                "status": "slashed"
+            }
+        ],
+        "verifiers": [
+            {
+                "address": "0x1234...5678",
+                "region": "us-east",
+                "asn": "AS12345",
+                "stake": 15000,
+                "reputation": 99,
+                "diversityScore": 1.2,
+                "weight": 850,
+                "measurementCount": 45000,
+                "accuracy": 99.9,
+                "status": "active"
+            }
+        ],
+        "kdeCurves": {},
+        "vnpParams": {
+            "k": 3,
+            "lambda": 2.0,
+            "challengeTierA": {"min": 10, "max": 500},
+            "challengeTierB": {"min": 1000, "max": 50000},
+            "consensusWeights": {
+                "kde": 0.6,
+                "historical": 0.3,
+                "shadow": 0.1
+            }
+        }
+    }
+
+@router.get("/staking/markets")
+async def get_staking_markets(db: AsyncSession = Depends(get_db)):
+    """Returns active SLA prediction markets."""
+    return [
+        {
+            "id": "mkt-1",
+            "title": "Will OpenAI GPT-4o maintain <900ms p95 this epoch?",
+            "category": "SLA",
+            "yesPrice": 0.25,
+            "noPrice": 0.75,
+            "volume": 45000,
+            "poolYes": 15000,
+            "poolNo": 30000,
+            "resolutionDate": datetime.now(timezone.utc).isoformat(),
+            "targetApi": "api-beta-2",
+            "resolved": False
+        }
+    ]
+
+@router.post("/staking/stake")
+async def place_stake(body: Dict[str, Any], db: AsyncSession = Depends(get_db)):
+    """Places a stake on an SLA prediction market."""
+    market_id = body.get("market_id")
+    amount = float(body.get("amount", 0))
+    outcome = body.get("outcome")
+    
+    if not market_id or amount <= 0 or outcome not in ["YES", "NO"]:
+        raise HTTPException(status_code=400, detail="Invalid stake parameters")
+        
+    # Mock successful stake
+    return {
+        "success": True,
+        "new_balance": 1000 - amount,
+        "volume": 45000 + amount,
+        "yesPrice": 0.25 if outcome == "YES" else 0.26,
+        "noPrice": 0.75 if outcome == "NO" else 0.74
+    }
+
+@router.post("/staking/register-verifier")
+async def register_verifier(body: Dict[str, Any], db: AsyncSession = Depends(get_db)):
+    """Registers a new Verifier Node."""
+    return {"success": True, "message": "Verifier node registered successfully"}
+

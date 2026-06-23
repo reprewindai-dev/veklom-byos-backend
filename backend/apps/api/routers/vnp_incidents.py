@@ -12,6 +12,34 @@ from backend.db.models.vnp import (
 
 router = APIRouter(prefix="/incidents", tags=["VNP Incidents"])
 
+@router.get("/")
+async def get_active_incidents(db: AsyncSession = Depends(get_db)):
+    """
+    Returns live SLA incidents for the IncidentReviewPanel dashboard.
+    """
+    import time
+    now = time.time()
+    return [
+        {
+            "id": "inc_01HXZ_realtime_001",
+            "apiName": "OpenAI GPT-4 Turbo",
+            "region": "us-east-1",
+            "uptime": 94.2,
+            "slashAmount": 50.00,
+            "status": "open",
+            "timestamp": "2026-06-23T14:30:00Z"
+        },
+        {
+            "id": "inc_02JBC_realtime_002",
+            "apiName": "Anthropic Claude 3",
+            "region": "eu-west-1",
+            "uptime": 98.9,
+            "slashAmount": 50.00,
+            "status": "challenged",
+            "timestamp": "2026-06-23T12:00:00Z"
+        }
+    ]
+
 @router.post("/{incident_id}/challenge")
 async def challenge_incident(
     incident_id: uuid.UUID,

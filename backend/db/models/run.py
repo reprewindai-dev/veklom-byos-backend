@@ -42,7 +42,7 @@ class VeklomRun(Base):
     budget = Column(JSONB, nullable=True)
     evidence = Column(JSONB, nullable=True)
 
-    status = Column(Enum(VeklomRunStatus), nullable=False, default=VeklomRunStatus.INTENT_CAPTURED)
+    status = Column(String(32), nullable=False, default=VeklomRunStatus.INTENT_CAPTURED.value)
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)

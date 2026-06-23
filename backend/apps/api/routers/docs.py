@@ -403,29 +403,116 @@ async def get_docs_health():
     }
 
 
+def get_docs_dir() -> str:
+    """Locate the absolute path to the docs directory dynamically."""
+    import os
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = current_dir
+    for _ in range(6):
+        possible_docs = os.path.join(temp_dir, "docs")
+        if os.path.isdir(possible_docs):
+            return possible_docs
+        parent = os.path.dirname(temp_dir)
+        if parent == temp_dir:
+            break
+        temp_dir = parent
+    return os.path.abspath(os.path.join(current_dir, "../../../docs"))
+
+
+def markdown_to_html(md_text: str) -> str:
+    """Simple regex-based markdown to HTML converter."""
+    import re
+    html = md_text
+    
+    # Escape HTML entities first for safety
+    html = html.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    
+    # Code blocks
+    html = re.sub(r'```(.*?)\n(.*?)```', r'<pre><code>\2</code></pre>', html, flags=re.DOTALL)
+    
+    # Headers
+    html = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
+    html = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
+    html = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
+    
+    # Bold / Italic
+    html = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', html)
+    html = re.sub(r'\*(.*?)\*', r'<em>\1</em>', html)
+    
+    # Lists
+    html = re.sub(r'^\s*-\s+(.*?)$', r'<li>\1</li>', html, flags=re.MULTILINE)
+    html = re.sub(r'(<li>.*?</li>)+', r'<ul>\g<0></ul>', html, flags=re.DOTALL)
+    
+    # Links
+    html = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2">\1</a>', html)
+    
+    # Paragraphs (split by double newline, wrap in <p> if not block elements)
+    paragraphs = html.split("\n\n")
+    for i, p in enumerate(paragraphs):
+        p = p.strip()
+        if p and not p.startswith("<h") and not p.startswith("<pre") and not p.startswith("<ul") and not p.startswith("<li"):
+            paragraphs[i] = f"<p>{p.replace('\n', '<br>')}</p>"
+            
+    return "\n\n".join(paragraphs)
+
+
 @router.get("/docs/search")
 async def search_docs(
     q: str = Query(..., min_length=1),
     format: str = Query(default="json", regex="^(json|html)$"),
     user: Optional[User] = Depends(get_current_user_optional)
 ):
-    """Search documentation."""
+    """Search documentation filesystem."""
+    import os
+    import re
+    
     try:
-        # Mock search implementation
-        results = [
-            {
-                "title": "AuthorityRun API",
-                "url": "/docs/api/overview#authority",
-                "snippet": "AuthorityRun governance and execution endpoints...",
-                "relevance": 0.95
-            },
-            {
-                "title": "PGL Onboarding",
-                "url": "/docs/guides/pgl-onboarding",
-                "snippet": "Complete guide to Project Governance Layer onboarding...",
-                "relevance": 0.87
-            }
-        ]
+        docs_dir = get_docs_dir()
+        results = []
+        
+        if os.path.isdir(docs_dir):
+            for root, _, files in os.walk(docs_dir):
+                for file in files:
+                    if file.endswith(".md"):
+                        abs_file_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(abs_file_path, docs_dir).replace("\\", "/")
+                        doc_name = rel_path[:-3]
+                        
+                        try:
+                            with open(abs_file_path, "r", encoding="utf-8") as f:
+                                content = f.read()
+                                
+                            if q.lower() in content.lower():
+                                title = doc_name.replace("-", " ").replace("_", " ").title()
+                                for line in content.splitlines():
+                                    if line.startswith("# "):
+                                        title = line[2:].strip()
+                                        break
+                                        
+                                match_idx = content.lower().find(q.lower())
+                                start_idx = max(0, match_idx - 60)
+                                end_idx = min(len(content), match_idx + len(q) + 80)
+                                snippet = content[start_idx:end_idx].strip()
+                                
+                                if start_idx > 0:
+                                    snippet = "..." + snippet
+                                if end_idx < len(content):
+                                    snippet = snippet + "..."
+                                    
+                                occurrences = len(re.findall(re.escape(q), content, re.IGNORECASE))
+                                relevance = min(0.99, 0.5 + (occurrences * 0.05))
+                                
+                                results.append({
+                                    "title": title,
+                                    "url": f"/docs/{doc_name}",
+                                    "snippet": snippet,
+                                    "relevance": round(relevance, 2)
+                                })
+                        except Exception as file_err:
+                            logger.warning(f"Failed to read file {abs_file_path} during search: {file_err}")
+                            
+        # Sort results by relevance descending
+        results = sorted(results, key=lambda x: x["relevance"], reverse=True)
         
         if format == "json":
             return {
@@ -444,56 +531,129 @@ async def search_docs(
 async def get_docs_with_fallback(path: str, user: Optional[User], format: str = "html"):
     """Try DNS docs first, fallback to local."""
     try:
-        # Try to fetch from DNS/external docs
         external_docs = await fetch_external_docs(path, format)
         if external_docs:
             return external_docs
     except Exception:
         pass
     
-    # Fallback to local docs
     return await serve_local_docs(path, format)
 
 
 async def fetch_external_docs(path: str, format: str):
     """Fetch documentation from external DNS."""
-    # Mock external docs fetch - would integrate with real CDN/docs service
     return None
 
 
 async def serve_local_docs(path: str, format: str = "html"):
-    """Serve local documentation."""
-    # Mock local docs serving - would serve from actual docs directory
-    if path == "index.html" or path == "home":
+    """Serve local documentation from filesystem."""
+    import os
+    
+    docs_dir = get_docs_dir()
+    clean_path = path.strip("/").replace("\\", "/")
+    
+    if not clean_path or clean_path in ("index.html", "home"):
+        files = []
+        if os.path.isdir(docs_dir):
+            for root, _, fs in os.walk(docs_dir):
+                for f in fs:
+                    if f.endswith(".md"):
+                        rel = os.path.relpath(os.path.join(root, f), docs_dir)
+                        files.append(rel.replace("\\", "/")[:-3])
+                        
         return await render_docs_html("index", {
             "title": "Veklom BYOS Documentation",
-            "sections": ["API Overview", "Guides", "Reference"]
+            "sections": sorted(files)
         })
-    
-    raise HTTPException(status_code=404, detail="Documentation not found")
+        
+    md_file_path = os.path.join(docs_dir, f"{clean_path}.md")
+    if not os.path.isfile(md_file_path):
+        md_file_path = os.path.join(docs_dir, clean_path)
+        if not os.path.isfile(md_file_path) and not clean_path.endswith(".md"):
+            md_file_path = os.path.join(docs_dir, f"{clean_path}/README.md")
+            
+    if os.path.isfile(md_file_path):
+        try:
+            with open(md_file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                
+            title = clean_path.replace("-", " ").replace("_", " ").title()
+            for line in content.splitlines():
+                if line.startswith("# "):
+                    title = line[2:].strip()
+                    break
+                    
+            if format == "json":
+                return {
+                    "title": title,
+                    "content": content,
+                    "path": clean_path
+                }
+            elif format == "md":
+                return content
+            else:
+                html_body = markdown_to_html(content)
+                return await render_docs_html("document", {"title": title, "body": html_body, "raw_content": content})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error reading documentation file: {str(e)}")
+            
+    raise HTTPException(status_code=404, detail=f"Documentation file not found: {path}")
 
 
 async def render_docs_html(template: str, data: dict):
     """Render documentation as HTML."""
-    # Mock HTML rendering - would use actual template engine
+    title = data.get("title", "Veklom Documentation")
+    body_content = data.get("body", "")
+    
+    if template == "index":
+        sections_html = "".join(f'<li><a href="/api/v1/docs/{s}">{s.replace("/", " ➔ ").title()}</a></li>' for s in data.get("sections", []))
+        body_content = f"<h2>Available Documents</h2><ul>{sections_html}</ul>"
+    elif template == "search":
+        query = data.get("query", "")
+        results = data.get("results", [])
+        if not results:
+            body_content = f"<p>No results found for query: <strong>{query}</strong></p>"
+        else:
+            results_html = "".join(
+                f'<div style="margin-bottom: 20px;">'
+                f'<h3><a href="/api/v1/docs/{r["url"].replace("/docs/", "")}">{r["title"]}</a> <span style="font-size:0.8em;color:#666;">(relevance: {r["relevance"]})</span></h3>'
+                f'<p style="font-style: italic;">{r["snippet"]}</p>'
+                f'</div>'
+                for r in results
+            )
+            body_content = f"<h2>Search Results for: <em>{query}</em></h2>{results_html}"
+            
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>{data.get('title', 'Veklom Documentation')}</title>
+        <title>{title}</title>
         <style>
-            body {{ font-family: Arial, sans-serif; margin: 40px; }}
-            .header {{ border-bottom: 2px solid #333; padding-bottom: 20px; }}
-            .content {{ margin-top: 20px; }}
+            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; color: #333; background-color: #fcfcfc; }}
+            .container {{ max-width: 800px; margin: 40px auto; padding: 0 20px; }}
+            .header {{ border-bottom: 1px solid #eaeaea; padding-bottom: 20px; margin-bottom: 30px; }}
+            .header h1 {{ margin: 0; font-size: 2.2em; color: #111; }}
+            .content {{ background: white; padding: 30px; border: 1px solid #e1e4e8; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }}
+            pre {{ background-color: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.9em; }}
+            code {{ font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.9em; background-color: rgba(27,31,35,0.05); padding: 0.2em 0.4em; border-radius: 3px; }}
+            a {{ color: #0366d6; text-decoration: none; }}
+            a:hover {{ text-decoration: underline; }}
+            ul {{ padding-left: 20px; }}
+            li {{ margin-bottom: 8px; }}
+            .footer {{ margin-top: 50px; text-align: center; font-size: 0.85em; color: #6a737d; border-top: 1px solid #eaeaea; padding-top: 20px; }}
         </style>
     </head>
     <body>
-        <div class="header">
-            <h1>{data.get('title', 'Veklom Documentation')}</h1>
-        </div>
-        <div class="content">
-            <p>Documentation for template: {template}</p>
-            <pre>{json.dumps(data, indent=2)}</pre>
+        <div class="container">
+            <div class="header">
+                <h1>{title}</h1>
+            </div>
+            <div class="content">
+                {body_content}
+            </div>
+            <div class="footer">
+                <p>&copy; {datetime.now().year} Veklom Sovereign Control Systems. All rights reserved.</p>
+            </div>
         </div>
     </body>
     </html>
@@ -503,13 +663,7 @@ async def render_docs_html(template: str, data: dict):
 
 async def render_markdown(template: str, data: dict):
     """Render documentation as Markdown."""
-    # Mock Markdown rendering
-    md_content = f"# {data.get('title', 'Documentation')}\n\n"
-    md_content += f"{data.get('description', '')}\n\n"
-    md_content += "```json\n"
-    md_content += json.dumps(data, indent=2)
-    md_content += "\n```"
-    return md_content
+    return data.get("raw_content", "")
 
 
 async def get_docs_fallback_error(path: str, error: str):
@@ -517,7 +671,7 @@ async def get_docs_fallback_error(path: str, error: str):
     error_data = {
         "error": "Documentation temporarily unavailable",
         "path": path,
-        "message": "Please try again later or use local docs with ?local=true",
+        "message": f"Documentation path failed to load: {error}",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     return await render_docs_html("error", error_data)

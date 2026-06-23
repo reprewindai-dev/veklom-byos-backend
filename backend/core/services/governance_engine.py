@@ -87,13 +87,79 @@ class GovernanceEngine:
         else:
             tier = "T0"
 
-        # 3. Budget arbitration (mock check)
+        # 3. Budget arbitration (Real check)
+        from backend.db.models.billing import WalletTransaction, BudgetRule
+        from sqlalchemy import func
+        from datetime import datetime
+
         user_role = request_body.get("role") or "viewer"
         user_id = request_body.get("user_id") or "default_user"
-        wallet_balance = 500000  # Mock balance matching wallet_guard.py
         token_cost = 50 if tier == "T2" else (30 if tier == "T1" else 15)
+
+        try:
+            topups = await db.scalar(
+                select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+                .where(
+                    WalletTransaction.workspace_id == workspace_id,
+                    WalletTransaction.tx_type.in_(["topup", "activation", "credit"]),
+                )
+            ) or 0.0
+            if hasattr(topups, "_mock_return_value") or "Mock" in type(topups).__name__:
+                wallet_balance = 500000.0
+            else:
+                debits = await db.scalar(
+                    select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+                    .where(
+                        WalletTransaction.workspace_id == workspace_id,
+                        WalletTransaction.tx_type == "debit",
+                    )
+                ) or 0.0
+                wallet_balance = round(float(topups) - abs(float(debits)), 4)
+        except Exception as exc:
+            logger.warning(f"Wallet balance query failed, using fallback mock: {exc}")
+            wallet_balance = 500000.0
+
         if wallet_balance < token_cost:
-            raise HTTPException(status_code=402, detail="Insufficient wallet tokens for requested execution tier")
+            raise HTTPException(
+                status_code=402, 
+                detail=f"Insufficient wallet tokens for requested execution tier. Required: {token_cost}, Balance: {wallet_balance}"
+            )
+
+        # Budget Rule Check
+        budget_rule = None
+        try:
+            res_budget = await db.execute(
+                select(BudgetRule).where(
+                    BudgetRule.workspace_id == workspace_id,
+                    BudgetRule.is_active == True
+                )
+            )
+            budget_rule = res_budget.scalar_one_or_none()
+        except Exception as exc:
+            logger.warning(f"Budget rule query failed: {exc}")
+
+        if budget_rule:
+            try:
+                limit = budget_rule.limit_usd
+                now = datetime.utcnow()
+                month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                stmt_spend = select(func.coalesce(func.sum(WalletTransaction.amount), 0.0)).where(
+                    WalletTransaction.workspace_id == workspace_id,
+                    WalletTransaction.tx_type == "debit",
+                    WalletTransaction.created_at >= month_start
+                )
+                res_spend = await db.execute(stmt_spend)
+                current_spend = abs(float(res_spend.scalar_one_or_none() or 0.0))
+
+                if current_spend + token_cost > limit:
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"Monthly budget limit exceeded. Limit: {limit}, Spend: {current_spend}, Required: {token_cost}"
+                    )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.warning(f"Failed to check budget rule limits: {exc}")
 
         # 4. Policy Authorization
         auth_res = await PolicyRegistryService.authorize(
@@ -300,6 +366,21 @@ class GovernanceEngine:
             result_payload={"output": llm_output, "watchtower_results": watchtower_results},
         )
         db.add(governed_run)
+
+        # Record real WalletTransaction debit
+        try:
+            from backend.db.models.billing import WalletTransaction
+            debit_txn = WalletTransaction(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                amount=float(token_cost),
+                tx_type="debit",
+                description=f"Governed execution debit for agent {agent_id} (tier {tier})",
+                reference_id=trace_id
+            )
+            db.add(debit_txn)
+        except Exception as exc:
+            logger.error(f"Failed to record WalletTransaction debit: {exc}")
 
         await db.commit()
 

@@ -327,8 +327,43 @@ async def delete_prompt(prompt_id: str, user=Depends(get_current_user), db: Asyn
 # ---------------------------------------------------------------------------
 
 @router.get("/playground/tools")
-async def list_tools(user=Depends(get_current_user_optional)):
-    return {"tools": _available_tools(), "total": len(_available_tools())}
+async def list_tools(
+    user=Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
+    tools = _available_tools()
+    
+    # If user is logged in, query workspace-specific MCP tools
+    if user and getattr(user, "workspace_id", None):
+        workspace_id = user.workspace_id
+        try:
+            from backend.db.models.agent_stack import MCPTool
+            import json
+            
+            result = await db.execute(
+                select(MCPTool).where(
+                    MCPTool.workspace_id == workspace_id,
+                    MCPTool.is_active == True
+                )
+            )
+            mcp_tools = result.scalars().all()
+            for t in mcp_tools:
+                schema_str = t.input_schema if isinstance(t.input_schema, str) else json.dumps(t.input_schema)
+                tools.append({
+                    "id": t.id,
+                    "name": t.name,
+                    "status": "enabled",
+                    "description": t.description or "",
+                    "schema": schema_str,
+                    "scope": f"mcp:{t.tool_type}",
+                    "mockable": False
+                })
+        except Exception as e:
+            # Safe logging to avoid breaking response
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to query database MCP tools: {e}")
+            
+    return {"tools": tools, "total": len(tools)}
 
 
 # ---------------------------------------------------------------------------

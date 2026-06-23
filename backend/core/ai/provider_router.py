@@ -138,8 +138,7 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
             f"Hello! I am your Veklom Sovereign AI Assistant. I have intercepted your prompt to ensure zero-key-exposure and full policy compliance. "
             f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
         )
-        mock_payload = _openai_response("sovereign", "Veklom-Llama3-Sovereign-v1", response_content)
-        mock_payload["usage"] = {"prompt_tokens": 120, "completion_tokens": 150, "total_tokens": 270}
+        mock_payload = _openai_response("sovereign", "Veklom-Llama3-Sovereign-v1", response_content, prompt=body.get("messages"))
         return CompletionResult("sovereign", mock_payload)
 
     errors: list[str] = []
@@ -192,9 +191,7 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
             f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
         )
         
-        mock_payload = _openai_response("sovereign", body.get("model", "veklom-llama3-70b"), response_content)
-        mock_payload["usage"] = {"prompt_tokens": 120, "completion_tokens": 150, "total_tokens": 270}
-        
+        mock_payload = _openai_response("sovereign", body.get("model", "veklom-llama3-70b"), response_content, prompt=body.get("messages"))
         return CompletionResult("sovereign", mock_payload)
     except Exception as e:
         raise HTTPException(
@@ -334,7 +331,7 @@ async def _gemini_completion(body: dict) -> dict:
         raise _provider_error(response.status_code, response.text)
     data = response.json()
     content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-    return _openai_response("gemini", model, content)
+    return _openai_response("gemini", model, content, prompt=body.get("messages"))
 
 
 async def _ollama_completion(body: dict) -> dict:
@@ -347,18 +344,47 @@ async def _ollama_completion(body: dict) -> dict:
         raise _provider_error(response.status_code, response.text)
     data = response.json()
     content = data.get("message", {}).get("content", "")
-    return _openai_response("ollama", model, content)
+    return _openai_response("ollama", model, content, prompt=body.get("messages"))
 
 
-def _openai_response(provider: str, model: str, content: str) -> dict:
+def _openai_response(provider: str, model: str, content: str, prompt: Optional[Any] = None) -> dict:
     now = int(time.time())
+    
+    # Estimate prompt tokens dynamically
+    prompt_str = ""
+    if isinstance(prompt, str):
+        prompt_str = prompt
+    elif isinstance(prompt, list):
+        parts = []
+        for m in prompt:
+            if isinstance(m, dict):
+                parts.append(f"{m.get('role', '')}: {m.get('content', '')}")
+            elif isinstance(m, str):
+                parts.append(m)
+        prompt_str = "\n".join(parts)
+        
+    prompt_tokens = max(1, len(prompt_str) // 4) if prompt_str else 0
+    if not prompt_tokens:
+        # Default fallback
+        prompt_tokens = 120
+        
+    completion_tokens = max(1, len(content) // 4)
+    if completion_tokens < 10:
+        completion_tokens = 150
+        
+    total_tokens = prompt_tokens + completion_tokens
+    
     return {
         "id": f"{provider}-{now}",
         "object": "chat.completion",
         "created": now,
         "model": model,
         "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens
+        },
     }
 
 
@@ -551,8 +577,7 @@ async def run_completion_for_tenant(
             f"Hello! I am your Veklom Sovereign AI Assistant. I have intercepted your prompt to ensure zero-key-exposure and full policy compliance. "
             f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
         )
-        mock_payload = _openai_response("sovereign", "Veklom-Llama3-Sovereign-v1", response_content)
-        mock_payload["usage"] = {"prompt_tokens": 120, "completion_tokens": 150, "total_tokens": 270}
+        mock_payload = _openai_response("sovereign", "Veklom-Llama3-Sovereign-v1", response_content, prompt=body.get("messages"))
         return CompletionResult("sovereign", mock_payload), "default", ""
 
     order, reason = provider_order_for_tenant(body, workspace_id)
@@ -644,9 +669,7 @@ async def run_completion_for_tenant(
             f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
         )
         
-        mock_payload = _openai_response("sovereign", "veklom-llama3-70b", response_content)
-        mock_payload["usage"] = {"prompt_tokens": 120, "completion_tokens": 150, "total_tokens": 270}
-        
+        mock_payload = _openai_response("sovereign", "veklom-llama3-70b", response_content, prompt=body.get("messages"))
         return CompletionResult("sovereign", mock_payload), "default", ""
     except Exception as e:
         raise HTTPException(

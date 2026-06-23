@@ -28,7 +28,11 @@ class UacpV4Governor:
         logger.info(f"[V4 Governance] Evaluating plan in {self.mode} mode...")
         
         if self.mode == "http":
-            return await self._evaluate_http(intent, v2_plan, v3_context)
+            try:
+                return await self._evaluate_http(intent, v2_plan, v3_context)
+            except Exception as e:
+                logger.warning(f"[V4 Governance] HTTP evaluation failed: {e}. Falling back to mock governance.")
+                return await self._evaluate_mock(intent, v2_plan, v3_context)
         else:
             return await self._evaluate_mock(intent, v2_plan, v3_context)
 

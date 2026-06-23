@@ -1852,12 +1852,15 @@ async def get_onboarding_vertical(
 
 
 # --- Workspace GitHub Sync ---
+import logging
 import uuid
 
 import httpx
 from pydantic import BaseModel
 
 from backend.db.models.agent import Agent
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("/github/sync")
@@ -1876,77 +1879,169 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     if not repo:
         raise HTTPException(status_code=400, detail="No GitHub repository configured for this workspace.")
 
-    # Attempt to use real user github_access_token if available, otherwise mock fetch for MVP demo purposes.
-    # In a real enterprise system, we would query the GitHub API tree:
-    # GET /repos/{owner}/{repo}/git/trees/main?recursive=1
-
     token = user.github_access_token
+    if not token:
+        raise HTTPException(
+            status_code=400, 
+            detail="No GitHub access token configured for this user. Please connect your GitHub account in integrations settings."
+        )
 
-    synced_agents = 0
-    synced_pipelines = 0
+    agent_files = []
+    pipeline_files = []
 
-    if token and repo and "/" in repo:
-        try:
-            async with httpx.AsyncClient() as client:
-                headers = {
-                    "Authorization": f"token {token}",
-                    "Accept": "application/vnd.github.v3+json",
-                    "User-Agent": "Veklom-BYOS"
-                }
-                # Fetch repo tree
-                tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
-                resp = await client.get(tree_url, headers=headers, timeout=10.0)
-                if resp.status_code == 200:
-                    tree = resp.json().get("tree", [])
-                    # We would process JSON/YAML files under agents/ or pipelines/
-                    # For this robust MVP, we simply inject mock synced records if successful.
-                    synced_agents = 2
-                    synced_pipelines = 1
-                else:
-                    # Fallback to mock for robust demo if API limits reached
-                    synced_agents = 1
-                    synced_pipelines = 1
-        except Exception:
-            synced_agents = 1
-            synced_pipelines = 1
-    else:
-        # Mock sync for robust UI experience when no token is present
-        synced_agents = 3
-        synced_pipelines = 2
+    try:
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "Authorization": f"token {token}",
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "Veklom-BYOS"
+            }
+            # Fetch repo tree
+            tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
+            resp = await client.get(tree_url, headers=headers, timeout=15.0)
+            if resp.status_code != 200:
+                # Fallback to master branch
+                tree_url = f"https://api.github.com/repos/{repo}/git/trees/master?recursive=1"
+                resp = await client.get(tree_url, headers=headers, timeout=15.0)
 
-    # Insert mock synced agents
-    for i in range(synced_agents):
+            if resp.status_code == 200:
+                tree = resp.json().get("tree", [])
+                for item in tree:
+                    if item.get("type") == "blob":
+                        path = item.get("path", "")
+                        normalized_path = path.replace("\\", "/")
+                        if normalized_path.startswith("agents/") and (normalized_path.endswith(".json") or normalized_path.endswith(".yaml") or normalized_path.endswith(".yml")):
+                            agent_files.append(normalized_path)
+                        elif normalized_path.startswith("pipelines/") and (normalized_path.endswith(".json") or normalized_path.endswith(".yaml") or normalized_path.endswith(".yml")):
+                            pipeline_files.append(normalized_path)
+            else:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"GitHub API returned error status {resp.status_code} during tree fetch: {resp.text}"
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch GitHub repository tree: {str(e)}")
+
+    import yaml
+    import json
+
+    synced_agents_count = 0
+    synced_pipelines_count = 0
+
+    try:
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "Authorization": f"token {token}",
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "Veklom-BYOS"
+            }
+            
+            # Fetch and parse agents
+            for path in agent_files:
+                try:
+                    raw_url = f"https://raw.githubusercontent.com/{repo}/main/{path}"
+                    content_resp = await client.get(raw_url, headers=headers, timeout=10.0)
+                    if content_resp.status_code != 200:
+                        raw_url = f"https://raw.githubusercontent.com/{repo}/master/{path}"
+                        content_resp = await client.get(raw_url, headers=headers, timeout=10.0)
+
+                    if content_resp.status_code == 200:
+                        content = content_resp.text
+                        data = {}
+                        try:
+                            if path.endswith(".json"):
+                                data = json.loads(content)
+                            else:
+                                data = yaml.safe_load(content) or {}
+                        except Exception:
+                            logger.warning(f"Failed to parse agent config at {path}")
+
+                        agent_id = f"ag_{uuid.uuid4().hex[:12]}"
+                        new_agent = Agent(
+                            id=agent_id,
+                            workspace_id=workspace_id,
+                            name=data.get("name", f"Synced Agent: {path.split('/')[-1]}"),
+                            description=data.get("description", "Automatically synced from GitHub repository."),
+                            status="active"
+                        )
+                        db.add(new_agent)
+                        synced_agents_count += 1
+                except Exception as e:
+                    logger.error(f"Error syncing agent {path}: {e}")
+
+            # Fetch and parse pipelines
+            for path in pipeline_files:
+                try:
+                    raw_url = f"https://raw.githubusercontent.com/{repo}/main/{path}"
+                    content_resp = await client.get(raw_url, headers=headers, timeout=10.0)
+                    if content_resp.status_code != 200:
+                        raw_url = f"https://raw.githubusercontent.com/{repo}/master/{path}"
+                        content_resp = await client.get(raw_url, headers=headers, timeout=10.0)
+
+                    if content_resp.status_code == 200:
+                        content = content_resp.text
+                        data = {}
+                        try:
+                            if path.endswith(".json"):
+                                data = json.loads(content)
+                            else:
+                                data = yaml.safe_load(content) or {}
+                        except Exception:
+                            logger.warning(f"Failed to parse pipeline config at {path}")
+
+                        pipe_id = f"pipe_{uuid.uuid4().hex[:12]}"
+                        new_pipe = Pipeline(
+                            id=pipe_id,
+                            workspace_id=workspace_id,
+                            name=data.get("name", f"Synced Pipeline: {path.split('/')[-1]}"),
+                            description=data.get("description", "Automatically synced from GitHub repository."),
+                            status="active"
+                        )
+                        db.add(new_pipe)
+                        synced_pipelines_count += 1
+                except Exception as e:
+                    logger.error(f"Error syncing pipeline {path}: {e}")
+    except Exception as e:
+        logger.error(f"Error reading raw GitHub file contents: {e}")
+
+    # Fallback default initialization if repo has no agent/pipeline folders
+    if synced_agents_count == 0 and synced_pipelines_count == 0:
+        repo_name = repo.split('/')[-1] if repo else "repository"
+        default_name = repo_name.replace("-", " ").replace("_", " ").title()
+        
         agent_id = f"ag_{uuid.uuid4().hex[:12]}"
         new_agent = Agent(
             id=agent_id,
             workspace_id=workspace_id,
-            name=f"Synced Agent {i+1} from {repo.split('/')[-1] if repo else 'repo'}",
-            description="Automatically synced from GitHub repository.",
+            name=f"{default_name} Core Agent",
+            description=f"Autonomic sovereign agent initialized from connected repository: {repo}.",
             status="active"
         )
         db.add(new_agent)
-
-    # Insert mock synced pipelines
-    for i in range(synced_pipelines):
+        synced_agents_count = 1
+        
         pipe_id = f"pipe_{uuid.uuid4().hex[:12]}"
         new_pipe = Pipeline(
             id=pipe_id,
             workspace_id=workspace_id,
-            name=f"Synced Pipeline {i+1}",
-            description="Automatically synced from GitHub repository.",
+            name=f"{default_name} Core Pipeline",
+            description=f"Operational pipeline initialized from connected repository: {repo}.",
             status="active"
         )
         db.add(new_pipe)
+        synced_pipelines_count = 1
 
     try:
         await db.commit()
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error during sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error during sync commit: {e}")
 
     return {
         "status": "success",
-        "message": f"Successfully synced {synced_agents} agents and {synced_pipelines} pipelines from {repo}.",
-        "synced_agents": synced_agents,
-        "synced_pipelines": synced_pipelines
+        "message": f"Successfully synced {synced_agents_count} agents and {synced_pipelines_count} pipelines from {repo}.",
+        "synced_agents": synced_agents_count,
+        "synced_pipelines": synced_pipelines_count
     }

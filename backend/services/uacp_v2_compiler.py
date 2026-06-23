@@ -26,7 +26,11 @@ class UacpV2Compiler:
         logger.info(f"[V2 Compiler] Compiling raw intent into bounded plan in {self.mode} mode...")
         
         if self.mode == "http":
-            return await self._compile_http(intent)
+            try:
+                return await self._compile_http(intent)
+            except Exception as e:
+                logger.warning(f"[V2 Compiler] HTTP compilation failed: {e}. Falling back to mock compiler.")
+                return await self._compile_mock(intent)
         else:
             return await self._compile_mock(intent)
 

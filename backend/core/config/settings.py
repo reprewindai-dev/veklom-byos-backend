@@ -215,17 +215,17 @@ class Settings(BaseSettings):
     RAPIDAPI_PROXY_SECRET: str = ""
 
     # UACP V2 Compiler (uacpgemini)
-    UACPGEMINI_MODE: str = "mock"  # 'http' or 'mock'
+    UACPGEMINI_MODE: str = "http"  # 'http' or 'mock'
     UACPGEMINI_BASE_URL: str = "http://uacpgemini:8000"
     UACPGEMINI_TIMEOUT_MS: int = 10000
 
     # UACP V3 Contextual Brain (uacpv3)
-    UACPV3_MODE: str = "mock"  # 'http' or 'mock'
+    UACPV3_MODE: str = "http"  # 'http' or 'mock'
     UACPV3_BASE_URL: str = "http://uacpv3:8001"
     UACPV3_TIMEOUT_MS: int = 15000
 
     # UACP V4 Decision Kernel (govern)
-    UACPV4_MODE: str = "mock"  # 'http' or 'mock'
+    UACPV4_MODE: str = "http"  # 'http' or 'mock'
     UACPV4_BASE_URL: str = "http://uacpv4:8002"
     UACPV4_TIMEOUT_MS: int = 15000
 

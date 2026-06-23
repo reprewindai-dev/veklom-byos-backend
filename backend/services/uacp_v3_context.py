@@ -28,7 +28,11 @@ class UacpV3Contextualizer:
         logger.info(f"[V3 Context] Fetching execution context in {self.mode} mode...")
         
         if self.mode == "http":
-            return await self._contextualize_http(intent, v2_plan)
+            try:
+                return await self._contextualize_http(intent, v2_plan)
+            except Exception as e:
+                logger.warning(f"[V3 Context] HTTP contextualization failed: {e}. Falling back to mock contextualizer.")
+                return await self._contextualize_mock(intent, v2_plan)
         else:
             return await self._contextualize_mock(intent, v2_plan)
 

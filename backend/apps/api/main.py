@@ -638,7 +638,7 @@ from backend.apps.api.routers import (
     x402,
     arena,
     benchmarks,
-    vnp,
+
     forensics
 )
 from backend.services.uacp.http import router as uacp_http_router
@@ -790,7 +790,6 @@ app.include_router(arena.router)
 app.include_router(benchmarks.router, prefix="/api/v1")
 
 # VNP - Data Plane Ingestion and Route Beacon
-app.include_router(vnp.router, prefix="/api")
 from backend.apps.api.routers import vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
 app.include_router(vnp_ingest.router, prefix="/api/v1")
 app.include_router(vnp_beacon.router, prefix="/api/v1")

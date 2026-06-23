@@ -81,6 +81,8 @@ services:
       - redis
     command: celery -A backend.core.celery_app worker --loglevel=info
     restart: unless-stopped
+    healthcheck:
+      disable: true
 
   # Celery Beat Scheduler
   celery-beat:
@@ -97,6 +99,8 @@ services:
       - redis
     command: celery -A backend.core.celery_app beat --loglevel=info
     restart: unless-stopped
+    healthcheck:
+      disable: true
   # In production, Ollama should run on the host server via systemd
   ollama:
     image: ollama/ollama:latest

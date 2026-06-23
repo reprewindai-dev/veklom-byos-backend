@@ -562,7 +562,7 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         result = {"kind": node_type.replace("-", "_"), "provider": output["provider"], "model": output["model"]}
 
     elif node_type == "agent-team":
-        output = _agent_team_node(config, context)
+        output = await _agent_team_node(config, context)
         context["agent_team"] = output
         context["text"] = json.dumps(output, default=str)
         result = {"kind": "agent_team", "agents": len(output["agents"])}
@@ -857,7 +857,7 @@ async def _governed_agent_node(node_type: str, config: dict, context: dict) -> d
     return await _llm_node(node_type, normalized, context)
 
 
-def _agent_team_node(config: dict, context: dict) -> dict:
+async def _agent_team_node(config: dict, context: dict) -> dict:
     agents = config.get("agents")
     if not isinstance(agents, list) or not agents:
         raise ValueError("missing_config: Agent Team requires agents")
@@ -872,10 +872,33 @@ def _agent_team_node(config: dict, context: dict) -> dict:
             "model_provider": agent.get("model_provider") or agent.get("provider"),
             "model_name": agent.get("model_name") or agent.get("model"),
         })
+    
+    # Actually dispatch the swarm instead of just mocking a hash return
+    from backend.core.database.database import async_session
+    from backend.core.services.swarm_engine import SwarmOrchestrator
+    
+    prompt = context.get("text") or "Execute team objectives based on standard directives."
+    workspace_id = context.get("workspace_id", "default_workspace")
+    byok_keys = context.get("byok_keys")
+    conversation_id = context.get("conversation_id")
+    
+    swarm_config = {
+        "id": f"team_{hashlib.sha256(json.dumps(normalized, sort_keys=True, default=str).encode()).hexdigest()[:12]}",
+        "agents": normalized,
+        "debate_protocol": config.get("debate_protocol", "consensus")
+    }
+    
+    async with async_session() as db:
+        orchestrator = SwarmOrchestrator(db)
+        swarm_result = await orchestrator.dispatch_swarm(
+            swarm_config, prompt, workspace_id, byok_keys, conversation_id
+        )
+    
     return {
-        "team_id": f"team_{hashlib.sha256(json.dumps(normalized, sort_keys=True, default=str).encode()).hexdigest()[:12]}",
+        "team_id": swarm_config["id"],
         "agents": normalized,
         "input_hash": hashlib.sha256(_context_text(context).encode()).hexdigest()[:16],
+        "swarm_result": swarm_result
     }
 
 

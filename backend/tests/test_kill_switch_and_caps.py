@@ -19,7 +19,7 @@ async def test_wallet_guard_global_kill_switch():
         with pytest.raises(HTTPException) as exc_info:
             await token_deduction_guard(request, user, db)
             
-        assert exc_info.value.status_code == 402
+        assert exc_info.value.status_code == 403
         assert "Emergency Kill Switch engaged" in exc_info.value.detail
 
 @pytest.mark.asyncio
@@ -92,7 +92,7 @@ async def test_capi_gate_global_kill_switch():
             pgl_id="pgl_sig",
             target_protocol="mcp",
             action="filesystem.read",
-            payload={}
+            payload={"random": str(__import__('uuid').uuid4())}
         )
         
         is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(

@@ -45,7 +45,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/ai/complete", "/api/v1/playground/inference", "/api/v1/playground/sessions",
             "/api/v1/playground/tools", "/api/v1/playground/prompts",
             "/api/v1/agentic_commerce/product_feed", "/api/v1/agentic_commerce/feed.csv",
-            "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback"
+            "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback", "/api/vnp"
         )
         
         if path == "/" or request.method == "OPTIONS" or any(path.startswith(prefix) for prefix in public_prefixes):

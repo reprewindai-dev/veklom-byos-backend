@@ -100,7 +100,7 @@ class Settings(BaseSettings):
 
     # Conversation Memory
     MEMORY_TTL_SECONDS: int = 86400
-    MEMORY_MAX_MESSAGES: int = 20
+    MEMORY_MAX_MESSAGES: int = 100
 
     # Security / Token Expiry
     ALGORITHM: str = "HS256"

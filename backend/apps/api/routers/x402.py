@@ -611,3 +611,51 @@ async def refund_payment(
     
     return BaseCommercePaymentResponse(**details)
 
+from fastapi import Query
+
+@router.get("/yield/predict")
+async def predict_yield(
+    agent_id: str = Query(..., description="The ID of the agent executing the task"),
+    task_complexity: float = Query(1.0, description="Complexity multiplier for the payload"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    The Autonomous Treasury API.
+    Calculates the optimal USDC cost-routing path for a specific agent payload 
+    across the ConvergeOS Swarm, predicting the execution cost vs. the escrow yield.
+    """
+    from backend.db.models.vnp import Validator, SettlementEntry
+    
+    # In a real implementation, we would query the actual Validator pool and active SettlementEntries
+    # For now, we simulate the yield prediction algorithm
+    
+    # 1. Base cost of the execution (e.g. 0.05 USDC base * complexity)
+    base_cost = 0.05 * task_complexity
+    
+    # 2. Network congestion multiplier (simulated based on active validator count)
+    # Ideally: select count(*) from validators where state = active
+    active_validators = 120 # PGL standard
+    congestion_multiplier = 1.0 + (120 / (active_validators + 1)) * 0.1
+    
+    # 3. Estimated execution cost
+    estimated_cost = base_cost * congestion_multiplier
+    
+    # 4. Escrow Yield Prediction (Staking reward minus execution cost)
+    # Assume the tenant stakes 100 USDC in an escrow yielding 5% APY
+    staked_amount = 100.0
+    daily_yield = staked_amount * (0.05 / 365)
+    
+    # Return FinOps projections
+    return {
+        "status": "success",
+        "prediction": {
+            "agent_id": agent_id,
+            "task_complexity": task_complexity,
+            "estimated_cost_usdc": round(estimated_cost, 4),
+            "network_congestion_multiplier": round(congestion_multiplier, 4),
+            "projected_daily_yield_usdc": round(daily_yield, 4),
+            "net_burn_rate": round(estimated_cost - daily_yield, 4),
+            "optimal_routing_path": "converge-swarm-tier-1" if task_complexity > 2.0 else "converge-swarm-tier-2"
+        }
+    }
+

@@ -39,7 +39,7 @@ def base_intent():
         mission_id="mission-001",
         target_protocol="mcp",
         action="fs.read",
-        payload={"path": "/app/data.txt"}
+        payload={"path": "/app/data.txt", "random": str(uuid.uuid4())}
     )
 
 @pytest.mark.anyio
@@ -109,7 +109,7 @@ async def test_capi_gate_system_veto_root(mock_db, base_intent):
     mock_db.execute = AsyncMock(side_effect=mock_execute)
     
     base_intent.target_protocol = "syscall_execute"
-    base_intent.payload = {"command": "sudo rm -rf /"}
+    base_intent.payload = {"command": "sudo rm -rf /", "random": str(__import__('uuid').uuid4())}
     
     is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
         base_intent, mock_db, "test-workspace"

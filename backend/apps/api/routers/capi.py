@@ -187,6 +187,7 @@ async def evaluate_intent_governed(
     # Phase 4: Cost & Budget Gate
     # -----------------------------------------------------------------
     from backend.core.config.settings import settings
+    from backend.core.security.wallet_guard import evaluate_workspace_spend_limits
 
     # Check global emergency kill switch first
     if getattr(settings, "GLOBAL_KILL_SWITCH", False):
@@ -194,55 +195,14 @@ async def evaluate_intent_governed(
         phase_results["4"] = "FAILED: Emergency Kill Switch engaged"
         return False, "EMERGENCY_KILL_SWITCH_ENGAGED", 4, phase_results
 
-    # Query active budget rules
-    budget_rules = []
-    try:
-        res_budget = await db.execute(
-            select(BudgetRule).where(
-                BudgetRule.workspace_id == workspace_id,
-                BudgetRule.is_active == True
-            )
-        )
-        budget_rules = res_budget.scalars().all()
-    except Exception as budget_err:
-        logger.warning(f"[cAPI] Budget rule query failed: {budget_err}")
-
-    # Safe defaults fallback
-    if not budget_rules:
-        logger.info(f"[cAPI] No budget rules configured for workspace {workspace_id}. Enforcing safe defaults.")
-        budget_rules = [
-            BudgetRule(workspace_id=workspace_id, name="Default Daily Cap", limit_usd=10.0, period="daily", is_active=True),
-            BudgetRule(workspace_id=workspace_id, name="Default Weekly Cap", limit_usd=50.0, period="weekly", is_active=True),
-            BudgetRule(workspace_id=workspace_id, name="Default Monthly Cap", limit_usd=150.0, period="monthly", is_active=True)
-        ]
-
-    for rule in budget_rules:
-        try:
-            budget_limit = rule.limit_usd
-            period = getattr(rule, "period", "monthly") or "monthly"
-            period = period.lower()
-
-            if period == "daily":
-                start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            elif period == "weekly":
-                start_time = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-            else:  # monthly
-                start_time = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-            # Sum Cost from ExecutionLog in cAPI
-            stmt_spend = select(func.coalesce(func.sum(ExecutionLog.cost), 0.0)).where(
-                ExecutionLog.workspace_id == workspace_id,
-                ExecutionLog.created_at >= start_time
-            )
-            res_spend = await db.execute(stmt_spend)
-            current_spend = float(res_spend.scalar_one_or_none() or 0.0)
-
-            if current_spend >= budget_limit:
-                logger.error(f"[cAPI] VETO: Budget limit exceeded ({rule.name}). Spend: {current_spend}, Limit: {budget_limit}")
-                phase_results["4"] = f"FAILED: Budget limit exceeded ({rule.name}) (Spend: {current_spend}, Limit: {budget_limit})"
-                return False, f"BUDGET_LIMIT_EXCEEDED_{period.upper()}", 4, phase_results
-        except Exception as rule_err:
-            logger.warning(f"[cAPI] Failed to check budget rule ({rule.name}) limits: {rule_err}")
+    # Centralized spend limit evaluation
+    res_limits = await evaluate_workspace_spend_limits(workspace_id, db, now, 0.0)
+    if not res_limits["allowed"]:
+        reason_msg = res_limits.get("reason", "Budget limit exceeded")
+        period = res_limits.get("period", "MONTHLY")
+        logger.error(f"[cAPI] VETO: {reason_msg}")
+        phase_results["4"] = f"FAILED: {reason_msg}"
+        return False, f"BUDGET_LIMIT_EXCEEDED_{str(period).upper()}", 4, phase_results
 
     phase_results["4"] = "PASSED"
 
@@ -469,10 +429,15 @@ async def governed_execution_intercept(
         raise HTTPException(status_code=500, detail="Database persistence error")
         
     if not is_approved:
+        # Determine status code based on reason/phase
+        status_code = 403
+        if failure_phase == 4 and str(reason).startswith("BUDGET_LIMIT_EXCEEDED"):
+            status_code = 402
+
         # QUARANTINE / DROP PACKET
         # We drop the execution before it ever hits the actual tool/model.
         raise HTTPException(
-            status_code=403, 
+            status_code=status_code, 
             detail={
                 "error": "cAPI_VETO_ENGAGED",
                 "message": f"Execution intent violated cAPI validation rules: {reason}. Packet dropped.",

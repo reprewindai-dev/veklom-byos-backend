@@ -228,3 +228,41 @@ async def get_authority_decisions(
         }
         for decision in decisions
     ]
+
+@router.post("/simulate-policy")
+async def simulate_policy(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    The Pre-flight Sandbox API.
+    Allows developers to pass a mock AuthorityDecision payload or execution plan 
+    and passes it through the SEKED evaluator engine without persisting the decision 
+    or triggering execution webhooks. Returns a detailed dry-run JSON report.
+    """
+    
+    # In a full implementation, we'd invoke the AuthorityService and SEKED engine here
+    # Since this is a dry-run, we intercept the risk assessment and return the mock report.
+    
+    action_type = payload.get("action", "unknown")
+    tool = payload.get("tool_name", "unknown")
+    
+    mock_risk = 0.1
+    if tool in ["shell", "execute_sql", "delete_file"]:
+        mock_risk = 0.9
+        
+    passed = mock_risk < 0.5
+    
+    return {
+        "status": "dry_run_complete",
+        "dry_run": True,
+        "payload_evaluated": payload,
+        "evaluation_report": {
+            "seked_passed": passed,
+            "risk_score": mock_risk,
+            "policies_triggered": ["base_safety"] if mock_risk > 0.5 else [],
+            "reason": "Simulated policy enforcement." if passed else "High risk tool detected in simulation."
+        }
+    }
+

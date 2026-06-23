@@ -29,6 +29,8 @@ class VeklomError(Exception):
 # Sync client
 # ---------------------------------------------------------------------------
 
+from .vnp_client import VNPRouter, AsyncVNPRouter
+
 class VeklomClient:
     """
     Synchronous Veklom API client.
@@ -73,6 +75,15 @@ class VeklomClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
+        
+        # Initialize VNP Enterprise Routing
+        # Real-world usage would pull project_id/customer_id from auth context
+        self.vnp = VNPRouter(
+            sdk_client=self,
+            project_id="default-project",
+            customer_id="default-customer",
+            policy_id="default-policy"
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -252,6 +263,14 @@ class AsyncVeklomClient:
             "Content-Type": "application/json",
         }
         self._client: Optional[httpx.AsyncClient] = None
+        
+        # Initialize VNP Enterprise Routing
+        self.vnp = AsyncVNPRouter(
+            sdk_client=self,
+            project_id="default-project",
+            customer_id="default-customer",
+            policy_id="default-policy"
+        )
 
     async def __aenter__(self) -> "AsyncVeklomClient":
         self._client = httpx.AsyncClient(headers=self._headers, timeout=self.timeout)

@@ -523,30 +523,33 @@ def provider_order_for_tenant(body: dict, workspace_id: str) -> tuple[list[str],
     """Return (ordered_providers, escalation_reason) for a given tenant.
 
     Rules:
-    - ALL tenants: start with Ollama
-    - Founder/admin: full owner key stack (groq, huggingface, gemini, openai)
-    - Customer: Ollama only, then BYOK providers (checked externally)
-    - Escalation happens only if a reason exists AND the tenant is authorized
+    - Founder/admin: start with Ollama (or explicit), full owner key stack
+    - Customer: If explicit BYOK provider requested, try it first. If invalid/fails, fallback to Ollama.
     """
     reason = escalation_reason(body)
     explicit = (body.get("provider") or "").strip().lower()
 
-    # Always start with Ollama
-    order = ["ollama"]
-
     if is_founder_tenant(workspace_id):
-        # Founder gets full stack after Ollama
+        # Founder gets full stack, prioritizing explicit
+        order = ["ollama"]
         full_stack = ["groq", "huggingface", "gemini", "openai"]
         if explicit and explicit not in order:
-            order.insert(1, explicit)
+            order.insert(0, explicit)
         order.extend([p for p in full_stack if p not in order])
     else:
-        # Customer / eval tenant: Ollama first, then HuggingFace (public fallback),
-        # then any explicit BYOK provider
-        order.append("huggingface")   # free tier public fallback if Ollama fails
-        if explicit and explicit not in order:
-            # Only allow if it will be backed by a BYOK key (caller validates)
+        # Customer / eval tenant
+        order = []
+        # If customer explicitly requested a BYOK provider, try it first
+        if explicit and explicit != "ollama":
             order.append(explicit)
+            
+        # Always fallback to Ollama if BYOK fails or is invalid
+        if "ollama" not in order:
+            order.append("ollama")
+            
+        # Free tier public fallback if Ollama fails
+        if "huggingface" not in order:
+            order.append("huggingface")
 
     return order, reason
 

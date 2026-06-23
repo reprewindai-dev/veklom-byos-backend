@@ -588,6 +588,7 @@ from backend.apps.api.routers import (
     well_known,
     mcp,
     agent_memory,
+    conversation_memory,
     agent_evaluation,
     agent_guardrails,
     admin,
@@ -635,7 +636,9 @@ from backend.apps.api.routers import (
     edge,
     x402,
     arena,
-    benchmarks
+    benchmarks,
+    vnp,
+    forensics
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -783,6 +786,15 @@ app.include_router(arena.router)
 
 # Benchmark Arena — Trust Leaderboard, Staking, Gemini Schema Compiler
 app.include_router(benchmarks.router, prefix="/api/v1")
+
+# VNP - Data Plane Ingestion and Route Beacon
+app.include_router(vnp.router, prefix="/api")
+from backend.apps.api.routers import vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
+app.include_router(vnp_ingest.router, prefix="/api/v1")
+app.include_router(vnp_beacon.router, prefix="/api/v1")
+app.include_router(vnp_control.router, prefix="/api/v1")
+app.include_router(vnp_incidents.router, prefix="/api/v1")
+app.include_router(forensics.router, prefix="/api/v1")
 
 
 # --- Frontend static files ---
@@ -1797,6 +1809,7 @@ app.include_router(mcp.router, prefix="/api/v1")
 
 # Layer 3: Memory and Context
 app.include_router(agent_memory.router, prefix="/api/v1")
+app.include_router(conversation_memory.router, prefix="/api/v1")
 
 # Layer 5: Evaluation and Observability
 app.include_router(agent_evaluation.router, prefix="/api/v1")

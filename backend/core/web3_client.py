@@ -1,7 +1,13 @@
 import os
 import json
 from web3 import Web3
-from web3.middleware import geth_poa_middleware
+try:
+    from web3.middleware import geth_poa_middleware
+    poa_middleware = geth_poa_middleware
+except ImportError:
+    from web3.middleware import ExtraDataToPOAMiddleware
+    poa_middleware = ExtraDataToPOAMiddleware
+
 
 # Public Base Sepolia RPC (in production this should be an Alchemy/Infura URL from env)
 BASE_SEPOLIA_RPC_URL = os.getenv("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org")
@@ -39,7 +45,7 @@ class Web3Orchestrator:
     def __init__(self):
         self.w3 = Web3(Web3.HTTPProvider(BASE_SEPOLIA_RPC_URL))
         # Inject POA middleware for Base L2
-        self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        self.w3.middleware_onion.inject(poa_middleware, layer=0)
         
         self.staking_contract = self.w3.eth.contract(address=STAKING_CONTRACT_ADDRESS, abi=STAKING_ABI)
         

@@ -379,6 +379,8 @@ class AgentSwarm(Base):
     # Coordination settings
     coordination_rules = Column(JSON)
     conflict_resolution = Column(JSON)
+    debate_protocol = Column(String, default="consensus") # consensus, supervisor, majority
+    max_iterations = Column(Integer, default=3)
     
     # Status and metrics
     status = Column(String, default="active")

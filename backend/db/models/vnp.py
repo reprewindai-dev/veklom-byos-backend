@@ -1,0 +1,379 @@
+import enum
+import uuid
+from datetime import datetime, timezone
+from sqlalchemy import (
+    Column, String, Integer, Float, Boolean, JSON, ForeignKey, DateTime, Enum, Numeric, BigInteger, UniqueConstraint, Index
+)
+from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+
+from backend.core.database.database import Base
+from backend.db.models.mixins import TimestampMixin
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+# Enums
+class TenantType(str, enum.Enum):
+    provider = "provider"
+    customer = "customer"
+    validator = "validator"
+    operator = "operator"
+
+class ApiStatus(str, enum.Enum):
+    active = "active"
+    degraded = "degraded"
+    disabled = "disabled"
+    pending = "pending"
+
+class ProbeResultState(str, enum.Enum):
+    success = "success"
+    timeout = "timeout"
+    http_error = "http_error"
+    transport_error = "transport_error"
+    dns_error = "dns_error"
+    tls_error = "tls_error"
+
+class IncidentState(str, enum.Enum):
+    open = "open"
+    acknowledged = "acknowledged"
+    resolved = "resolved"
+    suppressed = "suppressed"
+
+class LedgerEntryType(str, enum.Enum):
+    credit = "credit"
+    debit = "debit"
+    hold = "hold"
+    release = "release"
+    refund = "refund"
+    adjustment = "adjustment"
+    slash = "slash"
+    reward = "reward"
+
+class SettlementState(str, enum.Enum):
+    pending = "pending"
+    posted = "posted"
+    failed = "failed"
+    reversed = "reversed"
+
+class ValidatorState(str, enum.Enum):
+    active = "active"
+    suspended = "suspended"
+    challenged = "challenged"
+    retired = "retired"
+
+class AttestationState(str, enum.Enum):
+    proposed = "proposed"
+    accepted = "accepted"
+    rejected = "rejected"
+
+
+# Models
+class Provider(TimestampMixin, Base):
+    __tablename__ = "vnp_providers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug = Column(String(100), unique=True, nullable=False)
+    legal_name = Column(String(255), nullable=False)
+    support_email = Column(String(255))
+    billing_email = Column(String(255))
+    
+    apis = relationship("Api", back_populates="provider", cascade="all, delete-orphan")
+
+
+class Api(TimestampMixin, Base):
+    __tablename__ = "vnp_apis"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider_id = Column(UUID(as_uuid=True), ForeignKey("vnp_providers.id", ondelete="CASCADE"), nullable=False)
+    api_did = Column(String(200), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    version = Column(String(64), nullable=False)
+    base_url = Column(String, nullable=False)
+    health_path = Column(String, nullable=False, default="/health")
+    auth_scheme = Column(String(50), nullable=False)
+    x402_ready = Column(Boolean, nullable=False, default=False)
+    pricing_model = Column(String(50), nullable=False, default="metered")
+    status = Column(Enum(ApiStatus, name="api_status_enum", create_type=False), nullable=False, default=ApiStatus.active)
+    
+    provider = relationship("Provider", back_populates="apis")
+    regions = relationship("ApiRegion", back_populates="api", cascade="all, delete-orphan")
+
+
+class ApiRegion(TimestampMixin, Base):
+    __tablename__ = "vnp_api_regions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(UUID(as_uuid=True), ForeignKey("vnp_apis.id", ondelete="CASCADE"), nullable=False)
+    region_code = Column(String(50), nullable=False)
+    endpoint_url = Column(String, nullable=False)
+    priority = Column(Integer, nullable=False, default=100)
+    active = Column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("api_id", "region_code", name="uq_vnp_api_regions_api_region"),
+        Index("idx_api_regions_lookup", "api_id", "region_code", postgresql_where=(active == True)),
+    )
+
+    api = relationship("Api", back_populates="regions")
+
+
+class Customer(TimestampMixin, Base):
+    __tablename__ = "vnp_customers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    billing_mode = Column(String(50), nullable=False)
+    currency = Column(String(3), nullable=False, default="USD")
+    stripe_customer_id = Column(String(100))
+    
+    projects = relationship("Project", back_populates="customer", cascade="all, delete-orphan")
+
+
+class Project(TimestampMixin, Base):
+    __tablename__ = "vnp_projects"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("vnp_customers.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    environment = Column(String(50), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("customer_id", "name", "environment", name="uq_vnp_projects_cust_name_env"),
+    )
+
+    customer = relationship("Customer", back_populates="projects")
+
+
+class SdkCredential(Base):
+    __tablename__ = "vnp_sdk_credentials"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("vnp_projects.id", ondelete="CASCADE"), nullable=False)
+    label = Column(String(255), nullable=False)
+    api_key_hash = Column(String, nullable=False)
+    public_key = Column(String, nullable=False)
+    scopes = Column(JSONB, nullable=False)
+    expires_at = Column(DateTime(timezone=True))
+    revoked_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class RoutePolicy(TimestampMixin, Base):
+    __tablename__ = "vnp_route_policies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("vnp_customers.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    max_p99_latency_ms = Column(Integer)
+    minimum_trust_score = Column(Numeric(5, 2))
+    allowed_regions = Column(JSONB, nullable=False, default=[])
+    allowed_provider_ids = Column(JSONB, nullable=False, default=[])
+    weights = Column(JSONB, nullable=False)
+    failover_mode = Column(String(50), nullable=False)
+
+
+class ProbeEvent(Base):
+    __tablename__ = "vnp_probe_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id = Column(String(100), unique=True, nullable=False)
+    worker_id = Column(String(100), nullable=False)
+    worker_region = Column(String(50), nullable=False)
+    runtime = Column(String(50), nullable=False)
+    api_id = Column(UUID(as_uuid=True), ForeignKey("vnp_apis.id", ondelete="CASCADE"), nullable=False)
+    api_region_code = Column(String(50), nullable=False)
+    endpoint_url = Column(String, nullable=False)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    dns_ms = Column(Integer)
+    connect_ms = Column(Integer)
+    tls_ms = Column(Integer)
+    ttfb_ms = Column(Integer)
+    total_ms = Column(Integer, nullable=False)
+    status_code = Column(Integer)
+    result_state = Column(Enum(ProbeResultState, name="probe_result_state_enum", create_type=False), nullable=False)
+    success = Column(Boolean, nullable=False)
+    timeout = Column(Boolean, nullable=False, default=False)
+    error_class = Column(String(100))
+    signature_alg = Column(String(20), nullable=False)
+    signature_key_id = Column(String(100), nullable=False)
+    signature_value = Column(String, nullable=False)
+    received_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_probe_events_api_region_time", "api_id", "api_region_code", "occurred_at"),
+    )
+
+
+class RegionalTelemetry(Base):
+    __tablename__ = "vnp_regional_telemetry"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(UUID(as_uuid=True), ForeignKey("vnp_apis.id", ondelete="CASCADE"), nullable=False)
+    region_code = Column(String(50), nullable=False)
+    window_start = Column(DateTime(timezone=True), nullable=False)
+    window_end = Column(DateTime(timezone=True), nullable=False)
+    sample_count = Column(Integer, nullable=False)
+    success_count = Column(Integer, nullable=False)
+    p50_latency_ms = Column(Integer, nullable=False)
+    p95_latency_ms = Column(Integer, nullable=False)
+    p99_latency_ms = Column(Integer, nullable=False)
+    error_rate_percent = Column(Numeric(5, 2), nullable=False)
+    uptime_percent = Column(Numeric(5, 2), nullable=False)
+    throughput_rps = Column(Integer, nullable=False, default=0)
+    trust_score = Column(Numeric(5, 2), nullable=False)
+    measured_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_regional_telemetry_region_score", "region_code", "trust_score", "p99_latency_ms"),
+    )
+
+
+class RouteSnapshot(Base):
+    __tablename__ = "vnp_route_snapshots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("vnp_customers.id", ondelete="SET NULL"))
+    policy_id = Column(UUID(as_uuid=True), ForeignKey("vnp_route_policies.id", ondelete="SET NULL"))
+    requested_region = Column(String(50))
+    generated_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    ttl_seconds = Column(Integer, nullable=False)
+    snapshot = Column(JSONB, nullable=False)
+
+    __table_args__ = (
+        Index("idx_route_snapshots_generated_at", "generated_at"),
+    )
+
+
+class UsageEvent(Base):
+    __tablename__ = "vnp_usage_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id = Column(String(100), unique=True, nullable=False)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("vnp_customers.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("vnp_projects.id", ondelete="CASCADE"), nullable=False)
+    credential_id = Column(UUID(as_uuid=True), ForeignKey("vnp_sdk_credentials.id", ondelete="CASCADE"), nullable=False)
+    policy_id = Column(UUID(as_uuid=True), ForeignKey("vnp_route_policies.id", ondelete="SET NULL"))
+    request_id = Column(String(100), nullable=False)
+    api_id = Column(UUID(as_uuid=True), ForeignKey("vnp_apis.id", ondelete="CASCADE"), nullable=False)
+    provider_id = Column(UUID(as_uuid=True), ForeignKey("vnp_providers.id", ondelete="CASCADE"), nullable=False)
+    provider_region = Column(String(50), nullable=False)
+    sdk_region = Column(String(50))
+    route_snapshot_id = Column(UUID(as_uuid=True), ForeignKey("vnp_route_snapshots.id", ondelete="SET NULL"))
+    billable_units = Column(BigInteger, nullable=False)
+    unit_type = Column(String(50), nullable=False)
+    success = Column(Boolean, nullable=False)
+    response_ms = Column(Integer)
+    http_status = Column(Integer)
+    retry_count = Column(Integer, nullable=False, default=0)
+    failover_count = Column(Integer, nullable=False, default=0)
+    preauth_amount_minor = Column(BigInteger)
+    final_amount_minor = Column(BigInteger)
+    currency = Column(String(3), nullable=False, default="USD")
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    signature_alg = Column(String(20), nullable=False)
+    signature_key_id = Column(String(100), nullable=False)
+    signature_value = Column(String, nullable=False)
+    received_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_usage_events_customer_time", "customer_id", "occurred_at"),
+        Index("idx_usage_events_project_time", "project_id", "occurred_at"),
+    )
+
+
+class PrepaidBalance(Base):
+    __tablename__ = "vnp_prepaid_balances"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("vnp_customers.id", ondelete="CASCADE"), nullable=False)
+    currency = Column(String(3), nullable=False)
+    available_amount_minor = Column(BigInteger, nullable=False, default=0)
+    reserved_amount_minor = Column(BigInteger, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("customer_id", "currency", name="uq_vnp_prepaid_balances_cust_cur"),
+    )
+
+
+class SettlementEntry(Base):
+    __tablename__ = "vnp_settlement_entries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("vnp_customers.id", ondelete="SET NULL"))
+    provider_id = Column(UUID(as_uuid=True), ForeignKey("vnp_providers.id", ondelete="SET NULL"))
+    usage_event_id = Column(UUID(as_uuid=True), ForeignKey("vnp_usage_events.id", ondelete="SET NULL"))
+    entry_type = Column(Enum(LedgerEntryType, name="ledger_entry_type_enum", create_type=False), nullable=False)
+    amount_minor = Column(BigInteger, nullable=False)
+    currency = Column(String(3), nullable=False)
+    state = Column(Enum(SettlementState, name="settlement_state_enum", create_type=False), nullable=False, default=SettlementState.posted)
+    reference_code = Column(String(100))
+    entry_metadata = Column("metadata", JSONB, nullable=False, default={})
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_settlement_entries_customer_time", "customer_id", "created_at"),
+    )
+
+
+class Validator(TimestampMixin, Base):
+    __tablename__ = "vnp_validators"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    display_name = Column(String(255), nullable=False)
+    operator_entity = Column(String(255), nullable=False)
+    public_key = Column(String, nullable=False)
+    stake_currency = Column(String(3), nullable=False)
+    stake_amount_minor = Column(BigInteger, nullable=False)
+    state = Column(Enum(ValidatorState, name="validator_state_enum", create_type=False), nullable=False, default=ValidatorState.active)
+
+
+class Attestation(Base):
+    __tablename__ = "vnp_attestations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    validator_id = Column(UUID(as_uuid=True), ForeignKey("vnp_validators.id", ondelete="CASCADE"), nullable=False)
+    incident_id = Column(UUID(as_uuid=True))
+    attestation_window_start = Column(DateTime(timezone=True), nullable=False)
+    attestation_window_end = Column(DateTime(timezone=True), nullable=False)
+    state = Column(Enum(AttestationState, name="attestation_state_enum", create_type=False), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    signature_value = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class Incident(Base):
+    __tablename__ = "vnp_incidents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scope_type = Column(String(50), nullable=False)
+    scope_id = Column(UUID(as_uuid=True))
+    title = Column(String(255), nullable=False)
+    description = Column(String)
+    state = Column(Enum(IncidentState, name="incident_state_enum", create_type=False), nullable=False, default=IncidentState.open)
+    severity = Column(String(20), nullable=False)
+    opened_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    acknowledged_at = Column(DateTime(timezone=True))
+    resolved_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_incidents_state_opened", "state", "opened_at"),
+    )
+
+
+class AuditLog(Base):
+    __tablename__ = "vnp_audit_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor_type = Column(Enum(TenantType, name="tenant_type_enum", create_type=False), nullable=False)
+    actor_id = Column(UUID(as_uuid=True))
+    action = Column(String(100), nullable=False)
+    scope_type = Column(String(50), nullable=False)
+    scope_id = Column(UUID(as_uuid=True))
+    log_metadata = Column("metadata", JSONB, nullable=False, default={})
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_audit_logs_scope_time", "scope_type", "scope_id", "created_at"),
+    )

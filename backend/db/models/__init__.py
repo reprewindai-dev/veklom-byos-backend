@@ -33,6 +33,25 @@ from backend.db.models.run import VeklomRun
 from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake, SyntheticProbeLog
 from backend.db.models.pricing import PricingTier, TierFeature, TierUpgrade
 from backend.db.models.referral import ReferralCode, Referral, ReferralPayout
+from backend.db.models.vnp import (
+    Provider,
+    Api,
+    ApiRegion,
+    Customer,
+    Project,
+    SdkCredential,
+    RoutePolicy,
+    ProbeEvent,
+    RegionalTelemetry,
+    RouteSnapshot,
+    UsageEvent,
+    PrepaidBalance,
+    SettlementEntry,
+    Validator,
+    Attestation,
+    Incident,
+    AuditLog as VNPAuditLog
+)
 
 
 __all__ = [
@@ -76,4 +95,9 @@ __all__ = [
     "InternalOperatorApproval",
     # benchmarks & trust leaderboard
     "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog",
+    # VNP
+    "Provider", "Api", "ApiRegion", "Customer", "Project", "SdkCredential",
+    "RoutePolicy", "ProbeEvent", "RegionalTelemetry", "RouteSnapshot",
+    "UsageEvent", "PrepaidBalance", "SettlementEntry", "Validator",
+    "Attestation", "Incident", "VNPAuditLog"
 ]

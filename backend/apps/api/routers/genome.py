@@ -10,7 +10,7 @@ lists with an explicit reason so the UI shows an honest empty state.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
@@ -94,3 +94,51 @@ async def verify_chain(
     ws = _ws(user)
     pgl = PGLClient(db)
     return await pgl.verify_chain(ws)
+
+@router.get("/status")
+async def get_genome_status(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns the current PGL root certificate status for the workspace."""
+    ws = _ws(user)
+    # Get the latest certificate
+    cert = (await db.execute(
+        select(PGLCertificate).where(PGLCertificate.workspace_id == ws)
+        .order_by(desc(PGLCertificate.created_at)).limit(1)
+    )).scalar_one_or_none()
+    
+    # Get ledger count
+    count = (await db.execute(
+        select(func.count(PGLLedgerEvent.id)).where(PGLLedgerEvent.workspace_id == ws)
+    )).scalar_one_or_none() or 0
+    
+    # Get chain head
+    head = (await db.execute(
+        select(PGLLedgerEvent.event_hash).where(PGLLedgerEvent.workspace_id == ws)
+        .order_by(desc(PGLLedgerEvent.created_at)).limit(1)
+    )).scalar_one_or_none()
+    
+    if not cert:
+        return {
+            "mode": "sovereign",
+            "mode_display": "Sovereign Node",
+            "has_pgl_profile": False,
+            "workspace_id": ws,
+            "profile": None
+        }
+        
+    return {
+        "mode": "sovereign",
+        "mode_display": "Sovereign Node",
+        "has_pgl_profile": True,
+        "workspace_id": ws,
+        "profile": {
+            "certificate_id": cert.certificate_id,
+            "actor_id": cert.actor_id,
+            "genome_hash": cert.genome_hash,
+            "status": "verified",
+            "ledger_event_count": count,
+            "chain_head": head
+        }
+    }

@@ -618,12 +618,13 @@ from backend.apps.api.routers import (
     providers,
     repo_risk_gate,
     routing,
-    system,
-    team,
+    runs,
     runtime_jobs,
     security,
-    upload,
-    workspace,
+    seked,
+    smoke,
+    system,
+    team,
     internal_uacp,
     internal_operators,
     plugins,
@@ -687,8 +688,9 @@ app.include_router(runtime_jobs.router, prefix="/api/v1")
 app.include_router(billing.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 
-# Security, kill switch, locker
+# Security & SEKED
 app.include_router(security.router, prefix="/api/v1")
+app.include_router(seked.router, prefix="/api/v1")
 
 # Compliance, privacy, content-safety, explainability, evidence, audit
 app.include_router(compliance.router, prefix="/api/v1")

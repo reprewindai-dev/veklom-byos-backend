@@ -186,30 +186,63 @@ async def evaluate_intent_governed(
     # -----------------------------------------------------------------
     # Phase 4: Cost & Budget Gate
     # -----------------------------------------------------------------
-    # Query active budget rule and current monthly spend
+    from backend.core.config.settings import settings
+
+    # Check global emergency kill switch first
+    if getattr(settings, "GLOBAL_KILL_SWITCH", False):
+        logger.error("[cAPI] VETO: Emergency Kill Switch engaged")
+        phase_results["4"] = "FAILED: Emergency Kill Switch engaged"
+        return False, "EMERGENCY_KILL_SWITCH_ENGAGED", 4, phase_results
+
+    # Query active budget rules
+    budget_rules = []
     try:
-        stmt_budget = select(BudgetRule.limit_usd).where(
-            BudgetRule.workspace_id == workspace_id,
-            BudgetRule.is_active == True
+        res_budget = await db.execute(
+            select(BudgetRule).where(
+                BudgetRule.workspace_id == workspace_id,
+                BudgetRule.is_active == True
+            )
         )
-        res_budget = await db.execute(stmt_budget)
-        budget_limit = res_budget.scalar_one_or_none()
-        budget_limit = float(budget_limit) if budget_limit is not None else 150.0
-
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        stmt_spend = select(func.coalesce(func.sum(ExecutionLog.cost), 0.0)).where(
-            ExecutionLog.workspace_id == workspace_id,
-            ExecutionLog.created_at >= month_start
-        )
-        res_spend = await db.execute(stmt_spend)
-        current_spend = float(res_spend.scalar_one_or_none() or 0.0)
-
-        if current_spend >= budget_limit:
-            logger.error(f"[cAPI] VETO: Monthly budget exhausted. Spend: {current_spend}, Limit: {budget_limit}")
-            phase_results["4"] = f"FAILED: Budget exhausted (Spend: {current_spend}, Limit: {budget_limit})"
-            return False, "BUDGET_EXHAUSTED", 4, phase_results
+        budget_rules = res_budget.scalars().all()
     except Exception as budget_err:
-        logger.warning(f"[cAPI] Budget check query failed: {budget_err}")
+        logger.warning(f"[cAPI] Budget rule query failed: {budget_err}")
+
+    # Safe defaults fallback
+    if not budget_rules:
+        logger.info(f"[cAPI] No budget rules configured for workspace {workspace_id}. Enforcing safe defaults.")
+        budget_rules = [
+            BudgetRule(workspace_id=workspace_id, name="Default Daily Cap", limit_usd=10.0, period="daily", is_active=True),
+            BudgetRule(workspace_id=workspace_id, name="Default Weekly Cap", limit_usd=50.0, period="weekly", is_active=True),
+            BudgetRule(workspace_id=workspace_id, name="Default Monthly Cap", limit_usd=150.0, period="monthly", is_active=True)
+        ]
+
+    for rule in budget_rules:
+        try:
+            budget_limit = rule.limit_usd
+            period = getattr(rule, "period", "monthly") or "monthly"
+            period = period.lower()
+
+            if period == "daily":
+                start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif period == "weekly":
+                start_time = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            else:  # monthly
+                start_time = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+            # Sum Cost from ExecutionLog in cAPI
+            stmt_spend = select(func.coalesce(func.sum(ExecutionLog.cost), 0.0)).where(
+                ExecutionLog.workspace_id == workspace_id,
+                ExecutionLog.created_at >= start_time
+            )
+            res_spend = await db.execute(stmt_spend)
+            current_spend = float(res_spend.scalar_one_or_none() or 0.0)
+
+            if current_spend >= budget_limit:
+                logger.error(f"[cAPI] VETO: Budget limit exceeded ({rule.name}). Spend: {current_spend}, Limit: {budget_limit}")
+                phase_results["4"] = f"FAILED: Budget limit exceeded ({rule.name}) (Spend: {current_spend}, Limit: {budget_limit})"
+                return False, f"BUDGET_LIMIT_EXCEEDED_{period.upper()}", 4, phase_results
+        except Exception as rule_err:
+            logger.warning(f"[cAPI] Failed to check budget rule ({rule.name}) limits: {rule_err}")
 
     phase_results["4"] = "PASSED"
 

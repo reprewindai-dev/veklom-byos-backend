@@ -112,6 +112,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     JWT_AUD_ENFORCEMENT: str = "warn"
     JWT_EXPECTED_AUDIENCE: str = "veklom-api"
+    GLOBAL_KILL_SWITCH: bool = False
 
     # Content Safety
     CONTENT_FILTERING_ENABLED: bool = True

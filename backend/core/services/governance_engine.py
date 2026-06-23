@@ -90,7 +90,15 @@ class GovernanceEngine:
         # 3. Budget arbitration (Real check)
         from backend.db.models.billing import WalletTransaction, BudgetRule
         from sqlalchemy import func
-        from datetime import datetime
+        from datetime import datetime, timedelta
+        from backend.core.config.settings import settings
+
+        # Global emergency kill switch check
+        if getattr(settings, "GLOBAL_KILL_SWITCH", False):
+            raise HTTPException(
+                status_code=402,
+                detail="Emergency Kill Switch engaged. All paid executions frozen."
+            )
 
         user_role = request_body.get("role") or "viewer"
         user_id = request_body.get("user_id") or "default_user"
@@ -126,7 +134,7 @@ class GovernanceEngine:
             )
 
         # Budget Rule Check
-        budget_rule = None
+        budget_rules = []
         try:
             res_budget = await db.execute(
                 select(BudgetRule).where(
@@ -134,19 +142,37 @@ class GovernanceEngine:
                     BudgetRule.is_active == True
                 )
             )
-            budget_rule = res_budget.scalar_one_or_none()
+            budget_rules = res_budget.scalars().all()
         except Exception as exc:
-            logger.warning(f"Budget rule query failed: {exc}")
+            logger.warning(f"Budget rules query failed: {exc}")
 
-        if budget_rule:
+        # Fallback safe defaults if no active budget rules exist in the database
+        if not budget_rules:
+            logger.info(f"No budget rules configured for workspace {workspace_id}. Enforcing safe defaults.")
+            budget_rules = [
+                BudgetRule(workspace_id=workspace_id, name="Default Daily Cap", limit_usd=10.0, period="daily", is_active=True),
+                BudgetRule(workspace_id=workspace_id, name="Default Weekly Cap", limit_usd=50.0, period="weekly", is_active=True),
+                BudgetRule(workspace_id=workspace_id, name="Default Monthly Cap", limit_usd=150.0, period="monthly", is_active=True)
+            ]
+
+        for rule in budget_rules:
             try:
-                limit = budget_rule.limit_usd
+                limit = rule.limit_usd
+                period = getattr(rule, "period", "monthly") or "monthly"
+                period = period.lower()
+
                 now = datetime.utcnow()
-                month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                if period == "daily":
+                    start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                elif period == "weekly":
+                    start_time = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+                else:  # monthly
+                    start_time = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
                 stmt_spend = select(func.coalesce(func.sum(WalletTransaction.amount), 0.0)).where(
                     WalletTransaction.workspace_id == workspace_id,
                     WalletTransaction.tx_type == "debit",
-                    WalletTransaction.created_at >= month_start
+                    WalletTransaction.created_at >= start_time
                 )
                 res_spend = await db.execute(stmt_spend)
                 current_spend = abs(float(res_spend.scalar_one_or_none() or 0.0))
@@ -154,12 +180,12 @@ class GovernanceEngine:
                 if current_spend + token_cost > limit:
                     raise HTTPException(
                         status_code=402,
-                        detail=f"Monthly budget limit exceeded. Limit: {limit}, Spend: {current_spend}, Required: {token_cost}"
+                        detail=f"Budget limit exceeded ({rule.name}). Limit: {limit}, Spend: {current_spend}, Required: {token_cost}"
                     )
             except HTTPException:
                 raise
             except Exception as exc:
-                logger.warning(f"Failed to check budget rule limits: {exc}")
+                logger.warning(f"Failed to check budget rule ({rule.name}) limits: {exc}")
 
         # 4. Policy Authorization
         auth_res = await PolicyRegistryService.authorize(

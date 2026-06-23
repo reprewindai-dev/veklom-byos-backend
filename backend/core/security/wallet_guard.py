@@ -29,9 +29,17 @@ async def token_deduction_guard(
 ):
     """Intercepts request, calculates cost from catalog, and deducts wallet."""
     from sqlalchemy import select, func
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from backend.db.models.billing import WalletTransaction, BudgetRule
+    from backend.core.config.settings import settings
     
+    # 1. Global emergency kill switch check
+    if getattr(settings, "GLOBAL_KILL_SWITCH", False):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Emergency Kill Switch engaged. All paid executions frozen."
+        )
+        
     endpoint = request.url.path
     
     catalog_entry = ENDPOINT_CATALOG.get(endpoint)
@@ -72,7 +80,7 @@ async def token_deduction_guard(
         current_balance = 500000.0
         
     # Budget Rule check
-    budget_rule = None
+    budget_rules = []
     try:
         res_budget = await db.execute(
             select(BudgetRule).where(
@@ -80,35 +88,53 @@ async def token_deduction_guard(
                 BudgetRule.is_active == True
             )
         )
-        budget_rule = res_budget.scalar_one_or_none()
+        budget_rules = res_budget.scalars().all()
     except Exception as exc:
         logger.warning(f"Budget rule query failed: {exc}")
         
-    if budget_rule:
+    # Fallback safe defaults if no active budget rules exist in the database
+    if not budget_rules:
+        logger.info(f"No budget rules configured for workspace {workspace_id}. Enforcing safe defaults.")
+        budget_rules = [
+            BudgetRule(workspace_id=workspace_id, name="Default Daily Cap", limit_usd=10.0, period="daily", is_active=True),
+            BudgetRule(workspace_id=workspace_id, name="Default Weekly Cap", limit_usd=50.0, period="weekly", is_active=True),
+            BudgetRule(workspace_id=workspace_id, name="Default Monthly Cap", limit_usd=150.0, period="monthly", is_active=True)
+        ]
+
+    for rule in budget_rules:
         try:
-            limit = budget_rule.limit_usd
+            limit = rule.limit_usd
+            period = getattr(rule, "period", "monthly") or "monthly"
+            period = period.lower()
+            
             now = datetime.utcnow()
-            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if period == "daily":
+                start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif period == "weekly":
+                start_time = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            else:  # monthly
+                start_time = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                
             stmt_spend = select(func.coalesce(func.sum(WalletTransaction.amount), 0.0)).where(
                 WalletTransaction.workspace_id == workspace_id,
                 WalletTransaction.tx_type == "debit",
-                WalletTransaction.created_at >= month_start
+                WalletTransaction.created_at >= start_time
             )
             res_spend = await db.execute(stmt_spend)
             current_spend = abs(float(res_spend.scalar_one_or_none() or 0.0))
             
             if current_spend + token_cost > limit:
                 if TEST_MODE:
-                    logger.warning(f"[BUDGET_VIOLATION_TEST] Monthly budget limit exceeded. Limit: {limit}, Spend: {current_spend}, Required: {token_cost}. Allowing due to TEST_MODE.")
+                    logger.warning(f"[BUDGET_VIOLATION_TEST] Budget limit exceeded ({rule.name}). Limit: {limit}, Spend: {current_spend}, Required: {token_cost}. Allowing due to TEST_MODE.")
                 else:
                     raise HTTPException(
                         status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                        detail=f"Monthly budget limit exceeded. Limit: {limit}, Spend: {current_spend}, Required: {token_cost}"
+                        detail=f"Budget limit exceeded ({rule.name}). Limit: {limit}, Spend: {current_spend}, Required: {token_cost}"
                     )
         except HTTPException:
             raise
         except Exception as exc:
-            logger.warning(f"Failed to check budget rule limits: {exc}")
+            logger.warning(f"Failed to check budget rule ({rule.name}) limits: {exc}")
 
     if current_balance < token_cost:
         if TEST_MODE:

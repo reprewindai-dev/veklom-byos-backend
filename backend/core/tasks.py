@@ -10,9 +10,69 @@ from celery import shared_task
 from backend.core.database.database import async_session
 from backend.services import forecast as forecast_svc
 from backend.db.models.ai import ExecLog
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, text
+import redis
 
 logger = logging.getLogger(__name__)
+
+class AutonomousRetrainingCoordinator:
+    def __init__(self, redis_client: redis.Redis, db_session):
+        self.redis = redis_client
+        self.db = db_session
+
+    async def verify_retraining_readiness(self, tenant_id: str, model_family: str) -> bool:
+        """
+        Runs aggregations to verify that a tenant has accumulated enough Gold records,
+        the dataset is sufficiently diverse, and no cooldown timers are active.
+        """
+        cooldown_key = f"cooldown:training:{tenant_id}:{model_family}"
+        lock_key = f"active_lock:training:{tenant_id}:{model_family}"
+        
+        # Check active lock state
+        if self.redis.get(lock_key) or self.redis.get(cooldown_key):
+            logger.info("Retraining blocked: active lock or cooldown timer is active.")
+            return False
+
+        # Run database validation
+        query = text("""
+            SELECT COUNT(*) AS gold_count, COUNT(DISTINCT route_family) AS route_diversity
+            FROM execution_logs
+            WHERE workspace_id = :tenant_id
+              AND data_tier = 'gold'
+              AND eligible_for_training = TRUE
+              AND training_locked_at IS NULL
+              AND created_at >= NOW() - INTERVAL '7 days';
+        """)
+        
+        result = await self.db.execute(query, {"tenant_id": tenant_id})
+        row = result.fetchone()
+        
+        if not row or row[0] < 100 or row[1] < 3:
+            logger.info("Retraining blocked: minimum volume or diversity thresholds not met.")
+            return False
+
+        return True
+
+    async def execute_pipeline_enqueue(self, tenant_id: str, model_family: str) -> bool:
+        """
+        Acquires a single-flight Redis lock and enqueues the training task.
+        """
+        if not await self.verify_retraining_readiness(tenant_id, model_family):
+            return False
+
+        lock_key = f"active_lock:training:{tenant_id}:{model_family}"
+        cooldown_key = f"cooldown:training:{tenant_id}:{model_family}"
+        
+        # Acquire lock with a 30-minute expiration to match the cooldown window
+        if self.redis.set(lock_key, "active", ex=1800, nx=True):
+            # Set the cooldown timer
+            self.redis.set(cooldown_key, "triggered", ex=1800)
+            
+            # Enqueue task
+            train_forecast_models_task.delay(workspace_id=tenant_id)
+            return True
+            
+        return False
 
 def _run_async(coro):
     """Helper to run an async coroutine synchronously in Celery."""
@@ -25,10 +85,52 @@ def train_forecast_models_task(workspace_id: str = None):
     
     async def _train():
         async with async_session() as db:
-            # If a specific workspace is provided, train only for that workspace
-            # Otherwise, you would fetch all workspaces and train for each.
             ws_id = workspace_id or "default"
+            
+            # Absolute invariant: Training data source = Gold only.
+            # Batch locking inside training task
+            # Using FOR UPDATE SKIP LOCKED to acquire exclusive batch.
+            now_utc = datetime.now(timezone.utc)
+            
+            # Subquery to lock rows
+            # Note: in SQLAlchemy, we can write a text query or use ORM with with_for_update(skip_locked=True)
+            from sqlalchemy import text
+            lock_query = text("""
+                UPDATE execution_logs
+                SET training_locked_at = :now
+                WHERE id IN (
+                    SELECT id
+                    FROM execution_logs
+                    WHERE workspace_id = :ws_id
+                      AND data_tier = 'gold'
+                      AND eligible_for_training = TRUE
+                      AND training_locked_at IS NULL
+                    ORDER BY created_at ASC
+                    LIMIT 500
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id;
+            """)
+            
+            # Execute the lock and retrieve locked IDs
+            locked_result = await db.execute(lock_query, {"now": now_utc, "ws_id": ws_id})
+            locked_ids = [row[0] for row in locked_result.fetchall()]
+            
+            if not locked_ids:
+                logger.info(f"No unlocked Gold records available for workspace {ws_id}.")
+                return {"success": False, "reason": "no_unlocked_gold_records"}
+                
+            logger.info(f"Locked {len(locked_ids)} Gold records for training.")
+            
+            # Train model
             result = await forecast_svc.train_and_persist(db, ws_id)
+            
+            # Mark these specific records with the generated result/version
+            # In a full system, you would attach the model version or training job ID
+            await db.commit()
+            
+            result["locked_samples"] = len(locked_ids)
+            result["locked_ids"] = locked_ids
             return result
 
     result = _run_async(_train())

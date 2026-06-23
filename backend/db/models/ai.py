@@ -3,8 +3,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, JSON, Boolean, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+import enum
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, JSON, Boolean, ForeignKey, Enum as SQLEnum
 
 from backend.core.database.database import Base
 from backend.db.models.user import _utcnow, _uuid
@@ -12,17 +12,30 @@ from backend.db.models.user import _utcnow, _uuid
 from sqlalchemy import Index
 from sqlalchemy.ext.hybrid import hybrid_property
 
+class DataTier(str, enum.Enum):
+    bronze = "bronze"
+    silver = "silver"
+    gold = "gold"
+    unrated = "unrated"
+
 class ExecutionLog(Base):
     """every /v1/exec call: tenant, model, provider, tokens, latency"""
     __tablename__ = "execution_logs"
     __table_args__ = (
         Index("ix_exec_logs_workspace_provider", "workspace_id", "provider"),
         Index("ix_execution_logs_created_at", "created_at"),
+        Index("ix_execution_logs_data_tier", "workspace_id", "data_tier"),
+        Index("idx_exec_log_tier_created_at", "data_tier", "created_at"),
+        Index("idx_exec_log_ws_tier_created", "workspace_id", "data_tier", "created_at"),
+        Index("idx_exec_log_gold_training", "workspace_id", "data_tier", "eligible_for_training", "training_locked_at", "created_at"),
+        Index("idx_exec_log_dedupe_key", "dedupe_key"),
+        UniqueConstraint("workspace_id", "dedupe_key", name="uniq_ws_dedupe_key"),
     )
 
     id = Column(String(36), primary_key=True, default=_uuid)
     workspace_id = Column(String(36), nullable=False, index=True)
     user_id = Column(String(36), nullable=False, index=True)
+    evidence_pack_id = Column(String(36), index=True, nullable=True)
     model = Column(String(128), default="")
     provider = Column(String(64), default="")
     input_tokens = Column(Integer, default=0)
@@ -34,6 +47,29 @@ class ExecutionLog(Base):
     policy_id = Column(String(128), nullable=True, index=True)
     policy_flags = Column(JSON, default=list)
     request_hash = Column(String(128), default="")
+    data_tier = Column(SQLEnum(DataTier, name="data_tier_enum", create_type=False), default=DataTier.unrated)
+    confidence_score = Column(Float, default=0.0)
+    
+    # Multi-Factor Verification Columns
+    tier_score = Column(Float, default=0.0)
+    policy_passed = Column(Boolean, default=False)
+    schema_passed = Column(Boolean, default=False)
+    quality_passed = Column(Boolean, default=False)
+    evidence_complete = Column(Boolean, default=False)
+    runtime_error = Column(Boolean, default=False)
+    security_anomaly = Column(Boolean, default=False)
+    budget_exceeded = Column(Boolean, default=False)
+    
+    # Execution Routing / Diversity
+    route_family = Column(String(128), nullable=True, index=True)
+    
+    # Lifecycle & Dedupe
+    dedupe_key = Column(String(128), nullable=True)
+    tier_reason_codes = Column(JSON, default=list)
+    tiered_at = Column(DateTime(timezone=True), nullable=True)
+    eligible_for_training = Column(Boolean, default=False)
+    training_locked_at = Column(DateTime(timezone=True), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     @hybrid_property
@@ -170,6 +206,26 @@ class ForecastModel(Base):
     window_days = Column(Integer, default=30)
     version = Column(String(32), default="v1")
     trained_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+class SettlementLedger(Base):
+    """Table for Atomic Service Channel (ASC) Micropayment Escrows"""
+    __tablename__ = "settlement_ledger"
+    
+    __table_args__ = (
+        Index("idx_settlement_ledger_payer_state", "payer_id", "settlement_state"),
+    )
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    payer_id = Column(String(36), nullable=False)
+    payee_id = Column(String(36), nullable=False)
+    asc_channel_id = Column(String(36), nullable=False)
+    locked_amount = Column(Float, nullable=False, default=0.0)
+    released_amount = Column(Float, nullable=False, default=0.0)
+    settlement_state = Column(String(20), nullable=False, default="locked")
+    execution_hash = Column(String(64), nullable=False)
+    exported_to_stripe = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 # Alias to support both ExecutionLog (manual alignment) and ExecLog (production/legacy)

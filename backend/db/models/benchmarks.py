@@ -108,3 +108,35 @@ class EpochSettlement(Base):
     penalty_applied = Column(Float, nullable=False)
     new_bond_balance = Column(Float, nullable=False)
     timestamp = Column(DateTime(timezone=True), default=_utcnow)
+
+class NexusBenchmarkRun(Base):
+    __tablename__ = "vnp_nexus_benchmark_runs"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    agent_id = Column(String(128), nullable=False, index=True)
+    provider = Column(String(128), nullable=False)
+    policy_adherence_score = Column(Float, nullable=False)
+    evidence_integrity_score = Column(Float, nullable=False)
+    latency_score = Column(Float, nullable=False)
+    cost_efficiency_score = Column(Float, nullable=False)
+    composite_score = Column(Float, nullable=False)
+    threshold_used = Column(Float, nullable=False, default=70.0)
+    result_state = Column(String(32), nullable=False)  # passed, degraded, revoked
+    triggered_revocation = Column(Boolean, default=False)
+    evaluation_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+class AgentPrivilege(Base):
+    __tablename__ = "vnp_agent_privileges"
+
+    agent_id = Column(String(128), primary_key=True)
+    provider = Column(String(128), nullable=False)
+    status = Column(String(32), default="active", nullable=False) # active, quarantined, revoked, restoration_pending
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_reason = Column(Text, nullable=True)
+    revoked_by = Column(String(128), nullable=True)
+    restored_at = Column(DateTime(timezone=True), nullable=True)
+    restored_by = Column(String(128), nullable=True)
+    restore_reason = Column(Text, nullable=True)
+    last_benchmark_run_id = Column(String(36), nullable=True)
+    last_updated = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

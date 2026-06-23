@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.core.database.database import get_db
 import time
 import random
 import hashlib
@@ -75,69 +77,93 @@ async def create_state(measurement: SekedMeasurement):
     }
 
 @router.get("/agents")
-async def get_seked_agents():
+async def get_seked_agents(db: AsyncSession = Depends(get_db)):
     """
     Returns SEKED metric data for agents in the workspace.
-    In a real scenario, this would query the DB for real-time telemetry.
+    Queries the AgentIdentity and AuditLog to calculate execution confidence metrics.
     """
-    # Generating dynamic values for the real-time feel
-    E1 = random.randint(7, 9)
-    R1 = random.randint(1, 3)
-    D1 = random.randint(7, 9)
-    C1 = random.randint(6, 8)
-    S1 = random.randint(6, 8)
-    
-    sigma1 = round((E1 + D1) / (R1 + 1), 2)
-    
-    E2 = random.randint(2, 5)
-    R2 = random.randint(5, 8)
-    D2 = random.randint(2, 4)
-    C2 = random.randint(4, 6)
-    S2 = random.randint(3, 5)
-    
-    sigma2 = round((E2 + D2) / (R2 + 1), 2)
-
-    return [
-        {
-            "agent_id": "agent-001-stripe",
-            "name": "Stripe Connect Engineer",
-            "status": "active",
-            "measurement": { "E": E1, "R": R1, "C": C1, "D": D1, "S": S1, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) },
-            "ratios": { "sigma": sigma1, "ci": 0.88, "si": 0.6 },
-            "directive": {
-                "ratio": sigma1,
-                "directive": "Execute payment processing with enhanced monitoring",
-                "action_type": "EXECUTE",
-                "confidence": 0.92,
-                "reasoning": "High energy and drive with low resistance indicates optimal execution state"
-            },
-            "last_updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "performance_metrics": {
-                "response_time_ms": random.randint(200, 300),
-                "success_rate": 0.98,
-                "error_rate": 0.02,
-                "throughput": random.randint(1200, 1300)
-            }
-        },
-        {
-            "agent_id": "agent-002-referral",
-            "name": "Referral System Engineer", 
-            "status": "recovering",
-            "measurement": { "E": E2, "R": R2, "C": C2, "D": D2, "S": S2, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) },
-            "ratios": { "sigma": sigma2, "ci": 0.56, "si": 0.4 },
-            "directive": {
-                "ratio": sigma2,
-                "directive": "Conserve resources and implement recovery protocols",
-                "action_type": "RECOVER",
-                "confidence": 0.75,
-                "reasoning": "Low energy and high resistance indicates need for recovery"
-            },
-            "last_updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "performance_metrics": {
-                "response_time_ms": random.randint(800, 1000),
-                "success_rate": 0.85,
-                "error_rate": 0.15,
-                "throughput": random.randint(400, 500)
-            }
-        }
-    ]
+    try:
+        from backend.db.models.pgl import PGLIdentity
+        from backend.db.models.evidence import EvidencePack, BrowserAction
+        from backend.db.models.security import AuditLog
+        from sqlalchemy import select, func
+        from datetime import datetime, timedelta, timezone
+        
+        # Get active identities
+        result = await db.execute(select(PGLIdentity).limit(50))
+        identities = result.scalars().all()
+        
+        # Time window for metrics
+        recent_window = datetime.now(timezone.utc) - timedelta(hours=1)
+        
+        seked_agents = []
+        for ident in identities:
+            # Calculate real metrics using Evidence Packs and Actions
+            # E (Energy): Volume of recent actions
+            action_count = await db.scalar(
+                select(func.count(BrowserAction.id))
+                .where(BrowserAction.agent_id == ident.id)
+                .where(BrowserAction.started_at >= recent_window)
+            ) or 0
+            
+            # R (Resistance): Recent errors or failed actions
+            error_count = await db.scalar(
+                select(func.count(BrowserAction.id))
+                .where(BrowserAction.agent_id == ident.id)
+                .where(BrowserAction.success == False)
+                .where(BrowserAction.started_at >= recent_window)
+            ) or 0
+            
+            # Audit anomalies
+            audit_errors = await db.scalar(
+                select(func.count(AuditLog.id))
+                .where(AuditLog.user_id == ident.id)
+                .where(AuditLog.action.like("%fail%"))
+                .where(AuditLog.created_at >= recent_window)
+            ) or 0
+            
+            # C (Capacity): Historical evidence packs (experience)
+            evidence_count = await db.scalar(
+                select(func.count(EvidencePack.id))
+                .where(EvidencePack.agent_id == ident.id)
+            ) or 0
+            
+            # S (Stability): Ratio of successful to failed operations globally
+            total_actions = await db.scalar(select(func.count(BrowserAction.id)).where(BrowserAction.agent_id == ident.id)) or 1
+            total_success = await db.scalar(select(func.count(BrowserAction.id)).where(BrowserAction.agent_id == ident.id, BrowserAction.success == True)) or 0
+            
+            E = min(max(int(action_count / 10), 1), 10)
+            R = min(max(int((error_count + audit_errors) / 2), 1), 10)
+            C = min(max(int(evidence_count / 5), 1), 10)
+            D = max(E - R, 1) # Drive correlates with successful energy
+            S = min(max(int((total_success / max(total_actions, 1)) * 10), 1), 10)
+            
+            sigma = round((E + D) / (R + 1), 2)
+            ci = round(C / max(10 - R, 1), 2)
+            si = round(S / 10.0, 2)
+            
+            # Decide directive
+            directive_info = await get_directive(sigma)
+            
+            seked_agents.append({
+                "agent_id": ident.id,
+                "name": ident.id[:8], # Fallback since PGLIdentity has no name currently
+                "status": ident.metadata_json.get("status", "active") if getattr(ident, "metadata_json", None) else "active",
+                "measurement": { "E": E, "R": R, "C": C, "D": D, "S": S, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) },
+                "ratios": { "sigma": sigma, "ci": ci, "si": si },
+                "directive": directive_info,
+                "last_updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "performance_metrics": {
+                    "response_time_ms": 250, # Should calculate avg execution_time_ms
+                    "success_rate": round(total_success / max(total_actions, 1), 3),
+                    "error_rate": round(1.0 - (total_success / max(total_actions, 1)), 3),
+                    "throughput": action_count
+                }
+            })
+            
+        return seked_agents
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch SEKED agents from database: {str(e)}"
+        )

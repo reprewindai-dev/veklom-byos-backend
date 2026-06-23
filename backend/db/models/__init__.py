@@ -11,7 +11,7 @@ from backend.db.models.agent import Account, AgentUser, Agent, AgentSkill
 from backend.db.models.genome import GenomeVersion
 from backend.db.models.ledger import LedgerEvent
 from backend.db.models.lineage import BirthCertificate, LineageEdge
-from backend.db.models.pgl import PGLCertificate, PGLLedgerEvent
+from backend.db.models.pgl import PGLCertificate, PGLLedgerEvent, PGLIdentity
 from backend.db.models.agency import AgentState, AgentMemoryEntry, Notification
 from backend.db.models.provider import ProviderKey, ProviderRoutingLog
 from backend.db.models.playground import PlaygroundSession, PlaygroundPrompt
@@ -30,7 +30,7 @@ from backend.db.models.internal_operators import (
 from backend.db.models.telemetry import AgentCall
 from backend.db.models.run import VeklomRun
 
-from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake, SyntheticProbeLog
+from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake, SyntheticProbeLog, AgentPrivilege, NexusBenchmarkRun
 from backend.db.models.pricing import PricingTier, TierFeature, TierUpgrade
 from backend.db.models.referral import ReferralCode, Referral, ReferralPayout
 from backend.db.models.vnp import (
@@ -52,7 +52,7 @@ from backend.db.models.vnp import (
     Incident,
     AuditLog as VNPAuditLog
 )
-
+from backend.db.models.rag import AgentMemoryStore, DocumentChunk
 
 __all__ = [
     # existing
@@ -61,18 +61,16 @@ __all__ = [
     "ExecLog",
     "WalletTransaction", "Subscription", "BudgetRule", "Invoice",
     "AuditLog", "SecurityEvent", "ComplianceCheck", "KillSwitchState",
-    "MarketplaceAsset",
-    "AssetReview",
     "AgentCall",
     "VeklomRun",
-    "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog",
+    "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog", "AgentPrivilege", "NexusBenchmarkRun",
     "Pipeline", "PipelineRun", "Deployment",
     # UACP V3 institutional ownership
     "Account", "AgentUser", "Agent", "AgentSkill",
     "GenomeVersion",
     "LedgerEvent",
     "BirthCertificate", "LineageEdge",
-    "PGLCertificate", "PGLLedgerEvent",
+    "PGLCertificate", "PGLLedgerEvent", "PGLIdentity",
     "AgentState", "AgentMemoryEntry", "Notification",
     # billing extension
     "BillingUsage", "BillingEvent", "AnalyticsEvent",
@@ -93,11 +91,11 @@ __all__ = [
     "InternalOperatorBudget",
     "InternalOperatorProviderUsage",
     "InternalOperatorApproval",
-    # benchmarks & trust leaderboard
-    "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog",
     # VNP
     "Provider", "Api", "ApiRegion", "Customer", "Project", "SdkCredential",
     "RoutePolicy", "ProbeEvent", "RegionalTelemetry", "RouteSnapshot",
-    "UsageEvent", "PrepaidBalance", "SettlementEntry", "Validator",
-    "Attestation", "Incident", "VNPAuditLog"
+    "UsageEvent", "PrepaidBalance", "SettlementEntry", "Validator", "Attestation",
+    "Incident", "VNPAuditLog",
+    # RAG & Memory
+    "AgentMemoryStore", "DocumentChunk"
 ]

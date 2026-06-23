@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
@@ -305,3 +305,26 @@ async def require_workspace_access(
             detail="Access denied to workspace"
         )
     return current_user
+
+async def get_rls_db(
+    user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns a database session with the PostgreSQL RLS context set for the current tenant.
+    This enforces isolation at the DB layer using current_setting('app.current_tenant_id').
+    The session is safely reset in a finally block to prevent leakage across pooled connections.
+    """
+    tenant_id = getattr(user, "workspace_id", None) or getattr(user, "tenant_id", "default_tenant")
+    
+    # Inject tenant variable
+    await db.execute(text("SET LOCAL app.current_tenant_id = :tenant_id"), {"tenant_id": tenant_id})
+    try:
+        yield db
+    finally:
+        # Prevent connection pool leakage
+        try:
+            await db.execute(text("RESET app.current_tenant_id"))
+        except Exception:
+            pass
+

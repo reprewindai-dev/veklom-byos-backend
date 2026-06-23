@@ -21,6 +21,7 @@ class GenomeVersion(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    pgl_identity_id: Mapped[str] = mapped_column(ForeignKey("pgl_identities.id"), nullable=False, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     genome_hash: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -38,6 +39,7 @@ class GenomeVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     agent: Mapped["Agent"] = relationship(back_populates="genome_versions")  # noqa: F821
+    pgl_identity: Mapped["PGLIdentity"] = relationship()  # noqa: F821
 
     __table_args__ = (
         CheckConstraint("version > 0", name="ck_genome_version_positive"),

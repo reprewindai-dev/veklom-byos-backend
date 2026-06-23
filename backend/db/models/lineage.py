@@ -23,6 +23,7 @@ class BirthCertificate(Base):
     agent_id: Mapped[int] = mapped_column(
         ForeignKey("agents.id"), unique=True, nullable=False
     )
+    pgl_identity_id: Mapped[str] = mapped_column(ForeignKey("pgl_identities.id"), nullable=False, index=True)
     certificate_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
     genome_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     document_uri: Mapped[str | None] = mapped_column(String(512))
@@ -30,6 +31,7 @@ class BirthCertificate(Base):
     issued_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     agent: Mapped["Agent"] = relationship(back_populates="certificate")  # noqa: F821
+    pgl_identity: Mapped["PGLIdentity"] = relationship()  # noqa: F821
 
 
 class LineageEdge(Base):
@@ -49,6 +51,12 @@ class LineageEdge(Base):
     child_agent_id: Mapped[int] = mapped_column(
         ForeignKey("agents.id"), nullable=False
     )
+    parent_pgl_id: Mapped[str] = mapped_column(
+        ForeignKey("pgl_identities.id"), nullable=False, index=True
+    )
+    child_pgl_id: Mapped[str] = mapped_column(
+        ForeignKey("pgl_identities.id"), nullable=False, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     parent: Mapped["Agent"] = relationship(  # noqa: F821
@@ -56,4 +64,10 @@ class LineageEdge(Base):
     )
     child: Mapped["Agent"] = relationship(  # noqa: F821
         back_populates="parent_edges", foreign_keys=[child_agent_id]
+    )
+    parent_pgl: Mapped["PGLIdentity"] = relationship(  # noqa: F821
+        foreign_keys=[parent_pgl_id]
+    )
+    child_pgl: Mapped["PGLIdentity"] = relationship(  # noqa: F821
+        foreign_keys=[child_pgl_id]
     )

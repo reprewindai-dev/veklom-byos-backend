@@ -222,3 +222,113 @@ async def nexus_certify(request: CertificationRequest):
         ),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+from pydantic import Field
+import uuid
+from backend.core.services.seked_service import seked_service
+from backend.db.models.benchmarks import NexusBenchmarkRun
+
+class BenchmarkEvaluationRequest(BaseModel):
+    agent_id: str
+    provider: str
+    policy_adherence_score: float = Field(..., ge=0, le=100)
+    evidence_integrity_score: float = Field(..., ge=0, le=100)
+    latency_ms: float = Field(..., ge=0)
+    cost_efficiency_score: float = Field(..., ge=0, le=100)
+
+class BenchmarkEvaluationResponse(BaseModel):
+    run_id: str
+    overall_score: float
+    status: str
+    privilege_revoked: bool
+    message: str
+
+# Configurable threshold for dynamic revocation
+DYNAMIC_REVOCATION_THRESHOLD = 70.0
+
+@router.post("/benchmark/evaluate", response_model=BenchmarkEvaluationResponse)
+async def evaluate_benchmark(
+    request: BenchmarkEvaluationRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Evaluates an agent's benchmark run and dynamically revokes privileges 
+    if the score falls below the VNP threshold.
+    """
+    # 1. Calculate overall score (weighted average)
+    latency_score = max(0.0, 100.0 - ((request.latency_ms / 2000.0) * 100)) # Simple mapping for score
+    
+    overall_score = (
+        (request.policy_adherence_score * 0.4) +
+        (request.evidence_integrity_score * 0.4) +
+        (request.cost_efficiency_score * 0.2)
+    ) - max(0, (request.latency_ms - 2000) / 100)
+    
+    overall_score = max(0.0, min(100.0, overall_score))
+    
+    privilege_revoked = False
+    run_status = "passed"
+    message = "Agent benchmark passed successfully."
+    
+    # Check hard floors and composite
+    if overall_score < DYNAMIC_REVOCATION_THRESHOLD or request.policy_adherence_score < 80.0 or request.evidence_integrity_score < 90.0:
+        run_status = "revoked"
+        privilege_revoked = True
+        
+        if overall_score < DYNAMIC_REVOCATION_THRESHOLD:
+            reason = f"Composite score {overall_score:.2f} is below the {DYNAMIC_REVOCATION_THRESHOLD} threshold."
+        elif request.policy_adherence_score < 80.0:
+            reason = f"Policy adherence score {request.policy_adherence_score:.2f} is below the 80.0 critical floor."
+        else:
+            reason = f"Evidence integrity score {request.evidence_integrity_score:.2f} is below the 90.0 critical floor."
+            
+        message = f"Privileges revoked: {reason}"
+        
+        # We need a run_id first to pass to SEKED
+        run_id = f"nbm_{uuid.uuid4().hex[:12]}"
+        
+        await seked_service.revoke_agent_privileges(
+            db=db,
+            agent_id=request.agent_id,
+            provider=request.provider,
+            reason=message,
+            run_id=run_id
+        )
+    elif overall_score < 80.0:
+        run_status = "degraded"
+        message = f"Agent benchmark degraded. Score: {overall_score:.2f}."
+        run_id = f"nbm_{uuid.uuid4().hex[:12]}"
+    else:
+        run_id = f"nbm_{uuid.uuid4().hex[:12]}"
+        
+    run_record = NexusBenchmarkRun(
+        id=run_id,
+        agent_id=request.agent_id,
+        provider=request.provider,
+        policy_adherence_score=request.policy_adherence_score,
+        evidence_integrity_score=request.evidence_integrity_score,
+        latency_score=latency_score,
+        cost_efficiency_score=request.cost_efficiency_score,
+        composite_score=overall_score,
+        threshold_used=DYNAMIC_REVOCATION_THRESHOLD,
+        result_state=run_status,
+        triggered_revocation=privilege_revoked,
+        evaluation_reason=message
+    )
+    db.add(run_record)
+    await db.commit()
+    
+    return BenchmarkEvaluationResponse(
+        run_id=run_record.id,
+        overall_score=overall_score,
+        status=run_status,
+        privilege_revoked=privilege_revoked,
+        message=message
+    )
+
+@router.get("/agent/{agent_id}/privilege")
+async def get_agent_privilege(agent_id: str, db: AsyncSession = Depends(get_db)):
+    """Check the current privilege status of an agent."""
+    is_active = await seked_service.check_agent_privilege(db, agent_id)
+    return {"agent_id": agent_id, "is_active": is_active}

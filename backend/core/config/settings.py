@@ -150,6 +150,13 @@ class Settings(BaseSettings):
     S3_SECRET_ACCESS_KEY: str = ""
     S3_BUCKET_NAME: str = "byos-ai"
     S3_REGION: str = "us-east-1"
+    
+    # Cloudflare R2 (cAPI Edge Proxy)
+    CLOUDFLARE_R2_BUCKET_NAME: str = "veklom-capi"
+    CLOUDFLARE_R2_ACCESS_KEY_ID: str = ""
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY: str = ""
+    CLOUDFLARE_R2_ENDPOINT_URL: str = ""
+    CLOUDFLARE_R2_PUBLIC_URL: str = "https://private.s-anand.net"
 
     # License
     LICENSE_KEY: str = "YOUR_LICENSE_KEY"

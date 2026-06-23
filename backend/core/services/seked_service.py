@@ -224,6 +224,132 @@ class SEKEDService:
             'service': 'SEKED v1.0 Policy Engine'
         }
 
+    @staticmethod
+    async def check_agent_privilege(db: Any, agent_id: str) -> bool:
+        """Check if an agent has execution privileges.
+        
+        Args:
+            db: Database session
+            agent_id: The agent to check
+            
+        Returns:
+            bool: True if active, False if revoked
+        """
+        from sqlalchemy import select
+        from backend.db.models.benchmarks import AgentPrivilege
+        
+        stmt = select(AgentPrivilege).where(AgentPrivilege.agent_id == agent_id)
+        result = await db.execute(stmt)
+        privilege = result.scalar_one_or_none()
+        
+        if not privilege:
+            # If no privilege record exists, default to active
+            return True
+            
+        return privilege.status == "active"
+
+    @staticmethod
+    async def revoke_agent_privileges(
+        db: Any, 
+        agent_id: str, 
+        provider: str, 
+        reason: str,
+        run_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Revoke an agent's execution privileges dynamically.
+        
+        Args:
+            db: Database session
+            agent_id: The agent to revoke
+            provider: The provider name
+            reason: The revocation reason
+            run_id: The ID of the benchmark run that triggered this
+            
+        Returns:
+            Dict containing the updated privilege record
+        """
+        from sqlalchemy import select
+        from backend.db.models.benchmarks import AgentPrivilege
+        from datetime import datetime, timezone
+        
+        stmt = select(AgentPrivilege).where(AgentPrivilege.agent_id == agent_id)
+        result = await db.execute(stmt)
+        privilege = result.scalar_one_or_none()
+        
+        now = datetime.now(timezone.utc)
+        
+        if not privilege:
+            privilege = AgentPrivilege(
+                agent_id=agent_id,
+                provider=provider,
+                status="revoked",
+                revoked_at=now,
+                revoked_reason=reason,
+                revoked_by="system",
+                last_benchmark_run_id=run_id
+            )
+            db.add(privilege)
+        else:
+            privilege.status = "revoked"
+            privilege.revoked_at = now
+            privilege.revoked_reason = reason
+            privilege.revoked_by = "system"
+            if run_id:
+                privilege.last_benchmark_run_id = run_id
+            
+        await db.commit()
+        await db.refresh(privilege)
+        
+        return {
+            "agent_id": privilege.agent_id,
+            "status": privilege.status,
+            "revocation_reason": privilege.revoked_reason
+        }
+
+    @staticmethod
+    async def restore_agent_privileges(
+        db: Any, 
+        agent_id: str, 
+        admin_id: str, 
+        reason: str
+    ) -> Dict[str, Any]:
+        """Manually restore an agent's execution privileges.
+        
+        Args:
+            db: Database session
+            agent_id: The agent to restore
+            admin_id: The administrator performing the restore
+            reason: The restore reason
+            
+        Returns:
+            Dict containing the updated privilege record
+        """
+        from sqlalchemy import select
+        from backend.db.models.benchmarks import AgentPrivilege
+        from datetime import datetime, timezone
+        
+        stmt = select(AgentPrivilege).where(AgentPrivilege.agent_id == agent_id)
+        result = await db.execute(stmt)
+        privilege = result.scalar_one_or_none()
+        
+        if not privilege:
+            raise ValueError(f"Agent {agent_id} privilege record not found.")
+            
+        now = datetime.now(timezone.utc)
+        
+        privilege.status = "active"
+        privilege.restored_at = now
+        privilege.restored_by = admin_id
+        privilege.restore_reason = reason
+            
+        await db.commit()
+        await db.refresh(privilege)
+        
+        return {
+            "agent_id": privilege.agent_id,
+            "status": privilege.status,
+            "restore_reason": privilege.restore_reason
+        }
 
 # Global SEKED service instance
 seked_service = SEKEDService()

@@ -20,27 +20,7 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-def compute_composite_score(
-    p99_latency: int, 
-    uptime: float, 
-    weights: Dict[str, float]
-) -> float:
-    """
-    Computes route score based on latency and uptime.
-    latency is penalized (lower is better), uptime is rewarded (higher is better).
-    For MVP, we just do a simple inversion on latency.
-    """
-    lat_weight = weights.get("p99_latency", 0.35)
-    up_weight = weights.get("uptime", 0.25)
-    
-    # Simple normalization: max latency we care about is 1000ms.
-    # Score out of 100
-    norm_lat = max(0, 100 - (p99_latency / 10.0)) 
-    norm_up = uptime # already a percent
-
-    return (norm_lat * lat_weight) + (norm_up * up_weight)
-
-
+from backend.core.ml.vnp_scoring import compute_vnp_score
 @router.get("/routes/resolve")
 async def resolve_route(
     customer_id: str,
@@ -90,10 +70,16 @@ async def resolve_route(
         if policy.minimum_trust_score and telemetry.trust_score < policy.minimum_trust_score:
             continue
             
-        score = compute_composite_score(
-            telemetry.p99_latency_ms, 
-            float(telemetry.uptime_percent), 
-            policy.weights
+        # We assume p50 is slightly lower than p99 for calculation purposes since DB only has p99 here for MVP.
+        # In full production we would fetch p50 and p99.
+        p50_latency = max(10, telemetry.p99_latency_ms - 20)
+        
+        score = compute_vnp_score(
+            p50_latency_ms=p50_latency,
+            p99_latency_ms=telemetry.p99_latency_ms,
+            availability_percent=float(telemetry.uptime_percent),
+            owasp_compliance_flag=True, # Assuming true for existing records
+            weights=policy.weights
         )
         
         candidates.append({

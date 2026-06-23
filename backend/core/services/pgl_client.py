@@ -17,7 +17,7 @@ class PGLClient:
     
     def __init__(self):
         # Ensure we point to the api/v1 prefix of GnomLedger
-        url = settings.gnomledger_url or "http://localhost:8000"
+        url = settings.GNOMLEDGER_URL or "http://localhost:8000"
         if not url.endswith("/api/v1"):
             url = url.rstrip("/") + "/api/v1"
         self.base_url = url

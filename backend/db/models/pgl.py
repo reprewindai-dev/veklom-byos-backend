@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Integer, JSON, String
+from sqlalchemy import Column, DateTime, Integer, JSON, String, ForeignKey
+from sqlalchemy.orm import relationship
 
 from backend.core.database.database import Base
 
@@ -32,6 +33,7 @@ class PGLCertificate(Base):
     kind = Column(String(16), nullable=False, index=True)        # 'pre' | 'post'
     workspace_id = Column(String(64), nullable=False, index=True)
     actor_id = Column(String(64), nullable=False, index=True)
+    pgl_identity_id = Column(String(36), ForeignKey("pgl_identities.id"), nullable=False, index=True)
     genome_hash = Column(String(128), nullable=True)
     constitution_hash = Column(String(128), nullable=True)
     plan_hash = Column(String(128), nullable=True)
@@ -40,6 +42,8 @@ class PGLCertificate(Base):
     pre_certificate_id = Column(String(64), nullable=True, index=True)  # post -> pre link
     status = Column(String(32), nullable=False, default="committed")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+    
+    pgl_identity = relationship("PGLIdentity")
 
 
 class PGLLedgerEvent(Base):
@@ -55,12 +59,15 @@ class PGLLedgerEvent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     workspace_id = Column(String(64), nullable=False, index=True)
     actor_id = Column(String(64), nullable=False, index=True)
+    pgl_identity_id = Column(String(36), ForeignKey("pgl_identities.id"), nullable=False, index=True)
     certificate_id = Column(String(64), nullable=True, index=True)
     event_type = Column(String(64), nullable=False, index=True)   # commit_intent | attest_outcome | rollback
     payload = Column(JSON, nullable=False, default=dict)
     prev_event_hash = Column(String(128), nullable=True)
     event_hash = Column(String(128), nullable=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+    
+    pgl_identity = relationship("PGLIdentity")
 
 
 class PGLIdentity(Base):

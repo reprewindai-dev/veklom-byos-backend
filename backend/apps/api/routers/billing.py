@@ -16,6 +16,7 @@ from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.db.models.billing import BudgetRule, Invoice, Subscription, WalletTransaction
 from backend.db.models.security import KillSwitchState
+from backend.db.models.ai import SettlementLedger
 
 router = APIRouter(tags=["Billing"])
 
@@ -1041,3 +1042,57 @@ async def billing_config_status():
             "message": "Stripe checkout is live. Add STRIPE_WEBHOOK_SECRET to enable webhook processing." if (stripe_configured and not webhook_configured) else ("Billing fully configured" if (stripe_configured and webhook_configured) else "Billing requires STRIPE_SECRET_KEY"),
         }
     }
+
+
+# --- Meter Export (Stripe Rollups) ---
+@router.post("/billing/export-meters")
+async def export_meters(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """
+    Periodically aggregate un-exported usage from the SettlementLedger
+    and push via the Stripe v2/billing/meter_events API.
+    """
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe is not configured")
+        
+    client = _stripe_client()
+    
+    # Fetch released, unexported settlements
+    result = await db.execute(
+        select(SettlementLedger)
+        .where(
+            SettlementLedger.settlement_state == "released",
+            SettlementLedger.exported_to_stripe == False
+        )
+        .limit(100)
+    )
+    settlements = result.scalars().all()
+    
+    if not settlements:
+        return {"status": "success", "exported_count": 0}
+        
+    # Group by payer for batching (in real implementation, would map payer_id to Stripe customer_id)
+    # Stripe meter events require: event_name, payload (value, stripe_customer_id)
+    exported_ids = []
+    try:
+        for s in settlements:
+            # Note: We use a placeholder meter event name 'tokens_used'
+            # In a full deployment, this would be dynamically fetched or configured per provider.
+            client.billing.MeterEvent.create(
+                event_name="tokens_used",
+                payload={
+                    "value": int(s.released_amount * 100), # Conversion
+                    "stripe_customer_id": s.payer_id # Map appropriately
+                },
+                timestamp=int(datetime.now(timezone.utc).timestamp()),
+                identifier=f"vnp-export-{s.id}"
+            )
+            s.exported_to_stripe = True
+            exported_ids.append(s.id)
+            
+        await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to export meters to Stripe: {e}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to push to Stripe")
+        
+    return {"status": "success", "exported_count": len(exported_ids)}

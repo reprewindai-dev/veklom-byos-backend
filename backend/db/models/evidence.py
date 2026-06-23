@@ -202,3 +202,28 @@ class KnowledgeTemplate(Base):
     created_by = Column(String(36), nullable=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+from sqlalchemy import DDL, event
+
+# Enforce PostgreSQL Row-Level Security (RLS) for tenant isolation
+_RLS_TABLES = [
+    "evidence_packs", 
+    "browser_actions", 
+    "memory_entries", 
+    "knowledge_sources", 
+    "knowledge_templates"
+]
+
+for _table in _RLS_TABLES:
+    event.listen(
+        EvidencePack.__table__,  # Bind to table events or Base.metadata
+        "after_create",
+        DDL(f"""
+        ALTER TABLE {_table} ENABLE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation_policy ON {_table}
+            AS RESTRICTIVE
+            FOR ALL
+            USING (workspace_id = current_setting('app.current_tenant_id', true));
+        """)
+    )

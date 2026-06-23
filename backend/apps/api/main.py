@@ -639,7 +639,6 @@ from backend.apps.api.routers import (
     arena,
     benchmarks,
 
-    forensics
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -795,7 +794,6 @@ app.include_router(vnp_ingest.router, prefix="/api/v1")
 app.include_router(vnp_beacon.router, prefix="/api/v1")
 app.include_router(vnp_control.router, prefix="/api/v1")
 app.include_router(vnp_incidents.router, prefix="/api/v1")
-app.include_router(forensics.router, prefix="/api/v1")
 
 
 # --- Frontend static files ---

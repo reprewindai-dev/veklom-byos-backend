@@ -15,7 +15,7 @@ from backend.core.audit import log_audit_event
 from backend.core.services.redis_cache import redis_cache
 from backend.db.models.evidence import EvidencePack
 from backend.db.models.authority import AuthorityBundle, AuthorityRun
-from backend.db.models.agent import AgentIdentity
+from backend.db.models.pgl import PGLIdentity
 from backend.db.models.billing import BudgetRule
 from backend.db.models.ai import ExecutionLog
 from backend.db.models.security import AuditLog

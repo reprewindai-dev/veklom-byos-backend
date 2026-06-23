@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 import enum
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, JSON, Boolean, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, JSON, Boolean, ForeignKey, Enum as SQLEnum, UniqueConstraint
 
 from backend.core.database.database import Base
 from backend.db.models.user import _utcnow, _uuid
@@ -206,26 +206,6 @@ class ForecastModel(Base):
     window_days = Column(Integer, default=30)
     version = Column(String(32), default="v1")
     trained_at = Column(DateTime(timezone=True), default=_utcnow)
-
-
-class SettlementLedger(Base):
-    """Table for Atomic Service Channel (ASC) Micropayment Escrows"""
-    __tablename__ = "settlement_ledger"
-    
-    __table_args__ = (
-        Index("idx_settlement_ledger_payer_state", "payer_id", "settlement_state"),
-    )
-
-    id = Column(String(36), primary_key=True, default=_uuid)
-    payer_id = Column(String(36), nullable=False)
-    payee_id = Column(String(36), nullable=False)
-    asc_channel_id = Column(String(36), nullable=False)
-    locked_amount = Column(Float, nullable=False, default=0.0)
-    released_amount = Column(Float, nullable=False, default=0.0)
-    settlement_state = Column(String(20), nullable=False, default="locked")
-    execution_hash = Column(String(64), nullable=False)
-    exported_to_stripe = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 # Alias to support both ExecutionLog (manual alignment) and ExecLog (production/legacy)

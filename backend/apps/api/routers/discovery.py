@@ -192,7 +192,7 @@ async def x402_json():
         "accepted_assets": [
             {"asset": VEKLOM_USDC_ADDRESS, "symbol": "USDC", "decimals": 6}
         ],
-        "network": VEKLOM_NETWORK,
+        "network": "base",
         "chain_id": 8453,
         "pay_to": treasury,
         "treasury": treasury,

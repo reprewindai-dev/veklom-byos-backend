@@ -8,12 +8,14 @@ from pydantic import BaseModel
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.core.security.payment_proof import require_payment_proof
 from backend.db.models.user import User
 from backend.db.models.genome import GenomeVersion
 from backend.core.services.genome_service import GenomeService
 from backend.core.services.governance_engine import GovernanceEngine
 from backend.core.services.certificate_service import CertificateService
 from backend.core.services.memory_fabric_service import MemoryFabricService
+from backend.db.repositories.settlement_repo import write_capi_compile_fee, mark_settlement_released, build_execution_hash
 
 router = APIRouter(prefix="/governed", tags=["PGL Governance Engine"])
 
@@ -124,48 +126,61 @@ async def governed_write(
 async def compile_capi(
     body: Dict[str, Any],
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    payment=Depends(require_payment_proof),
 ):
     """
     The Core Constitutional API (cAPI).
     Dynamically compiles a completely immutable policy registry and specific, un-alterable
-    endpoints for an autonomous agent. If an agent operates through a cAPI, it is 
+    endpoints for an autonomous agent. If an agent operates through a cAPI, it is
     mathematically constrained from violating its encoded genome.
+    Requires an x402 payment proof for the $50.00 USDC compilation fee.
     """
-    target_agent_id = body.get("agent_id")
-    policy_bundle = body.get("policy_bundle", {})
-    
-    if not target_agent_id:
-        raise HTTPException(status_code=400, detail="Must provide agent_id for cAPI compilation.")
-        
-    # Compiling a cAPI requires heavy compute and verification, charged via x402.
-    from backend.db.models.vnp import SettlementLedger, SettlementState, LedgerEntryType
-    import uuid
-    
-    capi_compilation_fee = 50000000 # $50.00 USDC for a secure cAPI compilation
-    
-    fee_entry = SettlementLedger(
-        workspace_id=current_user.default_workspace_id or "default",
-        entry_type=LedgerEntryType.payment,
-        amount_minor=capi_compilation_fee, 
-        currency="USDC",
-        reference_code=f"capi_compile_{uuid.uuid4().hex[:8]}",
-        state=SettlementState.pending,
-        dedupe_key=f"capi_{uuid.uuid4().hex[:8]}",
-        entry_metadata={"api_endpoint": "/api/v1/governed/capi/compile", "agent_id": target_agent_id}
-    )
-    db.add(fee_entry)
-    await db.commit()
-    
-    # In reality, this returns the ABI and endpoint URL of the new isolated cAPI proxy.
-    import json
-    import boto3
+    import uuid as _uuid, json, boto3
     from botocore.exceptions import ClientError
     from backend.core.config.settings import settings
-    
-    # Push the generated .capi.json policy to Cloudflare R2 Edge Proxy
+
+    target_agent_id = body.get("agent_id")
+    policy_bundle = body.get("policy_bundle", {})
+
+    if not target_agent_id:
+        raise HTTPException(status_code=400, detail="Must provide agent_id for cAPI compilation.")
+
+    # ── Fee recording via canonical settlement path ─────────────────────────
+    VEKLOM_TREASURY_ID = "00000000-0000-0000-0000-76656b6c6f6d"
+    CAPI_COMPILE_FEE_MINOR = 50_000_000  # $50.00 USDC
+
+    proof_hash = None
+    tenant_id_val = None
+    workspace_id_val = None
+    if isinstance(payment, dict):
+        proof_hash = payment.get("payment_proof_hash") or payment.get("proof_hash")
+        tenant_id_val = payment.get("tenant_id")
+        workspace_id_val = payment.get("workspace_id")
+
+    tenant_id = _uuid.UUID(str(tenant_id_val)) if tenant_id_val else _uuid.UUID("00000000-0000-0000-0000-000000000001")
+    workspace_id = _uuid.UUID(str(workspace_id_val)) if workspace_id_val else None
+    try:
+        payer_uuid = _uuid.UUID(str(current_user.id))
+    except Exception:
+        payer_uuid = _uuid.uuid5(_uuid.NAMESPACE_URL, str(current_user.id))
+
+    policy_bundle_hash = build_execution_hash({"policy_bundle": policy_bundle})
+
+    ledger_row = await write_capi_compile_fee(
+        db,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        requester_provider_id=payer_uuid,
+        veklom_payee_id=_uuid.UUID(VEKLOM_TREASURY_ID),
+        payment_proof_hash=proof_hash,
+        agent_id=str(target_agent_id),
+        policy_bundle_hash=policy_bundle_hash,
+        amount_minor=CAPI_COMPILE_FEE_MINOR,
+    )
+
+    # ── Edge deploy: push .capi.json to Cloudflare R2 ──────────────────────
     capi_filename = f"{target_agent_id}/.capi.json"
-    
     if settings.CLOUDFLARE_R2_ENDPOINT_URL and settings.CLOUDFLARE_R2_ACCESS_KEY_ID:
         try:
             s3_client = boto3.client(
@@ -182,20 +197,27 @@ async def compile_capi(
                 ContentType='application/json'
             )
         except ClientError as e:
-            # We log but do not fail the request if R2 is temporarily down,
-            # in production we would retry or use Celery.
-            print(f"R2 Edge Proxy upload failed: {e}")
-            
-    # The Cloudflare Worker uses the path mapping
+            # Log but do not fail – R2 failures are non-blocking; Celery retry handles it.
+            import logging
+            logging.getLogger(__name__).warning("R2 Edge Proxy upload failed: %s", e)
+
+    # ── Mark fee released now that compilation succeeded ───────────────────
+    await mark_settlement_released(
+        db,
+        ledger_row.id,
+        metadata_patch={"agent_id": str(target_agent_id), "policy_bundle_hash": policy_bundle_hash},
+    )
+
     edge_proxy_url = f"{settings.CLOUDFLARE_R2_PUBLIC_URL}/{target_agent_id}"
-    
+
     return {
         "status": "compiled",
         "agent_id": target_agent_id,
         "capi_endpoint": edge_proxy_url,
         "immutable_policies_encoded": len(policy_bundle.keys()),
         "fee_charged_usdc": 50.00,
-        "verification_hash": "0x55ffcca21bb..."
+        "policy_bundle_hash": policy_bundle_hash,
+        "settlement_id": str(ledger_row.id),
     }
 
 

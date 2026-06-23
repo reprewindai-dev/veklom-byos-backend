@@ -723,7 +723,6 @@ app.include_router(edge.router, prefix="/api/v1")
 
 # x402 Payment & Verification Ingress
 app.include_router(x402.router, prefix="/api/v1")
-app.include_router(identity_rag.router, prefix="/api/v1")
 
 # UACP Service - dual-adapter architecture (HTTP service + library shim)
 app.include_router(uacp_http_router, prefix="/api/v1")
@@ -1783,7 +1782,6 @@ app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
 app.include_router(pgl_adapter.router, prefix="/api/v1")
 app.include_router(pgl_onboarding.router, prefix="/api/v1")
-app.include_router(rag.router, prefix="/api/v1")
 app.include_router(governed.router, prefix="/api/v1")
 
 # CAPPO - Internal Execution Authority

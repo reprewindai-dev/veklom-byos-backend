@@ -1,6 +1,6 @@
 """Authority routes for Veklom Runtime Authority Pack."""
 
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -308,6 +308,12 @@ async def simulate_policy(
                     "Rate limit thresholds nearing for this workspace"
                 ],
                 "database_constraints": "PASSED"
+            }
+        }
+    except Exception as e:
+        await nested_tx.rollback()
+        raise HTTPException(status_code=400, detail=f"Simulation failed: {str(e)}")
+
 @router.get("/runs")
 async def list_authority_runs(
     agent_id: Optional[str] = Query(None, description="Filter by agent ID"),

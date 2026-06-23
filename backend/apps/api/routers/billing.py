@@ -16,7 +16,7 @@ from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.db.models.billing import BudgetRule, Invoice, Subscription, WalletTransaction
 from backend.db.models.security import KillSwitchState
-from backend.db.models.ai import SettlementLedger
+from backend.db.models.ledger import SettlementLedger
 
 router = APIRouter(tags=["Billing"])
 
@@ -222,157 +222,85 @@ async def get_milestone_pricing(db: AsyncSession) -> dict:
 
 @router.get("/subscriptions/plans")
 async def subscription_plans(db: AsyncSession = Depends(get_db)):
-    """Return plan catalog matching veklom.com landing page pricing (source of truth).
-
+    """Return Machine API payment tiers based on x402 Mainnet Base metrics.
+    
     Plan IDs map to the frontend tier constants:
-      free → Free, starter → Starter, pro → Pro,
-      sovereign → Sovereign, enterprise → Enterprise.
-
-    Pricing model: one-time activation + minimum operating reserve.
-    Per-call costs deducted from reserve (Playground $0.25, Compare $0.75, etc.).
+      bronze, medium, good.
+    Pricing is strictly denominated in USDC testnet parameters via MPP.
     """
-    rates = await get_milestone_pricing(db)
-    milestone = {
-        "level": rates["level"],
-        "level_label": rates["level_label"],
-        "spots_remaining": rates["spots_remaining"],
-        "next_threshold": rates["next_threshold"],
-        "effective_score": rates["effective_score"],
-    }
     return {
-        "milestone": milestone,
+        "milestone": None,
         "plans": [
-        {
-            "id": "free",
-            "plan_id": "free",
-            "tier": "free",
-            "name": "Free Evaluation",
-            "price": 0,
-            "price_label": "$0",
-            "period": "No card required",
-            "features": [
-                "15 governed Playground runs",
-                "3 compare runs",
-                "20 policy tests",
-                "2 watermarked exports",
-                "BYOK provider testing",
-                "Tools browsing",
-            ],
-            "bullets": [
-                "15 governed Playground runs",
-                "3 compare runs",
-                "20 policy tests",
-                "2 watermarked exports",
-                "BYOK provider testing",
-                "Tools browsing",
-            ],
-        },
-        {
-            "id": "starter",
-            "plan_id": "starter",
-            "tier": "starter",
-            "name": "Starter Plan",
-            "price": rates["starter_monthly"],
-            "starter_monthly": rates["starter_monthly"],
-            "starter_annual": rates["starter_annual"],
-            "price_label": f"${rates['starter_monthly']}",
-            "period": f"monthly (${rates['starter_annual']}/mo billed annually)",
-            "features": [
-                "Up to 5 models / agents",
-                "1M governed executions / month",
-                "ExecutionIdentity (up to 5 identities)",
-                "Policy Governance Layer - standard rules",
-                "Evidence Ledger - 12-month retention",
-                "SOC 2 evidence export (PDF)",
-                "Slack + email support (48hr SLA)",
-                "Vault, AWS, GCP integrations",
-            ],
-            "bullets": [
-                "Up to 5 models / agents",
-                "1M governed executions / month",
-                "ExecutionIdentity (up to 5 identities)",
-                "Policy Governance Layer - standard rules",
-                "Evidence Ledger - 12-month retention",
-                "SOC 2 evidence export (PDF)",
-                "Slack + email support (48hr SLA)",
-                "Vault, AWS, GCP integrations",
-            ],
-        },
-        {
-            "id": "growth",
-            "plan_id": "growth",
-            "tier": "growth",
-            "name": "Growth Plan",
-            "price": rates["growth_monthly"],
-            "growth_monthly": rates["growth_monthly"],
-            "growth_annual": rates["growth_annual"],
-            "price_label": f"${rates['growth_monthly']}",
-            "period": f"monthly (${rates['growth_annual']}/mo billed annually)",
-            "features": [
-                "Up to 25 models / agents",
-                "10M governed executions / month",
-                "ExecutionIdentity - unlimited instances per agent",
-                "Policy Governance Layer - advanced + context-aware rules",
-                "Evidence Ledger - unlimited retention",
-                "SOC 2, HIPAA, ISO 27001 evidence exports",
-                "EU AI Act documentation module",
-                "Real-time policy violation alerts",
-                "Dedicated Customer Success Manager",
-                "99.9% SLA with incident response",
-                "All Starter integrations + LangChain, Databricks, Snowflake",
-            ],
-            "bullets": [
-                "Up to 25 models / agents",
-                "10M governed executions / month",
-                "ExecutionIdentity - unlimited instances per agent",
-                "Policy Governance Layer - advanced + context-aware rules",
-                "Evidence Ledger - unlimited retention",
-                "SOC 2, HIPAA, ISO 27001 evidence exports",
-                "EU AI Act documentation module",
-                "Real-time policy violation alerts",
-                "Dedicated Customer Success Manager",
-                "99.9% SLA with incident response",
-                "All Starter integrations + LangChain, Databricks, Snowflake",
-            ],
-        },
-        {
-            "id": "sovereign",
-            "plan_id": "sovereign",
-            "tier": "sovereign",
-            "name": "Enterprise Plan",
-            "price": 0,
-            "price_label": "Custom",
-            "period": "Talk to Sales",
-            "features": [
-                "Unlimited models / agents",
-                "Custom execution volume",
-                "ExecutionIdentity - multi-tenant, federated identity",
-                "Policy Governance Layer - custom policy engine integration",
-                "Evidence Ledger - on-prem or VPC-deployed option",
-                "All compliance frameworks + custom mapping",
-                "FedRAMP In Process package (GovCloud)",
-                "HIPAA BAA included",
-                "Dedicated Solutions Engineer (embedded)",
-                "White-glove onboarding (< 1 business day)",
-                "Custom SLA (99.99% available)",
-                "On-prem / air-gapped deployment option",
-            ],
-            "bullets": [
-                "Unlimited models / agents",
-                "Custom execution volume",
-                "ExecutionIdentity - multi-tenant, federated identity",
-                "Policy Governance Layer - custom policy engine integration",
-                "Evidence Ledger - on-prem or VPC-deployed option",
-                "All compliance frameworks + custom mapping",
-                "FedRAMP In Process package (GovCloud)",
-                "HIPAA BAA included",
-                "Dedicated Solutions Engineer (embedded)",
-                "White-glove onboarding (< 1 business day)",
-                "Custom SLA (99.99% available)",
-                "On-prem / air-gapped deployment option",
-            ],
-        },
-        ],
+            {
+                "id": "bronze",
+                "plan_id": "bronze",
+                "tier": "bronze",
+                "name": "Bronze API",
+                "price": 0.001,
+                "price_label": "$0.001 USDC",
+                "period": "per execution (Base Mainnet)",
+                "features": [
+                    "Best effort execution latency",
+                    "Basic x402 routing verification",
+                    "Public SLA dashboard access",
+                    "Standard endpoint limits",
+                    "No reserved bandwidth"
+                ],
+                "bullets": [
+                    "Best effort execution latency",
+                    "Basic x402 routing verification",
+                    "Public SLA dashboard access",
+                    "Standard endpoint limits",
+                    "No reserved bandwidth"
+                ],
+            },
+            {
+                "id": "medium",
+                "plan_id": "medium",
+                "tier": "medium",
+                "name": "Medium API",
+                "price": 0.05,
+                "price_label": "$0.05 USDC",
+                "period": "per execution (Base Mainnet)",
+                "features": [
+                    "Priority execution lane",
+                    "Guaranteed p95 latency under 800ms",
+                    "Regional execution isolation",
+                    "Real-time x402 ledger proofs",
+                    "Dedicated bandwidth pool"
+                ],
+                "bullets": [
+                    "Priority execution lane",
+                    "Guaranteed p95 latency under 800ms",
+                    "Regional execution isolation",
+                    "Real-time x402 ledger proofs",
+                    "Dedicated bandwidth pool"
+                ],
+            },
+            {
+                "id": "good",
+                "plan_id": "good",
+                "tier": "good",
+                "name": "Good API",
+                "price": 0.25,
+                "price_label": "$0.25 USDC",
+                "period": "per execution (Base Mainnet)",
+                "features": [
+                    "Sovereign tier isolation guarantees",
+                    "Zero-knowledge RAG capabilities",
+                    "Sub-300ms p99 execution SLAs",
+                    "Hardware enclave processing (Nitro)",
+                    "Full SettlementLedger forensic export"
+                ],
+                "bullets": [
+                    "Sovereign tier isolation guarantees",
+                    "Zero-knowledge RAG capabilities",
+                    "Sub-300ms p99 execution SLAs",
+                    "Hardware enclave processing (Nitro)",
+                    "Full SettlementLedger forensic export"
+                ],
+            }
+        ]
     }
 
 

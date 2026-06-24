@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Enum as SQLEnum, BigInteger, CheckConstraint, Index, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Enum as SQLEnum, BigInteger, Index, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum
+
 
 class GUID(TypeDecorator):
     """Platform-independent GUID type."""
@@ -41,6 +42,7 @@ class GUID(TypeDecorator):
             else:
                 return value
 
+
 from backend.core.database.database import Base
 
 
@@ -66,7 +68,7 @@ class LedgerEvent(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     prev_event_hash: Mapped[str | None] = mapped_column(String(128))
     event_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    
+
     # Enhanced governance columns from migration 002
     org_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -88,16 +90,46 @@ class SettlementStatus(str, enum.Enum):
 
 
 class SettlementLedger(Base):
+    """Canonical fee persistence record.
+
+    Idempotency contract
+    --------------------
+    Every fee row is identified by ``idempotency_key``, a deterministic
+    string the caller derives from (tenant_id, provider, fee_type,
+    execution_id).  The unique DB constraint on that column is the sole
+    authority on whether a given fee has already been recorded – callers
+    must **never** perform a manual SELECT-before-INSERT pattern; that
+    responsibility lives exclusively in
+    ``SettlementLedgerRepository.create_fee_entry``.
+
+    State machine
+    -------------
+    PENDING → SETTLED  (mark_settled)
+    PENDING → FAILED   (mark_failed)
+    SETTLED / FAILED are terminal; no further transitions are permitted.
+
+    Tenant isolation
+    ----------------
+    All query helpers in the repository accept an optional ``tenant_id``
+    filter.  The composite index on (tenant_id, created_at) supports
+    tenant-scoped time-range scans efficiently.
+    """
+
     __tablename__ = "settlement_ledger"
 
+    # ── Primary key ────────────────────────────────────────────────────
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
 
+    # ── Core fee fields ────────────────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(128), nullable=False)
     fee_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    # amount is stored in the smallest indivisible unit of ``currency``
+    # (e.g. micro-USDC = 1e-6 USDC).  BigInteger gives us ~9.2e18 units.
     amount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     currency: Mapped[str] = mapped_column(String(16), nullable=False, default="USDC")
-    
+
+    # ── Status ────────────────────────────────────────────────────────
     status: Mapped[SettlementStatus] = mapped_column(
         SQLEnum(SettlementStatus, name="settlement_status_enum"),
         nullable=False,
@@ -105,21 +137,33 @@ class SettlementLedger(Base):
         index=True,
     )
 
+    # ── Idempotency ───────────────────────────────────────────────────
+    # Unique constraint enforced at DB level; IntegrityError on collision
+    # is the deterministic upsert signal used by the repository.
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    
+
+    # ── Execution context ─────────────────────────────────────────────
     execution_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     authority_run_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    
+
+    # ── Payment proof ─────────────────────────────────────────────────
     payment_proof_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     external_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    
+
+    # ── Settlement result ─────────────────────────────────────────────
     settlement_tx_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    metadata_json: Mapped[dict | None] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    # ── Arbitrary metadata (provider-specific) ────────────────────────
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # ── Timestamps ────────────────────────────────────────────────────
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -128,5 +172,8 @@ class SettlementLedger(Base):
     )
 
     __table_args__ = (
+        # Tenant-scoped time-range scans (billing dashboards, reconciliation)
         Index("ix_settlement_tenant_created", "tenant_id", "created_at"),
+        # Execution-scoped fee look-ups (post-run reconciliation)
+        Index("ix_settlement_execution_id", "execution_id"),
     )

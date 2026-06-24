@@ -245,24 +245,22 @@ async def submit_sla_breach_proof(
         return {"status": "rejected", "reason": "Proof failed oracle consensus"}
         
     # If passed, we slash the provider and pay the watcher
-    from backend.db.models.vnp import SettlementLedger, SettlementState, LedgerEntryType
+    from backend.db.repositories.settlement_repo import SettlementLedgerRepository
     import uuid
     
     slash_amount_usdc = 50000.0 # 50k SLA slash
     bounty_usdc = slash_amount_usdc * 0.10 # 10%
     
-    # Bounty Payment to Watcher
-    bounty_entry = SettlementLedger(
-        workspace_id=watcher_id, # Watcher's workspace gets the money
-        entry_type=LedgerEntryType.payment, # We represent incoming bounty as a positive balance in real impl, here just logging
-        amount_minor=int(bounty_usdc * 1000000), 
+    repo = SettlementLedgerRepository(db)
+    await repo.create_fee_entry(
+        tenant_id=watcher_id,
+        provider=provider_id,
+        fee_type="sla_bounty",
+        amount=int(bounty_usdc * 1000000),
         currency="USDC",
-        reference_code=f"sla_bounty_{uuid.uuid4().hex[:8]}",
-        state=SettlementState.pending,
-        dedupe_key=f"bounty_{uuid.uuid4().hex[:8]}",
-        entry_metadata={"api_endpoint": "/api/v1/vnp/bounty", "provider_slashed": provider_id}
+        idempotency_key=f"bounty_{uuid.uuid4().hex[:8]}",
+        metadata={"api_endpoint": "/api/v1/vnp/bounty", "provider_slashed": provider_id}
     )
-    db.add(bounty_entry)
     await db.commit()
     
     return {

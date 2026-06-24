@@ -221,12 +221,8 @@ def build_provider_bond_view(api: dict) -> dict:
     observed_p95 = api.get("p95", 100)
     sigma = observed_p95 * 0.15
     
-    # Fetch real bond from Base Sepolia! Fallback to simulated if not connected
-    onchain_bond = web3_client.get_provider_bond(api.get('id', ''))
-    if onchain_bond > 0:
-        bond_amount = onchain_bond
-    else:
-        bond_amount = 50000 + api.get("throughput", 0) * 10
+    # Fetch real bond from Base Sepolia!
+    bond_amount = web3_client.get_provider_bond(api.get('id', ''))
         
     d = compute_deviation(target_p95, observed_p95, sigma)
     return {

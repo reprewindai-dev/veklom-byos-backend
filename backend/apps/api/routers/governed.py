@@ -15,7 +15,7 @@ from backend.core.services.genome_service import GenomeService
 from backend.core.services.governance_engine import GovernanceEngine
 from backend.core.services.certificate_service import CertificateService
 from backend.core.services.memory_fabric_service import MemoryFabricService
-from backend.db.repositories.settlement_repo import write_capi_compile_fee, mark_settlement_released, build_execution_hash
+from backend.db.repositories.settlement_repo import SettlementLedgerRepository
 
 router = APIRouter(prefix="/governed", tags=["PGL Governance Engine"])
 
@@ -136,7 +136,7 @@ async def compile_capi(
     mathematically constrained from violating its encoded genome.
     Requires an x402 payment proof for the $50.00 USDC compilation fee.
     """
-    import uuid as _uuid, json, boto3
+    import uuid as _uuid, json, boto3, hashlib
     from botocore.exceptions import ClientError
     from backend.core.config.settings import settings
 
@@ -165,18 +165,23 @@ async def compile_capi(
     except Exception:
         payer_uuid = _uuid.uuid5(_uuid.NAMESPACE_URL, str(current_user.id))
 
-    policy_bundle_hash = build_execution_hash({"policy_bundle": policy_bundle})
+    policy_bundle_hash = hashlib.sha256(json.dumps({"policy_bundle": policy_bundle}, sort_keys=True).encode()).hexdigest()
 
-    ledger_row = await write_capi_compile_fee(
-        db,
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
-        requester_provider_id=payer_uuid,
-        veklom_payee_id=_uuid.UUID(VEKLOM_TREASURY_ID),
-        payment_proof_hash=proof_hash,
-        agent_id=str(target_agent_id),
-        policy_bundle_hash=policy_bundle_hash,
-        amount_minor=CAPI_COMPILE_FEE_MINOR,
+    ledger_repo = SettlementLedgerRepository(db)
+    ledger_row = await ledger_repo.create_fee_entry(
+        tenant_id=str(tenant_id),
+        provider="Veklom Treasury",
+        fee_type="capi_compile_fee",
+        amount=CAPI_COMPILE_FEE_MINOR,
+        currency="USDC",
+        idempotency_key=str(_uuid.uuid4()),
+        payment_proof_id=proof_hash,
+        metadata={
+            "requester_provider_id": str(payer_uuid),
+            "veklom_payee_id": VEKLOM_TREASURY_ID,
+            "agent_id": str(target_agent_id),
+            "policy_bundle_hash": policy_bundle_hash
+        }
     )
 
     # ── Edge deploy: push .capi.json to Cloudflare R2 ──────────────────────
@@ -202,10 +207,8 @@ async def compile_capi(
             logging.getLogger(__name__).warning("R2 Edge Proxy upload failed: %s", e)
 
     # ── Mark fee released now that compilation succeeded ───────────────────
-    await mark_settlement_released(
-        db,
-        ledger_row.id,
-        metadata_patch={"agent_id": str(target_agent_id), "policy_bundle_hash": policy_bundle_hash},
+    await ledger_repo.mark_settled(
+        ledger_id=str(ledger_row.id)
     )
 
     edge_proxy_url = f"{settings.CLOUDFLARE_R2_PUBLIC_URL}/{target_agent_id}"

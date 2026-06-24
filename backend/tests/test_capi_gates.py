@@ -9,7 +9,7 @@ from backend.apps.api.routers.capi import (
     evaluate_intent_governed,
     ExecutionIntent
 )
-from backend.db.models.agent import AgentIdentity
+from backend.db.models.agent import Agent
 from backend.db.models.authority import AuthorityBundle, AuthorityRun
 from backend.db.models.billing import BudgetRule
 from backend.db.models.ai import ExecutionLog
@@ -61,7 +61,7 @@ async def test_capi_gate_unknown_agent(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_missing_sig(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01")
+    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
     async def mock_execute(query):
         mock_val = MagicMock()
         mock_val.scalar_one_or_none.return_value = agent_id_mock
@@ -79,7 +79,7 @@ async def test_capi_gate_missing_sig(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_bad_sig(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01")
+    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
     async def mock_execute(query):
         mock_val = MagicMock()
         mock_val.scalar_one_or_none.return_value = agent_id_mock
@@ -97,11 +97,11 @@ async def test_capi_gate_bad_sig(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_system_veto_root(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01")
+    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
-        if "agent_identities" in query_str:
+        if "agents" in query_str:
             mock_val.scalar_one_or_none.return_value = agent_id_mock
         else:
             mock_val.scalar_one_or_none.return_value = None
@@ -121,12 +121,12 @@ async def test_capi_gate_system_veto_root(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_implicit_deny(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01")
+    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
     bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"other_tool": "ALLOW"})
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
-        if "agent_identities" in query_str:
+        if "agents" in query_str:
             mock_val.scalar_one_or_none.return_value = agent_id_mock
         elif "authority_bundles" in query_str:
             mock_val.scalar_one_or_none.return_value = bundle_mock
@@ -145,12 +145,12 @@ async def test_capi_gate_implicit_deny(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_approval_escalation(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01")
+    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
     bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"db.drop_tables": "ALLOW"})
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
-        if "agent_identities" in query_str:
+        if "agents" in query_str:
             mock_val.scalar_one_or_none.return_value = agent_id_mock
         elif "authority_bundles" in query_str:
             mock_val.scalar_one_or_none.return_value = bundle_mock
@@ -170,14 +170,14 @@ async def test_capi_gate_approval_escalation(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_execution_approved(mock_db, mock_user, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01")
+    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
     bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"mcp": "ALLOW"})
     run_mock = AuthorityRun(id="run-1", authority_bundle_id="bundle-1", agent_id="agent-001", workspace_id="test-workspace", executor_id="test-user-id")
     
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
-        if "agent_identities" in query_str:
+        if "agents" in query_str:
             mock_val.scalar_one_or_none.return_value = agent_id_mock
         elif "authority_bundles" in query_str:
             mock_val.scalar_one_or_none.return_value = bundle_mock

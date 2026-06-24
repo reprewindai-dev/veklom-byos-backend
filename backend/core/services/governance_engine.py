@@ -113,20 +113,17 @@ class GovernanceEngine:
                     WalletTransaction.tx_type.in_(["topup", "activation", "credit"]),
                 )
             ) or 0.0
-            if hasattr(topups, "_mock_return_value") or "Mock" in type(topups).__name__:
-                wallet_balance = 500000.0
-            else:
-                debits = await db.scalar(
-                    select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
-                    .where(
-                        WalletTransaction.workspace_id == workspace_id,
-                        WalletTransaction.tx_type == "debit",
-                    )
-                ) or 0.0
-                wallet_balance = round(float(topups) - abs(float(debits)), 4)
+            debits = await db.scalar(
+                select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+                .where(
+                    WalletTransaction.workspace_id == workspace_id,
+                    WalletTransaction.tx_type == "debit",
+                )
+            ) or 0.0
+            wallet_balance = round(float(topups) - abs(float(debits)), 4)
         except Exception as exc:
-            logger.warning(f"Wallet balance query failed, using fallback mock: {exc}")
-            wallet_balance = 500000.0
+            logger.error(f"Wallet balance query failed: {exc}")
+            raise HTTPException(status_code=500, detail="Failed to retrieve wallet balance.")
 
         if wallet_balance < token_cost:
             raise HTTPException(
@@ -443,20 +440,20 @@ class GovernanceEngine:
                     detail=f"Protected write action '{action}' rejected: Insufficient permissions for role '{role}'"
                 )
 
-        # 4. State machine / Execution check (mock database/state transition)
-        # E.g. If revoking agent, agent status must not already be revoked
+        # 4. State machine / Execution check
         if action == "REVOKE_AGENT" and agent.status == "revoked":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="State transition check failed: Agent is already revoked"
             )
 
-        # Simulate execution
+        # Execute state transition
         if action == "REVOKE_AGENT":
             agent.status = "revoked"
+            db.add(agent)
         elif action == "UPDATE_GENOME":
-            # Real update genome payload handled by caller, here we just acknowledge state transition
             agent.status = "updated"
+            db.add(agent)
 
         # 5. Record to Tamper-Evident Ledger
         latest_event_query = select(LedgerEvent).where(LedgerEvent.agent_id == agent_id).order_by(LedgerEvent.id.desc())

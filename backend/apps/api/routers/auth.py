@@ -36,7 +36,7 @@ from backend.db.models.workspace import Workspace, WorkspaceMember
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-CONTROL_PLANE_URL = "https://control.veklom.com"
+CONTROL_PLANE_URL = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 # ---------------------------------------------------------------------------
 # Request / Response schemas
@@ -1324,7 +1324,9 @@ def _validate_github_state(state: str, max_age_seconds: int = 600) -> tuple:
             legacy_sig = hmac.new(settings.JWT_SECRET_KEY.encode(), legacy_payload.encode(), hashlib.sha256).digest()
             legacy_b64 = base64.urlsafe_b64encode(legacy_sig).decode().rstrip("=")
             if not hmac.compare_digest(legacy_b64, sig_b64):
-                raise HTTPException(status_code=400, detail="State signature verification failed")
+                import logging
+                logging.error("GitHub OAuth state signature mismatch. This typically happens if the request originated from a local dev server but the callback hit production (or vice-versa).")
+                raise HTTPException(status_code=400, detail="State signature verification failed (possible local vs prod mismatch)")
         age = int(time.time()) - int(ts)
         if not (0 <= age <= max_age_seconds):
             raise HTTPException(status_code=400, detail="OAuth state has expired")

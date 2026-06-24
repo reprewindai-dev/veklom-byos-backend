@@ -124,22 +124,10 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
     openai_absent = not _configured_provider("openai")
     
     if is_openai_req and openai_absent:
-        messages = normalize_messages(body)
-        user_prompt = messages[-1]["content"] if messages else "Hello"
-        response_content = (
-            "[Sovereign Fallback - OpenAI API Key Not Configured. Using Local Enclave]\n\n"
-            "[Veklom Sovereign Policy Engine - Edge Intercept]\n"
-            "All primary cloud providers are isolated by design. Your request has been securely compiled and executed via "
-            "Veklom's Local Sovereign Inference Engine (Model: Veklom-Llama3-Sovereign-v1) on the Hetzner secure enclave.\n\n"
-            "Outbound Policy: outbound.public.v3\n"
-            "Data Residency: Enforced (Hetzner FSN1, Nuremberg)\n"
-            "Entropy Check: PASS (Cryptographic evidence anchored in SHA-256 seal)\n\n"
-            "Assistant Response:\n"
-            f"Hello! I am your Veklom Sovereign AI Assistant. I have intercepted your prompt to ensure zero-key-exposure and full policy compliance. "
-            f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI requested but API key not configured. Enterprise Fallback disabled."
         )
-        mock_payload = _openai_response("sovereign", "Veklom-Llama3-Sovereign-v1", response_content, prompt=body.get("messages"))
-        return CompletionResult("sovereign", mock_payload)
 
     errors: list[str] = []
     for provider in provider_order(body):
@@ -160,44 +148,10 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
             errors.append(f"{provider}: {exc}")
             continue
 
-    # Sovereign Demo Fallback for non-configured envs
-    # CRITICAL AUDIT FIX: If a specific model/provider is requested but unavailable,
-    # do not silently fallback. Show a clear error instead.
-    model_requested = (body.get("model") or "").lower()
-    provider_requested = (body.get("provider") or "").lower()
-    
-    # If the user explicitly requested something other than veklom-llama or standard local models
-    # and we have errors, do not silently fallback.
-    is_sovereign_target = any(k in model_requested for k in ("sovereign", "llama3", "qwen", "mixtral", "deepseek", "bge", "cohere", "whisper"))
-    if (model_requested and not is_sovereign_target) or (provider_requested and provider_requested not in ("ollama", "sovereign")):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Selected model '{body.get('model')}' is unavailable in this environment. Choose an available sovereign model."
-        )
-
-    try:
-        messages = normalize_messages(body)
-        user_prompt = messages[-1]["content"] if messages else "Hello"
-        
-        response_content = (
-            f"[Veklom Sovereign Policy Engine - Edge Intercept]\n"
-            f"All primary cloud providers are isolated by design. Your request has been securely compiled and executed via "
-            f"Veklom's Local Sovereign Inference Engine (Model: Veklom-Llama3-Sovereign-v1) on the Hetzner secure enclave.\n\n"
-            f"Outbound Policy: outbound.public.v3\n"
-            f"Data Residency: Enforced (Hetzner FSN1, Nuremberg)\n"
-            f"Entropy Check: PASS (Cryptographic evidence anchored in SHA-256 seal)\n\n"
-            f"Assistant Response:\n"
-            f"Hello! I am your Veklom Sovereign AI Assistant. I have intercepted your prompt to ensure zero-key-exposure and full policy compliance. "
-            f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
-        )
-        
-        mock_payload = _openai_response("sovereign", body.get("model", "veklom-llama3-70b"), response_content, prompt=body.get("messages"))
-        return CompletionResult("sovereign", mock_payload)
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "No configured AI provider succeeded", "providers": errors + [str(e)]}
-        )
+    raise HTTPException(
+        status_code=503,
+        detail={"error": "No configured AI provider succeeded", "providers": errors}
+    )
 
 
 async def stream_completion(body: dict) -> AsyncIterator[str]:
@@ -209,26 +163,7 @@ async def stream_completion(body: dict) -> AsyncIterator[str]:
     openai_absent = not _configured_provider("openai")
     
     if is_openai_req and openai_absent:
-        messages = normalize_messages(body)
-        user_prompt = messages[-1]["content"] if messages else "Hello"
-        response_content = (
-            "[Sovereign Fallback - OpenAI API Key Not Configured. Using Local Enclave]\n\n"
-            "[Veklom Sovereign Policy Engine - Edge Intercept]\n"
-            "All primary cloud providers are isolated by design. Your request has been securely compiled and executed via "
-            "Veklom's Local Sovereign Inference Engine (Model: Veklom-Llama3-Sovereign-v1) on the Hetzner secure enclave.\n\n"
-            "Outbound Policy: outbound.public.v3\n"
-            "Data Residency: Enforced (Hetzner FSN1, Nuremberg)\n"
-            "Entropy Check: PASS (Cryptographic evidence anchored in SHA-256 seal)\n\n"
-            "Assistant Response:\n"
-            f"Hello! I am your Veklom Sovereign AI Assistant. I have intercepted your prompt to ensure zero-key-exposure and full policy compliance. "
-            f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
-        )
-        chunk_size = 30
-        for i in range(0, len(response_content), chunk_size):
-            chunk = response_content[i:i+chunk_size]
-            yield _sse_chunk("sovereign", "Veklom-Llama3-Sovereign-v1", chunk)
-            await asyncio.sleep(0.05)
-        
+        yield 'data: {"error": "OpenAI requested but API key not configured. Enterprise Fallback disabled."}\n\n'
         yield "data: [DONE]\n\n"
         return
 
@@ -249,34 +184,8 @@ async def stream_completion(body: dict) -> AsyncIterator[str]:
         except Exception:
             continue
 
-    # Sovereign Demo Fallback Stream
-    try:
-        messages = normalize_messages(body)
-        user_prompt = messages[-1]["content"] if messages else "Hello"
-        
-        response_content = (
-            f"[Veklom Sovereign Policy Engine - Edge Intercept]\n"
-            f"All primary cloud providers are isolated by design. Your request has been securely compiled and executed via "
-            f"Veklom's Local Sovereign Inference Engine (Model: Veklom-Llama3-Sovereign-v1) on the Hetzner secure enclave.\n\n"
-            f"Outbound Policy: outbound.public.v3\n"
-            f"Data Residency: Enforced (Hetzner FSN1, Nuremberg)\n"
-            f"Entropy Check: PASS (Cryptographic evidence anchored in SHA-256 seal)\n\n"
-            f"Assistant Response:\n"
-            f"Hello! I am your Veklom Sovereign AI Assistant. I have intercepted your prompt to ensure zero-key-exposure and full policy compliance. "
-            f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
-        )
-        
-        # Yield the response in chunks to simulate streaming perfectly!
-        chunk_size = 30
-        for i in range(0, len(response_content), chunk_size):
-            chunk = response_content[i:i+chunk_size]
-            yield _sse_chunk("sovereign", "veklom-llama3-70b", chunk)
-            await asyncio.sleep(0.05)
-        
-        yield "data: [DONE]\n\n"
-    except Exception as e:
-        yield f'data: {{"error":"No configured AI provider succeeded: {str(e)}"}}\n\n'
-        yield "data: [DONE]\n\n"
+    yield f'data: {{"error":"No configured AI provider succeeded."}}\n\n'
+    yield "data: [DONE]\n\n"
 
 
 async def _openai_compatible(provider: str, body: dict, stream: bool) -> dict:
@@ -566,22 +475,10 @@ async def run_completion_for_tenant(
     openai_absent = not _configured_provider("openai")
     
     if is_openai_req and openai_absent:
-        messages = normalize_messages(body)
-        user_prompt = messages[-1]["content"] if messages else "Hello"
-        response_content = (
-            "[Sovereign Fallback - OpenAI API Key Not Configured. Using Local Enclave]\n\n"
-            "[Veklom Sovereign Policy Engine - Edge Intercept]\n"
-            "All primary cloud providers are isolated by design. Your request has been securely compiled and executed via "
-            "Veklom's Local Sovereign Inference Engine (Model: Veklom-Llama3-Sovereign-v1) on the Hetzner secure enclave.\n\n"
-            "Outbound Policy: outbound.public.v3\n"
-            "Data Residency: Enforced (Hetzner FSN1, Nuremberg)\n"
-            "Entropy Check: PASS (Cryptographic evidence anchored in SHA-256 seal)\n\n"
-            "Assistant Response:\n"
-            f"Hello! I am your Veklom Sovereign AI Assistant. I have intercepted your prompt to ensure zero-key-exposure and full policy compliance. "
-            f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI requested but API key not configured. Enterprise Fallback disabled."
         )
-        mock_payload = _openai_response("sovereign", "Veklom-Llama3-Sovereign-v1", response_content, prompt=body.get("messages"))
-        return CompletionResult("sovereign", mock_payload), "default", ""
 
     order, reason = provider_order_for_tenant(body, workspace_id)
     errors: list[str] = []
@@ -646,36 +543,7 @@ async def run_completion_for_tenant(
                 errors.append(f"{provider}: {exc}")
                 continue
 
-    # Sovereign Demo Fallback instead of failing, allowing a fully operational playground experience
-    model_requested = (body.get("model") or "").lower()
-    provider_requested = (body.get("provider") or "").lower()
-    is_sovereign_target = any(k in model_requested for k in ("sovereign", "llama3", "qwen", "mixtral", "deepseek", "bge", "cohere", "whisper"))
-    if (model_requested and not is_sovereign_target) or (provider_requested and provider_requested not in ("ollama", "sovereign")):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Selected model '{body.get('model')}' is unavailable in this environment. Provide your own API key in workspace settings or choose an available sovereign model."
-        )
-
-    try:
-        messages = normalize_messages(body)
-        user_prompt = messages[-1]["content"] if messages else "Hello"
-        
-        response_content = (
-            f"[Veklom Sovereign Policy Engine - Edge Intercept]\n"
-            f"All primary cloud providers are isolated by design. Your request has been securely compiled and executed via "
-            f"Veklom's Local Sovereign Inference Engine (Model: Veklom-Llama3-Sovereign-v1) on the Hetzner secure enclave.\n\n"
-            f"Outbound Policy: outbound.public.v3\n"
-            f"Data Residency: Enforced (Hetzner FSN1, Nuremberg)\n"
-            f"Entropy Check: PASS (Cryptographic evidence anchored in SHA-256 seal)\n\n"
-            f"Assistant Response:\n"
-            f"Hello! I am your Veklom Sovereign AI Assistant. I have intercepted your prompt to ensure zero-key-exposure and full policy compliance. "
-            f"Your prompt: '{user_prompt}' has been analyzed. How can I assist you in compiling governed plans today?"
-        )
-        
-        mock_payload = _openai_response("sovereign", "veklom-llama3-70b", response_content, prompt=body.get("messages"))
-        return CompletionResult("sovereign", mock_payload), "default", ""
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "No provider succeeded", "tried": errors + [str(e)], "workspace": workspace_id}
-        )
+    raise HTTPException(
+        status_code=503,
+        detail={"error": "No provider succeeded", "tried": errors, "workspace": workspace_id}
+    )

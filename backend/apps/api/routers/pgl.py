@@ -80,20 +80,19 @@ async def quarantine_agent(
         # -------------------------------------------------------------------------
         # Charge x402 Payment for PGL Quarantine Invocation
         # -------------------------------------------------------------------------
-        from backend.db.models.vnp import SettlementLedger, SettlementState, LedgerEntryType
+        from backend.db.repositories.settlement_repo import SettlementLedgerRepository
         import uuid
         
-        payment_entry = SettlementLedger(
-            workspace_id=identity.tenant_id,
-            entry_type=LedgerEntryType.payment,
-            amount_minor=2000000, # $2.00 for active threat containment
+        repo = SettlementLedgerRepository(db)
+        await repo.create_fee_entry(
+            tenant_id=identity.tenant_id,
+            provider="veklom",
+            fee_type="pgl_quarantine",
+            amount=2000000,
             currency="USDC",
-            reference_code=f"pgl_quarantine_{agent_id}_{uuid.uuid4().hex[:8]}",
-            state=SettlementState.pending,
-            dedupe_key=f"quarantine_{agent_id}_{uuid.uuid4().hex[:8]}",
-            entry_metadata={"api_endpoint": "/api/v1/pgl/quarantine", "agent_id": agent_id}
+            idempotency_key=f"quarantine_{agent_id}_{uuid.uuid4().hex[:8]}",
+            metadata={"api_endpoint": "/api/v1/pgl/quarantine", "agent_id": agent_id}
         )
-        db.add(payment_entry)
         
         await db.commit()
             

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import JSONResponse
 import httpx
 import os
@@ -62,10 +62,10 @@ async def analyze_ledger(body: dict):
     items = body.get("items")
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key or api_key == "MY_GEMINI_API_KEY":
-        return {
-            "status": "simulated",
-            "text": "### [API Key Config Message]\nGemini API key is not configured in Settings > Secrets. Here is a simulated system check:\n\n**Verdict**: Veklom Agent Authority ledger is structurally integral. F-distribution mapping successfully detected variance offsets in the L4 semantic gateway tool queues. The 120-agent concurrency queue is currently safe, with no lock collision anomalies."
-        }
+        raise HTTPException(
+            status_code=500,
+            detail="Gemini API key is not configured. Node degraded."
+        )
     try:
         # Dependency-free Google GenAI API request via HTTP POST REST API
         model_name = "gemini-2.5-flash"

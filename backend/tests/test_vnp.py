@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from backend.apps.api.main import app
 import nacl.signing
 from nacl.encoding import HexEncoder
-from backend.db.models.vnp import VNPValidator
+from backend.db.models.vnp import Validator
 
 client = TestClient(app)
 

@@ -9,7 +9,7 @@ from backend.core.security.auth import get_current_user, require_workspace_acces
 from backend.db.models.user import User
 from backend.db.models.authority import AuthorityRun, AuthorityDecision
 from backend.db.models.agent import AgentMemory
-from backend.db.models.vnp import SettlementLedger, SettlementState, LedgerEntryType
+
 import uuid
 
 router = APIRouter(prefix="/forensics", tags=["Forensics"])
@@ -85,21 +85,21 @@ async def forensics_replay(
     # x402 Payment Deduction
     # Deduct micro-cents (e.g., 500,000 minor units = $0.50 USDC) for the Replay API
     # -------------------------------------------------------------------------
-    ledger_entry = SettlementLedger(
-        workspace_id=run.workspace_id,
-        entry_type=LedgerEntryType.payment,
-        amount_minor=500000, 
+    from backend.db.repositories.settlement_repo import SettlementLedgerRepository
+    repo = SettlementLedgerRepository(db)
+    await repo.create_fee_entry(
+        tenant_id=run.workspace_id,
+        provider="veklom",
+        fee_type="forensics_replay",
+        amount=500000,
         currency="USDC",
-        reference_code=f"forensics_replay_{run_id}_{uuid.uuid4().hex[:8]}",
-        state=SettlementState.pending,
-        dedupe_key=f"replay_{run_id}_{uuid.uuid4().hex[:8]}",
-        entry_metadata={
+        idempotency_key=f"replay_{run_id}_{uuid.uuid4().hex[:8]}",
+        authority_run_id=run_id,
+        metadata={
             "api_endpoint": "/api/v1/forensics/replay",
-            "run_id": str(run_id),
             "events_reconstructed": len(timeline)
         }
     )
-    db.add(ledger_entry)
     await db.commit()
     
     return {

@@ -245,24 +245,7 @@ from backend.core.ml.tiering import classify_event, EventForTiering
 
 @router.post("/classify")
 async def simulate_classification(body: dict):
-    """Simulate classification to inspect the tiering engine reason codes."""
-    event = EventForTiering(
-        confidence_score=float(body.get("confidence_score", 0.0)),
-        policy_passed=bool(body.get("policy_passed", False)),
-        evidence_complete=bool(body.get("evidence_complete", False)),
-        schema_passed=bool(body.get("schema_passed", False)),
-        quality_passed=bool(body.get("quality_passed", False)),
-        runtime_error=bool(body.get("runtime_error", False)),
-        security_anomaly=bool(body.get("security_anomaly", False)),
-        budget_exceeded=bool(body.get("budget_exceeded", False))
+    raise HTTPException(
+        status_code=501,
+        detail="Enterprise Classification Simulation Engine not yet attached."
     )
-    decision = classify_event(event)
-    
-    return {
-        "event_id": body.get("event_id", "simulated"),
-        "data_tier": decision.data_tier.name,
-        "confidence_score": decision.confidence_score,
-        "tier_score": decision.tier_score,
-        "eligible_for_training": decision.eligible_for_training,
-        "reason_codes": decision.reason_codes
-    }

@@ -81,14 +81,10 @@ class LedgerEvent(Base):
     agent: Mapped["Agent"] = relationship(back_populates="ledger_events")  # noqa: F821
 
 
-class SettlementState(str, enum.Enum):
-    quoted = "quoted"
-    locked = "locked"
-    released = "released"
-    rejected = "rejected"
-    failed = "failed"
-    debt_pending = "debt_pending"
-    refunded = "refunded"
+class SettlementStatus(str, enum.Enum):
+    PENDING = "pending"
+    SETTLED = "settled"
+    FAILED = "failed"
 
 
 class SettlementLedger(Base):
@@ -96,40 +92,33 @@ class SettlementLedger(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID, nullable=False, index=True)
-    workspace_id: Mapped[uuid.UUID | None] = mapped_column(GUID, nullable=True, index=True)
-
-    payer_id: Mapped[uuid.UUID] = mapped_column(GUID, nullable=False, index=True)
-    payee_id: Mapped[uuid.UUID] = mapped_column(GUID, nullable=False, index=True)
-
-    asc_channel_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    protected_route: Mapped[str] = mapped_column(String(255), nullable=False)
-    service_name: Mapped[str] = mapped_column(String(128), nullable=False)
-
-    currency_code: Mapped[str] = mapped_column(String(16), nullable=False, default="USDC")
-    network_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-
-    quoted_amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    locked_amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    released_amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-
-    payment_proof_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    execution_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    settlement_state: Mapped[SettlementState] = mapped_column(
-        SQLEnum(SettlementState, name="settlement_state_enum"),
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(128), nullable=False)
+    fee_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(16), nullable=False, default="USDC")
+    
+    status: Mapped[SettlementStatus] = mapped_column(
+        SQLEnum(SettlementStatus, name="settlement_status_enum"),
         nullable=False,
-        default=SettlementState.locked,
+        default=SettlementStatus.PENDING,
         index=True,
     )
 
-    dedupe_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    request_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    
+    execution_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    authority_run_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    
+    payment_proof_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    external_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    
+    settlement_tx_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     metadata_json: Mapped[dict | None] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
 
-    fulfilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -139,17 +128,5 @@ class SettlementLedger(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "dedupe_key", name="uq_settlement_ledger_tenant_dedupe_key"),
-        UniqueConstraint("execution_hash", name="uq_settlement_ledger_execution_hash"),
-        CheckConstraint("quoted_amount_minor >= 0", name="ck_settlement_quoted_nonnegative"),
-        CheckConstraint("locked_amount_minor >= 0", name="ck_settlement_locked_nonnegative"),
-        CheckConstraint("released_amount_minor >= 0", name="ck_settlement_released_nonnegative"),
-        CheckConstraint(
-            "released_amount_minor <= locked_amount_minor",
-            name="ck_settlement_released_lte_locked",
-        ),
-        Index("ix_settlement_tenant_state_created", "tenant_id", "settlement_state", "created_at"),
-        Index("ix_settlement_payer_state_created", "payer_id", "settlement_state", "created_at"),
-        Index("ix_settlement_payee_state_created", "payee_id", "settlement_state", "created_at"),
-        Index("ix_settlement_route_created", "protected_route", "created_at"),
+        Index("ix_settlement_tenant_created", "tenant_id", "created_at"),
     )

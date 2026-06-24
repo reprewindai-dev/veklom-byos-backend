@@ -86,52 +86,13 @@ async def run_chain(chain_id: str, req: ChainRunInput):
     
     # 1. GPC Policy Check (Simulated)
     if chain.get("requires_gpc"):
-        # Simulated check
-        gpc_approved = True
-        if not gpc_approved:
-            raise HTTPException(status_code=403, detail="GPC Policy Blocked Execution.")
+        # Real GPC integration pending
+        pass
 
-    # 2. Execution Setup
-    run_id = f"run_{uuid.uuid4().hex[:12]}"
-    start_time = time.time()
-    input_hash = hashlib.sha256(req.input_text.encode()).hexdigest()
-
-    # 3. Stubbed LangChain Execution
-    # In production: chain_executor = build_langchain_chain(chain)
-    #                output = await chain_executor.ainvoke(req.input)
-    simulated_output = f"Simulated LangChain output for: {chain['name']}"
-    output_hash = hashlib.sha256(simulated_output.encode()).hexdigest()
-    
-    # 4. Generate Audit Hash
-    audit_payload = f"{run_id}:{input_hash}:{output_hash}:{start_time}"
-    audit_hash = hashlib.sha256(audit_payload.encode()).hexdigest()
-
-    # 5. Record Trace/Cost
-    run_record = ChainRunRecord(
-        chain_run_id=run_id,
-        chain_id=chain_id,
-        workspace_id=req.workspace_id,
-        user_id=req.user_id,
-        input_hash=input_hash,
-        output_hash=output_hash,
-        model=chain["model"],
-        tools_used=chain["tools"],
-        tokens_used=150, # Simulated
-        cost_cents=0.04, # Simulated
-        status="completed",
-        started_at=start_time,
-        finished_at=time.time(),
-        audit_hash=audit_hash
+    raise HTTPException(
+        status_code=501, 
+        detail="Enterprise LangChain engine not yet attached. Simulated execution has been disabled per enterprise hardening."
     )
-    
-    RUNS[run_id] = run_record.dict()
-
-    return {
-        "status": "success",
-        "run_id": run_id,
-        "output": simulated_output,
-        "audit_hash": audit_hash
-    }
 
 @router.get("/runs")
 async def list_runs():

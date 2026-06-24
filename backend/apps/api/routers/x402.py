@@ -634,26 +634,26 @@ async def predict_yield(
     Calculates the optimal USDC cost-routing path for a specific agent payload 
     across the ConvergeOS Swarm, predicting the execution cost vs. the escrow yield.
     """
-    from backend.db.models.vnp import Validator, SettlementEntry
-    
-    # In a real implementation, we would query the actual Validator pool and active SettlementEntries
-    # For now, we simulate the yield prediction algorithm
+    from backend.db.models.vnp import Validator
+    from backend.db.models.ledger import SettlementLedger
+    from sqlalchemy import select, func
     
     # 1. Base cost of the execution (e.g. 0.05 USDC base * complexity)
     base_cost = 0.05 * task_complexity
     
-    # 2. Network congestion multiplier (simulated based on active validator count)
-    # Ideally: select count(*) from validators where state = active
-    active_validators = 120 # PGL standard
-    congestion_multiplier = 1.0 + (120 / (active_validators + 1)) * 0.1
+    # 2. Network congestion multiplier (real based on active validator count)
+    result_val = await db.execute(select(func.count(Validator.id)).where(Validator.state == "active"))
+    active_validators = result_val.scalar() or 0
+    congestion_multiplier = 1.0 + (120 / (max(active_validators, 1))) * 0.1
     
     # 3. Estimated execution cost
     estimated_cost = base_cost * congestion_multiplier
     
-    # 4. Escrow Yield Prediction (Staking reward minus execution cost)
-    # Assume the tenant stakes 100 USDC in an escrow yielding 5% APY
-    staked_amount = 100.0
-    daily_yield = staked_amount * (0.05 / 365)
+    # 4. Escrow Yield Prediction (Real historical yield calculation)
+    # Sum of all rewards divided by active validators
+    result_yield = await db.execute(select(func.sum(SettlementLedger.amount)).where(SettlementLedger.fee_type == "reward"))
+    total_yield_minor = result_yield.scalar() or 0
+    daily_yield = ((total_yield_minor / 1_000_000.0) / max(active_validators, 1)) / 365.0
     
     # Return FinOps projections
     return {
@@ -932,23 +932,22 @@ async def request_flash_loan(
     if vnp_trust_score < 90.0:
         raise HTTPException(status_code=403, detail="VNP Trust Score insufficient for uncollateralized flash loan.")
         
-    from backend.db.models.vnp import SettlementLedger, SettlementState, LedgerEntryType
+    from backend.db.repositories.settlement_repo import SettlementLedgerRepository
     import uuid
     
     loan_fee_usdc = requested_amount_usdc * 0.0009 # 0.09% fee
     
     # We record the fee as a payment
-    fee_entry = SettlementLedger(
-        workspace_id=workspace_id or "default",
-        entry_type=LedgerEntryType.payment,
-        amount_minor=int(loan_fee_usdc * 1000000), 
+    repo = SettlementLedgerRepository(db)
+    await repo.create_fee_entry(
+        tenant_id=workspace_id or "default",
+        provider="veklom",
+        fee_type="flash_loan_fee",
+        amount=int(loan_fee_usdc * 1000000),
         currency="USDC",
-        reference_code=f"flash_loan_fee_{uuid.uuid4().hex[:8]}",
-        state=SettlementState.pending,
-        dedupe_key=f"flash_{uuid.uuid4().hex[:8]}",
-        entry_metadata={"api_endpoint": "/api/v1/x402/flash-loan", "loan_amount": requested_amount_usdc}
+        idempotency_key=f"flash_{uuid.uuid4().hex[:8]}",
+        metadata={"api_endpoint": "/api/v1/x402/flash-loan", "loan_amount": requested_amount_usdc}
     )
-    db.add(fee_entry)
     await db.commit()
     
     return {

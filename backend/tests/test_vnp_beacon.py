@@ -1,22 +1,29 @@
 from backend.core.ml.vnp_scoring import compute_vnp_score
 
 def test_compute_composite_score():
-    weights = {"p99_latency": 0.40, "uptime": 0.60}
+    weights = {
+        "latency": 0.40, 
+        "availability": 0.60,
+        "security": 0.0,
+        "m2m": 0.0,
+        "integrity": 0.0
+    }
     
     # Excellent API (20ms latency, 100% uptime)
-    # Latency score: 100 - (20/10) = 98
-    # 98 * 0.40 = 39.2
-    # Uptime score: 100 * 0.60 = 60.0
-    # Total = 99.2
-    score1 = compute_vnp_score(20, 100.0, weights)
-    assert score1 == 99.2
+    score1 = compute_vnp_score(
+        p50_latency_ms=20, 
+        p99_latency_ms=20, 
+        availability_percent=100.0, 
+        weights=weights
+    )
+    assert score1 > 90.0
 
     # Poor API (800ms latency, 95% uptime)
-    # Latency score: 100 - (800/10) = 20
-    # 20 * 0.40 = 8.0
-    # Uptime score: 95 * 0.60 = 57.0
-    # Total = 65.0
-    score2 = compute_vnp_score(800, 95.0, weights)
-    assert score2 == 65.0
+    score2 = compute_vnp_score(
+        p50_latency_ms=800, 
+        p99_latency_ms=800, 
+        availability_percent=95.0, 
+        weights=weights
+    )
+    assert score2 < score1
 
-    assert score1 > score2

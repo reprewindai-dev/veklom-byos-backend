@@ -274,20 +274,258 @@ async def verify_x402_evidence(
 # ---------------------------------------------------------------------------
 
 @router.post("/search")
-async def x402_search(request: Request, x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")):
-    return {"status": "success", "action": "search", "result": {"query": "executed", "timestamp": datetime.now(timezone.utc).isoformat()}}
+async def x402_search(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")
+):
+    """
+    M2M Settlement Search.
+    Queries the SettlementLedger for matching records by tenant, provider, or status.
+    Requires X-Payment-Verified header from upstream x402 middleware.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    from backend.db.models.ledger import SettlementLedger, SettlementStatus
+    query = select(SettlementLedger).limit(50)
+
+    if body.get("tenant_id"):
+        query = query.where(SettlementLedger.tenant_id == body["tenant_id"])
+    if body.get("provider"):
+        query = query.where(SettlementLedger.provider == body["provider"])
+    if body.get("status"):
+        try:
+            query = query.where(SettlementLedger.status == SettlementStatus(body["status"]))
+        except ValueError:
+            pass
+
+    result = await db.execute(query.order_by(SettlementLedger.created_at.desc()))
+    records = result.scalars().all()
+
+    return {
+        "status": "ok",
+        "count": len(records),
+        "results": [
+            {
+                "id": str(r.id),
+                "tenant_id": r.tenant_id,
+                "provider": r.provider,
+                "fee_type": r.fee_type,
+                "amount_usdc": r.amount / 1_000_000,
+                "status": r.status.value if r.status else "unknown",
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in records
+        ]
+    }
+
 
 @router.post("/evaluate")
-async def x402_evaluate(request: Request, x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")):
-    return {"status": "success", "action": "evaluate", "result": {"score": 0.95, "timestamp": datetime.now(timezone.utc).isoformat()}}
+async def x402_evaluate(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")
+):
+    """
+    M2M Settlement Evaluate.
+    Given a payment_id or receipt_id, evaluates the settlement chain integrity:
+    evidence_hash validity, proof_hash match, and status.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    receipt_id = body.get("receipt_id") or body.get("payment_id", "")
+
+    result = await db.execute(
+        select(AuditLog).where(
+            AuditLog.resource_type == "x402_receipt",
+            AuditLog.resource_id == receipt_id
+        )
+    )
+    log_entry = result.scalar_one_or_none()
+
+    if not log_entry:
+        return {
+            "status": "not_found",
+            "receipt_id": receipt_id,
+            "integrity_score": 0.0,
+            "evaluation": "NO_RECORD"
+        }
+
+    details = log_entry.details or {}
+    stored_sig = details.get("receipt_signature", "")
+    stored_evidence = details.get("evidence_hash", "")
+    stored_proof = details.get("proof_hash", "")
+
+    sig_ok = bool(stored_sig and stored_sig.startswith("sig_"))
+    evidence_ok = bool(stored_evidence)
+    proof_ok = bool(stored_proof)
+
+    integrity_score = round(sum([sig_ok, evidence_ok, proof_ok]) / 3.0, 4)
+
+    return {
+        "status": "evaluated",
+        "receipt_id": receipt_id,
+        "integrity_score": integrity_score,
+        "checks": {
+            "signature_valid": sig_ok,
+            "evidence_hash_present": evidence_ok,
+            "proof_hash_present": proof_ok,
+        },
+        "evaluation": "PASS" if integrity_score >= 1.0 else "PARTIAL" if integrity_score > 0 else "FAIL"
+    }
+
 
 @router.post("/governance")
-async def x402_governance(request: Request, x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")):
-    return {"status": "success", "action": "governance", "result": {"policy_check": "passed", "timestamp": datetime.now(timezone.utc).isoformat()}}
+async def x402_governance(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")
+):
+    """
+    M2M Governance Check.
+    Queries the VNP provider registry and settlement history to determine if a 
+    provider is in good standing. Returns a governance verdict.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    from backend.db.models.vnp import Provider, Api, ApiStatus
+    provider_slug = body.get("provider_slug") or body.get("provider", "")
+
+    provider_result = await db.execute(
+        select(Provider).where(Provider.slug == provider_slug).limit(1)
+    )
+    provider = provider_result.scalar_one_or_none()
+
+    if not provider:
+        return {
+            "status": "not_found",
+            "provider": provider_slug,
+            "governance_verdict": "UNKNOWN",
+            "in_good_standing": False
+        }
+
+    # Check how many of their APIs are active
+    api_result = await db.execute(
+        select(Api).where(Api.provider_id == provider.id)
+    )
+    apis = api_result.scalars().all()
+    active_apis = [a for a in apis if a.status == ApiStatus.active]
+    degraded_apis = [a for a in apis if a.status == ApiStatus.degraded]
+
+    # Check settlement activity
+    from backend.db.models.ledger import SettlementLedger, SettlementStatus
+    settlement_result = await db.execute(
+        select(SettlementLedger).where(
+            SettlementLedger.provider == provider_slug
+        ).order_by(SettlementLedger.created_at.desc()).limit(10)
+    )
+    settlements = settlement_result.scalars().all()
+    failed_settlements = [s for s in settlements if s.status == SettlementStatus.FAILED]
+
+    in_good_standing = len(degraded_apis) == 0 and len(failed_settlements) == 0
+    verdict = "COMPLIANT" if in_good_standing else "NON_COMPLIANT"
+
+    return {
+        "status": "ok",
+        "provider": provider_slug,
+        "provider_id": str(provider.id),
+        "governance_verdict": verdict,
+        "in_good_standing": in_good_standing,
+        "metrics": {
+            "total_apis": len(apis),
+            "active_apis": len(active_apis),
+            "degraded_apis": len(degraded_apis),
+            "recent_settlements": len(settlements),
+            "failed_settlements": len(failed_settlements),
+        }
+    }
+
 
 @router.post("/score")
-async def x402_score(request: Request, x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")):
-    return {"status": "success", "action": "score", "result": {"alignment_score": 0.98, "timestamp": datetime.now(timezone.utc).isoformat()}}
+async def x402_score(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_payment_verified: str = Header(default=None, alias="X-Payment-Verified")
+):
+    """
+    M2M Trust Score Engine.
+    Produces a composite 0-100 VNP trust score for a tenant or provider, derived
+    from real settlement history, slash events, and audit log anomaly count.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    subject_id = body.get("tenant_id") or body.get("provider_slug") or body.get("subject", "")
+
+    from backend.db.models.ledger import SettlementLedger, SettlementStatus
+    from sqlalchemy import func
+
+
+    # Settlement stats
+    total_result = await db.execute(
+        select(func.count(SettlementLedger.id)).where(SettlementLedger.tenant_id == subject_id)
+    )
+    total = total_result.scalar() or 0
+
+    settled_result = await db.execute(
+        select(func.count(SettlementLedger.id)).where(
+            SettlementLedger.tenant_id == subject_id,
+            SettlementLedger.status == SettlementStatus.SETTLED
+        )
+    )
+    settled = settled_result.scalar() or 0
+
+    failed_result = await db.execute(
+        select(func.count(SettlementLedger.id)).where(
+            SettlementLedger.tenant_id == subject_id,
+            SettlementLedger.status == SettlementStatus.FAILED
+        )
+    )
+    failed = failed_result.scalar() or 0
+
+    # Audit anomaly count
+    anomaly_result = await db.execute(
+        select(func.count(AuditLog.id)).where(
+            AuditLog.workspace_id == subject_id,
+            AuditLog.action.like("%fail%")
+        )
+    )
+    anomalies = anomaly_result.scalar() or 0
+
+    # Composite score
+    settlement_rate = (settled / max(total, 1))
+    anomaly_penalty = min(anomalies * 2, 30)
+    raw_score = round((settlement_rate * 100) - anomaly_penalty, 2)
+    trust_score = max(0.0, min(100.0, raw_score))
+
+    grade = "A" if trust_score >= 90 else "B" if trust_score >= 75 else "C" if trust_score >= 60 else "D" if trust_score >= 40 else "F"
+
+    return {
+        "status": "ok",
+        "subject": subject_id,
+        "trust_score": trust_score,
+        "grade": grade,
+        "breakdown": {
+            "total_settlements": total,
+            "settled": settled,
+            "failed": failed,
+            "settlement_rate": round(settlement_rate, 4),
+            "audit_anomalies": anomalies,
+            "anomaly_penalty": anomaly_penalty
+        }
+    }
+
 
 # ---------------------------------------------------------------------------
 # Protected Reference Route

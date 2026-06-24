@@ -210,3 +210,41 @@ class ForecastModel(Base):
 
 # Alias to support both ExecutionLog (manual alignment) and ExecLog (production/legacy)
 ExecLog = ExecutionLog
+
+
+class ChainDefinition(Base):
+    __tablename__ = "chain_definitions"
+    id = Column(String(36), primary_key=True, default=_uuid)
+    workspace_id = Column(String(36), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    model = Column(String(128), default="")
+    tools = Column(JSON, default=list)
+    requires_gpc = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+class ChainRunRecord(Base):
+    __tablename__ = "chain_run_records"
+    id = Column(String(36), primary_key=True, default=_uuid)
+    chain_id = Column(String(36), nullable=False, index=True)
+    workspace_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(36), nullable=False, index=True)
+    input_hash = Column(String(256), nullable=False)
+    output_hash = Column(String(256), nullable=True)
+    model = Column(String(128), default="")
+    tools_used = Column(JSON, default=list)
+    tokens_used = Column(Integer, default=0)
+    cost_cents = Column(Float, default=0.0)
+    status = Column(String(32), default="running")
+    error = Column(Text, nullable=True)
+    audit_hash = Column(String(256), nullable=True)
+    started_at = Column(DateTime(timezone=True), default=_utcnow)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+class ToolDefinition(Base):
+    __tablename__ = "tool_definitions"
+    id = Column(String(36), primary_key=True, default=_uuid)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    version = Column(String(64), default="1.0.0")
+    created_at = Column(DateTime(timezone=True), default=_utcnow)

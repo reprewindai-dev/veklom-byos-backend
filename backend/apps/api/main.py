@@ -38,6 +38,7 @@ from backend.core.database.database import Base, engine
 from backend.core.plugins.manager import plugin_manager
 from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
+from backend.core.middleware.amphoteric import AmphotericSensingMiddleware
 
 # Import model package to ensure tables are registered with Base.metadata.
 import backend.db.models  # noqa: F401
@@ -437,8 +438,7 @@ class X402DiscoverableMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(X402DiscoverableMiddleware)
 
-app.add_middleware(
-    CORSMiddleware,
+app.add_middleware(CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_credentials=True,
@@ -446,6 +446,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(AmphotericSensingMiddleware)
 app.add_middleware(ZeroTrustMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(IntelligentRoutingMiddleware)
@@ -640,6 +641,7 @@ from backend.apps.api.routers import (
     benchmarks,
     workspace,
     upload,
+    amphoteric,
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -654,6 +656,7 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(evaluations.router, prefix="/api/v1")
 app.include_router(smoke.router, prefix="/api/v1")
+app.include_router(amphoteric.router, prefix="/api/v1")
 
 # System utilities
 app.include_router(system.router, prefix="/api/v1")
@@ -1490,39 +1493,38 @@ import httpx
 
 @app.post("/api/run-sample")
 @app.post("/api/v1/terminal/run")
-async def run_sample_unified(request: Request):
-    # Proxy execution to cappo-backend (PGL engine)
+async def run_sample_unified(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    THE GOVERNED TERMINAL ENDPOINT.
+    Refactored to enforce Fail-Closed PGL validation via cAPI.
+    """
+    from backend.apps.api.routers.capi import ExecutionIntent, evaluate_intent_governed, governed_execution_intercept
+
     body = await request.json()
-    prompt = body.get("intent", "Execute default quantum instruction")
+    intent_prompt = body.get("intent", "Execute default quantum instruction")
     
-    # We pass a demo PGL ID so that it passes the LAW 0 ExecutionIdentity requirements
-    exec_payload = {
-        "prompt": prompt,
-        "agent_id": "quantum_terminal_agent",
-        "pgl_id": "terminal-demo-pgl-id",
-        "workspace_id": "default",
-        "tenant_id": "default",
-        "action_cost_cents": 1, 
-    }
+    # 1. Wrap the terminal command in a Governed Intent Envelope
+    # In a real scenario, the terminal (frontend) would sign this.
+    # Here we simulate the signed intent for the fast terminal transition.
+    intent = ExecutionIntent(
+        agent_id=body.get("agent_id", "quantum_terminal_agent"),
+        pgl_id=body.get("pgl_id", "terminal-demo-pgl-id"),
+        target_protocol="local_tool",
+        action="terminal.execute",
+        payload={"command": intent_prompt}
+    )
     
+    # 2. Execute via the governed interceptor (The 9-Phase Gate)
+    # This ensures that even "fast" terminal commands are audited and policy-checked.
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "http://localhost:8000/v1/exec",
-                json=exec_payload,
-                timeout=30.0
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return {
-                "status": "ok",
-                "execution_id": data.get("execution_id"),
-                "run_id": data.get("run_id"),
-                "latency_ms": data.get("latency_ms"),
-                "response": data.get("response")
-            }
+        receipt = await governed_execution_intercept(intent, db, None)
+        return receipt
+    except HTTPException as e:
+        # Re-raise the VETO from cAPI
+        raise e
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e), "detail": "Failed to connect to cappo-backend /v1/exec"})
+        print(f"[terminal] Governed execution failed: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e), "detail": "cAPI Execution Error"})
 @app.get("/status")
 async def status_page():
     path = LANDING_DIR / "status.html"
@@ -1811,8 +1813,4 @@ app.include_router(mcp.router, prefix="/api/v1")
 app.include_router(agent_memory.router, prefix="/api/v1")
 app.include_router(conversation_memory.router, prefix="/api/v1")
 
-# Layer 5: Evaluation and Observability
-app.include_router(agent_evaluation.router, prefix="/api/v1")
-
-# Layer 6: Guardrails and Safety
-app.include_router(agent_guardrails.router, prefix="/api/v1")
+# Layer 5: Ev

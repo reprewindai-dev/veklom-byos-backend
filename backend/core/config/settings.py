@@ -241,6 +241,14 @@ class Settings(BaseSettings):
     GNOMLEDGER_URL: str = "http://localhost:8000"  # GnomLedger runs on port 8000
     GNOMLEDGER_API_KEY: str = ""
 
+    # Coinbase Developer Platform (CDP) / Paid Gateway
+    # These values are required for the paid gateway and CDP wallet integration.
+    # Keep secrets only in production environment variables (Coolify) and
+    # do NOT commit real secrets to source control.
+    CDP_API_KEY_ID: str = ""
+    CDP_API_KEY_SECRET: str = ""
+    CDP_WALLET_SECRET: str = ""
+
     # Keeping old JWT variables mapped to new ones for backward compatibility during refactor
     @property
     def JWT_SECRET_KEY(self) -> str:

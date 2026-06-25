@@ -1294,7 +1294,7 @@ def _build_github_state(user_id: Optional[str] = None, next_url: Optional[str] =
     return f"{payload}.{sig_b64}"
 
 
-def _validate_github_state(state: str, max_age_seconds: int = 600) -> tuple:
+def _validate_github_state(state: str, request: Optional[Request] = None, max_age_seconds: int = 600) -> tuple:
     """
     Validate the state payload.
     Returns (user_id, next_url) tuple.
@@ -1325,7 +1325,20 @@ def _validate_github_state(state: str, max_age_seconds: int = 600) -> tuple:
             legacy_b64 = base64.urlsafe_b64encode(legacy_sig).decode().rstrip("=")
             if not hmac.compare_digest(legacy_b64, sig_b64):
                 import logging
-                logging.error("GitHub OAuth state signature mismatch. This typically happens if the request originated from a local dev server but the callback hit production (or vice-versa).")
+                host_info = None
+                try:
+                    if request is not None:
+                        host_info = request.headers.get("host") or request.url.hostname
+                except Exception:
+                    host_info = None
+                key_ok = _is_real_config_value(getattr(settings, "JWT_SECRET_KEY", ""))
+                logging.error(
+                    "GitHub OAuth state signature mismatch. Likely local vs production JWT secret mismatch. host=%s, state_len=%d, sig_len=%d, jwt_key_present=%s",
+                    host_info,
+                    len(state or ""),
+                    len(sig_b64 or ""),
+                    bool(key_ok),
+                )
                 raise HTTPException(status_code=400, detail="State signature verification failed (possible local vs prod mismatch)")
         age = int(time.time()) - int(ts)
         if not (0 <= age <= max_age_seconds):
@@ -1438,7 +1451,7 @@ async def github_callback(
     if not state:
         raise HTTPException(status_code=400, detail="Missing OAuth state")
     
-    logged_in_user_id, next_url_from_state = _validate_github_state(state)
+    logged_in_user_id, next_url_from_state = _validate_github_state(state, request=request)
 
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(

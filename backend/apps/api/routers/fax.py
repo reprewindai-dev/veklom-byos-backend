@@ -120,27 +120,12 @@ async def perform_ocr_and_classification(document_url: str) -> tuple[str, str, s
         )
     except Exception as e:
         logger.error(f"OCR execution via provider router failed: {e}")
-        # Realistic fallback based on document url content to maintain system operations
-        url_lower = document_url.lower()
-        if "phi" in url_lower or "clinical" in url_lower or "medical" in url_lower:
-            return (
-                "Patient Intake Form: John Doe, DOB 05/12/1988. Clinical notes: History of hypertension. Signed by attending physician.",
-                "PHI_CLINICAL_INTAKE",
-                "Healthcare (HIPAA Regulated)"
-            )
-        elif "invoice" in url_lower or "bill" in url_lower or "payment" in url_lower:
-            return (
-                "Invoice INV-2026-9021. Billing details: Veklom BYOS license activation fee - $495.00 USD. Payment status: pending.",
-                "FINANCIAL_INVOICE",
-                "Financial Services / Billing"
-            )
-        elif "legal" in url_lower or "court" in url_lower or "filing" in url_lower:
-            return (
-                "State Supreme Court Filing. Case Ref: 2026-CV-9912. Constitutional write authorization and review transcript.",
-                "LEGAL_COURT_FILING",
-                "Legal Services"
-            )
-        return f"Ingested document URL: {document_url}. OCR service returned fallback placeholder.", "UNCLASSIFIED", "Unknown"
+        # Fail-loud in production to ensure governance integrity.
+        # No fake document emulation is permitted.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"OCR and Document Classification failed: {str(e)}"
+        )
 
 # ---------------------------------------------------------------------------
 # Endpoints

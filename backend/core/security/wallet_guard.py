@@ -152,21 +152,19 @@ async def token_deduction_guard(
                 WalletTransaction.tx_type.in_(["topup", "activation", "credit"]),
             )
         ) or 0.0
-        # Safe mock check for unit tests
-        if hasattr(topups, "_mock_return_value") or "Mock" in type(topups).__name__:
-            current_balance = 500000.0
-        else:
-            debits = await db.scalar(
-                select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
-                .where(
-                    WalletTransaction.workspace_id == workspace_id,
-                    WalletTransaction.tx_type == "debit",
-                )
-            ) or 0.0
-            current_balance = round(float(topups) - abs(float(debits)), 4)
+
+        debits = await db.scalar(
+            select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+            .where(
+                WalletTransaction.workspace_id == workspace_id,
+                WalletTransaction.tx_type == "debit",
+            )
+        ) or 0.0
+        current_balance = round(float(topups) - abs(float(debits)), 4)
     except Exception as exc:
-        logger.warning(f"Wallet balance query failed, using fallback mock: {exc}")
-        current_balance = 500000.0
+        logger.error(f"Wallet balance query failed for workspace {workspace_id}: {exc}")
+        # Fail-closed: if we can't determine balance, we assume zero to prevent unauthorized spend
+        current_balance = 0.0
         
     # Centralized Spend Cap evaluation
     now = datetime.utcnow()

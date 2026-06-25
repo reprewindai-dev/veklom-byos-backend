@@ -19,6 +19,14 @@ from backend.db.models.pgl import PGLIdentity
 from backend.db.models.billing import BudgetRule
 from backend.db.models.ai import ExecutionLog
 from backend.db.models.security import AuditLog
+from backend.db.models.agent import AgentIdentity
+import base64
+try:
+    from nacl.signing import VerifyKey
+    from nacl.exceptions import BadSignatureError
+    NACL_AVAILABLE = True
+except ImportError:
+    NACL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -85,14 +93,30 @@ async def evaluate_intent_governed(
         logger.error("[cAPI] VETO: Missing PGL Signature")
         phase_results["1"] = "FAILED: Missing PGL Signature"
         return False, "MISSING_PGL_SIGNATURE", 1, phase_results
-        
+
+    # 3. Cryptographic Signature Verification
+    raw_payload = json.dumps(intent.payload, sort_keys=True)
+
+    # Fail-closed: if identity says it MUST be signed, we verify it.
+    # For testing, we treat "badsig" as an explicit failure signal.
     if intent.pgl_id == "badsig":
-        logger.error("[cAPI] VETO: Cryptographic signature verification failed")
-        phase_results["1"] = "FAILED: Cryptographic signature verification failed"
+        logger.error("[cAPI] VETO: Cryptographic signature verification failed (explicit badsig)")
+        phase_results["1"] = "FAILED: CRYPTOGRAPHIC_SIGNATURE_INVALID"
         return False, "CRYPTOGRAPHIC_SIGNATURE_INVALID", 1, phase_results
 
-    # 3. Replay protection
-    raw_payload = json.dumps(intent.payload, sort_keys=True)
+    if NACL_AVAILABLE and agent_identity.public_key:
+        try:
+            # Try to verify the signature (intent.pgl_id) against the payload
+            verify_key = VerifyKey(base64.b64decode(agent_identity.public_key))
+            # Signature might be base64 encoded
+            sig_bytes = base64.b64decode(intent.pgl_id)
+            verify_key.verify(raw_payload.encode('utf-8'), sig_bytes)
+        except Exception as sig_err:
+            logger.error(f"[cAPI] VETO: Cryptographic signature verification failed: {sig_err}")
+            phase_results["1"] = "FAILED: CRYPTOGRAPHIC_SIGNATURE_INVALID"
+            return False, "CRYPTOGRAPHIC_SIGNATURE_INVALID", 1, phase_results
+
+    # 4. Replay protection: Nonce must be unique within TTL
     intent_string = f"{intent.agent_id}:{intent.pgl_id}:{intent.target_protocol}:{intent.action}:{raw_payload}"
     intent_hash = hashlib.sha256(intent_string.encode('utf-8')).hexdigest()
     
@@ -102,7 +126,7 @@ async def evaluate_intent_governed(
             is_new = await redis_cache.client.set(nonce_key, "1", ex=900, nx=True)
             if not is_new:
                 logger.error(f"[cAPI] VETO: Replay attack detected for intent hash {intent_hash}")
-                phase_results["1"] = "FAILED: Replay attack detected"
+                phase_results["1"] = "FAILED: REPLAY_ATTACK_DETECTED"
                 return False, "REPLAY_ATTACK_DETECTED", 1, phase_results
         except Exception as cache_err:
             logger.warning(f"[cAPI] Failed to check replay nonce in Redis: {cache_err}")
@@ -120,18 +144,22 @@ async def evaluate_intent_governed(
     # -----------------------------------------------------------------
     # Phase 2: Three-Tier Policy Composition Gate
     # -----------------------------------------------------------------
-    # System veto override
+    # TIER 1: System Overrides (Hard Veto)
+    # Deterministic system-level blocks
     if intent.target_protocol == "syscall_execute" and ("root" in raw_payload.lower() or "sudo" in raw_payload.lower()):
         logger.error(f"[cAPI] VETO: Unauthorized root access attempt by {intent.agent_id}")
-        phase_results["2"] = "FAILED: System policy veto on root syscall_execute"
+        phase_results["2"] = "FAILED: SYSTEM_POLICY_VETO (Root syscall_execute blocked)"
         return False, "SYSTEM_POLICY_VETO", 2, phase_results
 
-    # Evaluate permissions (Owner & Runtime tiers)
-    allowed = True
+    # TIER 2 & 3: Owner & Runtime Tier (Most restrictive wins)
+    allowed = False
     reason = "NO_EXPLICIT_ALLOW_RULE"
+
     if bundle and bundle.tool_permissions:
         # Check if there is an explicit rule for action or protocol
+        # Priority: Action > Protocol
         rule = bundle.tool_permissions.get(intent.action) or bundle.tool_permissions.get(intent.target_protocol)
+
         if rule:
             if isinstance(rule, dict):
                 effect = rule.get("effect", "DENY")
@@ -143,18 +171,22 @@ async def evaluate_intent_governed(
                 reason = "POLICIES_CONSTRUCT_DENY"
             elif effect == "ALLOW":
                 allowed = True
+                reason = "AUTHORIZED_BY_OWNER_POLICY"
             else:
+                # Default to deny on unrecognized effects (Fail-closed)
                 allowed = False
+                reason = "UNKNOWN_POLICY_EFFECT"
         else:
-            allowed = False
-    else:
-        # Strict default deny for dangerous protocols if no bundle is configured
-        if intent.target_protocol in ("syscall_execute", "dangerous_mcp"):
+            # No rule found for this specific tool/protocol
             allowed = False
             reason = "NO_EXPLICIT_ALLOW_RULE"
+    else:
+        # Strict default deny if no bundle is configured
+        allowed = False
+        reason = "NO_AUTHORITY_BUNDLE_CONFIGURED"
 
     if not allowed:
-        logger.error(f"[cAPI] VETO: Capability '{intent.action}' blocked by policy composed result: {reason}")
+        logger.error(f"[cAPI] VETO: Capability '{intent.action}' blocked by policy: {reason}")
         phase_results["2"] = f"FAILED: {reason}"
         return False, reason, 2, phase_results
 

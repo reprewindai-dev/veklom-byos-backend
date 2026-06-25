@@ -334,39 +334,38 @@ async def list_executions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List executions for workspace."""
-    
-    # Mock response - in real implementation, query database with filters
-    return [
-        {
-            "execution_id": "exec_12345678",
-            "agent_id": "agent_87654321",
-            "tool_name": "web_search",
-            "status": ExecutionStatus.COMPLETED,
-            "priority": ExecutionPriority.NORMAL,
-            "requested_at": datetime.now(timezone.utc).isoformat(),
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "duration_seconds": 12.5,
-            "cost_usd": 0.0234,
-            "tokens_used": 1250,
-            "approval_status": "auto_approved"
-        },
-        {
-            "execution_id": "exec_87654321",
-            "agent_id": "agent_12345678",
-            "tool_name": "file_access",
-            "status": ExecutionStatus.RUNNING,
-            "priority": ExecutionPriority.HIGH,
-            "requested_at": datetime.now(timezone.utc).isoformat(),
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "completed_at": None,
-            "duration_seconds": None,
-            "cost_usd": 0.0156,
-            "tokens_used": 845,
-            "approval_status": "approved"
-        }
-    ]
+    """List executions for workspace from real DB."""
+    try:
+        from backend.db.models.ai import ExecutionLog
+
+        stmt = select(ExecutionLog).where(ExecutionLog.workspace_id == current_user.workspace_id)
+        if status:
+            stmt = stmt.where(ExecutionLog.status == status)
+        if agent_id:
+            stmt = stmt.where(ExecutionLog.user_id == agent_id)
+
+        stmt = stmt.order_by(ExecutionLog.created_at.desc()).limit(limit)
+        result = await db.execute(stmt)
+        logs = result.scalars().all()
+
+        return [
+            {
+                "execution_id": log.id,
+                "agent_id": log.user_id,
+                "tool_name": log.model,
+                "status": log.status,
+                "requested_at": log.created_at.isoformat() if log.created_at else None,
+                "started_at": log.created_at.isoformat() if log.created_at else None,
+                "completed_at": log.updated_at.isoformat() if log.updated_at else None,
+                "duration_seconds": (log.latency_ms / 1000.0) if log.latency_ms else None,
+                "cost_usd": float(log.cost_usd or 0.0),
+                "tokens_used": log.total_tokens,
+                "approval_status": "auto_approved"  # Currently all through this path are auto-approved
+            }
+            for log in logs
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list executions: {str(e)}")
 
 
 @router.get("/executions/{execution_id}/evidence", response_model=Dict[str, Any])

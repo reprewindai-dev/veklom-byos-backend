@@ -259,7 +259,7 @@ async def _ollama_completion(body: dict) -> dict:
 def _openai_response(provider: str, model: str, content: str, prompt: Optional[Any] = None) -> dict:
     now = int(time.time())
     
-    # Estimate prompt tokens dynamically
+    # Realistic token estimation (1 token approx 4 chars)
     prompt_str = ""
     if isinstance(prompt, str):
         prompt_str = prompt
@@ -273,13 +273,12 @@ def _openai_response(provider: str, model: str, content: str, prompt: Optional[A
         prompt_str = "\n".join(parts)
         
     prompt_tokens = max(1, len(prompt_str) // 4) if prompt_str else 0
-    if not prompt_tokens:
-        # Default fallback
-        prompt_tokens = 120
+    # No hardcoded 120 fallback; use actual length or a small minimum for system overhead
+    if not prompt_tokens and prompt_str:
+        prompt_tokens = 1
         
     completion_tokens = max(1, len(content) // 4)
-    if completion_tokens < 10:
-        completion_tokens = 150
+    # Remove the 150 token floor for short responses to ensure authenticity
         
     total_tokens = prompt_tokens + completion_tokens
     

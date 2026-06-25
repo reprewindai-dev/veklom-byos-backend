@@ -17,6 +17,7 @@ from backend.core.services.certificate_service import CertificateService
 from backend.core.services.memory_fabric_service import MemoryFabricService
 from backend.core.services.policy_registry_service import PolicyRegistryService
 from backend.core.services.pgl_client import PGLClient
+from backend.core.services.consensus import CPWBFTConsensus
 from backend.db.models.genome import GenomeVersion
 from backend.db.models.ledger import LedgerEvent
 from backend.db.models.agent import Agent
@@ -81,6 +82,23 @@ class GovernanceEngine:
 
             # Dynamic risk calculation
             composite_risk = risk_profile.composite_risk
+
+            # CP-WBFT Consensus Check (Theorem 3: Bounded Blast Radius)
+            multi_agent_council = request_body.get("council_evaluations")
+            if multi_agent_council:
+                is_consensus_safe, threat_score = CPWBFTConsensus.reach_consensus(
+                    multi_agent_council,
+                    n_nodes=len(multi_agent_council),
+                    f_byzantine=max(1, len(multi_agent_council) // 3)
+                )
+                if not is_consensus_safe:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"CP-WBFT Consensus Veto: Aggregated threat score {threat_score:.2f} exceeds safety threshold."
+                    )
+                # Adjust composite risk based on consensus probe
+                composite_risk = max(composite_risk, threat_score)
+
             if composite_risk >= 0.7 or risk_profile.injection_attempts >= 5 or task_type.lower() in ("financial", "critical", "admin"):
                 tier = "T2"
             elif composite_risk >= 0.3 or task_type.lower() in ("sensitive", "moderation"):

@@ -8,6 +8,8 @@ from typing import Dict, Any, List, Optional, Union, Callable
 from dataclasses import dataclass
 import logging
 
+from backend.core.ml.sigma import SigmaSpectralLens
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,7 +119,7 @@ class RealGuardrailService:
             # Built-in security checks
             security_check = await self._security_scan_input(input_data)
             if not security_check.passed:
-                violations.extend(security_check.violations)
+                violations.extend(security_check.violations if hasattr(security_check, 'violations') else [])
                 risk_score += security_check.risk_score
             
             # Rate limiting check
@@ -177,7 +179,7 @@ class RealGuardrailService:
             # Built-in security checks for output
             security_check = await self._security_scan_output(output_data)
             if not security_check.passed:
-                violations.extend(security_check.violations)
+                violations.extend(security_check.violations if hasattr(security_check, 'violations') else [])
                 risk_score += security_check.risk_score
             
             # Content sanitization
@@ -447,8 +449,7 @@ class RealGuardrailService:
         return SafetyCheck(
             passed=len(violations) == 0,
             reason=f"Security scan found {len(violations)} issues" if violations else None,
-            risk_score=min(risk_score, 1.0),
-            violations=violations if violations else None
+            risk_score=min(risk_score, 1.0)
         )
     
     async def _security_scan_output(self, data: Dict[str, Any]) -> SafetyCheck:
@@ -477,8 +478,7 @@ class RealGuardrailService:
         return SafetyCheck(
             passed=len(violations) == 0,
             reason=f"Output security scan found {len(violations)} issues" if violations else None,
-            risk_score=min(risk_score, 1.0),
-            violations=violations if violations else None
+            risk_score=min(risk_score, 1.0)
         )
     
     async def _sanitize_output(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -661,6 +661,18 @@ class RealGuardrailService:
                 "passed": rule_check.passed,
                 "reason": rule_check.reason,
                 "severity": rule.get("severity", "warning")
+            })
+
+        # 5. SIGMA Spectral Quality Gate (Defends against model collapse)
+        embeddings = task_profile.get("embeddings")
+        baseline_log_det = task_profile.get("baseline_log_det", 0.0)
+        if embeddings:
+            sigma_passed = SigmaSpectralLens.verify_quality_gate(embeddings, baseline_log_det)
+            results.append({
+                "name": "sigma_spectral_gate",
+                "passed": sigma_passed,
+                "reason": "Spectral drift detected in representation space" if not sigma_passed else None,
+                "severity": "gold"
             })
             
         return results

@@ -22,6 +22,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 import asyncio
+from backend.core.services.settlement_service import SettlementService
 
 async def _persist_vnp_stake_async(workspace_id: str, path: str, stake_amount: float, latency: float, result: str):
     try:
@@ -620,22 +621,32 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 response.headers["X-Veklom-Receipt-URL"] = f"{VEKLOM_API_BASE}/receipts/{receipt['receipt_id']}"
                 response.headers["X-Payment-Verified"] = "gateway"
                 
-                # VNP Stakes Engine Execution
+                # VNP Stakes Engine Execution: A402 Atomic Service Channel (ASC) release
                 if vnp_stake:
                     latency_ms = (time.perf_counter() - vnp_start_time) * 1000
                     response.headers["X-VNP-Latency-Ms"] = f"{latency_ms:.2f}"
-                    if latency_ms > 800.0:  # SLA Missed -> Trigger Micro-Slash
-                        response.headers["X-VNP-Stake-Result"] = "slashed"
-                        stake_result = "slashed"
-                    else:
-                        response.headers["X-VNP-Stake-Result"] = "yield"
-                        stake_result = "yield"
+
+                    # Deterministic SLA Threshold (e.g. 800ms)
+                    is_passing = (latency_ms <= 800.0)
+                    stake_result = "yield" if is_passing else "slashed"
+                    response.headers["X-VNP-Stake-Result"] = stake_result
                     
                     try:
-                        amt = float(vnp_stake)
-                    except:
-                        amt = 0.001
-                    asyncio.create_task(_persist_vnp_stake_async("default", path, amt, latency_ms, stake_result))
+                        amt_minor = int(float(vnp_stake) * 1_000_000)
+                        # Release ASC settlement via real service
+                        from backend.core.database.database import async_session
+                        async with async_session() as db:
+                            # Use receipt_id as execution_hash for binding
+                            await SettlementService.release_settlement(
+                                db,
+                                uuid.UUID(receipt["receipt_id"].replace("rcpt_", "")),
+                                receipt["evidence_hash"],
+                                amt_minor if is_passing else 0
+                            )
+                    except Exception as asc_err:
+                        logger.error(f"[ASC] Failed to release settlement: {asc_err}")
+
+                    asyncio.create_task(_persist_vnp_stake_async("default", path, float(vnp_stake), latency_ms, stake_result))
                         
                 return response
 

@@ -18,6 +18,10 @@ html, body {
 .scroll-thin::-webkit-scrollbar-thumb { background: #2A3A5C; border-radius: 8px; }
 .scroll-thin::-webkit-scrollbar-track { background: transparent; }
 
+.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+
 .card {
   background: linear-gradient(180deg, #0F1626 0%, #0B1120 100%);
   border: 1px solid #1F2A40;

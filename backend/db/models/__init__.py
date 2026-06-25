@@ -7,7 +7,7 @@ from backend.db.models.billing import WalletTransaction, Subscription, BudgetRul
 from backend.db.models.billing_ext import BillingUsage, BillingEvent, AnalyticsEvent
 from backend.db.models.security import AuditLog, SecurityEvent, ComplianceCheck, KillSwitchState
 from backend.db.models.pipelines import Pipeline, PipelineRun, Deployment
-from backend.db.models.agent import Account, AgentUser, Agent, AgentSkill
+from backend.db.models.agent import Account, AgentUser, Agent, AgentSkill, AgentIdentity
 from backend.db.models.genome import GenomeVersion
 from backend.db.models.ledger import LedgerEvent, SettlementLedger, SettlementStatus
 from backend.db.models.lineage import BirthCertificate, LineageEdge
@@ -66,7 +66,7 @@ __all__ = [
     "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog", "AgentPrivilege", "NexusBenchmarkRun",
     "Pipeline", "PipelineRun", "Deployment",
     # UACP V3 institutional ownership
-    "Account", "AgentUser", "Agent", "AgentSkill",
+    "Account", "AgentUser", "Agent", "AgentSkill", "AgentIdentity",
     "GenomeVersion",
     "LedgerEvent",
     "BirthCertificate", "LineageEdge",

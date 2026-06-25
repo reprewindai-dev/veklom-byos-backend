@@ -195,7 +195,7 @@ async def evaluate_intent_governed(
     # -----------------------------------------------------------------
     # Phase 3: Safety & Anomaly Gate
     # -----------------------------------------------------------------
-    # Anomaly rate limits check (max 60 executions per minute per agent)
+    # 1. Anomaly rate limits check (max 60 executions per minute per agent)
     now = datetime.now(timezone.utc)
     one_minute_ago = now - timedelta(seconds=60)
     try:
@@ -212,6 +212,36 @@ async def evaluate_intent_governed(
             return False, "RATE_LIMIT_EXCEEDED", 3, phase_results
     except Exception as rate_err:
         logger.warning(f"[cAPI] Rate limit query check skipped/failed: {rate_err}")
+
+    # 2. Council Consensus (CTA-MAS / CP-WBFT)
+    # If the payload contains evaluations from other agents (Council mode)
+    council_evaluations = intent.payload.get("council_evaluations")
+    if council_evaluations and isinstance(council_evaluations, list):
+        from backend.core.services.consensus import CPWBFTConsensus
+        # Calculate N >= 2f + 1 floor
+        n_nodes = len(council_evaluations)
+        f_byzantine = max(0, (n_nodes - 1) // 2)
+
+        is_safe, threat_score = CPWBFTConsensus.reach_consensus(
+            council_evaluations,
+            n_nodes=n_nodes,
+            f_byzantine=f_byzantine
+        )
+        if not is_safe:
+            logger.error(f"[cAPI] VETO: Council consensus failed. Threat Score: {threat_score:.2f}")
+            phase_results["3"] = f"FAILED: Byzantine consensus veto (Threat: {threat_score:.2f})"
+            return False, "BYZANTINE_CONSENSUS_VETO", 3, phase_results
+
+    # 3. SIGMA Spectral Quality Gate (Defends against model collapse)
+    embeddings = intent.payload.get("embeddings")
+    baseline_log_det = intent.payload.get("baseline_log_det", 0.0)
+    if embeddings and isinstance(embeddings, list):
+        from backend.core.ml.sigma import SigmaSpectralLens
+        sigma_passed = SigmaSpectralLens.verify_quality_gate(embeddings, baseline_log_det)
+        if not sigma_passed:
+            logger.error(f"[cAPI] VETO: SIGMA Spectral drift detected for {intent.agent_id}")
+            phase_results["3"] = "FAILED: SIGMA Spectral Quality Gate violation"
+            return False, "SIGMA_GATE_VIOLATION", 3, phase_results
 
     phase_results["3"] = "PASSED"
 

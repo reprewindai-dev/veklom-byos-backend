@@ -249,6 +249,11 @@ class Settings(BaseSettings):
     CDP_API_KEY_SECRET: str = ""
     CDP_WALLET_SECRET: str = ""
 
+    # --- Amphoteric Paradigm (Quinte West Topography) ---
+    # Node types: BACKEND_URBAN, BACKEND_FAILOVER, EDGE_RURAL, EDGE_TACTICAL
+    AMPHOTERIC_NODE_TYPE: str = "BACKEND_URBAN"
+    AMPHOTERIC_STABILIZATION_MS: int = 40  # Metaphorical cocrystal stabilization buffer (pH 7.0 baseline)
+
     # Keeping old JWT variables mapped to new ones for backward compatibility during refactor
     @property
     def JWT_SECRET_KEY(self) -> str:

@@ -1,22 +1,21 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <script>
-      (function() {
-        var originalFocus = HTMLElement.prototype.focus;
-        HTMLElement.prototype.focus = function(options) {
-          var opts = options || {};
-          return originalFocus.call(this, Object.assign({}, opts, { preventScroll: true }));
-        };
-      })();
-    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>UACP v5 Quantum Terminal — Veklom Control Plane</title>
-    <script type="module" crossorigin src="./assets/index-QjNoLsnG.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-C7GVScat.css">
+    <meta name="description" content="UACP v5 Quantum Terminal — 105-node federated swarm visualization with live backend telemetry and cryptographic attestation." />
+    <meta name="fc:frame" content='{"version":"1","name":"Quantum Terminal","appId":"6a20f24cc341f72c2f573eb5"}' />
+    <meta name="x402:payTo" content="0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d" />
+    <meta name="x402:network" content="eip155:8453" />
+    <meta name="x402:discovery" content="/.well-known/x402.json" />
+    <meta name="veklom:id-wallet" content="0x3a74772e925b54F7dAD7FD95c9Ba30825033f970" />
+    <meta name="veklom:service" content="quantum-terminal" />
+    <script type="module" crossorigin src="/assets/index-T6qbGwsI.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-5tGHVxto.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
   </body>
 </html>
+

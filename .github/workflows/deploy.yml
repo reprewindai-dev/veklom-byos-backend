@@ -1,71 +1,86 @@
-name: Deploy to Hetzner
+name: Backend CI — Build & Import Check
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  deploy:
+  build-check:
+    name: Docker Build + Import Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 5.78.135.11
-          username: root
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          script: |
-            cd /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru
-            git fetch origin main
-            git checkout main
-            git pull --ff-only origin main
-            # Find and stop any container using port 8088
-            OLD_CONTAINER=$(docker ps -q -f publish=8088)
-            if [ -n "$OLD_CONTAINER" ]; then
-              docker stop $OLD_CONTAINER || true
-              docker rm $OLD_CONTAINER || true
-            fi
-            # Also try to stop by name if it exists
-            docker stop n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
-            docker rm n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
-            docker build -t veklom-local:latest .
-            docker run -d \
-              --name n13gp1nhrcdp0hvazvbnlxru-213557155694 \
-              --network coolify \
-              --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env \
-              --restart unless-stopped \
-              -p 8088:8088 \
-              veklom-local:latest
-            cat >/data/coolify/proxy/dynamic/veklom.yaml <<'YAML'
-            http:
-              routers:
-                veklom-http:
-                  entryPoints:
-                    - http
-                  rule: "Host(`veklom.com`) || Host(`www.veklom.com`) || Host(`app.veklom.com`) || Host(`api.veklom.com`)"
-                  service: veklom
-                  priority: 1000
-                veklom-https:
-                  entryPoints:
-                    - https
-                  rule: "Host(`veklom.com`) || Host(`www.veklom.com`) || Host(`app.veklom.com`) || Host(`api.veklom.com`)"
-                  service: veklom
-                  priority: 1000
-                  tls:
-                    certResolver: letsencrypt
-              services:
-                veklom:
-                  loadBalancer:
-                    servers:
-                      - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:8088"
-            YAML
-            for i in $(seq 1 30); do
-              if [ "$(docker inspect -f '{{.State.Health.Status}}' n13gp1nhrcdp0hvazvbnlxru-213557155694 2>/dev/null)" = "healthy" ]; then
-                curl -sf http://localhost:8088/health >/dev/null 2>&1 && echo "Deploy successful"
-                exit 0
-              fi
-              sleep 2
-            done
-            echo "Deploy failed: health did not turn healthy in time"
-            docker logs --tail 200 n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t veklom-backend-ci:${{ github.sha }} .
+
+      - name: Validate all Python imports start clean
+        run: |
+          docker run --rm \
+            -e DATABASE_URL="postgresql+asyncpg://test:test@localhost/test" \
+            -e REDIS_URL="redis://localhost:6379" \
+            -e SECRET_KEY="ci-test-secret-key-not-real" \
+            -e ENVIRONMENT="test" \
+            veklom-backend-ci:${{ github.sha }} \
+            python3 -c "
+          import sys, os
+          os.environ.setdefault('DATABASE_URL', 'postgresql+asyncpg://test:test@localhost/test')
+          os.environ.setdefault('REDIS_URL', 'redis://localhost:6379')
+          os.environ.setdefault('SECRET_KEY', 'ci-test-secret-key')
+          os.environ.setdefault('ENVIRONMENT', 'test')
+          # Just verify all deps are installed — don't actually connect to DB
+          import fastapi, uvicorn, sqlalchemy, asyncpg, redis, pydantic
+          import jsonschema, cryptography, jwt, celery
+          import langchain, langchain_core, httpx, sentry_sdk
+          print('All critical imports OK')
+          "
+
+      - name: Report
+        if: success()
+        run: echo "Build and import check passed for ${{ github.sha }}"
+
+  deploy-prod:
+    name: Deploy to Production (main branch only)
+    needs: build-check
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HETZNER_SSH_KEY }}" > ~/.ssh/veklom-deploy
+          chmod 600 ~/.ssh/veklom-deploy
+          ssh-keyscan -H 5.78.135.11 >> ~/.ssh/known_hosts
+
+      - name: Pull, Build, and Zero-Downtime Swap on Server
+        run: |
+          ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 "
+            set -e
+            APP=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru
+            cd \$APP
+            git pull origin main
+            docker build -t n13gp1nhrcdp0hvazvbnlxru:${{ github.sha }} .
+            python3 \$APP/veklom_swap.py ${{ github.sha }}
+            echo 'Deployment complete: ${{ github.sha }}'
+          "
+
+      - name: Verify Production Health
+        run: |
+          sleep 10
+          HTTP=$(curl -sk https://api.veklom.com/health -o /dev/null -w '%{http_code}')
+          if [ "$HTTP" != "200" ]; then
+            echo "HEALTH CHECK FAILED: api.veklom.com returned $HTTP"
             exit 1
+          fi
+          echo "api.veklom.com healthy — deployment successful"

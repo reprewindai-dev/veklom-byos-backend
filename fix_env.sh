@@ -16,7 +16,7 @@ sed -i '/^GITHUB_REDIRECT_URI=/d' "$ENV"
 
 # 4. Ensure file ends with newline, then append
 echo "" >> "$ENV"
-echo "GITHUB_CLIENT_ID=Ov23lijPnrtxwjtoP2vk" >> "$ENV"
+echo "GITHUB_CLIENT_ID=Iv23liPqr3V9FPknhwIn" >> "$ENV"
 echo "GITHUB_CLIENT_SECRET=<NEW_SECRET>" >> "$ENV"
 echo "GITHUB_REDIRECT_URI=https://api.veklom.com/api/v1/auth/github/callback" >> "$ENV"
 

@@ -93,7 +93,7 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS=30
 
 ### GitHub OAuth (PRODUCTION - Already Configured)
 ```
-GITHUB_CLIENT_ID=Ov23lijPnrtxwjtoP2vk
+GITHUB_CLIENT_ID=Iv23liPqr3V9FPknhwIn
 GITHUB_CLIENT_SECRET=<NEW_SECRET>
 GITHUB_REDIRECT_URI=https://api.veklom.com/api/v1/auth/github/callback
 ```

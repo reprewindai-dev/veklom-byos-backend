@@ -24,7 +24,7 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -249,6 +249,7 @@ async def lifespan(app: FastAPI):
     # at least the critical tables landed.
     try:
         async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.create_all)
             registered = sorted(Base.metadata.tables.keys())
             print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")

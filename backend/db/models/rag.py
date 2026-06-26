@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-DISABLE_PGVECTOR = os.environ.get("DISABLE_PGVECTOR", "false").lower() == "true"
+DISABLE_PGVECTOR = os.environ.get("DISABLE_PGVECTOR", "true").lower() == "true"
 
 try:
     if DISABLE_PGVECTOR:

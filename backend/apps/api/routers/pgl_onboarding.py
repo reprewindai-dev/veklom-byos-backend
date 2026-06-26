@@ -60,6 +60,7 @@ async def _write_ledger_event(
     event_type: str,
     payload: dict,
     certificate_id: Optional[str] = None,
+    pgl_identity_id: Optional[str] = None,
 ) -> PGLLedgerEvent:
     """Append a hash-chained ledger event for this workspace."""
     prev_hash = await _last_event_hash(db, workspace_id)
@@ -69,9 +70,30 @@ async def _write_ledger_event(
     chain_input += (prev_hash or "GENESIS")
     event_hash = hashlib.sha256(chain_input.encode()).hexdigest()
 
+    # Resolve pgl_identity_id if not provided
+    if not pgl_identity_id:
+        # 1. Check user first
+        user_result = await db.execute(
+            select(User.pgl_id).where(User.id == actor_id)
+        )
+        pgl_identity_id = user_result.scalar_one_or_none()
+
+    if not pgl_identity_id:
+        # 2. Check PGLIdentity table for workspace/tenant
+        identity_result = await db.execute(
+            select(PGLIdentity.id).where(PGLIdentity.tenant_id == workspace_id).limit(1)
+        )
+        pgl_identity_id = identity_result.scalar_one_or_none()
+
+    if not pgl_identity_id:
+        raise ValueError(
+            f"Cannot write ledger event '{event_type}': no PGL Identity found for actor {actor_id} or workspace {workspace_id}"
+        )
+
     event = PGLLedgerEvent(
         workspace_id=workspace_id,
         actor_id=actor_id,
+        pgl_identity_id=pgl_identity_id,
         certificate_id=certificate_id,
         event_type=event_type,
         payload=payload,
@@ -225,6 +247,10 @@ async def create_operator_identity(
     )
     db.add(identity)
 
+    # Update user with the PGL id
+    current_user.pgl_id = pgl_id
+    db.add(current_user)
+
     # Write hash-chained ledger event
     event = await _write_ledger_event(
         db,
@@ -232,6 +258,7 @@ async def create_operator_identity(
         actor_id=actor_id,
         event_type="operator_created",
         payload=payload,
+        pgl_identity_id=pgl_id,
     )
 
     await db.commit()

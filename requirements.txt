@@ -136,3 +136,5 @@ wrapt==2.2.2
 xxhash==3.7.1
 yarl==1.24.2
 zstandard==0.25.0
+setuptools==70.0.0
+

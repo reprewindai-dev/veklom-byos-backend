@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 
 import sentry_sdk
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse

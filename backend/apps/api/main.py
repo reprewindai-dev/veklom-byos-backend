@@ -245,7 +245,12 @@ async def lifespan(app: FastAPI):
     # at least the critical tables landed.
     try:
         async with engine.begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            try:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                print("[startup] db: Extension 'vector' created or already exists")
+            except Exception as ext_err:
+                print(f"[startup] db: Warning — Could not enable 'vector' extension: {ext_err}. Dynamic vector fallbacks will be used.")
+            
             await conn.run_sync(Base.metadata.create_all)
             registered = sorted(Base.metadata.tables.keys())
             print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")
@@ -334,6 +339,21 @@ async def lifespan(app: FastAPI):
         print("[startup] db: vnp_apis column migration completed")
     except Exception as e:
         print(f"[startup] db: vnp_apis migration warning: {type(e).__name__}: {e}")
+
+    # Idempotent column additions for PGL tables
+    pgl_columns = [
+        "ALTER TABLE pgl_certificates ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
+        "ALTER TABLE pgl_ledger_events ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
+        "ALTER TABLE birth_certificates ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
+        "ALTER TABLE genome_versions ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in pgl_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: PGL column migration completed")
+    except Exception as e:
+        print(f"[startup] db: PGL migration warning: {type(e).__name__}: {e}")
 
     # Seed first-class skills that should always be present in the registry.
     # Skills with is_available=False are catalogued but NOT invokable.

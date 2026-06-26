@@ -9,6 +9,7 @@ make a route audit brittle in CI.
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -21,25 +22,8 @@ ROUTER_DIR = ROOT / "backend" / "apps" / "api" / "routers"
 INVENTORY = ROOT / "docs" / "BACKEND_ROUTE_INVENTORY.txt"
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+INVENTORY_NOTE_LIMIT = 80
 
-INCLUDE_RE = re.compile(
-    r"app\.include_router\(\s*"
-    r"(?P<module>[A-Za-z_][A-Za-z0-9_]*)\.router"
-    r"(?:\s*,\s*prefix\s*=\s*[\"'](?P<prefix>[^\"']*)[\"'])?",
-    re.MULTILINE,
-)
-ROUTER_PREFIX_RE = re.compile(
-    r"router\s*=\s*APIRouter\s*\("
-    r"(?P<body>.{0,1200}?)"
-    r"(?:\n\s*\)|\))",
-    re.DOTALL,
-)
-PREFIX_ARG_RE = re.compile(r"prefix\s*=\s*[\"'](?P<prefix>[^\"']*)[\"']")
-ROUTE_RE = re.compile(
-    r"@router\.(?P<method>get|post|put|patch|delete|head|options)"
-    r"\(\s*[\"'](?P<path>/[^\"']*)[\"']",
-    re.IGNORECASE,
-)
 INVENTORY_RE = re.compile(r"^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(/\S+)", re.MULTILINE)
 
 
@@ -71,6 +55,7 @@ REQUIRED_ROUTES: tuple[tuple[str, str, str], ...] = (
 
 
 def read_text(path: Path) -> str:
+    """Read repository text files while tolerating a UTF-8 BOM."""
     try:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
@@ -78,6 +63,7 @@ def read_text(path: Path) -> str:
 
 
 def join_paths(*parts: str | None) -> str:
+    """Join FastAPI mount, router prefix, and route path fragments."""
     path = ""
     for part in parts:
         if not part or part == "/":
@@ -86,25 +72,98 @@ def join_paths(*parts: str | None) -> str:
     return path or "/"
 
 
+def call_name(node: ast.AST) -> str:
+    """Return a dotted-ish call name for the simple call patterns used here."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        owner = call_name(node.value)
+        return f"{owner}.{node.attr}" if owner else node.attr
+    return ""
+
+
+def literal_string(node: ast.AST | None) -> str | None:
+    """Extract a literal string argument from an AST node, if present."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def parse_python(path: Path) -> ast.Module:
+    """Parse a Python file for static route discovery without importing it."""
+    try:
+        return ast.parse(read_text(path), filename=str(path))
+    except SyntaxError as exc:
+        raise RuntimeError(f"Cannot parse {path.relative_to(ROOT)}: {exc}") from exc
+
+
 def router_prefix(source: str) -> str:
-    match = ROUTER_PREFIX_RE.search(source)
-    if not match:
-        return ""
-    prefix = PREFIX_ARG_RE.search(match.group("body"))
-    return prefix.group("prefix") if prefix else ""
+    """Find the `router = APIRouter(prefix=...)` prefix in router source."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "router" for target in node.targets):
+            continue
+        if not isinstance(node.value, ast.Call) or call_name(node.value.func) != "APIRouter":
+            continue
+        for keyword in node.value.keywords:
+            if keyword.arg == "prefix":
+                return literal_string(keyword.value) or ""
+    return ""
 
 
 def discover_router_mounts() -> list[tuple[str, str]]:
-    source = read_text(MAIN_APP)
+    """Discover `app.include_router(module.router, prefix=...)` mounts."""
+    tree = parse_python(MAIN_APP)
     mounts: list[tuple[str, str]] = []
-    for match in INCLUDE_RE.finditer(source):
-        module = match.group("module")
-        prefix = match.group("prefix") or ""
-        mounts.append((module, prefix))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or call_name(node.func) != "app.include_router":
+            continue
+        if not node.args:
+            continue
+        router_arg = node.args[0]
+        if not (
+            isinstance(router_arg, ast.Attribute)
+            and router_arg.attr == "router"
+            and isinstance(router_arg.value, ast.Name)
+        ):
+            continue
+        prefix = ""
+        for keyword in node.keywords:
+            if keyword.arg == "prefix":
+                prefix = literal_string(keyword.value) or ""
+                break
+        mounts.append((router_arg.value.id, prefix))
     return mounts
 
 
+def route_declarations(source: str) -> set[tuple[str, str]]:
+    """Collect `@router.<method>('/path')` declarations from router source."""
+    tree = ast.parse(source)
+    routes: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call):
+                continue
+            func = decorator.func
+            if not (
+                isinstance(func, ast.Attribute)
+                and func.attr.lower() in HTTP_METHODS
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "router"
+            ):
+                continue
+            route_path = literal_string(decorator.args[0]) if decorator.args else None
+            if route_path and route_path.startswith("/"):
+                routes.add((func.attr.upper(), route_path))
+    return routes
+
+
 def collect_source_routes(mounts: Iterable[tuple[str, str]]) -> set[tuple[str, str]]:
+    """Collect all live route contracts from mounted backend routers."""
     routes: set[tuple[str, str]] = set()
 
     for module, include_prefix in mounts:
@@ -115,17 +174,15 @@ def collect_source_routes(mounts: Iterable[tuple[str, str]]) -> set[tuple[str, s
         source = read_text(router_file)
         base_prefix = router_prefix(source)
 
-        for route in ROUTE_RE.finditer(source):
-            method = route.group("method").upper()
-            if method.lower() not in HTTP_METHODS:
-                continue
-            path = join_paths(include_prefix, base_prefix, route.group("path"))
+        for method, route_path in route_declarations(source):
+            path = join_paths(include_prefix, base_prefix, route_path)
             routes.add((method, path))
 
     return routes
 
 
 def collect_inventory_routes() -> set[tuple[str, str]]:
+    """Read the documented route inventory when it exists."""
     if not INVENTORY.exists():
         return set()
     text = read_text(INVENTORY)
@@ -133,12 +190,25 @@ def collect_inventory_routes() -> set[tuple[str, str]]:
 
 
 def print_routes(title: str, routes: Iterable[tuple[str, str, str]]) -> None:
+    """Print required route failures with their contract reason."""
     print(title)
     for method, path, reason in routes:
         print(f"  - {method:<6} {path:<45} {reason}")
 
 
+def print_route_pairs(title: str, routes: Iterable[tuple[str, str]]) -> None:
+    """Print method/path route pairs in a stable order."""
+    print(title)
+    route_list = sorted(routes)
+    for method, path in route_list[:INVENTORY_NOTE_LIMIT]:
+        print(f"  - {method:<6} {path}")
+    hidden = len(route_list) - INVENTORY_NOTE_LIMIT
+    if hidden > 0:
+        print(f"  ... {hidden} more live routes are absent from the inventory.")
+
+
 def main() -> int:
+    """Run the backend route contract audit."""
     if not MAIN_APP.exists():
         print(f"Route audit failed: missing {MAIN_APP.relative_to(ROOT)}")
         return 1
@@ -164,11 +234,7 @@ def main() -> int:
         print(f"\nParsed {len(source_routes)} source routes from {len(mounts)} router mounts.")
         return 1
 
-    stale_inventory = [
-        (method, path, reason)
-        for method, path, reason in REQUIRED_ROUTES
-        if inventory_routes and (method, path) not in inventory_routes
-    ]
+    stale_inventory = sorted(source_routes - inventory_routes) if inventory_routes else []
 
     print("Route contract audit passed.")
     print(f"  Router mounts parsed: {len(mounts)}")
@@ -176,9 +242,10 @@ def main() -> int:
     if inventory_routes:
         print(f"  Inventory routes parsed: {len(inventory_routes)}")
     if stale_inventory:
-        print("\nNon-failing note: docs/BACKEND_ROUTE_INVENTORY.txt is missing these live routes:")
-        for method, path, _ in stale_inventory:
-            print(f"  - {method:<6} {path}")
+        print_route_pairs(
+            "\nNon-failing note: docs/BACKEND_ROUTE_INVENTORY.txt is missing these live source routes:",
+            stale_inventory,
+        )
 
     return 0
 

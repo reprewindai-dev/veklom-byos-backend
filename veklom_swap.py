@@ -30,7 +30,7 @@ NETWORK = "coolify"
 PORT = 8088
 HEALTH_URL = f"http://localhost:{PORT}/health"
 MAX_WAIT_SECONDS = 120
-CONTAINER_PROD_NAME = f"{CONTAINER_BASE}-232258823439"
+CONTAINER_PROD_NAME = f"{CONTAINER_BASE}-213557155694"
 
 
 def run(cmd, check=True, capture=True):

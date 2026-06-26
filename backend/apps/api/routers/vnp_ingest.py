@@ -141,8 +141,10 @@ async def ingest_probe_events(
 
         # 4. Insert into DB
         try:
+            partition_key = event.occurred_at.strftime("%Y-%m")
             new_probe = ProbeEvent(
                 event_id=event.event_id,
+                partition_key=partition_key,
                 worker_id=event.producer.get("worker_id", "unknown"),
                 worker_region=event.producer.get("region", "unknown"),
                 runtime=event.producer.get("runtime", "unknown"),
@@ -210,8 +212,10 @@ async def ingest_usage_events(
             continue
 
         try:
+            partition_key = event.occurred_at.strftime("%Y-%m")
             new_usage = UsageEvent(
                 event_id=event.event_id,
+                partition_key=partition_key,
                 customer_id=event.customer_id,
                 project_id=event.project_id,
                 credential_id=event.credential_id,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import httpx
 from typing import Any, Dict, Optional
-from backend.core.config import settings
+from backend.core.config.settings import settings
 
 
 class PGLClient:
@@ -23,7 +23,7 @@ class PGLClient:
         self.base_url = url
         self.timeout = 30.0
         self.headers = {
-            "X-API-Key": settings.gnomledger_api_key or "",
+            "X-API-Key": settings.GNOMLEDGER_API_KEY or "",
             "Content-Type": "application/json"
         }
     

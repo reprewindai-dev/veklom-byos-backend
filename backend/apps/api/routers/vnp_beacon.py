@@ -20,7 +20,8 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-from backend.core.ml.vnp_scoring import compute_vnp_score
+from backend.core.services.route_beacon_service import RouteBeaconService
+
 @router.get("/routes/resolve")
 async def resolve_route(
     customer_id: str,
@@ -33,97 +34,24 @@ async def resolve_route(
 ):
     """
     Resolve best current route for a customer request using real-time VNP Telemetry.
+    Uses RouteBeaconService for hot-cache <15ms resolution.
     """
-    # 1. Fetch Route Policy
-    policy_stmt = select(RoutePolicy).where(RoutePolicy.id == policy_id)
-    policy_res = await db.execute(policy_stmt)
-    policy = policy_res.scalar_one_or_none()
-    
-    if not policy:
-        raise HTTPException(status_code=404, detail="Route policy not found")
-
-    # 2. Fetch all active APIs and their regions
-    # In production, this would join RegionalTelemetry and filter in SQL.
-    # We do a simplified version here.
-    api_stmt = select(Api).where(Api.status == ApiStatus.active)
-    apis_res = await db.execute(api_stmt)
-    apis = apis_res.scalars().all()
-
-    candidates = []
-    
-    for api in apis:
-        # Check policy allowed_provider_ids
-        if policy.allowed_provider_ids and str(api.provider_id) not in policy.allowed_provider_ids:
-            continue
-
-        # Fetch telemetry for this API
-        tel_stmt = select(RegionalTelemetry).where(RegionalTelemetry.api_id == api.id).order_by(RegionalTelemetry.measured_at.desc()).limit(1)
-        tel_res = await db.execute(tel_stmt)
-        telemetry = tel_res.scalar_one_or_none()
-
-        if not telemetry:
-            continue
-            
-        # Enforce Policy constraints
-        if policy.max_p99_latency_ms and telemetry.p99_latency_ms > policy.max_p99_latency_ms:
-            continue
-        if policy.minimum_trust_score and telemetry.trust_score < policy.minimum_trust_score:
-            continue
-            
-        # We assume p50 is slightly lower than p99 for calculation purposes since DB only has p99 here for MVP.
-        # In full production we would fetch p50 and p99.
-        p50_latency = max(10, telemetry.p99_latency_ms - 20)
-        
-        score = compute_vnp_score(
-            p50_latency_ms=p50_latency,
-            p99_latency_ms=telemetry.p99_latency_ms,
-            availability_percent=float(telemetry.uptime_percent),
-            owasp_compliance_flag=True, # Assuming true for existing records
-            weights=policy.weights
-        )
-        
-        candidates.append({
-            "api_id": str(api.id),
-            "provider_id": str(api.provider_id),
-            "provider_region": telemetry.region_code,
-            "endpoint_url": api.base_url, # In reality, get from ApiRegion
-            "composite_score": round(score, 2),
-            "trust_grade": "AAA" if telemetry.trust_score > 90 else "A",
-            "estimated_p99_latency_ms": telemetry.p99_latency_ms,
-            "uptime_percent_rolling": float(telemetry.uptime_percent),
-            "decision_reasons": ["policy_match", "healthy"]
-        })
-
-    # Sort by composite score descending
-    candidates.sort(key=lambda x: x["composite_score"], reverse=True)
-    top_candidates = candidates[:max_candidates]
-    
-    # Assign ranks
-    for i, c in enumerate(top_candidates):
-        c["rank"] = i + 1
-
-    snapshot_id = str(uuid.uuid4())
-    generated_at = datetime.now(timezone.utc)
-    
-    # Create snapshot in DB
-    snapshot_record = RouteSnapshot(
-        id=snapshot_id,
+    snapshot = await RouteBeaconService.get_best_route(
+        db=db,
         customer_id=customer_id,
+        project_id=project_id,
         policy_id=policy_id,
-        requested_region=requested_region,
-        generated_at=generated_at,
-        ttl_seconds=3,
-        snapshot={"candidates": top_candidates}
+        requested_region=requested_region
     )
-    db.add(snapshot_record)
-    await db.commit()
 
-    return {
-        "route_snapshot_id": snapshot_id,
-        "generated_at": generated_at.isoformat(),
-        "ttl_seconds": 3,
-        "candidates": top_candidates
-    }
+    if "error" in snapshot:
+        raise HTTPException(status_code=404, detail=snapshot["error"])
+
+    # Optionally trim candidates if max_candidates is different from default
+    if len(snapshot["candidates"]) > max_candidates:
+        snapshot["candidates"] = snapshot["candidates"][:max_candidates]
+
+    return snapshot
 
 @router.get("/topology")
 async def get_swarm_topology(db: AsyncSession = Depends(get_db)):

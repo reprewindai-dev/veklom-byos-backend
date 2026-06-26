@@ -901,6 +901,10 @@ app.include_router(vnp_beacon.router, prefix="/api/v1")
 app.include_router(vnp_control.router, prefix="/api/v1")
 app.include_router(vnp_incidents.router, prefix="/api/v1")
 
+# VNP v2.0 - Unified Execution Core (Aligned with Interlink Prototype)
+from backend.apps.api.routers import vnp_v2
+app.include_router(vnp_v2.router, prefix="/api")
+
 
 # --- Frontend static files ---
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "static"

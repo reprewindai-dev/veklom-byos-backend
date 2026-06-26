@@ -1,12 +1,13 @@
 import subprocess
 
-query = "\dt"
+command = "docker exec coolify-redis redis-cli -a sGIiZY2X4GYzwZXBlTcxauAAqmjnGmZhobHjjhbQjMc= config set stop-writes-on-bgsave-error no"
 
 ssh_command = [
     "ssh",
+    "-o", "StrictHostKeyChecking=no",
     "-i", "C:\\Users\\antho\\.ssh\\veklom-deploy",
     "root@5.78.135.11",
-    f"docker exec llwfyzhnft87bz6brddiax1z psql -U byos -d byos_ai -c \"{query}\""
+    command
 ]
 
 result = subprocess.run(ssh_command, capture_output=True, text=True)

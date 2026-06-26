@@ -94,6 +94,8 @@ class Api(TimestampMixin, Base):
     auth_scheme = Column(String(50), nullable=False)
     x402_ready = Column(Boolean, nullable=False, default=False)
     pricing_model = Column(String(50), nullable=False, default="metered")
+    current_composite_score = Column(Float, nullable=False, default=100.0)
+    stability_rating = Column(String(50), nullable=False, default="Stable")
     status = Column(Enum(ApiStatus, name="api_status_enum", create_type=False), nullable=False, default=ApiStatus.active)
     
     provider = relationship("Provider", back_populates="apis")
@@ -178,6 +180,7 @@ class ProbeEvent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     event_id = Column(String(100), unique=True, nullable=False)
+    partition_key = Column(String(20), nullable=False, index=True) # YYYY-MM
     worker_id = Column(String(100), nullable=False)
     worker_region = Column(String(50), nullable=False)
     runtime = Column(String(50), nullable=False)
@@ -250,6 +253,7 @@ class UsageEvent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     event_id = Column(String(100), unique=True, nullable=False)
+    partition_key = Column(String(20), nullable=False, index=True) # YYYY-MM
     customer_id = Column(UUID(as_uuid=True), ForeignKey("vnp_customers.id", ondelete="CASCADE"), nullable=False)
     project_id = Column(UUID(as_uuid=True), ForeignKey("vnp_projects.id", ondelete="CASCADE"), nullable=False)
     credential_id = Column(UUID(as_uuid=True), ForeignKey("vnp_sdk_credentials.id", ondelete="CASCADE"), nullable=False)

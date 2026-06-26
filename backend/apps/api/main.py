@@ -34,7 +34,7 @@ from backend.core.security.middlewares import (
 )
 
 from backend.core.config.settings import settings
-from backend.core.database.database import Base, engine
+from backend.core.database.database import Base, engine, get_db
 from backend.core.plugins.manager import plugin_manager
 from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
@@ -229,11 +229,14 @@ async def vnp_background_indexer():
                 print(f"[vnp-engine] Error in production indexer: {e}")
             await asyncio.sleep(interval)
 
+from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start VNP Stakes Engine background loop
+    # Start VNP background indexers and scoring engine
     vnp_task = asyncio.create_task(vnp_background_indexer())
-    
+    scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
+
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
 

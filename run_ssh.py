@@ -1,6 +1,6 @@
 import subprocess
 
-command = "docker exec coolify-redis redis-cli -a sGIiZY2X4GYzwZXBlTcxauAAqmjnGmZhobHjjhbQjMc= config set stop-writes-on-bgsave-error no"
+command = "python3 -c \"import re; filepath = '/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env'; content = open(filepath).read(); content = re.sub(r'GITHUB_CLIENT_ID=.*', 'GITHUB_CLIENT_ID=Iv23liPqr3V9FPknhwIn', content); content = re.sub(r'GITHUB_CLIENT_SECRET=.*', 'GITHUB_CLIENT_SECRET=\\'3f6e8c5433e3b0c1de5a8be350f466dd6ce2a808\\'', content); open(filepath, 'w').write(content); print('SUCCESS')\""
 
 ssh_command = [
     "ssh",

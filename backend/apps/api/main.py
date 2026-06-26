@@ -235,10 +235,6 @@ from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start VNP background indexers and scoring engine
-    vnp_task = asyncio.create_task(vnp_background_indexer())
-    scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
-
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
 
@@ -454,6 +450,10 @@ async def lifespan(app: FastAPI):
         import traceback
         print(f"[startup] operator engine: WARNING — failed to start: {type(e).__name__}: {e}")
         traceback.print_exc()
+
+    # Start VNP background indexers and scoring engine
+    vnp_task = asyncio.create_task(vnp_background_indexer())
+    scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
 
     yield
 

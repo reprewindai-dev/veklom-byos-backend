@@ -124,30 +124,33 @@ class VNPScoringEngine:
                 snapshot_id = str(uuid.uuid4())
                 generated_at = datetime.now(timezone.utc)
 
-                # Create snapshot record
-                # We store a "global" policy snapshot if requested, or per-region
+                # Top candidate for flattened snapshot
+                top = candidates[0]
+
+                # Update Redis Hot-Cache
+                cache_key = f"{cls.REDIS_BEACON_PREFIX}:region:{reg_code}"
                 snapshot_data = {
                     "snapshot_id": snapshot_id,
                     "region": reg_code,
                     "generated_at": generated_at.isoformat(),
-                    "candidates": candidates[:5] # Top 5
+                    "candidates": candidates[:5]
                 }
+                await redis_cache.set(cache_key, json.dumps(snapshot_data), ttl=30) # 30s TTL per plan
 
-                # Update Redis Hot-Cache
-                cache_key = f"{cls.REDIS_BEACON_PREFIX}:region:{reg_code}"
-                await redis_cache.set(cache_key, json.dumps(snapshot_data), ttl=300)
+                if reg_code == "us-east-1":
+                    await redis_cache.set(f"{cls.REDIS_BEACON_PREFIX}:default", json.dumps(snapshot_data), ttl=30)
 
-                # Also a "default" catch-all if needed
-                if reg_code == "us-east-1": # Primary region
-                    await redis_cache.set(f"{cls.REDIS_BEACON_PREFIX}:default", json.dumps(snapshot_data), ttl=300)
-
-                # Persist to DB
+                # Persist to DB using flattened schema
                 new_snapshot = RouteSnapshot(
                     id=snapshot_id,
-                    requested_region=reg_code,
-                    generated_at=generated_at,
-                    ttl_seconds=300,
-                    snapshot=snapshot_data
+                    api_id=uuid.UUID(top["api_id"]),
+                    region=reg_code,
+                    score=top["composite_score"],
+                    p99_latency=float(top["p99_latency_ms"]),
+                    uptime_pct=float(top["uptime_percent"]),
+                    recommended=True,
+                    snapshot_at=generated_at,
+                    snapshot=snapshot_data # Still keep full JSON for safety
                 )
                 db.add(new_snapshot)
 

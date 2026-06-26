@@ -20,7 +20,7 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-from backend.core.services.route_beacon_service import RouteBeaconService
+from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
 
 @router.get("/routes/resolve")
 async def resolve_route(
@@ -34,22 +34,16 @@ async def resolve_route(
 ):
     """
     Resolve best current route for a customer request using real-time VNP Telemetry.
-    Uses RouteBeaconService for hot-cache <15ms resolution.
+    Uses VNPScoringEngine for <15ms resolution.
     """
-    snapshot = await RouteBeaconService.get_best_route(
-        db=db,
-        customer_id=customer_id,
-        project_id=project_id,
-        policy_id=policy_id,
-        requested_region=requested_region
-    )
+    snapshot = await VNPScoringEngine.get_latest_beacon(region=requested_region)
 
-    if "error" in snapshot:
-        raise HTTPException(status_code=404, detail=snapshot["error"])
+    if not snapshot:
+        # Fallback to default if region-specific not found
+        snapshot = await VNPScoringEngine.get_latest_beacon(region="default")
 
-    # Optionally trim candidates if max_candidates is different from default
-    if len(snapshot["candidates"]) > max_candidates:
-        snapshot["candidates"] = snapshot["candidates"][:max_candidates]
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="No active route recommendations found. VNP Engine may be starting.")
 
     return snapshot
 

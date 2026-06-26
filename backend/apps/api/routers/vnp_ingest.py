@@ -145,31 +145,16 @@ async def ingest_probe_events(
             new_probe = ProbeEvent(
                 event_id=event.event_id,
                 partition_key=partition_key,
-                worker_id=event.producer.get("worker_id", "unknown"),
-                worker_region=event.producer.get("region", "unknown"),
-                runtime=event.producer.get("runtime", "unknown"),
                 api_id=event.target.get("api_id"),
-                api_region_code=event.target.get("region_code"),
-                endpoint_url=event.target.get("endpoint_url"),
-                occurred_at=event.occurred_at,
-                dns_ms=event.measurement.dns_ms,
-                connect_ms=event.measurement.connect_ms,
-                tls_ms=event.measurement.tls_ms,
-                ttfb_ms=event.measurement.ttfb_ms,
-                total_ms=event.measurement.total_ms,
+                region=event.target.get("region_code"),
+                worker_id=event.producer.get("worker_id", "unknown"),
+                worker_signature=event.signature.sig,
+                latency_ms=float(event.measurement.total_ms),
                 status_code=event.measurement.status_code,
-                result_state=_map_error_class_to_state(
-                    event.measurement.success, 
-                    event.measurement.timeout, 
-                    event.measurement.error_class
-                ),
-                success=event.measurement.success,
-                timeout=event.measurement.timeout,
-                error_class=event.measurement.error_class,
-                signature_alg=event.signature.alg,
-                signature_key_id=event.signature.key_id,
-                signature_value=event.signature.sig,
-                received_at=now
+                error_reason=event.measurement.error_class,
+                measured_at=event.occurred_at,
+                evidence_hash=None, # To be added if needed
+                created_at=now
             )
             db.add(new_probe)
             accepted += 1

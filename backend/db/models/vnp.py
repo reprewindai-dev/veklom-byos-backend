@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, String, Integer, Float, Boolean, JSON, ForeignKey, DateTime, Enum, Numeric, BigInteger, UniqueConstraint, Index
+    Column, String, Integer, Float, Boolean, JSON, ForeignKey, DateTime, Enum, Numeric, BigInteger, UniqueConstraint, Index, text
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -176,35 +176,28 @@ class RoutePolicy(TimestampMixin, Base):
 
 
 class ProbeEvent(Base):
+    """Partitioned table for VNP data plane measurements."""
     __tablename__ = "vnp_probe_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     event_id = Column(String(100), unique=True, nullable=False)
     partition_key = Column(String(20), nullable=False, index=True) # YYYY-MM
-    worker_id = Column(String(100), nullable=False)
-    worker_region = Column(String(50), nullable=False)
-    runtime = Column(String(50), nullable=False)
     api_id = Column(UUID(as_uuid=True), ForeignKey("vnp_apis.id", ondelete="CASCADE"), nullable=False)
-    api_region_code = Column(String(50), nullable=False)
-    endpoint_url = Column(String, nullable=False)
-    occurred_at = Column(DateTime(timezone=True), nullable=False)
-    dns_ms = Column(Integer)
-    connect_ms = Column(Integer)
-    tls_ms = Column(Integer)
-    ttfb_ms = Column(Integer)
-    total_ms = Column(Integer, nullable=False)
+    region = Column(String(50), nullable=False)
+    worker_id = Column(String(100), nullable=False)
+    worker_signature = Column(String, nullable=False)
+    latency_ms = Column(Float)
     status_code = Column(Integer)
-    result_state = Column(Enum(ProbeResultState, name="probe_result_state_enum", create_type=False), nullable=False)
-    success = Column(Boolean, nullable=False)
-    timeout = Column(Boolean, nullable=False, default=False)
-    error_class = Column(String(100))
-    signature_alg = Column(String(20), nullable=False)
-    signature_key_id = Column(String(100), nullable=False)
-    signature_value = Column(String, nullable=False)
-    received_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    error_reason = Column(String)
+    measured_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    evidence_hash = Column(String)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    # Note: Real PostgreSQL partitioning requires __table_args__ with postgresql_partition_by
+    # but we will rely on partition_key for now unless native partitioning is strictly required via SQL.
 
     __table_args__ = (
-        Index("idx_probe_events_api_region_time", "api_id", "api_region_code", "occurred_at"),
+        Index("idx_probe_events_api_region_time", "api_id", "region", "measured_at"),
     )
 
 
@@ -236,15 +229,21 @@ class RouteSnapshot(Base):
     __tablename__ = "vnp_route_snapshots"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(UUID(as_uuid=True)) # Flattened per user request
+    region = Column(String(50))
+    score = Column(Float)
+    p99_latency = Column(Float)
+    uptime_pct = Column(Float)
+    recommended = Column(Boolean, default=False)
+    snapshot_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    # Keeping legacy fields for backward compatibility during transition
     customer_id = Column(UUID(as_uuid=True), ForeignKey("vnp_customers.id", ondelete="SET NULL"))
     policy_id = Column(UUID(as_uuid=True), ForeignKey("vnp_route_policies.id", ondelete="SET NULL"))
-    requested_region = Column(String(50))
-    generated_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    ttl_seconds = Column(Integer, nullable=False)
-    snapshot = Column(JSONB, nullable=False)
+    snapshot = Column(JSONB)
 
     __table_args__ = (
-        Index("idx_route_snapshots_generated_at", "generated_at"),
+        Index("idx_route_snapshots_at", "snapshot_at"),
     )
 
 
@@ -325,12 +324,18 @@ class Validator(TimestampMixin, Base):
     __tablename__ = "vnp_validators"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    display_name = Column(String(255), nullable=False)
-    operator_entity = Column(String(255), nullable=False)
+    name = Column(String(255), unique=True, nullable=False)
     public_key = Column(String, nullable=False)
-    stake_currency = Column(String(3), nullable=False)
-    stake_amount_minor = Column(BigInteger, nullable=False)
-    state = Column(Enum(ValidatorState, name="validator_state_enum", create_type=False), nullable=False, default=ValidatorState.active)
+    stake_amount = Column(Numeric, default=0)
+    status = Column(String, default='active')
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    # Keeping legacy fields for now
+    display_name = Column(String(255))
+    operator_entity = Column(String(255))
+    stake_currency = Column(String(3), default="USD")
+    stake_amount_minor = Column(BigInteger)
+    state = Column(Enum(ValidatorState, name="validator_state_enum", create_type=False), default=ValidatorState.active)
 
 
 class Attestation(Base):
@@ -338,13 +343,18 @@ class Attestation(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     validator_id = Column(UUID(as_uuid=True), ForeignKey("vnp_validators.id", ondelete="CASCADE"), nullable=False)
-    incident_id = Column(UUID(as_uuid=True))
-    attestation_window_start = Column(DateTime(timezone=True), nullable=False)
-    attestation_window_end = Column(DateTime(timezone=True), nullable=False)
-    state = Column(Enum(AttestationState, name="attestation_state_enum", create_type=False), nullable=False)
-    payload = Column(JSONB, nullable=False)
-    signature_value = Column(String, nullable=False)
+    api_id = Column(UUID(as_uuid=True))
+    window_start = Column(DateTime(timezone=True))
+    window_end = Column(DateTime(timezone=True))
+    verdict = Column(String)
+    signature = Column(String)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    # Legacy fields
+    incident_id = Column(UUID(as_uuid=True))
+    state = Column(Enum(AttestationState, name="attestation_state_enum", create_type=False))
+    payload = Column(JSONB)
+    signature_value = Column(String)
 
 
 class Incident(Base):

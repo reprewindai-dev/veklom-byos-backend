@@ -51,4 +51,4 @@ EXPOSE 8088
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://127.0.0.1:8088/health || exit 1
 
-CMD ["uvicorn", "backend.apps.api.main:app", "--host", "0.0.0.0", "--port", "8088", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["uvicorn", "backend.apps.api.main:app", "--host", "0.0.0.0", "--port", "8088"]

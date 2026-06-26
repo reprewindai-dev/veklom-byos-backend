@@ -245,12 +245,13 @@ async def lifespan(app: FastAPI):
     # at least the critical tables landed.
     try:
         async with engine.begin() as conn:
-            try:
-                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                print("[startup] db: Extension 'vector' created or already exists")
-            except Exception as ext_err:
-                print(f"[startup] db: Warning — Could not enable 'vector' extension: {ext_err}. Dynamic vector fallbacks will be used.")
-            
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        print("[startup] db: Extension 'vector' created or already exists")
+    except Exception as ext_err:
+        print(f"[startup] db: Warning — Could not enable 'vector' extension: {ext_err}. Dynamic vector fallbacks will be used.")
+
+    try:
+        async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             registered = sorted(Base.metadata.tables.keys())
             print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")

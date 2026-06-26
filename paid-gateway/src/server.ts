@@ -18,9 +18,8 @@ import express, { type Request, type Response, type NextFunction } from "express
 import { createProxyMiddleware } from "http-proxy-middleware";
 
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
-import { HTTPFacilitatorClient } from "@x402/core/server";
+import { CoinbaseFacilitatorClient } from "@x402/coinbase";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
-import { createFacilitatorConfig } from "@coinbase/x402";
 
 import { paidRoutes, SOLD_ROUTE_PATTERNS } from "./routes.js";
 
@@ -44,10 +43,12 @@ const PORT = Number(process.env.PORT || 3001);
 const NETWORK = process.env.NETWORK || "eip155:8453";
 
 // ---------------------------------------------------------------------------
-// x402 facilitator + resource server
+// x402 facilitator using @x402/coinbase — accepts Ed25519 base64 keys
 // ---------------------------------------------------------------------------
-const facilitatorConfig = createFacilitatorConfig(CDP_KEY_ID, CDP_KEY_SECRET);
-const facilitatorClient = new HTTPFacilitatorClient(facilitatorConfig);
+const facilitatorClient = new CoinbaseFacilitatorClient({
+  apiKeyId: CDP_KEY_ID,
+  apiKeySecret: CDP_KEY_SECRET,
+});
 
 const resourceServer = new x402ResourceServer(facilitatorClient).register(
   NETWORK as `${string}:${string}`,

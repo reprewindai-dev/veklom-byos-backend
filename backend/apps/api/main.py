@@ -324,6 +324,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] db: PipelineRun migration warning: {type(e).__name__}: {e}")
 
+    # Idempotent column additions for vnp_apis
+    vnp_api_columns = [
+        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS x402_ready BOOLEAN DEFAULT false",
+        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS pricing_model VARCHAR(50) DEFAULT 'metered'",
+        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS current_composite_score FLOAT DEFAULT 100.0",
+        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS stability_rating VARCHAR(50) DEFAULT 'Stable'",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in vnp_api_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: vnp_apis column migration completed")
+    except Exception as e:
+        print(f"[startup] db: vnp_apis migration warning: {type(e).__name__}: {e}")
+
     # Seed first-class skills that should always be present in the registry.
     # Skills with is_available=False are catalogued but NOT invokable.
     # Add to this list when a new skill's spec is defined; flip is_available

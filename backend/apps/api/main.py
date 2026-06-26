@@ -25,6 +25,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 from backend.core.security.middlewares import (
     ZeroTrustMiddleware,

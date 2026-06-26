@@ -26,6 +26,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 10001 veklom && \
@@ -48,6 +49,6 @@ USER veklom
 EXPOSE 8088
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import os,sys,urllib.request; p=os.getenv('PORT','8088'); u=f'http://127.0.0.1:{p}/health'; sys.exit(0 if urllib.request.urlopen(u, timeout=5).status==200 else 1)"
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1:8088/health || exit 1
 
 CMD ["python", "-m", "backend.apps.api.dualstack_server"]

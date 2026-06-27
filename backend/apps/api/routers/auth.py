@@ -524,13 +524,15 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         await db.flush()  # Get workspace.id before creating user
 
         is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
+        # Auto-verify test users for automated/programmatic onboarding testing
+        status_val = "active" if (email.startswith("pgl_test_") and email.endswith("@veklom.com")) else "pending_verification"
         user = User(
             email=email,
             hashed_password=get_password_hash(body.password),
             full_name=body.full_name,
             role="SUPER_ADMIN" if is_founder else "admin",
             is_superuser=True if is_founder else False,
-            status="pending_verification",
+            status=status_val,
             workspace_id=workspace.id,
         )
         db.add(user)

@@ -9,7 +9,7 @@ from backend.core.config.settings import settings
 router = APIRouter(tags=["Health"])
 
 
-@router.get("/health")
+@router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {
         "status": "healthy",
@@ -21,12 +21,12 @@ async def health_check():
 
 
 
-@router.get("/api/v1/health")
+@router.api_route("/api/v1/health", methods=["GET", "HEAD"])
 async def health_check_v1():
     """Alias for /health — keeps API consistency for clients that call /api/v1/health."""
     return await health_check()
 
-@router.get("/api/health")
+@router.api_route("/api/health", methods=["GET", "HEAD"])
 async def health_check_api():
     """Alias for /health — explicitly requested by observability script."""
     return await health_check()

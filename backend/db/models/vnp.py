@@ -330,6 +330,10 @@ class Validator(TimestampMixin, Base):
     status = Column(String, default='active')
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
+    @property
+    def is_active(self) -> bool:
+        return self.status == 'active'
+
     # Keeping legacy fields for now
     display_name = Column(String(255))
     operator_entity = Column(String(255))

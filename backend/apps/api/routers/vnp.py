@@ -10,8 +10,10 @@ import nacl.signing
 import nacl.exceptions
 from nacl.encoding import HexEncoder
 
+import uuid
+from datetime import datetime, timezone
 from backend.core.database.database import get_db
-from backend.db.models.vnp import VNPMonitoredAPI, VNPValidator, VNPProbeMetric
+from backend.db.models.vnp import Api, Validator, ProbeEvent
 from backend.core.services.vnp_scoring import update_api_composite_score, get_cached_api_score
 
 router = APIRouter(prefix="/vnp", tags=["Veklom Network Protocol"])
@@ -38,7 +40,7 @@ async def ingest_probe_metric(
     Cryptographically verifies the submission using the Validator's registered public key.
     """
     # 1. Look up validator to get public key
-    validator = await db.get(VNPValidator, payload.validator_id)
+    validator = await db.get(Validator, payload.validator_id)
     if not validator or not validator.is_active:
         raise HTTPException(status_code=403, detail="Invalid or inactive validator")
 
@@ -56,14 +58,16 @@ async def ingest_probe_metric(
         raise HTTPException(status_code=401, detail="Cryptographic signature verification failed")
 
     # 3. Save metric
-    metric = VNPProbeMetric(
+    metric = ProbeEvent(
+        event_id=str(uuid.uuid4()),
+        partition_key=datetime.now(timezone.utc).strftime("%Y-%m"),
         api_id=payload.api_id,
-        validator_id=payload.validator_id,
         region=payload.region,
-        latency_ms=payload.latency_ms,
-        http_status_code=payload.http_status_code,
-        success=payload.success,
-        signature=x_vnp_signature
+        worker_id=payload.validator_id,
+        worker_signature=x_vnp_signature,
+        latency_ms=float(payload.latency_ms),
+        status_code=payload.http_status_code,
+        measured_at=datetime.now(timezone.utc)
     )
     db.add(metric)
     await db.commit()
@@ -92,7 +96,7 @@ async def get_route_beacon(api_id: Optional[str] = None, db: AsyncSession = Depe
         }
     
     # If no api_id provided, return all registered APIs
-    stmt = select(VNPMonitoredAPI)
+    stmt = select(Api)
     result = await db.execute(stmt)
     apis = result.scalars().all()
     
@@ -100,9 +104,9 @@ async def get_route_beacon(api_id: Optional[str] = None, db: AsyncSession = Depe
         "network_status": "operational",
         "routes": [
             {
-                "api_id": api.api_id,
-                "provider": api.provider_name,
-                "endpoint": api.endpoint_url,
+                "api_id": getattr(api, "api_id", getattr(api, "id", None)),
+                "provider": getattr(api, "provider_name", getattr(api, "name", None)),
+                "endpoint": getattr(api, "endpoint_url", getattr(api, "base_url", None)),
                 "composite_score": api.current_composite_score,
                 "stability": api.stability_rating
             }

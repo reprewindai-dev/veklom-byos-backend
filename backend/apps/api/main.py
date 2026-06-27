@@ -937,7 +937,8 @@ app.include_router(arena.router)
 app.include_router(benchmarks.router, prefix="/api/v1")
 
 # VNP - Data Plane Ingestion and Route Beacon
-from backend.apps.api.routers import vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
+from backend.apps.api.routers import vnp, vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
+app.include_router(vnp.router, prefix="/api")
 app.include_router(vnp_ingest.router, prefix="/api/v1")
 app.include_router(vnp_beacon.router, prefix="/api/v1")
 app.include_router(vnp_control.router, prefix="/api/v1")

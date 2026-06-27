@@ -150,7 +150,10 @@ def _external_origin(request: Request) -> str:
         or request.headers.get("host")
         or request.url.netloc
     ).split(",")[0].strip()
+    if "localhost" in host or "127.0.0.1" in host:
+        proto = "http"
     return f"{proto}://{host}"
+
 
 
 def _is_real_config_value(value: str) -> bool:

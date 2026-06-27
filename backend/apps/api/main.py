@@ -727,6 +727,8 @@ from backend.apps.api.routers import (
     evidence_pack,
     pgl_adapter,
     pgl_onboarding,
+    onboarding_demo,
+    onboarding_dashboard,
     governed,
     pricing,
     referrals,
@@ -1933,6 +1935,8 @@ app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
 app.include_router(pgl_adapter.router, prefix="/api/v1")
 app.include_router(pgl_onboarding.router, prefix="/api/v1")
+app.include_router(onboarding_demo.router, prefix="/api/v1")
+app.include_router(onboarding_dashboard.router)
 app.include_router(governed.router, prefix="/api/v1")
 
 # CAPPO - Internal Execution Authority

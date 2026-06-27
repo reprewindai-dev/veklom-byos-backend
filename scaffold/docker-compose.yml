@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8088:8088"
+    environment:
+      - DATABASE_URL=sqlite:///./durable_state.db
+      - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
+      - TEMPORAL_HOST=temporal:7233
+    volumes:
+      - ./backend:/app
+      - spire-socket:/run/spire/sockets
+    depends_on:
+      - temporal
+      - spire-agent
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8088
+    depends_on:
+      - backend
+
+  temporal:
+    image: temporalio/admin-tools:1.22.0
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    entrypoint: [ "temporal", "server", "start-dev", "--ip", "0.0.0.0" ]
+
+  spire-server:
+    image: gcr.io/spiffe-io/spire-server:1.8.0
+    volumes:
+      - ./spire/server:/run/spire/config
+    entrypoint: [ "/opt/spire/bin/spire-server", "run", "-config", "/run/spire/config/server.conf" ]
+
+  spire-agent:
+    image: gcr.io/spiffe-io/spire-agent:1.8.0
+    volumes:
+      - spire-socket:/run/spire/sockets
+      - ./spire/agent:/run/spire/config
+    entrypoint: [ "/opt/spire/bin/spire-agent", "run", "-config", "/run/spire/config/agent.conf" ]
+    depends_on:
+      - spire-server
+
+volumes:
+  spire-socket:

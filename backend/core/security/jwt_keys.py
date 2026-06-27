@@ -52,6 +52,11 @@ class RSAKeyManager:
             
         return kid
 
+    @property
+    def active_key_id(self) -> str:
+        """Return the current active signing key ID."""
+        return self.current_kid
+
     def get_signing_key(self) -> Dict[str, Any]:
         """Return the current active key pair for signing."""
         return {

@@ -33,6 +33,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.40b0",
     "opentelemetry-instrumentation-httpx>=0.40b0",
     "posthog>=3.5.0",
+    "z3-solver>=4.16.0.0",
 ]
 
 [project.optional-dependencies]

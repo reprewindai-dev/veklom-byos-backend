@@ -714,9 +714,25 @@ async def not_found(request: Request, exc):
     return await _serve_frontend(request)
 
 
+from backend.core.security.sanitizer import InProcessErrorSanitizer
+global_error_sanitizer = InProcessErrorSanitizer()
+
 @app.exception_handler(500)
 async def internal_error(request: Request, exc):
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    try:
+        sanitized_resp, diag_log = global_error_sanitizer.sanitize_exception(exc)
+        import logging
+        logging.getLogger("backend.apps.api.main").error(f"[Global500] Unhandled exception occurred:\n{diag_log}")
+        return JSONResponse(status_code=500, content=sanitized_resp)
+    except Exception as parse_err:
+        return JSONResponse(
+            status_code=500, 
+            content={
+                "error": "CRITICAL_FALLBACK_FAILURE",
+                "message": "An unhandled exception occurred and the error sanitizer failed. This incident has been logged.",
+                "fallback_detail": str(parse_err)
+            }
+        )
 
 
 # --- Import and register all routers ---

@@ -24,6 +24,10 @@ from backend.db.models.security import AuditLog
 from backend.db.models.agent import AgentIdentity, AgentTrustScore
 from backend.db.models.quarantine import QuarantinedIntent
 import base64
+from backend.core.security.sanitizer import InProcessErrorSanitizer
+from backend.core.security.schema_moat import verify_schema_depth
+
+error_sanitizer = InProcessErrorSanitizer()
 
 try:
     import nacl.signing
@@ -161,9 +165,9 @@ async def evaluate_intent_governed(
     # -----------------------------------------------------------------
     # TIER 1: System Overrides (Hard Veto)
     # Deterministic system-level blocks
-    if intent.target_protocol == "syscall_execute" and ("root" in raw_payload.lower() or "sudo" in raw_payload.lower()):
-        logger.error(f"[cAPI] VETO: Unauthorized root access attempt by {intent.agent_id}")
-        phase_results["2"] = "FAILED: SYSTEM_POLICY_VETO (Root syscall_execute blocked)"
+    if (intent.target_protocol == "syscall_execute" and ("root" in raw_payload.lower() or "sudo" in raw_payload.lower())) or "rm -rf" in raw_payload.lower():
+        logger.error(f"[cAPI] VETO: Unauthorized root access or hazardous command attempt by {intent.agent_id}")
+        phase_results["2"] = "FAILED: SYSTEM_POLICY_VETO (Root access or hazardous command blocked)"
         return False, "SYSTEM_POLICY_VETO", 2, phase_results
 
     # TIER 2 & 3: Owner & Runtime Tier (Most restrictive wins)
@@ -297,6 +301,14 @@ async def evaluate_intent_governed(
             logger.error(f"[cAPI] VETO: SIGMA Spectral drift detected for {intent.agent_id}")
             phase_results["3"] = "FAILED: SIGMA Spectral Quality Gate violation"
             return False, "SIGMA_GATE_VIOLATION", 3, phase_results
+
+    # 4. Recursive Schema Depth Cap (Amphoteric Hardening)
+    try:
+        verify_schema_depth(intent.payload, max_depth=6)
+    except ValueError as depth_err:
+        logger.error(f"[cAPI] VETO: Recursive schema depth limit violated: {depth_err}")
+        phase_results["3"] = "FAILED: RECURSIVE_DEPTH_LIMIT_EXCEEDED"
+        return False, "RECURSIVE_DEPTH_LIMIT_EXCEEDED", 3, phase_results
 
     phase_results["3"] = "PASSED"
 
@@ -542,8 +554,9 @@ async def governed_execution_intercept(
         await db.commit()
     except Exception as e:
         await db.rollback()
-        logger.error(f"[cAPI] Failed to save cAPI execution receipt: {e}")
-        raise HTTPException(status_code=500, detail="Database persistence error")
+        sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)
+        logger.error(f"[cAPI] Failed to save cAPI execution receipt: {diag_log}")
+        raise HTTPException(status_code=500, detail=sanitized_resp)
         
     veto_exception = None
     if not is_approved:
@@ -570,7 +583,9 @@ async def governed_execution_intercept(
                 await db.commit()
             except Exception as e:
                 await db.rollback()
-                logger.error(f"[cAPI] Failed to save QuarantinedIntent: {e}")
+                sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)
+                logger.error(f"[cAPI] Failed to save QuarantinedIntent: {diag_log}")
+                # We do not raise here as this is a non-blocking secondary path, but we log the sanitized diagnostic
                 
             logger.warning(f"[cAPI] Entering Quarantine State: {quarantine_id}")
             veto_exception = HTTPException(
@@ -659,8 +674,9 @@ async def governed_execution_intercept(
         await db.commit()
     except Exception as e:
         await db.rollback()
-        logger.error(f"[cAPI] Failed to persist real ExecLog: {e}")
-        raise HTTPException(status_code=500, detail="Database persistence error")
+        sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)
+        logger.error(f"[cAPI] Failed to persist real ExecLog: {diag_log}")
+        raise HTTPException(status_code=500, detail=sanitized_resp)
     
     execution_result = {
         "status": "success", 
@@ -769,20 +785,28 @@ async def resolve_quarantine(
     if not intent_data:
         raise HTTPException(status_code=404, detail="Quarantine ID not found or already resolved")
         
-    if resolution.action == 'approve':
-        intent_data.status = 'approved'
-        intent_data.resolution_reason = resolution.reason
-        intent_data.resolved_at = func.now()
-        await db.commit()
-        return {"status": "success", "message": f"Quarantine {quarantine_id} approved."}
-        
-    elif resolution.action == 'reject':
-        intent_data.status = 'rejected'
-        intent_data.resolution_reason = resolution.reason
-        intent_data.resolved_at = func.now()
-        await db.commit()
-        return {"status": "success", "message": f"Quarantine {quarantine_id} rejected."}
-        
-    else:
-        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+    try:
+        if resolution.action == 'approve':
+            intent_data.status = 'approved'
+            intent_data.resolution_reason = resolution.reason
+            intent_data.resolved_at = func.now()
+            await db.commit()
+            return {"status": "success", "message": f"Quarantine {quarantine_id} approved."}
+            
+        elif resolution.action == 'reject':
+            intent_data.status = 'rejected'
+            intent_data.resolution_reason = resolution.reason
+            intent_data.resolved_at = func.now()
+            await db.commit()
+            return {"status": "success", "message": f"Quarantine {quarantine_id} rejected."}
+            
+        else:
+            raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)
+        logger.error(f"[cAPI] Failed to resolve quarantine {quarantine_id}: {diag_log}")
+        raise HTTPException(status_code=500, detail=sanitized_resp)
 

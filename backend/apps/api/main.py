@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 
 import sentry_sdk
-from fastapi import FastAPI, Request, Query, Depends
+from fastapi import FastAPI, Request, Query, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -732,7 +732,8 @@ from backend.apps.api.routers import (
     vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2,
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
-    build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal
+    build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
+    genome, well_known, capi, governed, evidence_pack
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing

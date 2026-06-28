@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Integer, JSON, DateTime, Boolean, ForeignKey
 from sqlalchemy.sql import func
-from backend.db.base import Base
+from backend.core.database.database import Base
 
 class QuarantinedIntent(Base):
     """

@@ -843,6 +843,8 @@ app.include_router(upload.router, prefix="/api/v1")
 
 # GPC (Governed Plan Compiler) + Decision Frames
 app.include_router(gpc.router, prefix="/api/v1")
+from backend.apps.gpc import gpc_routes
+app.include_router(gpc_routes.router)
 app.include_router(decision_frames.router, prefix="/api/v1")
 
 # GFR (Gradient Field Router) — Scientist & Special Agent load balancing skill

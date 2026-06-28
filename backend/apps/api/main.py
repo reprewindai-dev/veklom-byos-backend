@@ -716,83 +716,18 @@ async def internal_error(request: Request, exc):
 
 # --- Import and register all routers ---
 from backend.apps.api.routers import (
-    agent_arena,
-    authority,
-    authority_runs,
-    benchmarks,
-    build_release,
-    capi,
-    cappo,
-    nexus,
-    pgl,
-    evidence,
-    evidence_pack,
-    pgl_adapter,
-    pgl_onboarding,
-    onboarding_demo,
-    onboarding_dashboard,
-    governed,
-    pricing,
-    referrals,
-    well_known,
-    mcp,
-    agent_memory,
-    conversation_memory,
-    agent_evaluation,
-    agent_guardrails,
-    admin,
-    agents,
-    genome,
-    agency,
-
-    ai,
-    auth,
-    evaluations,
-    billing,
-    command_center,
-    compliance,
-    copilot,
-    decision_frames,
-    discovery,
-    exec_router,
-    gfr,
-    gpc,
-    health,
-    hrm,
-    # langchain_ops intentionally not imported - kept off the surface until real
-
-    monitoring,
-    payments,
-    pipelines,
-    providers,
-    repo_risk_gate,
-    routing,
-    runs,
-    runtime_jobs,
-    security,
-    seked,
-    smoke,
-    system,
-    team,
-    internal_uacp,
-    internal_operators,
-    plugins,
-    autonomous,
-    playground,
-    webhooks,
-    webhook,
-    runs,
-    smoke,
-    edge,
-    x402,
-    arena,
-    benchmarks,
-    workspace,
-    upload,
-    amphoteric,
-    runtime_telemetry,
-    edge_llm,
-    locks,
+    agent_arena, agent_evaluation, agent_guardrails, agent_memory, agents, ai, amphoteric, auth, authority,
+    authority_runs, autonomous, billing, command_center, compliance,
+    copilot, diagnostics, discovery, docs, edge, edge_llm, evaluations,
+    evidence, fax, forensics, health, integrations, internal_uacp,
+    mcp, monitoring, onboarding_dashboard, onboarding_demo, payments,
+    pgl, pgl_adapter, pgl_onboarding, plugins, pricing, providers, rag,
+    referrals, repo_risk_gate, routing, runs, runtime_jobs,
+    runtime_telemetry, security, seked, smoke, system, team, upload, vnp,
+    vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2,
+    workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
+    benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
+    build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -807,6 +742,10 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(evaluations.router, prefix="/api/v1")
 app.include_router(smoke.router, prefix="/api/v1")
+app.include_router(repo_risk_gate.router, prefix="/api/v1")
+app.include_router(agents.router, prefix="/api/v1")
+app.include_router(hrm.router, prefix="/api/v1")
+app.include_router(terminal.router, prefix="/api/terminal")
 app.include_router(amphoteric.router, prefix="/api/v1")
 
 # System utilities

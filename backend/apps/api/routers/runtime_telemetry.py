@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from datetime import datetime
 
-from backend.core.database.session import get_db
+from backend.core.database.database import get_db
 from backend.db.models.vnp import Api, RegionalTelemetry, Incident, AuditLog, AlertConfig, ProbeEvent
 
 router = APIRouter(prefix="/vnp", tags=["runtime", "vnp"])

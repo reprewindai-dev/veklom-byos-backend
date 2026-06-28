@@ -451,7 +451,8 @@ def markdown_to_html(md_text: str) -> str:
     for i, p in enumerate(paragraphs):
         p = p.strip()
         if p and not p.startswith("<h") and not p.startswith("<pre") and not p.startswith("<ul") and not p.startswith("<li"):
-            paragraphs[i] = f"<p>{p.replace('\n', '<br>')}</p>"
+            replaced_p = p.replace('\n', '<br>')
+            paragraphs[i] = f"<p>{replaced_p}</p>"
             
     return "\n\n".join(paragraphs)
 

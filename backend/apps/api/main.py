@@ -788,6 +788,7 @@ from backend.apps.api.routers import (
     workspace,
     upload,
     amphoteric,
+    runtime_telemetry,
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -847,6 +848,7 @@ app.include_router(autonomous.router, prefix="/api/v1")
 
 # Monitoring, metrics, insights, telemetry, platform pulse, suggestions
 app.include_router(monitoring.router, prefix="/api/v1")
+app.include_router(runtime_telemetry.router, prefix="/api/v1")
 
 
 

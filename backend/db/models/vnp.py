@@ -395,3 +395,17 @@ class AuditLog(Base):
     __table_args__ = (
         Index("idx_audit_logs_scope_time", "scope_type", "scope_id", "created_at"),
     )
+
+class AlertConfig(Base):
+    __tablename__ = "vnp_alert_configs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    target_api = Column(String(100), nullable=False) # 'all' or API DID
+    metric_type = Column(String(50), nullable=False)
+    condition = Column(String(20), nullable=False) # '>', '<', etc.
+    threshold_value = Column(Float, nullable=False)
+    region = Column(String(50), nullable=False)
+    actions = Column(JSONB, nullable=False, default=[])
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+

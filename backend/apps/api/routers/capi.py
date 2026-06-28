@@ -22,6 +22,11 @@ from backend.db.models.security import AuditLog
 from backend.db.models.agent import AgentIdentity, AgentTrustScore
 from backend.db.models.quarantine import QuarantinedIntent
 import base64
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/capi", tags=["capi"])
+
 # cAPI SCHEMAS
 # =====================================================================
 class ExecutionIntent(BaseModel):

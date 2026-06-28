@@ -477,7 +477,12 @@ async def lifespan(app: FastAPI):
     vnp_task = asyncio.create_task(vnp_background_indexer())
     scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
 
+    from backend.apps.api.terminal_state import terminal_state_manager
+    terminal_state_task = asyncio.create_task(terminal_state_manager.state_loop())
+
     yield
+
+    terminal_state_manager.is_running = False
 
     # Graceful shutdown of plugins and operator workforce
     await plugin_manager.shutdown_all()

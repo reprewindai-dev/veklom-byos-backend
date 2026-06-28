@@ -66,7 +66,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 redis.call('HMSET', key, 'tokens', tokens, 'last_update', now)
                 redis.call('EXPIRE', key, math.ceil(capacity / refill_rate))
                 return {1, tokens}
-            else:
+            else
                 return {0, tokens}
             end
             """

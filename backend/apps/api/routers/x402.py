@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.db.models.security import AuditLog
+from backend.core.utils.idempotency import idempotent_request
 
 logger = logging.getLogger(__name__)
 
@@ -628,6 +629,7 @@ def resolve_to_evm(addr_or_name: str) -> str:
 
 
 @router.post("/payment/authorize", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def authorize_payment(
     body: AuthorizePaymentRequest,
     db: AsyncSession = Depends(get_db)
@@ -667,6 +669,7 @@ async def authorize_payment(
 
 
 @router.post("/payment/capture", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def capture_payment(
     body: CapturePaymentRequest,
     db: AsyncSession = Depends(get_db)
@@ -714,6 +717,7 @@ async def capture_payment(
 
 
 @router.post("/payment/charge", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def charge_payment(
     body: ChargePaymentRequest,
     db: AsyncSession = Depends(get_db)
@@ -752,6 +756,7 @@ async def charge_payment(
 
 
 @router.post("/payment/void", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def void_payment(
     body: VoidPaymentRequest,
     db: AsyncSession = Depends(get_db)
@@ -786,6 +791,7 @@ async def void_payment(
 
 
 @router.post("/payment/reclaim", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def reclaim_payment(
     body: ReclaimPaymentRequest,
     db: AsyncSession = Depends(get_db)

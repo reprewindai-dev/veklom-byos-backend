@@ -29,6 +29,7 @@ from backend.core.security.auth import (
     verify_token,
 )
 from backend.core.security.encryption import encrypt_token, decrypt_token
+from backend.core.security.jwt_keys import key_manager
 from backend.core.audit import log_audit_event
 from backend.core.services.posthog_client import posthog_service
 from backend.db.models.user import APIKey, Session, User
@@ -492,6 +493,15 @@ async def _get_or_create_eval_user(db: AsyncSession, fingerprint: str = "anonymo
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@router.get("/.well-known/jwks.json")
+async def get_jwks():
+    """
+    Returns the JSON Web Key Set (JWKS) for cryptographic verification of Veklom-issued tokens.
+    Allows edge nodes to verify Bearer JWTs without continuously querying PostgreSQL.
+    """
+    return key_manager.get_jwks()
+
 
 @router.post("/register")
 async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):

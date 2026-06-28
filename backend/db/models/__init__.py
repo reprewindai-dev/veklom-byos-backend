@@ -53,6 +53,7 @@ from backend.db.models.vnp import (
     AuditLog as VNPAuditLog
 )
 from backend.db.models.rag import AgentMemoryStore, DocumentChunk
+from backend.db.models.quarantine import QuarantinedIntent
 
 __all__ = [
     # existing
@@ -97,5 +98,7 @@ __all__ = [
     "UsageEvent", "PrepaidBalance", "SettlementEntry", "Validator", "Attestation",
     "Incident", "VNPAuditLog",
     # RAG & Memory
-    "AgentMemoryStore", "DocumentChunk"
+    "AgentMemoryStore", "DocumentChunk",
+    # MCPAPI v2 Quarantine
+    "QuarantinedIntent"
 ]

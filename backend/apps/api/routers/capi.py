@@ -19,20 +19,9 @@ from backend.db.models.pgl import PGLIdentity
 from backend.db.models.billing import BudgetRule
 from backend.db.models.ai import ExecutionLog
 from backend.db.models.security import AuditLog
-from backend.db.models.agent import AgentIdentity
+from backend.db.models.agent import AgentIdentity, AgentTrustScore
+from backend.db.models.quarantine import QuarantinedIntent
 import base64
-try:
-    from nacl.signing import VerifyKey
-    from nacl.exceptions import BadSignatureError
-    NACL_AVAILABLE = True
-except ImportError:
-    NACL_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/capi", tags=["cAPI Governed Connection Layer"])
-
-# =====================================================================
 # cAPI SCHEMAS
 # =====================================================================
 class ExecutionIntent(BaseModel):
@@ -42,6 +31,7 @@ class ExecutionIntent(BaseModel):
     target_protocol: str = Field(..., description="e.g., 'mcp', 'http', 'local_tool', 'model_inference'")
     action: str = Field(..., description="The specific tool or action being requested")
     payload: Dict[str, Any] = Field(..., description="The arguments for the execution")
+    delegation_chain: Optional[List[str]] = Field(None, description="List of agent IDs delegating this request")
 
 class ExecutionReceipt(BaseModel):
     status: str
@@ -49,6 +39,10 @@ class ExecutionReceipt(BaseModel):
     verdict: str
     evidence_chain_id: str
     result: Optional[Any] = None
+    quarantine_id: Optional[str] = None
+    trust_delta: Optional[int] = None
+    new_trust_score: Optional[int] = None
+    risk_score: Optional[int] = None
 
 # =====================================================================
 # PGL INTENT EVALUATION ENGINE (The 9-Phase Hard Gate)
@@ -141,6 +135,11 @@ async def evaluate_intent_governed(
     res_bundle = await db.execute(stmt_bundle)
     bundle = res_bundle.scalar_one_or_none()
 
+    # Track trust score in phase_results temporarily so we can apply degradation
+    # Extract existing trust or default to 50
+    current_trust = agent_identity.metadata_json.get("trust_score", 50) if agent_identity.metadata_json else 50
+    phase_results["current_trust"] = current_trust
+
     # -----------------------------------------------------------------
     # Phase 2: Three-Tier Policy Composition Gate
     # -----------------------------------------------------------------
@@ -190,12 +189,42 @@ async def evaluate_intent_governed(
         phase_results["2"] = f"FAILED: {reason}"
         return False, reason, 2, phase_results
 
+    # -------------------------------------------
+    # Temporal Constraints (from MCPAPI v2.0)
+    # -------------------------------------------
+    if bundle and bundle.time_restrictions:
+        # Example format: {"business_hours_only": True}
+        if bundle.time_restrictions.get("business_hours_only"):
+            # Check if current time is within business hours (9-5 UTC for simplicity)
+            current_hour = datetime.now(timezone.utc).hour
+            if current_hour < 9 or current_hour >= 17:
+                logger.error(f"[cAPI] VETO: Temporal constraint violation (Outside Business Hours)")
+                phase_results["2"] = "FAILED: TEMPORAL_CONSTRAINT_VIOLATION"
+                return False, "TEMPORAL_CONSTRAINT_VIOLATION", 2, phase_results
+
+    # -------------------------------------------
+    # Delegation Chain Trust Degradation (from MCPAPI v2.0)
+    # -------------------------------------------
+    if intent.delegation_chain and len(intent.delegation_chain) > 0:
+        hop_count = len(intent.delegation_chain)
+        if hop_count > 3:
+            logger.error(f"[cAPI] VETO: Delegation chain too deep ({hop_count} hops)")
+            phase_results["2"] = "FAILED: DELEGATION_CHAIN_TOO_DEEP"
+            return False, "DELEGATION_CHAIN_TOO_DEEP", 2, phase_results
+        
+        # Mathematical trust degradation: trust * (0.92 ^ hops)
+        degradation_factor = 0.92 ** hop_count
+        effective_trust = current_trust * degradation_factor
+        phase_results["current_trust"] = int(effective_trust)
+        phase_results["delegation_hops"] = hop_count
+        logger.info(f"[cAPI] Delegation Chain active ({hop_count} hops). Effective Trust: {effective_trust:.1f}")
+
     phase_results["2"] = "PASSED"
 
     # -----------------------------------------------------------------
     # Phase 3: Safety & Anomaly Gate
     # -----------------------------------------------------------------
-    # 1. Anomaly rate limits check (max 60 executions per minute per agent)
+    # 1. Anomaly rate limits check & Quarantine
     now = datetime.now(timezone.utc)
     one_minute_ago = now - timedelta(seconds=60)
     try:
@@ -206,10 +235,20 @@ async def evaluate_intent_governed(
         )
         res_rate = await db.execute(stmt_rate)
         rate_count = res_rate.scalar_one_or_none() or 0
-        if rate_count > 60:
-            logger.error(f"[cAPI] VETO: Request rate spike detected for {intent.agent_id}: {rate_count}/min")
-            phase_results["3"] = f"FAILED: Rate limit exceeded ({rate_count}/min)"
-            return False, "RATE_LIMIT_EXCEEDED", 3, phase_results
+        
+        # MCPAPI v2.0 Safety Layer
+        if rate_count > 120:
+            # Critical Anomaly -> Veto and Trust Suppression
+            logger.error(f"[cAPI] VETO: Severe Anomaly Request Spike: {rate_count}/min")
+            phase_results["3"] = f"FAILED: Severe Anomaly Rate Spike ({rate_count}/min)"
+            phase_results["trust_delta"] = -30
+            return False, "SEVERE_ANOMALY_RATE_SPIKE", 3, phase_results
+        elif rate_count > 60:
+            # Medium Anomaly -> Quarantine state (requires approval)
+            logger.warning(f"[cAPI] QUARANTINE: Anomaly Request Spike: {rate_count}/min")
+            phase_results["3"] = f"QUARANTINED: Rate limit anomaly ({rate_count}/min)"
+            return False, "QUARANTINED_ANOMALY_SPIKE", 3, phase_results
+            
     except Exception as rate_err:
         logger.warning(f"[cAPI] Rate limit query check skipped/failed: {rate_err}")
 
@@ -491,12 +530,50 @@ async def governed_execution_intercept(
         raise HTTPException(status_code=500, detail="Database persistence error")
         
     if not is_approved:
+        # Check for Quarantine State
+        if str(reason).startswith("QUARANTINED"):
+            # MCPAPI v2.0: Quarantine State (Asynchronous Hold)
+            quarantine_id = f"QZ-{intent_hash[:12]}"
+            
+            # Store in PostgreSQL DB for human review
+            quarantined_record = QuarantinedIntent(
+                id=quarantine_id,
+                agent_id=intent.agent_id,
+                workspace_id=workspace_id,
+                target_protocol=intent.target_protocol,
+                action=intent.action,
+                payload=intent.payload,
+                failure_phase=failure_phase,
+                failure_reason=str(reason),
+                status="pending"
+            )
+            db.add(quarantined_record)
+            
+            try:
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                logger.error(f"[cAPI] Failed to save QuarantinedIntent: {e}")
+                
+            logger.warning(f"[cAPI] Entering Quarantine State: {quarantine_id}")
+            raise HTTPException(
+                status_code=202,
+                detail={
+                    "error": "cAPI_QUARANTINE_ENGAGED",
+                    "message": f"Execution intent requires out-of-band quorum approval: {reason}",
+                    "intent_hash": intent_hash,
+                    "quarantine_id": quarantine_id,
+                    "phase": failure_phase,
+                    "reason": reason
+                }
+            )
+
         # Determine status code based on reason/phase
         status_code = 403
         if failure_phase == 4 and str(reason).startswith("BUDGET_LIMIT_EXCEEDED"):
             status_code = 402
 
-        # QUARANTINE / DROP PACKET
+        # HARD VETO / DROP PACKET
         # We drop the execution before it ever hits the actual tool/model.
         raise HTTPException(
             status_code=status_code, 
@@ -505,7 +582,8 @@ async def governed_execution_intercept(
                 "message": f"Execution intent violated cAPI validation rules: {reason}. Packet dropped.",
                 "intent_hash": intent_hash,
                 "phase": failure_phase,
-                "reason": reason
+                "reason": reason,
+                "trust_delta": phase_results.get("trust_delta", 0)
             }
         )
         
@@ -534,6 +612,32 @@ async def governed_execution_intercept(
     )
     db.add(real_exec_log)
     
+    # Update Agent Trust Score
+    trust_delta = phase_results.get("trust_delta", 2) # Default +2 for success
+    current_trust = phase_results.get("current_trust", 50)
+    new_trust_score = max(0, min(100, current_trust + trust_delta))
+    
+    # Initialize metadata_json if it doesn't exist
+    if not agent_identity.metadata_json:
+        agent_identity.metadata_json = {}
+        
+    # We must explicitly flag the JSON column as modified in SQLAlchemy
+    # by assigning a new dictionary or using flag_modified
+    meta = dict(agent_identity.metadata_json)
+    meta["trust_score"] = new_trust_score
+    agent_identity.metadata_json = meta
+    db.add(agent_identity)
+    
+    # Write to AgentTrustScore Ledger
+    trust_ledger_entry = AgentTrustScore(
+        agent_id=intent.agent_id,
+        intent_hash=intent_hash,
+        trust_delta=trust_delta,
+        new_score=new_trust_score,
+        reason="cAPI Execution Evaluation"
+    )
+    db.add(trust_ledger_entry)
+    
     try:
         await db.commit()
     except Exception as e:
@@ -553,10 +657,80 @@ async def governed_execution_intercept(
     
     # Phase 9: Response Egress
     phase_results["9"] = "PASSED"
+    
+    # Calculate simplistic risk score based on trust
+    risk_score = 100 - new_trust_score
+    
     return ExecutionReceipt(
         status="EXECUTED",
         intent_hash=intent_hash,
         verdict="APPROVED_BY_cAPI",
         evidence_chain_id=evidence_chain_id,
-        result=execution_result
+        result=execution_result,
+        trust_delta=trust_delta,
+        new_trust_score=new_trust_score,
+        risk_score=risk_score
     )
+
+# =====================================================================
+# QUARANTINE RESOLUTION ENDPOINTS (Phase 5)
+# =====================================================================
+
+@router.get("/quarantine")
+async def get_quarantined_intents(db: AsyncSession = Depends(get_db)):
+    """Fetch all currently quarantined execution intents for human review."""
+    stmt = select(QuarantinedIntent).where(QuarantinedIntent.status == "pending").order_by(QuarantinedIntent.created_at.desc())
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+    
+    out = []
+    for r in records:
+        out.append({
+            "id": r.id,
+            "agent_id": r.agent_id,
+            "target_protocol": r.target_protocol,
+            "action": r.action,
+            "payload": r.payload,
+            "phase": r.failure_phase,
+            "reason": r.failure_reason,
+            "timestamp": r.created_at.isoformat() if r.created_at else None,
+            "status": r.status
+        })
+    return {"quarantined": out}
+
+
+class QuarantineResolution(BaseModel):
+    action: str = Field(..., description="'approve' or 'reject'")
+    reason: Optional[str] = None
+
+@router.post("/quarantine/{quarantine_id}/resolve")
+async def resolve_quarantine(
+    quarantine_id: str, 
+    resolution: QuarantineResolution,
+    db: AsyncSession = Depends(get_db)
+):
+    """Human resolution of a quarantined intent."""
+    stmt = select(QuarantinedIntent).where(QuarantinedIntent.id == quarantine_id, QuarantinedIntent.status == "pending")
+    res = await db.execute(stmt)
+    intent_data = res.scalar_one_or_none()
+    
+    if not intent_data:
+        raise HTTPException(status_code=404, detail="Quarantine ID not found or already resolved")
+        
+    if resolution.action == 'approve':
+        intent_data.status = 'approved'
+        intent_data.resolution_reason = resolution.reason
+        intent_data.resolved_at = func.now()
+        await db.commit()
+        return {"status": "success", "message": f"Quarantine {quarantine_id} approved."}
+        
+    elif resolution.action == 'reject':
+        intent_data.status = 'rejected'
+        intent_data.resolution_reason = resolution.reason
+        intent_data.resolved_at = func.now()
+        await db.commit()
+        return {"status": "success", "message": f"Quarantine {quarantine_id} rejected."}
+        
+    else:
+        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+

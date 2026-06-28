@@ -41,6 +41,7 @@ from backend.core.plugins.manager import plugin_manager
 from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
 from backend.core.middleware.amphoteric import AmphotericSensingMiddleware
+from backend.core.middleware.ratelimit import RateLimitMiddleware
 
 # Import model package to ensure tables are registered with Base.metadata.
 import backend.db.models  # noqa: F401
@@ -590,6 +591,7 @@ app.add_middleware(CORSMiddleware,
     allow_headers=["*"],
 )
 
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AmphotericSensingMiddleware)
 app.add_middleware(ZeroTrustMiddleware)
 app.add_middleware(MetricsMiddleware)
@@ -789,6 +791,8 @@ from backend.apps.api.routers import (
     upload,
     amphoteric,
     runtime_telemetry,
+    edge_llm,
+    locks,
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -825,6 +829,7 @@ app.include_router(workspace.router, prefix="/api/v1")
 
 # AI execution
 app.include_router(ai.router, prefix="/api/v1")
+app.include_router(edge_llm.router, prefix="/api/v1")
 app.include_router(exec_router.router, prefix="/api")
 app.include_router(exec_router.router, prefix="")
 
@@ -849,7 +854,7 @@ app.include_router(autonomous.router, prefix="/api/v1")
 # Monitoring, metrics, insights, telemetry, platform pulse, suggestions
 app.include_router(monitoring.router, prefix="/api/v1")
 app.include_router(runtime_telemetry.router, prefix="/api/v1")
-
+app.include_router(locks.router, prefix="/api/v1")
 
 
 # Benchmarks

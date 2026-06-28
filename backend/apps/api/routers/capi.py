@@ -5,6 +5,8 @@ import hashlib
 import json
 import logging
 import uuid
+import asyncio
+from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +57,8 @@ class ExecutionReceipt(BaseModel):
 async def evaluate_intent_governed(
     intent: ExecutionIntent,
     db: AsyncSession,
-    workspace_id: str
+    workspace_id: str,
+    q: asyncio.Queue = None
 ) -> Tuple[bool, str, int, dict]:
     """
     The deterministic 9-Phase gatekeeper. Checks the execution intent
@@ -327,7 +330,7 @@ async def evaluate_intent_governed(
 # =====================================================================
 # cAPI EXECUTION ENDPOINT
 # =====================================================================
-@router.post("/execute", response_model=ExecutionReceipt)
+@router.post("/execute")
 async def governed_execution_intercept(
     intent: ExecutionIntent,
     db: AsyncSession = Depends(get_db),
@@ -534,6 +537,7 @@ async def governed_execution_intercept(
         logger.error(f"[cAPI] Failed to save cAPI execution receipt: {e}")
         raise HTTPException(status_code=500, detail="Database persistence error")
         
+    veto_exception = None
     if not is_approved:
         # Check for Quarantine State
         if str(reason).startswith("QUARANTINED"):
@@ -561,7 +565,7 @@ async def governed_execution_intercept(
                 logger.error(f"[cAPI] Failed to save QuarantinedIntent: {e}")
                 
             logger.warning(f"[cAPI] Entering Quarantine State: {quarantine_id}")
-            raise HTTPException(
+            veto_exception = HTTPException(
                 status_code=202,
                 detail={
                     "error": "cAPI_QUARANTINE_ENGAGED",
@@ -580,7 +584,7 @@ async def governed_execution_intercept(
 
         # HARD VETO / DROP PACKET
         # We drop the execution before it ever hits the actual tool/model.
-        raise HTTPException(
+        veto_exception = HTTPException(
             status_code=status_code, 
             detail={
                 "error": "cAPI_VETO_ENGAGED",
@@ -666,16 +670,51 @@ async def governed_execution_intercept(
     # Calculate simplistic risk score based on trust
     risk_score = 100 - new_trust_score
     
-    return ExecutionReceipt(
-        status="EXECUTED",
-        intent_hash=intent_hash,
-        verdict="APPROVED_BY_cAPI",
-        evidence_chain_id=evidence_chain_id,
-        result=execution_result,
-        trust_delta=trust_delta,
-        new_trust_score=new_trust_score,
-        risk_score=risk_score
-    )
+    
+    receipt_data = {
+        "status": "EXECUTED",
+        "intent_hash": intent_hash,
+        "verdict": "APPROVED_BY_cAPI",
+        "evidence_chain_id": evidence_chain_id,
+        "result": execution_result,
+        "trust_delta": trust_delta,
+        "new_trust_score": new_trust_score,
+        "risk_score": risk_score
+    }
+    
+
+
+    async def event_generator():
+        phases = [
+            (1, "Identity & Cryptography Gate"),
+            (2, "Three-Tier Policy Composition Gate"),
+            (3, "Safety & Anomaly Gate"),
+            (4, "Budget & Spend Gate"),
+            (5, "Approval Gate"),
+            (6, "Execution Sandbox"),
+            (7, "Evidence Sealing"),
+            (8, "Audit Logging"),
+            (9, "Response Egress")
+        ]
+        
+        for phase_num, desc in phases:
+            if str(phase_num) in phase_results and phase_results[str(phase_num)] != "PENDING":
+                status_text = phase_results[str(phase_num)]
+                msg = f"Phase {phase_num} ({desc}): {status_text}"
+                yield f"data: {json.dumps({'type': 'log', 'phase': phase_num, 'text': msg})}\n\n"
+                await asyncio.sleep(0.15)
+                
+                if "FAILED" in status_text:
+                    break
+                    
+        if veto_exception:
+            yield f"data: {json.dumps({'type': 'error', 'detail': veto_exception.detail})}\n\n"
+            # Fastapi doesn't allow raising exception in streaming response to change HTTP status easily,
+            # but the frontend will see the error object.
+        else:
+            yield f"data: {json.dumps({'type': 'receipt', 'data': receipt_data})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # =====================================================================
 # QUARANTINE RESOLUTION ENDPOINTS (Phase 5)

@@ -1,8 +1,37 @@
 from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi.responses import StreamingResponse
+import asyncio
 from pydantic import BaseModel
 from backend.apps.api.terminal_state import terminal_state_manager
 
 router = APIRouter()
+
+@router.get("/events")
+async def get_terminal_events(request: Request):
+    """
+    SSE endpoint for streaming real-time swarm telemetry.
+    """
+    queue = asyncio.Queue()
+    terminal_state_manager.subscribers.append(queue)
+    
+    async def event_generator():
+        try:
+            yield 'data: {"type": "connection", "message": "SSE connection established with Veklom Swarm Terminal"}\\n\\n'
+            
+            while True:
+                if await request.is_disconnected():
+                    break
+                    
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {payload}\\n\\n"
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\\n\\n"
+        finally:
+            if queue in terminal_state_manager.subscribers:
+                terminal_state_manager.subscribers.remove(queue)
+                
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 class TerminalCommand(BaseModel):
     command: str

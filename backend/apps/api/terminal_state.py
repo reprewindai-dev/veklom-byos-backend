@@ -21,6 +21,7 @@ class TerminalStateManager:
         }
         self.last_update_time = time.time()
         self.is_running = False
+        self.subscribers: List[asyncio.Queue] = []
         
         self._seed_delegates()
         self._seed_system_agents()
@@ -159,14 +160,17 @@ class TerminalStateManager:
 
     def add_telemetry_log(self, source: str, message: str, type_: str = "info"):
         now_str = time.strftime('%Y-%m-%dT%H:%M:%S.%fZ', time.gmtime())
-        self.logs.insert(0, {
+        log_entry = {
             "timestamp": now_str,
             "source": source,
             "message": message,
             "type": type_
-        })
+        }
+        self.logs.insert(0, log_entry)
         if len(self.logs) > 100:
             self.logs = self.logs[:100]
+        
+        asyncio.create_task(self.broadcast({"type": "log", "data": log_entry}))
 
     def background_tick(self):
         """Simulates real background noise and telemetry ticks from the 105 active agents"""
@@ -181,6 +185,13 @@ class TerminalStateManager:
             agent["metrics"]["memory"] = random.randint(40, 60)
             now_str = time.strftime('%Y-%m-%dT%H:%M:%S.%fZ', time.gmtime())
             agent["telemetryLogs"].insert(0, f"[{now_str[11:19]}] Spawning sub-pipeline for state-root check.")
+            asyncio.create_task(self.broadcast({
+                "type": "agent_update",
+                "id": agent["id"],
+                "status": agent["status"],
+                "metrics": agent["metrics"],
+                "timestamp": now_str
+            }))
         
         if random.random() < 0.25 and len(active_agents) > 5:
             agent = random.choice(active_agents)
@@ -188,6 +199,13 @@ class TerminalStateManager:
             agent["metrics"]["cpu"] = random.randint(2, 8)
             now_str = time.strftime('%Y-%m-%dT%H:%M:%S.%fZ', time.gmtime())
             agent["telemetryLogs"].insert(0, f"[{now_str[11:19]}] Pipeline completed. Going idle.")
+            asyncio.create_task(self.broadcast({
+                "type": "agent_update",
+                "id": agent["id"],
+                "status": agent["status"],
+                "metrics": agent["metrics"],
+                "timestamp": now_str
+            }))
 
         for agent in self.agents:
             if agent["status"] == "Active":
@@ -219,6 +237,15 @@ class TerminalStateManager:
             except Exception as e:
                 print(f"[TerminalStateManager] Tick error: {e}")
             await asyncio.sleep(2.0)
+
+    async def broadcast(self, event_data: dict):
+        import json
+        payload = json.dumps(event_data)
+        for q in self.subscribers:
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                pass
 
 # Global singleton
 terminal_state_manager = TerminalStateManager()

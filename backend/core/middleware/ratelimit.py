@@ -3,7 +3,7 @@ import logging
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from backend.core.database.redis_client import redis_client
+import backend.core.database.redis_client as redis_module
 from backend.core.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             
         # In production, if Redis is down (is_fallback is True), we bypass rate limiting
         # rather than blocking all traffic.
-        if redis_client.is_fallback:
+        if redis_module.redis_client.is_fallback:
             return await call_next(request)
             
         try:
@@ -72,7 +72,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             """
             
             now_ts = time.time()
-            result = await redis_client.eval(lua_script, 1, client_id, capacity, refill_rate, now_ts)
+            result = await redis_module.redis_client.eval(lua_script, 1, client_id, capacity, refill_rate, now_ts)
             
             allowed, remaining_tokens = result
             

@@ -2,6 +2,7 @@ import asyncio
 import time
 import random
 from typing import List, Dict, Any
+from datetime import datetime, timezone
 
 # We use an in-memory store for speed, backed by realistic data structures
 class TerminalStateManager:
@@ -141,7 +142,7 @@ class TerminalStateManager:
                 })
 
     def _seed_initial_logs(self):
-        now_str = time.strftime('%Y-%m-%dT%H:%M:%S.%fZ', time.gmtime())
+        now_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
         initial_msgs = [
             {"source": 'SYS', "msg": 'UACP Backend Control Plane initialized.', "type": 'success'},
             {"source": 'MCP-IO', "msg": 'Zero-Copy IO channel connected cleanly, speed threshold 2.5 Gbps.', "type": 'info'},
@@ -159,7 +160,7 @@ class TerminalStateManager:
             })
 
     def add_telemetry_log(self, source: str, message: str, type_: str = "info"):
-        now_str = time.strftime('%Y-%m-%dT%H:%M:%S.%fZ', time.gmtime())
+        now_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
         log_entry = {
             "timestamp": now_str,
             "source": source,
@@ -183,7 +184,7 @@ class TerminalStateManager:
             agent["status"] = "Active"
             agent["metrics"]["cpu"] = random.randint(50, 90)
             agent["metrics"]["memory"] = random.randint(40, 60)
-            now_str = time.strftime('%Y-%m-%dT%H:%M:%S.%fZ', time.gmtime())
+            now_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
             agent["telemetryLogs"].insert(0, f"[{now_str[11:19]}] Spawning sub-pipeline for state-root check.")
             asyncio.create_task(self.broadcast({
                 "type": "agent_update",
@@ -197,7 +198,7 @@ class TerminalStateManager:
             agent = random.choice(active_agents)
             agent["status"] = "Idle"
             agent["metrics"]["cpu"] = random.randint(2, 8)
-            now_str = time.strftime('%Y-%m-%dT%H:%M:%S.%fZ', time.gmtime())
+            now_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
             agent["telemetryLogs"].insert(0, f"[{now_str[11:19]}] Pipeline completed. Going idle.")
             asyncio.create_task(self.broadcast({
                 "type": "agent_update",

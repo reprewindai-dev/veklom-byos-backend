@@ -25,6 +25,14 @@ from backend.db.models.agent import AgentIdentity, AgentTrustScore
 from backend.db.models.quarantine import QuarantinedIntent
 import base64
 
+try:
+    import nacl.signing
+    from nacl.signing import VerifyKey
+    NACL_AVAILABLE = True
+except ImportError:
+    NACL_AVAILABLE = False
+    VerifyKey = None
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/capi", tags=["capi"])

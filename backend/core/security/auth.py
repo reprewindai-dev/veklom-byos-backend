@@ -124,6 +124,10 @@ async def get_current_user(
         token = request.cookies.get("access_token")
 
     if not token:
+        # Fallback to query parameter token for EventSource/SSE streams
+        token = request.query_params.get("token")
+
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
 
     payload = verify_token(token)

@@ -1,3 +1,6 @@
 ## 2025-02-24 - [Optimize PII Detection overlap]
 **Learning:** Checking for overlap using a generator expression inside an `any()` inside a loop leads to $O(N^2)$ worst-case time complexity, which causes performance bottlenecks for large documents processing lots of PII.
 **Action:** Use Python's `bisect` module for interval tracking and overlap detection. Maintaining an ordered list drops the search to $O(\log N)$, and then only checking adjacent overlaps provides near-linear processing time, preventing performance scaling issues for documents.
+## 2025-06-29 - [Cache ExecutionLog aggregations in Smart Router]
+**Learning:** `_refine_with_observations` within the `smart_router.py` critical routing path executes a database `GROUP BY` on the `ExecutionLog` table per request. This table grows extremely large in production, causing significant database latency for high-traffic environments, which blocks AI requests due to the N+1 pattern of synchronous metric aggregations overriding model priors.
+**Action:** Implement Redis caching using `redis_cache` to store the aggregated `ExecutionLog` statistics per workspace. A short TTL (e.g., 300 seconds / 5 mins) resolves the database load while keeping observation metrics fresh enough to influence model selection decisions accurately.

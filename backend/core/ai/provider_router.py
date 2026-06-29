@@ -124,10 +124,8 @@ async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
     openai_absent = not _configured_provider("openai")
     
     if is_openai_req and openai_absent:
-        raise HTTPException(
-            status_code=503,
-            detail="OpenAI requested but API key not configured. Enterprise Fallback disabled."
-        )
+        logger.warning("OpenAI requested but API key not configured. Gracefully falling back to local/configured providers.")
+        body = {**body, "provider": "ollama", "model": settings.OLLAMA_MODEL}
 
     errors: list[str] = []
     for provider in provider_order(body):
@@ -163,9 +161,8 @@ async def stream_completion(body: dict) -> AsyncIterator[str]:
     openai_absent = not _configured_provider("openai")
     
     if is_openai_req and openai_absent:
-        yield 'data: {"error": "OpenAI requested but API key not configured. Enterprise Fallback disabled."}\n\n'
-        yield "data: [DONE]\n\n"
-        return
+        logger.warning("OpenAI requested but API key not configured for stream. Gracefully falling back to local/configured providers.")
+        body = {**body, "provider": "ollama", "model": settings.OLLAMA_MODEL}
 
     stream_started = False
     for provider in provider_order(body):
@@ -174,6 +171,10 @@ async def stream_completion(body: dict) -> AsyncIterator[str]:
         try:
             if provider in {"openai", "groq", "huggingface"}:
                 async for line in _openai_compatible_stream(provider, body):
+                    yield line
+                return
+            if provider == "ollama":
+                async for line in _ollama_stream(body):
                     yield line
                 return
             result = await run_completion({**body, "provider": provider}, stream=False)
@@ -253,32 +254,50 @@ async def _ollama_completion(body: dict) -> dict:
         raise _provider_error(response.status_code, response.text)
     data = response.json()
     content = data.get("message", {}).get("content", "")
-    return _openai_response("ollama", model, content, prompt=body.get("messages"))
+    prompt_tokens = data.get("prompt_eval_count")
+    completion_tokens = data.get("eval_count")
+    return _openai_response(
+        "ollama",
+        model,
+        content,
+        prompt=body.get("messages"),
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens
+    )
 
 
-def _openai_response(provider: str, model: str, content: str, prompt: Optional[Any] = None) -> dict:
+def _openai_response(
+    provider: str,
+    model: str,
+    content: str,
+    prompt: Optional[Any] = None,
+    prompt_tokens: Optional[int] = None,
+    completion_tokens: Optional[int] = None,
+) -> dict:
     now = int(time.time())
     
-    # Realistic token estimation (1 token approx 4 chars)
-    prompt_str = ""
-    if isinstance(prompt, str):
-        prompt_str = prompt
-    elif isinstance(prompt, list):
-        parts = []
-        for m in prompt:
-            if isinstance(m, dict):
-                parts.append(f"{m.get('role', '')}: {m.get('content', '')}")
-            elif isinstance(m, str):
-                parts.append(m)
-        prompt_str = "\n".join(parts)
-        
-    prompt_tokens = max(1, len(prompt_str) // 4) if prompt_str else 0
-    # No hardcoded 120 fallback; use actual length or a small minimum for system overhead
-    if not prompt_tokens and prompt_str:
-        prompt_tokens = 1
-        
-    completion_tokens = max(1, len(content) // 4)
-    # Remove the 150 token floor for short responses to ensure authenticity
+    if prompt_tokens is None:
+        # Realistic token estimation (1 token approx 4 chars)
+        prompt_str = ""
+        if isinstance(prompt, str):
+            prompt_str = prompt
+        elif isinstance(prompt, list):
+            parts = []
+            for m in prompt:
+                if isinstance(m, dict):
+                    parts.append(f"{m.get('role', '')}: {m.get('content', '')}")
+                elif isinstance(m, str):
+                    parts.append(m)
+            prompt_str = "\n".join(parts)
+            
+        prompt_tokens = max(1, len(prompt_str) // 4) if prompt_str else 0
+        # No hardcoded 120 fallback; use actual length or a small minimum for system overhead
+        if not prompt_tokens and prompt_str:
+            prompt_tokens = 1
+            
+    if completion_tokens is None:
+        completion_tokens = max(1, len(content) // 4)
+        # Remove the 150 token floor for short responses to ensure authenticity
         
     total_tokens = prompt_tokens + completion_tokens
     
@@ -311,6 +330,46 @@ def _sse_chunk(provider: str, model: str, content: str) -> str:
         "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}],
     }
     return f"data: {json.dumps(data)}\n\n"
+
+
+def _sse_delta_chunk(provider: str, model: str, content: str, finish_reason: str | None = None) -> str:
+    data = {
+        "id": f"{provider}-{int(time.time())}",
+        "object": "chat.completion.chunk",
+        "model": model,
+        "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": finish_reason}],
+    }
+    return f"data: {json.dumps(data)}\n\n"
+
+
+async def _ollama_stream(body: dict) -> AsyncIterator[str]:
+    base = settings.OLLAMA_BASE_URL.rstrip("/")
+    model = _model_for("ollama", body)
+    payload = {
+        "model": model,
+        "messages": normalize_messages(body),
+        "stream": True
+    }
+    async with httpx.AsyncClient(timeout=None) as client:
+        async with client.stream("POST", f"{base}/api/chat", json=payload) as response:
+            if response.status_code >= 400:
+                text = await response.aread()
+                yield _sse_delta_chunk("ollama", model, f"Ollama streaming error: {text.decode('utf-8', errors='replace')[:500]}", "stop")
+                yield "data: [DONE]\n\n"
+                return
+            async for line in response.aiter_lines():
+                if line:
+                    try:
+                        data = json.loads(line)
+                        content = data.get("message", {}).get("content", "")
+                        if content:
+                            yield _sse_delta_chunk("ollama", model, content)
+                        if data.get("done"):
+                            yield _sse_delta_chunk("ollama", model, "", "stop")
+                            break
+                    except Exception:
+                        continue
+            yield "data: [DONE]\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -474,10 +533,8 @@ async def run_completion_for_tenant(
     openai_absent = not _configured_provider("openai")
     
     if is_openai_req and openai_absent:
-        raise HTTPException(
-            status_code=503,
-            detail="OpenAI requested but API key not configured. Enterprise Fallback disabled."
-        )
+        logger.warning("OpenAI requested but API key not configured for tenant. Gracefully falling back to local/configured providers.")
+        body = {**body, "provider": "ollama", "model": settings.OLLAMA_MODEL}
 
     order, reason = provider_order_for_tenant(body, workspace_id)
     errors: list[str] = []

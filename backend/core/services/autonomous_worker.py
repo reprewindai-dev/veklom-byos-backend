@@ -1013,27 +1013,28 @@ async def _embedding_node(node_type: str, config: dict, context: dict) -> dict:
 
     if node_type == "embed-openai":
         api_key = settings.OPENAI_API_KEY.strip()
-        if not api_key:
-            raise ValueError("missing_key: OpenAI Embedding requires OPENAI_API_KEY")
-        model = str(config.get("model") or config.get("model_name") or "text-embedding-3-small")
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": model, "input": text_value[:30000]},
-            )
-        response.raise_for_status()
-        payload = response.json()
-        embedding = payload["data"][0]["embedding"]
-        usage = payload.get("usage") or {}
-        tokens = int(usage.get("total_tokens") or max(1, len(text_value.split())))
-        return {
-            "provider": "openai",
-            "model": model,
-            "embedding": [float(value) for value in embedding],
-            "tokens": tokens,
-            "cost": tokens * 0.00000002,
-        }
+        if api_key:
+            model = str(config.get("model") or config.get("model_name") or "text-embedding-3-small")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/embeddings",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={"model": model, "input": text_value[:30000]},
+                )
+            response.raise_for_status()
+            payload = response.json()
+            embedding = payload["data"][0]["embedding"]
+            usage = payload.get("usage") or {}
+            tokens = int(usage.get("total_tokens") or max(1, len(text_value.split())))
+            return {
+                "provider": "openai",
+                "model": model,
+                "embedding": [float(value) for value in embedding],
+                "tokens": tokens,
+                "cost": tokens * 0.00000002,
+            }
+        else:
+            logger.warning("OpenAI Embedding requested but OPENAI_API_KEY not configured. Falling back to local Ollama embedding.")
 
     base_url = settings.OLLAMA_BASE_URL.strip().rstrip("/")
     if not base_url:

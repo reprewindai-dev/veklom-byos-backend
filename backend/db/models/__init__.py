@@ -54,6 +54,7 @@ from backend.db.models.vnp import (
 )
 from backend.db.models.rag import AgentMemoryStore, DocumentChunk
 from backend.db.models.quarantine import QuarantinedIntent
+from backend.db.models.session_mesh import VeklomAgentSession, VeklomSessionTransition, VeklomMeshIncident, VeklomLedgerEntry
 
 __all__ = [
     # existing
@@ -100,5 +101,7 @@ __all__ = [
     # RAG & Memory
     "AgentMemoryStore", "DocumentChunk",
     # MCPAPI v2 Quarantine
-    "QuarantinedIntent"
+    "QuarantinedIntent",
+    # Session Mesh Layer
+    "VeklomAgentSession", "VeklomSessionTransition", "VeklomMeshIncident", "VeklomLedgerEntry"
 ]

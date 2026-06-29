@@ -196,8 +196,8 @@ async def call_llm(provider: str, prompt: str) -> tuple[str, float]:
     except Exception as e:
         print(f"[engine] call_llm({provider}) primary error: {e}")
 
-    # --- Fallback chain: groq → gemini ---
-    for fallback_fn, name in [(_call_groq, "groq"), (_call_gemini, "gemini")]:
+    # --- Fallback chain: groq → gemini → ollama ---
+    for fallback_fn, name in [(_call_groq, "groq"), (_call_gemini, "gemini"), (_call_ollama, "ollama")]:
         try:
             text, cost = await fallback_fn(prompt)
             if text:

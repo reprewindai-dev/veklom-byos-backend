@@ -87,8 +87,8 @@ async def exec_prompt(
             if res.status_code == 200:
                 data = res.json()
                 response_text = data.get("message", {}).get("content", "")
-                prompt_tokens = data.get("prompt_tokens") or approx_prompt_tokens
-                completion_tokens = data.get("eval_count") or (len(response_text.split()) * 2)
+                prompt_tokens = data.get("prompt_eval_count") or data.get("prompt_tokens") or approx_prompt_tokens
+                completion_tokens = data.get("eval_count") or data.get("completion_tokens") or (len(response_text.split()) * 2)
                 await cb.record_success()
             else:
                 raise Exception(f"Ollama returned status {res.status_code}")

@@ -27,10 +27,11 @@ try:
             db_url,
             echo=settings.DEBUG,
             future=True,
-            pool_size=15,
-            max_overflow=10,
-            pool_timeout=60,
+            pool_size=20,
+            max_overflow=15,
+            pool_timeout=30,
             pool_pre_ping=True,
+            pool_recycle=1800,
             connect_args={"timeout": 10, "command_timeout": 10},
         )
 except Exception as e:

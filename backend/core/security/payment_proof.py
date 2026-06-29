@@ -5,15 +5,19 @@ import json
 
 async def require_payment_proof(request: Request) -> dict:
     """
-    Dependency that extracts and validates the X-Payment-Proof header.
-    In a full production implementation, this would verify the cryptographic signature
-    and call out to the L2 chain to confirm settlement.
+    Dependency that extracts and validates standard or legacy x402 payment proof headers.
+    Checks payment-signature, Payment-Signature, X-Payment-Proof, and X-Payment.
     """
-    proof_header = request.headers.get("X-Payment-Proof")
+    proof_header = (
+        request.headers.get("payment-signature") or 
+        request.headers.get("Payment-Signature") or 
+        request.headers.get("X-Payment-Proof") or 
+        request.headers.get("X-Payment")
+    )
     if not proof_header:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Missing X-Payment-Proof header for governed execution."
+            detail="Missing payment-signature or X-Payment-Proof header for governed execution."
         )
     
     try:

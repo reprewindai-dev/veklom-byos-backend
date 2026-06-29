@@ -155,8 +155,9 @@ async def agent_json():
 
 
 # ---------------------------------------------------------------------------
-# /.well-known/x402.json  (x402 payment protocol configuration)
+# /.well-known/x402 and /.well-known/x402.json  (x402 payment protocol configuration)
 # ---------------------------------------------------------------------------
+@router.get("/.well-known/x402")
 @router.get("/.well-known/x402.json")
 async def x402_json():
     missing_config = []
@@ -188,7 +189,7 @@ async def x402_json():
 
     return JSONResponse({
         "enabled": is_enabled,
-        "x402_version": "1.0.0",
+        "x402_version": "2.0.0",
         "accepted_assets": [
             {"asset": VEKLOM_USDC_ADDRESS, "symbol": "USDC", "decimals": 6}
         ],
@@ -197,7 +198,7 @@ async def x402_json():
         "pay_to": treasury,
         "treasury": treasury,
         "protected_routes": protected_routes,
-        "proof_header_name": "X-Payment-Proof",
+        "proof_header_name": "payment-signature",
         "challenge_ttl_seconds": 300,
         "replay_protection": {
             "enabled": True,

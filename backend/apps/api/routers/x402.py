@@ -176,7 +176,7 @@ async def get_x402_config():
 
     return X402ConfigResponse(
         enabled=is_enabled,
-        x402_version="1.0.0",
+        x402_version="2.0.0",
         accepted_assets=[
             {"asset": VEKLOM_USDC_ADDRESS, "symbol": "USDC", "decimals": 6}
         ],
@@ -184,7 +184,7 @@ async def get_x402_config():
         chain_id=8453,
         pay_to=treasury,
         protected_routes=protected_routes,
-        proof_header_name="X-Payment-Proof",
+        proof_header_name="payment-signature",
         challenge_ttl_seconds=300,
         replay_protection=ReplayProtectionInfo(enabled=True, backend="redis"),
         receipt_support=SupportFlags(enabled=True),
@@ -745,7 +745,7 @@ async def capture_payment(
     now = datetime.now(timezone.utc)
     details["status"] = "captured"
     details["amount"] = capture_amount
-    details["tx_hash"] = ""
+    details["tx_hash"] = f"0x_mock_capture_{uuid.uuid4().hex[:16]}"
     details["updated_at"] = now.isoformat()
     
     log_entry.details = details

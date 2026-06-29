@@ -98,7 +98,7 @@ _FREE_ROUTES_PREFIX = (
     "/api/v1/sys/health", "/api/v1/sys/gpu",
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
     "/api/v1/integrations/", "/api/v1/receipts", "/api/v1/evidence/verify",
-    "/api/v1/x402/config", "/api/v1/x402/verify", "/api/v1/x402/register-api"
+    "/api/v1/x402/config", "/api/v1/x402/register-api"
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
@@ -268,13 +268,34 @@ async def create_and_persist_receipt(
 
 
 def _build_402_response(path: str, method: str, route_config: dict, detail: Optional[str] = None) -> JSONResponse:
+    import base64
     challenge_id = f"chal_{uuid.uuid4().hex[:16]}"
     nonce = f"nonce_{uuid.uuid4().hex[:16]}"
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=300)).isoformat()
     
+    # Construct standard CDP x402 v2 payment required payload object
+    v2_payload_obj = {
+        "x402Version": "2.0.0",
+        "resource": {
+            "url": f"https://api.veklom.com{path}",
+            "description": route_config.get("name", "Veklom Protected API Endpoint")
+        },
+        "accepts": [
+            {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "amount": str(int(route_config["price_usdc"] * 1_000_000)),
+                "asset": VEKLOM_USDC_ADDR,
+                "payTo": get_treasury_address()
+            }
+        ]
+    }
+    v2_payload_str = json.dumps(v2_payload_obj)
+    v2_base64 = base64.b64encode(v2_payload_str.encode("utf-8")).decode("utf-8")
+
     payload = {
         "error": "payment_required",
-        "x402_version": "1.0.0",
+        "x402_version": "2.0.0",
         "challenge_id": challenge_id,
         "nonce": nonce,
         "amount": route_config["price_usdc"],
@@ -285,7 +306,7 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
         "route": path,
         "method": method,
         "expires_at": expires_at,
-        "proof_header_name": "X-Payment-Proof",
+        "proof_header_name": "payment-signature",
         "payment_requirements": {
             "asset_contract": VEKLOM_USDC_ADDR,
             "destination": get_treasury_address(),
@@ -296,12 +317,15 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
             "nonce_ttl_seconds": 300,
             "challenge_ttl_seconds": 300
         },
-        "receipt_expected": True
+        "receipt_expected": True,
+        "payment_required_base64": v2_base64
     }
     if detail:
         payload["detail"] = detail
         
     headers = {
+        "payment-required": v2_base64,
+        "Payment-Required": v2_base64,
         "X-Payment-Required": "true",
         "X-Payment-Challenge-ID": challenge_id,
         "X-Payment-Nonce": nonce,
@@ -312,7 +336,7 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
         "X-Payment-Scheme": "x402",
         "X-Veklom-Upgrade": "https://veklom.com/pricing",
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Expose-Headers": "X-Payment-Required,X-Payment-Price-USDC,X-Payment-Network,X-Payment-Asset,X-Payment-Challenge-ID,X-Payment-Nonce",
+        "Access-Control-Expose-Headers": "payment-required,Payment-Required,X-Payment-Required,X-Payment-Price-USDC,X-Payment-Network,X-Payment-Asset,X-Payment-Challenge-ID,X-Payment-Nonce",
     }
     return JSONResponse(payload, status_code=402, headers=headers)
 
@@ -341,7 +365,12 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     import httpx
     from backend.core.database.redis_client import redis_client
 
-    proof = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment")
+    proof = (
+        request.headers.get("payment-signature") or 
+        request.headers.get("Payment-Signature") or 
+        request.headers.get("X-Payment-Proof") or 
+        request.headers.get("X-Payment")
+    )
     if not proof:
         request.state.x402_error = "missing_payment_proof"
         return False
@@ -716,8 +745,17 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                                 KillSwitchState.is_active == True
                             )
                         )
-                        if ks_res.scalar_one_or_none():
-                            return JSONResponse(status_code=402, content={"detail": "Emergency halt active."})
+                        kill_switch = ks_res.scalar_one_or_none()
+                        if kill_switch:
+                            return JSONResponse(
+                                status_code=402,
+                                content={
+                                    "detail": f"Emergency halt active: {kill_switch.reason or 'Runaway usage detected'}",
+                                    "kill_switch_active": True,
+                                    "reason": kill_switch.reason or "Runaway usage detected",
+                                    "activated_at": kill_switch.activated_at.isoformat() if kill_switch.activated_at else None
+                                }
+                            )
 
                         # Budget constraints verification
                         budget_res = await db.execute(
@@ -729,7 +767,31 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                         budget_rules = budget_res.scalars().all()
                         for rule in budget_rules:
                             if rule.current_spend >= rule.limit_usd:
-                                return JSONResponse(status_code=402, content={"detail": "Budget limit exceeded."})
+                                # Automatically trigger Cost Kill Switch
+                                ks_check = await db.execute(
+                                    select(KillSwitchState).where(
+                                        KillSwitchState.workspace_id == ws_id,
+                                        KillSwitchState.is_active == True
+                                    )
+                                )
+                                if not ks_check.scalar_one_or_none():
+                                    new_ks = KillSwitchState(
+                                        workspace_id=ws_id,
+                                        is_active=True,
+                                        reason=f"Automatic halt: Budget rule breached ({rule.name})",
+                                        activated_by="system"
+                                    )
+                                    db.add(new_ks)
+                                    await db.commit()
+                                
+                                return JSONResponse(
+                                    status_code=402,
+                                    content={
+                                        "detail": f"Budget rule breached: {rule.name} limit reached ({rule.current_spend}/{rule.limit_usd} USD).",
+                                        "kill_switch_active": True,
+                                        "reason": f"Automatic halt: Budget rule breached ({rule.name})"
+                                    }
+                                )
 
                         ws_res = await db.execute(select(Workspace).where(Workspace.id == ws_id))
                         db_ws = ws_res.scalar_one_or_none()
@@ -823,7 +885,13 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             request.state.x402_paid = True
             response = await call_next(request)
             
-            tx_hash = request.headers.get("X-Payment-Proof") or request.headers.get("X-Payment") or "test_tx"
+            tx_hash = (
+                request.headers.get("payment-signature") or 
+                request.headers.get("Payment-Signature") or 
+                request.headers.get("X-Payment-Proof") or 
+                request.headers.get("X-Payment") or 
+                "test_tx"
+            )
             from backend.core.database.database import get_db_session
             async with get_db_session() as db:
                 receipt = await create_and_persist_receipt(

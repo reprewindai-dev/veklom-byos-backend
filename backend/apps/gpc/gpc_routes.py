@@ -13,6 +13,9 @@ from backend.gpc.gpc_schemas import (
     GPCComponentDefinition, PortType
 )
 from backend.gpc.gpc_compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
+from backend.core.database.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.core.services.mission_lock_service import MissionLockService
 
 logger = logging.getLogger("gpc")
 
@@ -46,7 +49,8 @@ async def get_tenant_id(authorization: Optional[str] = Header(None)) -> str:
 @router.post("/compile", response_model=PipelineCompilationResult)
 async def compile_pipeline(
     request: PipelineCompilationRequest,
-    tenant_id: str = Depends(get_tenant_id)
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_db)
 ) -> PipelineCompilationResult:
     """
     Compile a pipeline graph into executable Python code.
@@ -76,6 +80,16 @@ async def compile_pipeline(
                 "nodes": result.node_count,
                 "levels": len(result.parallel_levels)
             }
+        )
+        
+        # GPC Compile-Time DNA Generation and Constraint Registration
+        await MissionLockService.extract_and_register_gpc_constraints(
+            pipeline_id=request.pipeline_id,
+            name=pipeline_graph.name,
+            description=pipeline_graph.description,
+            nodes=pipeline_graph.nodes,
+            tenant_id=tenant_id,
+            db=db
         )
         
         return result

@@ -55,8 +55,17 @@ from backend.db.models.vnp import (
 from backend.db.models.rag import AgentMemoryStore, DocumentChunk
 from backend.db.models.quarantine import QuarantinedIntent
 from backend.db.models.session_mesh import VeklomAgentSession, VeklomSessionTransition, VeklomMeshIncident, VeklomLedgerEntry
+from backend.db.models.mission_lock import (
+    MissionDNA, AgentMission, MissionLockAgentState, EpisodeTelemetry, TeamState,
+    CoordinationLog, RecoveryEvent, DNAAudit, AgentRuntimeState, AgentActionTrace,
+    IdempotencyKey, RecoverySnapshot, MetricsCache, TenantRole, AuthzLog
+)
 
 __all__ = [
+    # Mission Lock
+    "MissionDNA", "AgentMission", "MissionLockAgentState", "EpisodeTelemetry", "TeamState",
+    "CoordinationLog", "RecoveryEvent", "DNAAudit", "AgentRuntimeState", "AgentActionTrace",
+    "IdempotencyKey", "RecoverySnapshot", "MetricsCache", "TenantRole", "AuthzLog",
     # existing
     "User", "Session", "APIKey", "Asset",
     "Workspace", "WorkspaceMember", "ModelConfig", "WorkspaceIntegration", "WorkspacePlugin",

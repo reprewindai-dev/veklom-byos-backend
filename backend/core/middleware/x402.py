@@ -70,6 +70,20 @@ _PAID_ROUTES: dict[str, dict] = {
     "/api/v1/x402/governance":     {"price_usdc": 0.10,  "name": "Machine Governance",   "free_daily": 0},
     "/api/v1/x402/score":          {"price_usdc": 0.10,  "name": "Machine Score",        "free_daily": 0},
     "/api/v1/x402/verify":         {"price_usdc": 0.10,  "name": "Machine Verify",       "free_daily": 0},
+    # Chet Parker's Gold/Niche APIs
+    "/api/v1/forensics/replay":                     {"price_usdc": 0.02,  "name": "Forensics Replay",                    "free_daily": 0},
+    "/api/v1/governance/simulate-policy":           {"price_usdc": 0.015, "name": "Simulate Policy",                     "free_daily": 0},
+    "/api/v1/authority/simulate-policy":            {"price_usdc": 0.015, "name": "Simulate Policy (Actual)",              "free_daily": 0},
+    "/api/v1/pgl/{agent_id}/quarantine":            {"price_usdc": 0.01,  "name": "PGL Agent Quarantine",                "free_daily": 0},
+    "/api/v1/x402/flash-loan":                      {"price_usdc": 0.05,  "name": "x402 Flash Loan",                     "free_daily": 0},
+    "/api/v1/governance/diplomacy/negotiate-treaty": {"price_usdc": 0.05,  "name": "Governance Diplomacy Negotiate Treaty", "free_daily": 0},
+    "/api/v1/authority/diplomacy/negotiate-treaty":  {"price_usdc": 0.05,  "name": "Governance Diplomacy Negotiate Treaty (Actual)", "free_daily": 0},
+    "/api/v1/vnp/bounty/submit-proof":              {"price_usdc": 0.01,  "name": "VNP Bounty Submit Proof",             "free_daily": 0},
+    "/api/v1/incidents/bounty/submit-proof":        {"price_usdc": 0.01,  "name": "VNP Bounty Submit Proof (Actual)",    "free_daily": 0},
+    "/api/v1/pgl/{agent_id}/genealogy":             {"price_usdc": 0.01,  "name": "PGL Agent Genealogy",                 "free_daily": 0},
+    "/api/v1/governed/capi/compile":                {"price_usdc": 0.02,  "name": "Governed cAPI Compile",               "free_daily": 0},
+    "/api/v1/pgl/identity-rag/resolve":             {"price_usdc": 0.01,  "name": "PGL Identity RAG Resolve",            "free_daily": 0},
+
 }
 
 _FREE_ROUTES_PREFIX = (
@@ -84,7 +98,7 @@ _FREE_ROUTES_PREFIX = (
     "/api/v1/sys/health", "/api/v1/sys/gpu",
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
     "/api/v1/integrations/", "/api/v1/receipts", "/api/v1/evidence/verify",
-    "/api/v1/x402/config", "/api/v1/x402/verify"
+    "/api/v1/x402/config", "/api/v1/x402/verify", "/api/v1/x402/register-api"
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
@@ -136,7 +150,7 @@ def resolve_basename(name: str) -> str:
     return ""
 
 def get_treasury_address() -> str:
-    raw = settings.VEKLOM_TREASURY_ADDRESS.strip()
+    raw = os.getenv("VEKLOM_TREASURY_ADDRESS", settings.VEKLOM_TREASURY_ADDRESS).strip()
     if not raw or raw == "0x0000000000000000000000000000000000000001":
         return ""
     if is_valid_evm_address(raw):
@@ -156,9 +170,30 @@ def _today_key(ip: str) -> str:
     return f"{ip}:{day}"
 
 
+_compiled_patterns = {}
+
+def _match_route(path: str, pattern: str) -> bool:
+    if pattern not in _compiled_patterns:
+        # Build regex string by splitting on `{...}` placeholders
+        parts = []
+        last_idx = 0
+        for match in re.finditer(r'\{[^}]+\}', pattern):
+            parts.append(re.escape(pattern[last_idx:match.start()]))
+            parts.append(r'[^/]+')
+            last_idx = match.end()
+        parts.append(re.escape(pattern[last_idx:]))
+        regex_str = "".join(parts)
+        _compiled_patterns[pattern] = re.compile(f"^{regex_str}(?:/|$)")
+    return bool(_compiled_patterns[pattern].match(path))
+
+
 def _get_route_config(path: str) -> Optional[dict]:
-    for prefix, cfg in _PAID_ROUTES.items():
-        if path.startswith(prefix):
+    # Check if there's an exact match in _PAID_ROUTES first
+    if path in _PAID_ROUTES:
+        return _PAID_ROUTES[path]
+    # Check each registered path pattern using our regex-based match
+    for pattern, cfg in _PAID_ROUTES.items():
+        if _match_route(path, pattern):
             return cfg
     return None
 
@@ -207,7 +242,7 @@ async def create_and_persist_receipt(
         "execution_status": "completed",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "evidence_hash": evidence_hash,
-        "receipt_signature": f"sig_{hashlib.sha256((receipt_id + evidence_hash).encode()).hexdigest()[:24]}",
+        "receipt_signature": f"sig_{hashlib.sha256((receipt_id + evidence_hash + settings.SECRET_KEY).encode()).hexdigest()[:24]}",
         "persistence_status": "not_configured"
     }
 
@@ -454,8 +489,9 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
         request.state.x402_error = "invalid_transaction"
         return False
 
-    # D. Flashblocks-aware required confirmations count set to 0
-    required_confirmations = 0
+    # D. Configurable required confirmations - default to 1 in production, 0 in dev if not specified
+    default_confirmations = 1 if settings.APP_ENV == "production" else 0
+    required_confirmations = int(os.environ.get("X402_REQUIRED_CONFIRMATIONS", str(default_confirmations)))
     confirmations = 0
     if tx_receipt.get("blockNumber") and rpc_url_used:
         try:
@@ -545,7 +581,10 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
 
         # Test-mode bypass — set X402_DISABLED=true to skip all payment enforcement
         if os.environ.get("X402_DISABLED", "").lower() in ("1", "true", "yes"):
-            return await call_next(request)
+            if settings.APP_ENV == "production" or os.getenv("ENVIRONMENT") == "production":
+                logger.error("[SECURITY WARNING] X402_DISABLED bypass attempted in PRODUCTION environment. This is forbidden!")
+            else:
+                return await call_next(request)
 
         # Skip OPTIONS and free routes
         if method == "OPTIONS" or _is_free_route(path):

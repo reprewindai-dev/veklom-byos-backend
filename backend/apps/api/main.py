@@ -43,6 +43,14 @@ from backend.core.middleware.x402 import X402PaymentMiddleware
 from backend.core.middleware.amphoteric import AmphotericSensingMiddleware
 from backend.core.middleware.ratelimit import RateLimitMiddleware
 
+# --- Production Startup Guards ---
+if settings.APP_ENV == "production" or os.getenv("ENVIRONMENT") == "production":
+    if settings.SECRET_KEY == "change-me-in-production":
+        raise RuntimeError("FATAL: SECRET_KEY is set to default in a production environment!")
+    if settings.ENCRYPTION_KEY == "change-me-in-production-aes-256":
+        raise RuntimeError("FATAL: ENCRYPTION_KEY is set to default in a production environment!")
+
+
 # Import model package to ensure tables are registered with Base.metadata.
 import backend.db.models  # noqa: F401
 
@@ -588,14 +596,6 @@ class X402DiscoverableMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(X402DiscoverableMiddleware)
 
-app.add_middleware(CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_origin_regex=_CORS_ORIGIN_REGEX,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AmphotericSensingMiddleware)
 app.add_middleware(ZeroTrustMiddleware)
@@ -661,6 +661,14 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts())
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(X402PaymentMiddleware)
+
+app.add_middleware(CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # --- Exception handlers ---
@@ -749,7 +757,7 @@ from backend.apps.api.routers import (
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
     build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
-    genome, well_known, capi, governed, evidence_pack
+    genome, well_known, capi, governed, evidence_pack, mission_lock
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -816,6 +824,7 @@ app.include_router(autonomous.router, prefix="/api/v1")
 app.include_router(monitoring.router, prefix="/api/v1")
 app.include_router(runtime_telemetry.router, prefix="/api/v1")
 app.include_router(locks.router, prefix="/api/v1")
+app.include_router(mission_lock.router, prefix="/api/v1")
 
 
 # Benchmarks
@@ -851,6 +860,11 @@ app.include_router(integrations.router, prefix="/api/v1")
 # Fax Connector Integrations (Hospitals, Legal, Government, Financial Services)
 from backend.apps.api.routers import fax
 app.include_router(fax.router, prefix="/api/v1")
+
+# Forensics Flight Recorder (Black Box Replay)
+from backend.apps.api.routers import forensics
+app.include_router(forensics.router, prefix="/api/v1")
+
 
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")
@@ -1901,6 +1915,8 @@ app.include_router(authority.router, prefix="/api/v1")
 app.include_router(authority_runs.router, prefix="/api/v1")
 
 # PGL Adapter - Agent Management
+from backend.apps.api.routers import identity_rag
+app.include_router(identity_rag.router)
 app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
 app.include_router(pgl_adapter.router, prefix="/api/v1")

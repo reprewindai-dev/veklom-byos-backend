@@ -72,7 +72,8 @@ def resolve_basename(name: str) -> str:
     return ""
 
 def get_treasury_address() -> str:
-    raw = settings.VEKLOM_TREASURY_ADDRESS.strip()
+    import os
+    raw = os.getenv("VEKLOM_TREASURY_ADDRESS", settings.VEKLOM_TREASURY_ADDRESS).strip()
     if not raw or raw == "0x0000000000000000000000000000000000000001":
         return ""
     if is_valid_evm_address(raw):
@@ -143,6 +144,23 @@ class EvidenceVerifyResponse(BaseModel):
 # Discovery Endpoint
 # ---------------------------------------------------------------------------
 
+from backend.core.middleware.x402 import _PAID_ROUTES
+
+class ApiRegistrationPayload(BaseModel):
+    name: str = Field(..., description="The user-facing name of the API being registered")
+    path: str = Field(..., description="The API path/route template to protect (e.g. /api/v1/new-api/{param})")
+    price: float = Field(..., description="The price of each API request in USDC (e.g. 0.02)")
+    description: Optional[str] = Field(None, description="Detailed description of the API capability")
+    openapi_schema_url: Optional[str] = Field(None, description="Optional URL link to the OpenAPI schema documentation")
+
+
+class ApiRegistrationResponse(BaseModel):
+    success: bool = Field(..., description="Indicates if registration succeeded")
+    registered_path: str = Field(..., description="The protected path registered")
+    price_usdc: float = Field(..., description="The registered price in USDC")
+    details: Dict[str, Any] = Field(..., description="The registered route configuration")
+
+
 @router.get("/config", response_model=X402ConfigResponse)
 async def get_x402_config():
     """Returns deterministic configuration discovery for x402."""
@@ -153,23 +171,8 @@ async def get_x402_config():
 
     is_enabled = len(missing_config) == 0
 
-    protected_routes = [
-        "/api/v1/ai/inference",
-        "/api/v1/ai/chat",
-        "/api/v1/gpc/compile",
-        "/api/v1/gpc/intent-to-plan",
-        "/api/v1/gpc/runs",
-        "/api/v1/x402/protected-test",
-        "/api/v1/forensics/replay",
-        "/api/v1/governance/simulate-policy",
-        "/api/v1/pgl/quarantine",
-        "/api/v1/x402/flash-loan",
-        "/api/v1/governance/diplomacy/negotiate-treaty",
-        "/api/v1/vnp/bounty/submit-proof",
-        "/api/v1/pgl/genealogy",
-        "/api/v1/governed/capi/compile",
-        "/api/v1/pgl/identity-rag/resolve"
-    ]
+    # Dynamically pull all protected routes directly from _PAID_ROUTES (no drift!)
+    protected_routes = list(_PAID_ROUTES.keys())
 
     return X402ConfigResponse(
         enabled=is_enabled,
@@ -188,6 +191,41 @@ async def get_x402_config():
         verification_support=SupportFlags(enabled=True),
         missing_config=missing_config,
         environment_mode=settings.APP_ENV
+    )
+
+
+@router.post("/register-api", response_model=ApiRegistrationResponse)
+async def register_api(payload: ApiRegistrationPayload):
+    """
+    Self-Registration API Endpoint (PayAPI "One-Way Ticket" Listing).
+    Dynamically registers a new niche API under the x402 protection middleware.
+    """
+    path = payload.path.strip()
+    if not path.startswith("/"):
+        path = f"/{path}"
+
+    if not path.startswith("/api/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registered paths must be standard API endpoints starting with '/api/'"
+        )
+
+    # Append/overwrite in _PAID_ROUTES
+    _PAID_ROUTES[path] = {
+        "price_usdc": payload.price,
+        "name": payload.name,
+        "free_daily": 0,
+        "description": payload.description,
+        "openapi_schema_url": payload.openapi_schema_url
+    }
+
+    logger.info(f"[PayAPI] Dynamically registered niche API listing: {path} @ ${payload.price} USDC")
+
+    return ApiRegistrationResponse(
+        success=True,
+        registered_path=path,
+        price_usdc=payload.price,
+        details=_PAID_ROUTES[path]
     )
 
 
@@ -244,7 +282,11 @@ async def verify_x402_evidence(
     
     evidence_match = (stored_evidence == body.evidence_hash)
     proof_match = (stored_proof == body.proof_hash)
-    signature_valid = bool(stored_signature and stored_signature.startswith("sig_"))
+
+    # Reconstruct expected signatures for cryptographic verification
+    expected_sig_secure = f"sig_{hashlib.sha256((body.receipt_id + body.evidence_hash + settings.SECRET_KEY).encode()).hexdigest()[:24]}"
+    expected_sig_legacy = f"sig_{hashlib.sha256((body.receipt_id + body.evidence_hash).encode()).hexdigest()[:24]}"
+    signature_valid = bool(stored_signature and (stored_signature == expected_sig_secure or stored_signature == expected_sig_legacy))
 
     valid = evidence_match and proof_match and signature_valid
     

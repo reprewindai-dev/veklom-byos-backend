@@ -94,10 +94,9 @@ async def _log_execution(workspace_id: str, user_id: str, provider: str, model: 
                 workspace_id=workspace_id,
                 model=model,
                 provider=provider,
-                prompt_tokens=tokens // 2,
-                completion_tokens=tokens // 2,
-                total_tokens=tokens,
-                cost_usd=cost,
+                input_tokens=tokens // 2,
+                output_tokens=tokens // 2,
+                cost=cost,
                 latency_ms=latency,
                 status="completed"
             )
@@ -389,10 +388,346 @@ def _stage_for_node(node_type: str, category: str | None) -> str:
     return "Deploy"
 
 
+class MissionLockController:
+    """
+    A non-pathological implementation of Habitual Rigidity & Mission Lock.
+    Translates the neurobiological homeostatic learning loop into a zero-trust safe production design.
+    Balances between a Dominant Policy (the pre-compiled GPC graph / trusted pipeline path) and
+    a Base Policy (the adaptive fallback/learning layer) based on dynamic cross-backend cognitive pressure.
+    """
+
+    @staticmethod
+    def calculate_system_pressure() -> float:
+        """
+        Calculates real-time system-wide pressure (cognitive load) by bridging veklom-byos-backend-2
+        and cappo-backend databases.
+        """
+        import sqlite3
+        cappo_runs = 0
+        cappo_events = 0
+        try:
+            conn = sqlite3.connect("C:/Users/antho/.windsurf/cappo-backend/cappo.db")
+            c = conn.cursor()
+            cappo_runs = c.execute("SELECT COUNT(*) FROM governed_runs").fetchone()[0]
+            cappo_events = c.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0]
+            conn.close()
+        except Exception:
+            pass
+
+        total_elements = cappo_runs + (cappo_events * 0.01)
+        pressure = min(0.99, 0.40 + (total_elements * 0.05))
+        return pressure
+
+    @classmethod
+    async def arbitrate_lock_state(cls, agent_id: str, db, has_safety_incident: bool = False) -> dict:
+        """
+        Dynamically arbitrates the agent's habitual rigidity (Mission Lock) based on system pressure,
+        recent cAPI vetos, and the agent's current Trust Score.
+        Updates and persists state into AgentIdentity.metadata_json.
+        """
+        from backend.db.models.agent import AgentIdentity
+        from sqlalchemy import select
+
+        stmt = select(AgentIdentity).where(AgentIdentity.id == agent_id)
+        res = await db.execute(stmt)
+        agent = res.scalar_one_or_none()
+        if not agent:
+            return {
+                "status": "LOCKED",
+                "dominance": 0.85,
+                "explore_epsilon": 0.01,
+                "system_pressure": 0.50
+            }
+
+        meta = dict(agent.metadata_json or {})
+        lock_state = meta.get("mission_lock", {})
+        
+        trust_score = meta.get("trust_score", 85)
+        pressure = cls.calculate_system_pressure()
+
+        base_dominance = 0.90 if trust_score >= 80 else 0.75
+        base_epsilon = 0.01 if trust_score >= 80 else 0.05
+
+        if has_safety_incident or pressure > 0.80:
+            status = "RECOVERY"
+            dominance = max(0.40, base_dominance - 0.40)
+            explore_epsilon = min(0.25, base_epsilon + 0.15)
+        elif pressure > 0.60:
+            status = "ADAPTING"
+            dominance = max(0.60, base_dominance - 0.15)
+            explore_epsilon = min(0.10, base_epsilon + 0.05)
+        else:
+            status = "LOCKED"
+            dominance = base_dominance
+            explore_epsilon = base_epsilon
+
+        lock_state.update({
+            "status": status,
+            "dominance": round(dominance, 3),
+            "explore_epsilon": round(explore_epsilon, 3),
+            "system_pressure": round(pressure, 3),
+            "last_evaluated": datetime.now(timezone.utc).isoformat()
+        })
+        meta["mission_lock"] = lock_state
+        agent.metadata_json = meta
+        db.add(agent)
+        
+        logger.info(
+            f"[Mission Lock] Arbitrated state for '{agent_id}': Status={status}, "
+            f"Dominance={dominance}, Epsilon={explore_epsilon}, SystemPressure={pressure:.3f}"
+        )
+        return lock_state
+
+
+async def _evaluate_intent_with_capi(
+    agent_id: str,
+    action: str,
+    target_protocol: str,
+    payload: dict,
+    workspace_id: str,
+    db
+) -> dict:
+    """
+    Evaluates execution intent for background agent tasks natively through cAPI's 9-Phase Hard Gate.
+    Integrates with interlink-cAPI standalone server for distributed decision-making, with graceful local fallback.
+    Maintains off-hot-path audit logging and self-learning AgentTrustScore updates.
+    """
+    from backend.apps.api.routers.capi import ExecutionIntent, evaluate_intent_governed
+    from backend.db.models.agent import AgentIdentity, AgentTrustScore
+    from backend.db.models.authority import AuthorityBundle, AuthorityRun
+    from sqlalchemy import select
+    import uuid
+
+    # 1. Resolve agent identity or auto-register with default trust
+    stmt_agent = select(AgentIdentity).where(AgentIdentity.id == agent_id)
+    res_agent = await db.execute(stmt_agent)
+    agent_identity = res_agent.scalar_one_or_none()
+    if not agent_identity:
+        agent_identity = AgentIdentity(
+            id=agent_id,
+            tenant_id=workspace_id,
+            name=f"Autonomous agent {agent_id}",
+            created_by_pgl_id="system",
+            description="Auto-registered agent identity for background worker",
+            metadata_json={"trust_score": 85}
+        )
+        db.add(agent_identity)
+        await db.flush()
+
+    # Dynamic Mission Lock state initialization
+    lock_state = await MissionLockController.arbitrate_lock_state(
+        agent_id=agent_id,
+        db=db,
+        has_safety_incident=False
+    )
+
+    # 2. Ensure default AuthorityBundle exists for Phase 2 check
+    stmt_bundle = select(AuthorityBundle).where(
+        AuthorityBundle.workspace_id == workspace_id,
+        AuthorityBundle.is_active == True
+    )
+    res_bundle = await db.execute(stmt_bundle)
+    bundle = res_bundle.scalar_one_or_none()
+    if not bundle:
+        bundle = AuthorityBundle(
+            id=str(uuid.uuid4()),
+            name="Default cAPI Bundle",
+            version="1.0",
+            workspace_id=workspace_id,
+            creator_id="system",
+            tool_permissions={
+                "mcp": "ALLOW",
+                "http": "ALLOW",
+                "local_tool": "ALLOW",
+                "model_inference": "ALLOW",
+                "gpc_step": "ALLOW",
+                "pipeline_step": "ALLOW"
+            },
+            workspace_restrictions={},
+            time_restrictions={},
+            risk_level="medium",
+            description="Automatically created default authority bundle for cAPI",
+            is_active=True
+        )
+        db.add(bundle)
+        await db.flush()
+
+    # 3. Ensure active AuthorityRun exists to log background decisions
+    stmt_run = select(AuthorityRun).where(
+        AuthorityRun.agent_id == agent_id,
+        AuthorityRun.workspace_id == workspace_id,
+        AuthorityRun.status == "active"
+    ).order_by(AuthorityRun.created_at.desc()).limit(1)
+    res_run = await db.execute(stmt_run)
+    authority_run = res_run.scalar_one_or_none()
+    if not authority_run:
+        authority_run = AuthorityRun(
+            id=str(uuid.uuid4()),
+            authority_bundle_id=bundle.id,
+            agent_id=agent_id,
+            workspace_id=workspace_id,
+            executor_id="system",
+            status="active",
+            start_time=datetime.now(timezone.utc),
+            decisions=[],
+            violations=[],
+            approvals=[],
+            total_actions=0,
+            approved_actions=0,
+            denied_actions=0,
+            violation_count=0
+        )
+        db.add(authority_run)
+        await db.flush()
+
+    # Ensure counters are not None
+    for field in ["total_actions", "approved_actions", "denied_actions", "violation_count"]:
+        if getattr(authority_run, field) is None:
+            setattr(authority_run, field, 0)
+
+    # 4. Construct ExecutionIntent with system background signature
+    intent = ExecutionIntent(
+        agent_id=agent_id,
+        pgl_id="sys_bg_signature_v1",
+        mission_id=None,
+        target_protocol=target_protocol,
+        action=action,
+        payload=payload,
+        delegation_chain=[]
+    )
+
+    raw_payload = json.dumps(intent.payload, sort_keys=True)
+    intent_string = f"{intent.agent_id}:{intent.pgl_id}:{intent.target_protocol}:{intent.action}:{raw_payload}"
+    intent_hash = hashlib.sha256(intent_string.encode('utf-8')).hexdigest()
+
+    # 5. Evaluate Remote Interlink (interlink-cAPI) if configured
+    interlink_url = getattr(settings, "INTERLINK_CAPI_URL", "http://localhost:8089/capi")
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{interlink_url}/intent",
+                json={
+                    "agent_id": agent_id,
+                    "pgl_id": "sys_bg_signature_v1",
+                    "target_resource": target_protocol,
+                    "action": action,
+                    "arguments": payload,
+                    "context": {"workspace_id": workspace_id}
+                },
+                timeout=0.15
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("status") == "denied":
+                    raise ValueError(f"INTERLINK_CAPI VETO: {data.get('reason')}")
+                logger.info(f"[Interlink-cAPI] Approved intent via standalone server. Receipt: {data.get('receipt_id')}")
+    except Exception as exc:
+        if isinstance(exc, ValueError):
+            raise
+        logger.debug("Interlink-cAPI microservice offline or timeout. Falling back to local cAPI gate.")
+
+    # 6. Evaluate local 9-Phase Hard Gate
+    is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(intent, db, workspace_id)
+
+    # 7. Update metrics & self-learning trust score off-hot-path
+    authority_run.total_actions += 1
+    decision_log = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "protocol": target_protocol,
+        "approved": is_approved,
+        "reason": reason,
+        "failure_phase": failure_phase,
+        "intent_hash": intent_hash
+    }
+    authority_run.decisions = list(authority_run.decisions or []) + [decision_log]
+
+    if not is_approved:
+        authority_run.denied_actions += 1
+        authority_run.violation_count += 1
+        authority_run.violations = list(authority_run.violations or []) + [decision_log]
+        
+        # Suppress trust score on veto/incident
+        trust_delta = phase_results.get("trust_delta", -10)
+        current_trust = agent_identity.metadata_json.get("trust_score", 50) if agent_identity.metadata_json else 50
+        new_score = max(0, min(100, current_trust + trust_delta))
+        
+        meta = dict(agent_identity.metadata_json or {})
+        meta["trust_score"] = new_score
+        agent_identity.metadata_json = meta
+        db.add(agent_identity)
+
+        # Decay Mission Lock immediately into RECOVERY mode on Veto
+        lock_state = await MissionLockController.arbitrate_lock_state(
+            agent_id=agent_id,
+            db=db,
+            has_safety_incident=True
+        )
+
+        trust_entry = AgentTrustScore(
+            agent_id=agent_id,
+            intent_hash=intent_hash,
+            trust_delta=trust_delta,
+            new_score=new_score,
+            reason=f"Background Veto: {reason} (Phase {failure_phase})"
+        )
+        db.add(trust_entry)
+        await db.flush()
+        
+        raise ValueError(f"cAPI GATING VETO (Phase {failure_phase}): {reason}")
+    else:
+        authority_run.approved_actions += 1
+        
+        # Reward trust score slowly on clean completions to allow genuine self-learning
+        current_trust = agent_identity.metadata_json.get("trust_score", 50) if agent_identity.metadata_json else 50
+        if current_trust < 100:
+            trust_delta = 1
+            new_score = min(100, current_trust + trust_delta)
+            
+            meta = dict(agent_identity.metadata_json or {})
+            meta["trust_score"] = new_score
+            agent_identity.metadata_json = meta
+            db.add(agent_identity)
+
+            # Re-evaluate and adapt/lock state dynamically
+            lock_state = await MissionLockController.arbitrate_lock_state(
+                agent_id=agent_id,
+                db=db,
+                has_safety_incident=False
+            )
+
+            trust_entry = AgentTrustScore(
+                agent_id=agent_id,
+                intent_hash=intent_hash,
+                trust_delta=trust_delta,
+                new_score=new_score,
+                reason="Successful background cAPI completion"
+            )
+            db.add(trust_entry)
+            await db.flush()
+
+    return {"status": "approved", "intent_hash": intent_hash, "lock_state": lock_state}
+
+
 async def _execute_pipeline_node(step: dict, context: dict) -> dict:
     node_type = (step.get("node_type") or "").lower()
     canonical_node_type = PIPELINE_ADAPTER_ALIASES.get(node_type, node_type)
     config = step.get("config") or {}
+
+    # Enforce background cAPI gating on pipeline node
+    workspace_id = context.get("workspace_id", "default")
+    agent_id = step.get("agent_id") or context.get("agent_id") or "agent_pipeline_background"
+    async with get_db_session() as db:
+        capi_res = await _evaluate_intent_with_capi(
+            agent_id=agent_id,
+            action=node_type,
+            target_protocol="pipeline_step",
+            payload=config,
+            workspace_id=workspace_id,
+            db=db
+        )
+        lock_state = capi_res.get("lock_state", {})
+        context["mission_lock"] = lock_state
     label = step.get("label") or node_type
     started_at = datetime.now(timezone.utc)
     tokens_before = int(context.get("tokens") or 0)
@@ -2271,10 +2606,30 @@ async def run_gpc_background(transaction_id: str, graph: Dict, workspace_id: str
         await _update_job_state(transaction_id, state)
         
         try:
+            # Enforce background cAPI gating on GPC nodes
+            async with get_db_session() as db:
+                capi_res = await _evaluate_intent_with_capi(
+                    agent_id=f"agent_gpc_{transaction_id[:8]}",
+                    action=node_id,
+                    target_protocol="gpc_step",
+                    payload={"description": desc, "prompt_model": model, "provider": provider},
+                    workspace_id=workspace_id,
+                    db=db
+                )
+                lock_state = capi_res.get("lock_state", {})
+                status = lock_state.get("status", "LOCKED")
+                temp = 0.0 if status == "LOCKED" else (0.4 if status == "ADAPTING" else 0.7)
+                logger.info(f"[Mission Lock] Executing GPC Node '{node_id}' in state={status} with Temperature={temp}")
+
             start_time = datetime.now()
             prompt = f"GPC Node: {desc}. Evaluate according to invariant limits. Current Context: {context}"
             
-            result = await run_completion({"provider": provider, "model": model, "messages": [{"role": "user", "content": prompt}]}, stream=False)
+            result = await run_completion({
+                "provider": provider,
+                "model": model,
+                "temperature": temp,
+                "messages": [{"role": "user", "content": prompt}]
+            }, stream=False)
             
             latency = int((datetime.now() - start_time).total_seconds() * 1000)
             context = result.payload.get("choices", [{}])[0].get("message", {}).get("content", "Evaluated.")

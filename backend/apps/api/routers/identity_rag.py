@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.core.database import get_rls_db
+from backend.core.security.auth import get_rls_db
 from backend.schemas.identity_rag import IdentityRAGResolveRequest, GoldenRecordResponse
 from backend.db.repositories.identity_rag_repo import resolve_identity_golden_record
 from backend.core.security.payment_proof import require_payment_proof

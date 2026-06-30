@@ -152,8 +152,17 @@ async def get_current_user(
             if not any(request.url.path.endswith(p) for p in allowed_paths):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
 
-        user.last_activity = datetime.utcnow()
-        await db.commit()
+        now = datetime.utcnow()
+        should_update = True
+        if user.last_activity:
+            last_activity_naive = user.last_activity.replace(tzinfo=None)
+            if (now - last_activity_naive).total_seconds() < 300:
+                should_update = False
+
+        if should_update:
+            user.last_activity = now
+            await db.commit()
+
         return user
 
 
@@ -241,8 +250,18 @@ async def get_current_user_optional(
         status_value = (user.status or "").upper()
         if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
             return _GUEST_USER
-        user.last_activity = datetime.utcnow()
-        await db.commit()
+
+        now = datetime.utcnow()
+        should_update = True
+        if user.last_activity:
+            last_activity_naive = user.last_activity.replace(tzinfo=None)
+            if (now - last_activity_naive).total_seconds() < 300:
+                should_update = False
+
+        if should_update:
+            user.last_activity = now
+            await db.commit()
+
         return user
 
 
@@ -268,8 +287,17 @@ async def get_current_user_or_api_key(
                 user_res = await db.execute(select(User).where(User.id == key.user_id))
                 user = user_res.scalar_one_or_none()
                 if user and user.status == "active":
-                    user.last_activity = datetime.now(timezone.utc)
-                    await db.commit()
+                    now = datetime.utcnow()
+                    should_update = True
+                    if user.last_activity:
+                        last_activity_naive = user.last_activity.replace(tzinfo=None)
+                        if (now - last_activity_naive).total_seconds() < 300:
+                            should_update = False
+
+                    if should_update:
+                        user.last_activity = now
+                        await db.commit()
+
                     return user
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or inactive API Key")
 

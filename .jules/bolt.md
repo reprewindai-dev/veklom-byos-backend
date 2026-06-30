@@ -1,3 +1,6 @@
 ## 2025-02-24 - [Optimize PII Detection overlap]
 **Learning:** Checking for overlap using a generator expression inside an `any()` inside a loop leads to $O(N^2)$ worst-case time complexity, which causes performance bottlenecks for large documents processing lots of PII.
 **Action:** Use Python's `bisect` module for interval tracking and overlap detection. Maintaining an ordered list drops the search to $O(\log N)$, and then only checking adjacent overlaps provides near-linear processing time, preventing performance scaling issues for documents.
+## 2025-06-30 - [Database Thrashing on Auth Dependencies]
+**Learning:** The FastAPI `Depends` functions for `get_current_user`, `get_current_user_optional`, and `get_current_user_or_api_key` were performing an `await db.commit()` on every single request just to update `user.last_activity`. This meant that all read-only API requests effectively became database write operations, thrashing the `User` table row with write lock contention.
+**Action:** When implementing or updating user activity tracking, always implement a throttle/cooldown (e.g. 5 minutes) before issuing a database write, otherwise you lose the benefits of read-heavy route performance.

@@ -249,7 +249,7 @@ test.describe('Veklom smoke', () => {
   });
 
   test('@smoke headers: CSP/TLS/CORS sane', async ({ request }) => {
-    const resp = await waitForResponseStatus(request, BASE, [200], 'public landing headers');
+    const resp = await waitForResponseStatus(request, API, [200], 'public landing headers');
 
     const csp = resp.headers()['content-security-policy'];
     expect(csp, 'CSP present').toBeTruthy();

@@ -139,7 +139,7 @@ def discover_router_mounts() -> list[tuple[str, str]]:
 
 
 def route_declarations(source: str) -> set[tuple[str, str]]:
-    """Collect `@router.<method>('/path')` declarations from router source."""
+    """Collect `@router.<method>('/path')` and `@router.api_route(...)` declarations from router source."""
     tree = ast.parse(source)
     routes: set[tuple[str, str]] = set()
     for node in ast.walk(tree):
@@ -149,16 +149,34 @@ def route_declarations(source: str) -> set[tuple[str, str]]:
             if not isinstance(decorator, ast.Call):
                 continue
             func = decorator.func
-            if not (
-                isinstance(func, ast.Attribute)
-                and func.attr.lower() in HTTP_METHODS
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "router"
-            ):
+            if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "router"):
                 continue
-            route_path = literal_string(decorator.args[0]) if decorator.args else None
-            if route_path and route_path.startswith("/"):
-                routes.add((func.attr.upper(), route_path))
+
+            # Check @router.get(...)
+            if func.attr.lower() in HTTP_METHODS:
+                route_path = literal_string(decorator.args[0]) if decorator.args else None
+                if route_path and route_path.startswith("/"):
+                    routes.add((func.attr.upper(), route_path))
+
+            # Check @router.api_route(..., methods=["..."])
+            elif func.attr == "api_route":
+                route_path = literal_string(decorator.args[0]) if decorator.args else None
+                if not route_path or not route_path.startswith("/"):
+                    continue
+
+                methods = []
+                for kw in decorator.keywords:
+                    if kw.arg == "methods" and isinstance(kw.value, ast.List):
+                        for el in kw.value.elts:
+                            val = literal_string(el)
+                            if val:
+                                methods.append(val.upper())
+
+                if not methods:
+                    methods = ["GET"] # default for api_route
+
+                for method in methods:
+                    routes.add((method, route_path))
     return routes
 
 

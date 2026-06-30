@@ -957,8 +957,9 @@ def _mount_static():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-    if TERMINAL_DIR.exists():
-        app.mount("/terminal", StaticFiles(directory=str(TERMINAL_DIR), html=True), name="terminal")
+    # Legacy static /terminal mount disabled to allow Next.js decoupled redirects
+    # if TERMINAL_DIR.exists():
+    #     app.mount("/terminal", StaticFiles(directory=str(TERMINAL_DIR), html=True), name="terminal")
     if WORKSPACE_NEXT_DIR.exists():
         app.mount("/workspace-next", StaticFiles(directory=str(WORKSPACE_NEXT_DIR), html=True), name="workspace-next")
     if SOVEREIGN_CONTROL_NODE_DIR.exists():
@@ -1000,6 +1001,16 @@ async def redirect_workspace_root(request: Request):
     from fastapi.responses import RedirectResponse
     query_str = f"?{request.url.query}" if request.url.query else ""
     return RedirectResponse(url=f"https://control.veklom.com/dashboard/{query_str}", status_code=307)
+
+
+@app.get("/terminal")
+@app.get("/terminal/")
+@app.get("/terrrinal")
+@app.get("/terrrinal/")
+async def redirect_terminal_root(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com/terminal/{query_str}", status_code=307)
 
 
 @app.get("/control-plane-next/subscription/")

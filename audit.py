@@ -149,16 +149,23 @@ def route_declarations(source: str) -> set[tuple[str, str]]:
             if not isinstance(decorator, ast.Call):
                 continue
             func = decorator.func
-            if not (
-                isinstance(func, ast.Attribute)
-                and func.attr.lower() in HTTP_METHODS
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "router"
-            ):
-                continue
-            route_path = literal_string(decorator.args[0]) if decorator.args else None
-            if route_path and route_path.startswith("/"):
-                routes.add((func.attr.upper(), route_path))
+            if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "router":
+                if func.attr.lower() in HTTP_METHODS:
+                    route_path = literal_string(decorator.args[0]) if decorator.args else None
+                    if route_path and route_path.startswith("/"):
+                        routes.add((func.attr.upper(), route_path))
+                elif func.attr == 'api_route':
+                    route_path = literal_string(decorator.args[0]) if decorator.args else None
+                    methods = []
+                    for keyword in decorator.keywords:
+                        if keyword.arg == 'methods' and isinstance(keyword.value, ast.List):
+                            methods = [literal_string(elt) for elt in keyword.value.elts if literal_string(elt)]
+                    if not methods:
+                        methods = ['GET']
+                    if route_path and route_path.startswith("/"):
+                        for method in methods:
+                            if method:
+                                routes.add((method.upper(), route_path))
     return routes
 
 

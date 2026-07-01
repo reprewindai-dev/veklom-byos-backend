@@ -152,8 +152,12 @@ async def get_current_user(
             if not any(request.url.path.endswith(p) for p in allowed_paths):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
 
-        user.last_activity = datetime.utcnow()
-        await db.commit()
+        # Performance optimization: Throttle last_activity updates to reduce DB writes and lock contention.
+        # Only update every 5 minutes (300 seconds) rather than on every API request.
+        now = datetime.utcnow()
+        if not user.last_activity or (now - user.last_activity).total_seconds() > 300:
+            user.last_activity = now
+            await db.commit()
         return user
 
 
@@ -241,8 +245,12 @@ async def get_current_user_optional(
         status_value = (user.status or "").upper()
         if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
             return _GUEST_USER
-        user.last_activity = datetime.utcnow()
-        await db.commit()
+        # Performance optimization: Throttle last_activity updates to reduce DB writes and lock contention.
+        # Only update every 5 minutes (300 seconds) rather than on every API request.
+        now = datetime.utcnow()
+        if not user.last_activity or (now - user.last_activity).total_seconds() > 300:
+            user.last_activity = now
+            await db.commit()
         return user
 
 

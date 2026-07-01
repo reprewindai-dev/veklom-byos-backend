@@ -43,25 +43,45 @@ async def intent_to_plan(body: dict, user=Depends(get_current_user_optional), db
     model = body.get("model", "qwen2.5:3b")
 
     prompt = f"""
-You are an expert AI architecture generator for the Veklom Control Plane.
-A user has provided the following "messy" natural language description for a new data pipeline or agent workflow:
+You are an expert AI data engineering architecture generator for the Veklom GPC (Generative Pipeline Compiler).
+A user has provided the following "messy" natural language description for a new Python ETL pipeline:
 "{intent}"
 
 Convert this intent into a STRICT valid JSON output matching this structure:
 {{
   "nodes": [
-    {{"id": "node_id_1", "type": "input", "position": {{"x": 100, "y": 100}}, "data": {{"label": "Node Label", "nodeType": "input"}}}},
+    {{
+      "id": "node_id_1", 
+      "type": "data", 
+      "position": {{"x": 100, "y": 120}}, 
+      "data": {{
+        "label": "Node Label", 
+        "nodeType": "CsvFileInput"
+      }}
+    }},
     ...
   ],
   "edges": [
     {{"id": "e_node_id_1_node_id_2", "source": "node_id_1", "target": "node_id_2"}}
   ],
   "node_configs": {{
-    "node_id_1": {{"policy": "inherit", "requireEvidence": true}}
+    "node_id_1": {{
+      "filePath": "input.csv",
+      "sep": ","
+    }}
   }}
 }}
 
-Available nodeType values include: "input", "pgvector", "llm-qwen2.5:3b", "output", "policy-gate", "webhook", "ask-human", "human-approval".
+Available values for "nodeType" include:
+1. "CsvFileInput" (Required configs: "filePath": str, "sep": str (usually ","))
+2. "FilterRows" (Required configs: "column": str, "value": str)
+3. "Aggregate" (Required configs: "groupBy": str, "aggregateColumn": str, "aggregateFunction": str (sum, mean, count, min, max))
+4. "SelectColumns" (Required configs: "columns": list of str)
+5. "ParquetOutput" (Required configs: "outputPath": str)
+6. "DuckDBQuery" (Required configs: "sqlQuery": str)
+
+Assign beautiful, logical "label" values like "Load CSV", "Filter Active", "Group by Status", "Output Parquet", etc.
+Ensure nodes are laid out horizontally from left to right by incrementing their position "x" coordinates (e.g. x=100, x=300, x=500, x=700).
 Return ONLY valid JSON and nothing else. Do not wrap in markdown code blocks.
 """
 
@@ -78,18 +98,18 @@ Return ONLY valid JSON and nothing else. Do not wrap in markdown code blocks.
         # Fallback if LLM fails
         graph_data = {
             "nodes": [
-                {"id": "n1", "type": "input", "position": {"x": 50, "y": 100}, "data": {"label": "Messy Input", "nodeType": "input"}},
-                {"id": "n2", "type": "routing", "position": {"x": 300, "y": 100}, "data": {"label": "AI Generation", "nodeType": "llm-qwen2.5:3b"}},
-                {"id": "n3", "type": "output", "position": {"x": 550, "y": 100}, "data": {"label": "Execution Output", "nodeType": "output"}},
+                {"id": "n1", "type": "data", "position": {"x": 100, "y": 120}, "data": {"label": "Load CSV", "nodeType": "CsvFileInput"}},
+                {"id": "n2", "type": "data", "position": {"x": 320, "y": 120}, "data": {"label": "Filter Status", "nodeType": "FilterRows"}},
+                {"id": "n3", "type": "data", "position": {"x": 540, "y": 120}, "data": {"label": "Export Parquet", "nodeType": "ParquetOutput"}},
             ],
             "edges": [
-                {"id": "e12", "source": "n1", "target": "n2"},
-                {"id": "e23", "source": "n2", "target": "n3"}
+                {"id": "e_n1_n2", "source": "n1", "target": "n2"},
+                {"id": "e_n2_n3", "source": "n2", "target": "n3"}
             ],
             "node_configs": {
-                "n1": {"policy": "inherit", "requireEvidence": True},
-                "n2": {"provider": "ollama", "model": "qwen2.5:3b", "policy": "cost_quality_balanced", "requireEvidence": True},
-                "n3": {"outputSchema": "signed_json", "requireEvidence": True}
+                "n1": {"filePath": "input.csv", "sep": ","},
+                "n2": {"column": "status", "value": "active"},
+                "n3": {"outputPath": "output.parquet"}
             }
         }
 
@@ -106,7 +126,8 @@ Return ONLY valid JSON and nothing else. Do not wrap in markdown code blocks.
             "nodes": len(graph_data.get("nodes", [])),
             "vectorStore": "pgvector",
             "invocations": 0,
-            "lastRun": "—"
+            "lastRun": "—",
+            "graph": graph_data  # Crucial bridge: Save the visual graph inside the steps["graph"] field
         },
         config_json=graph_data
     )

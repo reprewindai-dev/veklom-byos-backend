@@ -211,7 +211,7 @@ class PipelineExecutionTrace(BaseModel):
     
     # Compliance metadata
     error_details: Optional[str] = Field(default=None, description="Failure reason if applicable")
-    compliance_checks: Dict[str, bool] = Field(
+    compliance_checks: Dict[str, Any] = Field(
         default_factory=dict,
         description="PIPEDA/Law25 checks: {pipeda_consent: True, law25_pia_reference: ...}"
     )

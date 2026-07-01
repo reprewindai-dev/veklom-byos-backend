@@ -57,8 +57,8 @@ class GPCNode(BaseModel):
     @field_validator('id')
     @classmethod
     def validate_id(cls, v):
-        if not v or len(v) < 3:
-            raise ValueError("Node ID must be at least 3 characters")
+        if not v or len(v) < 1:
+            raise ValueError("Node ID must be at least 1 character")
         return v
 
 
@@ -162,7 +162,7 @@ class GPCComponentDefinition(BaseModel):
 class PipelineCompilationRequest(BaseModel):
     """Request to compile a pipeline graph into Python code."""
     pipeline_id: str = Field(..., description="Pipeline to compile")
-    tenant_id: str = Field(..., description="Executing tenant")
+    tenant_id: Optional[str] = Field(default=None, description="Executing tenant")
     target_node_id: Optional[str] = Field(default=None, description="If set, compile only this node and ancestors")
 
 
@@ -225,7 +225,7 @@ class PipelineExecutionTrace(BaseModel):
 
 class NLToGraphRequest(BaseModel):
     """Request to convert natural language to a pipeline graph."""
-    tenant_id: str = Field(..., description="Tenant making request")
+    tenant_id: Optional[str] = Field(default=None, description="Tenant making request")
     user_intent: str = Field(..., description="Messy natural language description of intent")
     available_components: Optional[List[str]] = Field(
         default=None,

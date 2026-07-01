@@ -381,12 +381,14 @@ class GPCCompiler:
                 if not component_class:
                     raise ValueError(f"Unknown component type: {node.node_type}")
                 
+                req_imports = ["import duckdb"] if node.node_type == "DuckDBQuery" else ["import pandas as pd"]
                 component = component_class(
                     GPCComponentDefinition(
                         node_type=node.node_type,
                         display_name=node.label or node.node_type,
                         category="transform",
-                        code_generator_class=component_class.__name__
+                        code_generator_class=component_class.__name__,
+                        required_imports=req_imports
                     )
                 )
                 

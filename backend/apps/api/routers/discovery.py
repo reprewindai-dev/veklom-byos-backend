@@ -38,7 +38,7 @@ VEKLOM_PRICING = {
     "x402_search":         {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Search"},
     "x402_evaluate":       {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Evaluate"},
     "x402_governance":     {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Governance"},
-    "x402_score":          {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Score"},
+    "x402_score":          {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Score"},
     "x402_verify":         {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Verify"},
     # Specialized Sovereign Agentic Security & Settlement APIs (Niche Catalog)
     "forensics_replay":    {"price_usdc": 0.020, "unit": "per replay",   "name": "Sovereign Forensics Replay (Time-Travel Audit)"},

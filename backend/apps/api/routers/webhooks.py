@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
+from backend.core.security.auth import get_current_user
 from backend.db.models.workspace import Workspace
 from backend.db.models.pipelines import Deployment
 

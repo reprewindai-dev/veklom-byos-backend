@@ -9,15 +9,17 @@ async def require_payment_proof(request: Request) -> dict:
     Checks payment-signature, Payment-Signature, X-Payment-Proof, and X-Payment.
     """
     proof_header = (
+        request.headers.get("x-payment") or 
+        request.headers.get("X-Payment") or 
+        request.headers.get("X-PAYMENT") or 
         request.headers.get("payment-signature") or 
         request.headers.get("Payment-Signature") or 
-        request.headers.get("X-Payment-Proof") or 
-        request.headers.get("X-Payment")
+        request.headers.get("X-Payment-Proof")
     )
     if not proof_header:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Missing payment-signature or X-Payment-Proof header for governed execution."
+            detail="Missing X-PAYMENT or payment-signature header for governed execution."
         )
     
     try:

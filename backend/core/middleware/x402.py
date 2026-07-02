@@ -275,7 +275,7 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
     
     # Construct standard CDP x402 v2 payment required payload object
     v2_payload_obj = {
-        "x402Version": "2.0.0",
+        "x402Version": 2,
         "resource": {
             "url": f"https://api.veklom.com{path}",
             "description": route_config.get("name", "Veklom Protected API Endpoint")
@@ -286,7 +286,12 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
                 "network": "eip155:8453",
                 "amount": str(int(route_config["price_usdc"] * 1_000_000)),
                 "asset": VEKLOM_USDC_ADDR,
-                "payTo": get_treasury_address()
+                "payTo": get_treasury_address(),
+                "maxTimeoutSeconds": 86400,
+                "extra": {
+                    "name": "USD Coin",
+                    "version": "2"
+                }
             }
         ]
     }
@@ -295,7 +300,7 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
 
     payload = {
         "error": "payment_required",
-        "x402_version": "2.0.0",
+        "x402_version": 2,
         "challenge_id": challenge_id,
         "nonce": nonce,
         "amount": route_config["price_usdc"],
@@ -306,7 +311,7 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
         "route": path,
         "method": method,
         "expires_at": expires_at,
-        "proof_header_name": "payment-signature",
+        "proof_header_name": "X-PAYMENT",
         "payment_requirements": {
             "asset_contract": VEKLOM_USDC_ADDR,
             "destination": get_treasury_address(),
@@ -366,10 +371,12 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     from backend.core.database.redis_client import redis_client
 
     proof = (
+        request.headers.get("x-payment") or 
+        request.headers.get("X-Payment") or 
+        request.headers.get("X-PAYMENT") or 
         request.headers.get("payment-signature") or 
         request.headers.get("Payment-Signature") or 
-        request.headers.get("X-Payment-Proof") or 
-        request.headers.get("X-Payment")
+        request.headers.get("X-Payment-Proof")
     )
     if not proof:
         request.state.x402_error = "missing_payment_proof"
@@ -886,10 +893,12 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             
             tx_hash = (
+                request.headers.get("x-payment") or 
+                request.headers.get("X-Payment") or 
+                request.headers.get("X-PAYMENT") or 
                 request.headers.get("payment-signature") or 
                 request.headers.get("Payment-Signature") or 
                 request.headers.get("X-Payment-Proof") or 
-                request.headers.get("X-Payment") or 
                 "test_tx"
             )
             from backend.core.database.database import get_db_session

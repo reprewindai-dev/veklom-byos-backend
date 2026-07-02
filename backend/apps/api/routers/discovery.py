@@ -189,7 +189,7 @@ async def x402_json():
 
     return JSONResponse({
         "enabled": is_enabled,
-        "x402_version": "2.0.0",
+        "x402_version": 2,
         "accepted_assets": [
             {"asset": VEKLOM_USDC_ADDRESS, "symbol": "USDC", "decimals": 6}
         ],
@@ -198,7 +198,7 @@ async def x402_json():
         "pay_to": treasury,
         "treasury": treasury,
         "protected_routes": protected_routes,
-        "proof_header_name": "payment-signature",
+        "proof_header_name": "X-PAYMENT",
         "challenge_ttl_seconds": 300,
         "replay_protection": {
             "enabled": True,

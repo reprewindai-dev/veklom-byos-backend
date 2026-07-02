@@ -6,7 +6,7 @@ receipt/evidence verification, replay checks, and protected route compilation te
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, Header, status, Request
@@ -100,7 +100,7 @@ class SupportFlags(BaseModel):
 
 class X402ConfigResponse(BaseModel):
     enabled: bool = Field(..., description="Is x402 payment active globally")
-    x402_version: str = Field(..., description="x402 protocol specification version")
+    x402_version: Union[int, str] = Field(..., description="x402 protocol specification version")
     accepted_assets: List[Dict[str, Any]] = Field(..., description="List of accepted ERC20 token assets")
     network: str = Field(..., description="Settlement layer network name")
     chain_id: int = Field(..., description="EVM chain ID for the network")
@@ -176,7 +176,7 @@ async def get_x402_config():
 
     return X402ConfigResponse(
         enabled=is_enabled,
-        x402_version="2.0.0",
+        x402_version=2,
         accepted_assets=[
             {"asset": VEKLOM_USDC_ADDRESS, "symbol": "USDC", "decimals": 6}
         ],
@@ -184,7 +184,7 @@ async def get_x402_config():
         chain_id=8453,
         pay_to=treasury,
         protected_routes=protected_routes,
-        proof_header_name="payment-signature",
+        proof_header_name="X-PAYMENT",
         challenge_ttl_seconds=300,
         replay_protection=ReplayProtectionInfo(enabled=True, backend="redis"),
         receipt_support=SupportFlags(enabled=True),

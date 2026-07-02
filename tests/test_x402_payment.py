@@ -49,17 +49,17 @@ async def test_x402_comprehensive():
         assert disc_data == disc_resp_unsuffixed.json()
 
         assert "enabled" in disc_data
-        assert disc_data["x402_version"] == "2.0.0"
+        assert disc_data["x402_version"] == 2
         assert "replay_protection" in disc_data
-        assert disc_data["proof_header_name"] == "payment-signature"
+        assert disc_data["proof_header_name"] == "X-PAYMENT"
 
         config_resp = client.get("/api/v1/x402/config")
         assert config_resp.status_code == 200
         config_data = config_resp.json()
         assert config_data["enabled"] is True
         assert config_data["chain_id"] == 8453
-        assert config_data["x402_version"] == "2.0.0"
-        assert config_data["proof_header_name"] == "payment-signature"
+        assert config_data["x402_version"] == 2
+        assert config_data["proof_header_name"] == "X-PAYMENT"
         assert config_data["environment_mode"] == settings.APP_ENV
 
         # Assertion 2: Discovery with missing config sets enabled=False
@@ -77,7 +77,7 @@ async def test_x402_comprehensive():
         assert response.status_code == 402
         challenge = response.json()
         assert challenge["error"] == "payment_required"
-        assert challenge["x402_version"] == "2.0.0"
+        assert challenge["x402_version"] == 2
         assert "challenge_id" in challenge
         assert "nonce" in challenge
         assert challenge["amount"] == 0.025
@@ -86,7 +86,7 @@ async def test_x402_comprehensive():
         assert challenge["route"] == "/api/v1/x402/protected-test"
         assert challenge["method"] == "POST"
         assert "expires_at" in challenge
-        assert challenge["proof_header_name"] == "payment-signature"
+        assert challenge["proof_header_name"] == "X-PAYMENT"
 
         # Assertion 3.2: 402 Headers exist on response
         assert response.headers.get("X-Payment-Required") == "true"
@@ -98,7 +98,7 @@ async def test_x402_comprehensive():
         assert "Payment-Required" in response.headers
         v2_b64 = response.headers["payment-required"]
         v2_payload = json.loads(base64.b64decode(v2_b64).decode("utf-8"))
-        assert v2_payload["x402Version"] == "2.0.0"
+        assert v2_payload["x402Version"] == 2
         assert "resource" in v2_payload
         assert v2_payload["resource"]["url"] == "https://api.veklom.com/api/v1/x402/protected-test"
         assert len(v2_payload["accepts"]) == 1
@@ -108,6 +108,9 @@ async def test_x402_comprehensive():
         assert accepts["amount"] == "25000"  # 0.025 * 1_000_000
         assert accepts["asset"] == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
         assert accepts["payTo"] == os.environ["VEKLOM_TREASURY_ADDRESS"]
+        assert accepts["maxTimeoutSeconds"] == 86400
+        assert accepts["extra"]["name"] == "USD Coin"
+        assert accepts["extra"]["version"] == "2"
 
         # C. PROOF VERIFICATION ASSERTIONS
         # Enable dev test proof mode for validation
@@ -115,11 +118,11 @@ async def test_x402_comprehensive():
 
         # Assertion 4: Missing proof is rejected (Already proven via 402 response)
         
-        # Assertion 5: Malformed/Invalid proof is rejected using standard payment-signature header
+        # Assertion 5: Malformed/Invalid proof is rejected using standard X-Payment header
         response = client.post(
             "/api/v1/x402/protected-test",
             json=test_payload,
-            headers={"payment-signature": "test_proof_invalid"}
+            headers={"X-Payment": "test_proof_invalid"}
         )
         assert response.status_code == 402
         assert response.json()["detail"] == "invalid_transaction"
@@ -127,11 +130,11 @@ async def test_x402_comprehensive():
         # Assertion 6: Replayed proof is rejected
         valid_proof = f"test_proof_valid_{uuid.uuid4().hex[:8]}"
         
-        # Use first time with standard header -> Success (200)
+        # Use first time with standard X-Payment header -> Success (200)
         response = client.post(
             "/api/v1/x402/protected-test",
             json=test_payload,
-            headers={"payment-signature": valid_proof}
+            headers={"X-Payment": valid_proof}
         )
         assert response.status_code == 200
         assert response.headers.get("X-Payment-Test-Mode") == "true"
@@ -139,11 +142,11 @@ async def test_x402_comprehensive():
         receipt_id = response.headers["X-Veklom-Receipt-ID"]
         evidence_hash = response.headers["X-Veklom-Evidence-ID"]
         
-        # Use second time -> Replay Rejected (402)
+        # Use second time -> Replay Rejected (402) - verify we also check X-PAYMENT header
         response = client.post(
             "/api/v1/x402/protected-test",
             json=test_payload,
-            headers={"payment-signature": valid_proof}
+            headers={"X-PAYMENT": valid_proof}
         )
         assert response.status_code == 402
         assert response.json()["detail"] == "replay_detected"
@@ -178,7 +181,7 @@ async def test_x402_comprehensive():
         verify_resp = client.post(
             "/api/v1/x402/verify", 
             json=verify_payload,
-            headers={"payment-signature": verify_proof_8}
+            headers={"X-Payment": verify_proof_8}
         )
         assert verify_resp.status_code == 200
         verify_data = verify_resp.json()

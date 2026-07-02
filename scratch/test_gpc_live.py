@@ -100,7 +100,7 @@ async def test_gpc_pipeline():
                 print(f"Execution failed: {response.status_code}")
                 return
                 
-            async for line in response.iter_lines():
+            async for line in response.aiter_lines():
                 if line.startswith("data: "):
                     data_str = line.removeprefix("data: ")
                     event_data = json.loads(data_str)
@@ -114,16 +114,16 @@ async def test_gpc_pipeline():
                         node_id = event_data["node_id"]
                         preview = event_data["preview"]
                         print(f"[NODE-COMPLETE] Node {node_id} successfully compiled and executed!")
-                        print(f"  ├── Rows Processed: {preview.get('rows')}")
-                        print(f"  ├── Schema Columns: {preview.get('columns')}")
-                        print(f"  ├── Preview Sample Metadata: {preview.get('metadata')}")
-                        print(f"  └── Sample Rows:")
+                        print(f"  |-- Rows Processed: {preview.get('rows')}")
+                        print(f"  |-- Schema Columns: {preview.get('columns')}")
+                        print(f"  |-- Preview Sample Metadata: {preview.get('metadata')}")
+                        print(f"  \-- Sample Rows:")
                         for row in preview.get("sample", []):
-                            print(f"      └── {row}")
+                            print(f"      \-- {row}")
                         print()
                     elif event_type == "complete":
                         print(f"[SYSTEM] Pipeline Execution completed successfully!")
-                        print(f"  └── Run ID: {event_data.get('run_id')}\n")
+                        print(f"  \-- Run ID: {event_data.get('run_id')}\n")
                     elif event_type == "error":
                         print(f"[SYSTEM-ERROR] Stream crashed: {event_data.get('message')}")
 

@@ -69,7 +69,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "/api/v1/x402/search":         {"price_usdc": 0.15,  "name": "Machine Search",       "free_daily": 0},
     "/api/v1/x402/evaluate":       {"price_usdc": 0.15,  "name": "Machine Evaluate",     "free_daily": 0},
     "/api/v1/x402/governance":     {"price_usdc": 0.15,  "name": "Machine Governance",   "free_daily": 0},
-    "/api/v1/x402/score":          {"price_usdc": 0.15,  "name": "Machine Score",        "free_daily": 0},
+    "/api/v1/x402/score":          {"price_usdc": 0.10,  "name": "Machine Score",        "free_daily": 0},
     "/api/v1/x402/verify":         {"price_usdc": 0.002, "name": "Machine Verify",       "free_daily": 0},
 
     # --- Method-Aware Niche Compliance APIs (PayAPI Catalog) ---

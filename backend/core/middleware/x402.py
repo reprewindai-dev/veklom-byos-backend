@@ -66,9 +66,9 @@ _PAID_ROUTES: dict[str, dict] = {
     "/api/v1/marketplace/acquire": {"price_usdc": 0.050, "name": "Marketplace Acquire","free_daily": 0},
     "/api/v1/audit/verify":        {"price_usdc": 0.003, "name": "Audit Verify",       "free_daily": 5},
     "/api/v1/x402/protected-test": {"price_usdc": 0.025, "name": "Protected Test Route", "free_daily": 0},
-    "/api/v1/x402/search":         {"price_usdc": 0.15,  "name": "Machine Search",       "free_daily": 0},
-    "/api/v1/x402/evaluate":       {"price_usdc": 0.15,  "name": "Machine Evaluate",     "free_daily": 0},
-    "/api/v1/x402/governance":     {"price_usdc": 0.15,  "name": "Machine Governance",   "free_daily": 0},
+    "/api/v1/x402/search":         {"price_usdc": 0.10,  "name": "Machine Search",       "free_daily": 0},
+    "/api/v1/x402/evaluate":       {"price_usdc": 0.10,  "name": "Machine Evaluate",     "free_daily": 0},
+    "/api/v1/x402/governance":     {"price_usdc": 0.10,  "name": "Machine Governance",   "free_daily": 0},
     "/api/v1/x402/score":          {"price_usdc": 0.10,  "name": "Machine Score",        "free_daily": 0},
     "/api/v1/x402/verify":         {"price_usdc": 0.002, "name": "Machine Verify",       "free_daily": 0},
 

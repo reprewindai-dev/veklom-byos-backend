@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     # LLM Engine
     LLM_BASE_URL: str = "http://host.docker.internal:11434"
-    LLM_MODEL_DEFAULT: str = "qwen2.5:3b"
+    LLM_MODEL_DEFAULT: str = "qwen2.5-coder:1.5b"
     LLM_FALLBACK: str = "groq"
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_TOKENS: int = 2048
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     BEDROCK_MODEL_ID: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5:3b"
+    OLLAMA_MODEL: str = "qwen2.5-coder:1.5b"
     OLLAMA_AUTOSTART: bool = True
     OLLAMA_PULL_ON_BOOT: bool = True
     OLLAMA_STARTUP_TIMEOUT_MS: int = 120000

@@ -38,7 +38,7 @@ async def test_gpc_pipeline():
         intent_payload = {
             "intent": "Load active customer accounts from CSV, select columns id and state, group by state and count them, then save as parquet.",
             "provider": "ollama",
-            "model": "qwen2.5:3b"
+            "model": "qwen2.5-coder:1.5b"
         }
         print(f"Sending Natural Language Intent:\n{json.dumps(intent_payload, indent=2)}")
         

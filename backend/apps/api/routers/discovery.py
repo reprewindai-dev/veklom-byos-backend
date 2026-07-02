@@ -499,6 +499,7 @@ async def machine_pricing():
     """
     Machine-readable pricing for every governed operation.
     """
+    from backend.core.middleware.x402 import _PAID_ROUTES
     routes_list = []
     for key, cfg in _PAID_ROUTES.items():
         if "category" in cfg:

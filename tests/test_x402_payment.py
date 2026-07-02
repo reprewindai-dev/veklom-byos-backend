@@ -280,6 +280,22 @@ async def test_payapi_dynamic_registration_and_parameterized_matching():
         assert quarantine_challenge["amount"] == 0.01
         assert quarantine_challenge["currency"] == "USDC"
         assert quarantine_challenge["route"] == "/api/v1/pgl/agent_xyz_99/quarantine"
+        # 5. Verification of public /pricing and /api/v1/pricing
+        pricing_resp = client.get("/pricing")
+        assert pricing_resp.status_code == 200
+        pricing_data = pricing_resp.json()
+        assert pricing_data["currency"] == "USDC"
+        assert "routes" in pricing_data
+        assert len(pricing_data["routes"]) > 0
+        
+        # Verify a specific route is present
+        routes_paths = [r["path"] for r in pricing_data["routes"]]
+        assert "/api/v1/mission-lock/agents/{agent_id}/state" in routes_paths
+
+        # Verify /api/v1/pricing alias behaves identically
+        pricing_v1_resp = client.get("/api/v1/pricing")
+        assert pricing_v1_resp.status_code == 200
+        assert pricing_v1_resp.json() == pricing_data
     finally:
         settings.X402_TEST_PROOF_MODE = original_mode
 

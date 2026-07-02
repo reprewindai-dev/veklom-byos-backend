@@ -688,10 +688,10 @@ async def not_found(request: Request, exc):
             subpath = f"{subpath}/"
         return RedirectResponse(url=f"https://control.veklom.com/{subpath}{query_str}", status_code=307)
     
-    if request.url.path in ("/login", "/signup"):
+    if request.url.path in ("/login", "/signup", "/governance", "/governance/"):
         from fastapi.responses import RedirectResponse
         query_str = f"?{request.url.query}" if request.url.query else ""
-        path_name = request.url.path.lstrip("/")
+        path_name = request.url.path.strip("/")
         return RedirectResponse(url=f"https://control.veklom.com/{path_name}/{query_str}", status_code=302)
 
     if is_github:

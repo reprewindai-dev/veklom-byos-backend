@@ -69,7 +69,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "/api/v1/x402/search":         {"price_usdc": 0.15,  "name": "Machine Search",       "free_daily": 0},
     "/api/v1/x402/evaluate":       {"price_usdc": 0.15,  "name": "Machine Evaluate",     "free_daily": 0},
     "/api/v1/x402/governance":     {"price_usdc": 0.15,  "name": "Machine Governance",   "free_daily": 0},
-    "/api/v1/x402/score":          {"price_usdc": 0.15,  "name": "Machine Score",        "free_daily": 0},
+    "/api/v1/x402/score":          {"price_usdc": 0.10,  "name": "Machine Score",        "free_daily": 0},
     "/api/v1/x402/verify":         {"price_usdc": 0.002, "name": "Machine Verify",       "free_daily": 0},
 
     # --- Method-Aware Niche Compliance APIs (PayAPI Catalog) ---
@@ -83,7 +83,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "GET:/api/v1/gpc/events":           {"price_usdc": 0.001,  "name": "GPC Real-Time Status Signals", "free_daily": 0, "category": "A", "unit": "per stream"},
     "GET:/api/v1/gpc/bootstrap":        {"price_usdc": 0.001,  "name": "GPC System Core Bootstrap", "free_daily": 0, "category": "A", "unit": "per bootstrap"},
 
-    # Category B: The cAPI (Constitutional API) 9-Phase Hard Gate (8 Endpoints)
+    # Category B: The cAPI (Constitutional API) 9-Phase Hard Gate (9 Endpoints)
     "POST:/api/v1/capi/execute":                         {"price_usdc": 0.05,  "name": "Governed Execution Interception Gateway", "free_daily": 0, "category": "B", "unit": "per execution"},
     "GET:/api/v1/capi/quarantine":                       {"price_usdc": 0.005, "name": "Human-in-the-Loop Quarantine Fetcher", "free_daily": 0, "category": "B", "unit": "per fetch"},
     "POST:/api/v1/capi/quarantine/{quarantine_id}/resolve": {"price_usdc": 0.01,  "name": "Quarantine Intent Resolver", "free_daily": 0, "category": "B", "unit": "per resolution"},
@@ -92,6 +92,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "GET:/api/v1/authority/bundles":                     {"price_usdc": 0.002, "name": "Dynamic Policy Bundle Manifest", "free_daily": 0, "category": "B", "unit": "per manifest"},
     "GET:/api/v1/authority/context":                     {"price_usdc": 0.001, "name": "Active Authority Context", "free_daily": 0, "category": "B", "unit": "per lookup"},
     "POST:/api/v1/autonomous":                           {"price_usdc": 0.01,  "name": "Sovereign Autonomous Interrogator", "free_daily": 0, "category": "B", "unit": "per query"},
+    "POST:/api/v1/governed/capi/compile":                {"price_usdc": 50.00, "name": "Governed cAPI Immutable Compiler", "free_daily": 0, "category": "B", "unit": "per compilation"},
 
     # Category C: PGL Identity & Sovereign Workforce (8 Endpoints)
     "POST:/api/v1/pgl/identity-rag/resolve":            {"price_usdc": 0.01,  "name": "IdentityRAG Cross-Cluster Resolver", "free_daily": 0, "category": "C", "unit": "per resolution"},
@@ -113,7 +114,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "POST:/api/v1/agent-memory/{agent_id}/context/{context_id}/update": {"price_usdc": 0.005, "name": "Live Prompt Context Mutator", "free_daily": 0, "category": "D", "unit": "per mutation"},
     "DELETE:/api/v1/agent-memory/{agent_id}/memory/{memory_id}":    {"price_usdc": 0.002, "name": "Memory Erasure Compliance Hook", "free_daily": 0, "category": "D", "unit": "per delete"},
 
-    # Category E: On-Chain Settlement & Flash Compute Credits (9 Endpoints)
+    # Category E: On-Chain Settlement & VNP Staking State (11 Endpoints)
     "POST:/api/v1/x402/register-api":                   {"price_usdc": 0.01,  "name": "Dynamic API Gateway Self-Registration", "free_daily": 0, "category": "E", "unit": "per registration"},
     "POST:/api/v1/x402/verify":                         {"price_usdc": 0.002, "name": "Offline EVM Signed Receipt Validator", "free_daily": 0, "category": "E", "unit": "per verification"},
     "POST:/api/v1/x402/flash-loan":                      {"price_usdc": 0.05,  "name": "Trustless Compute Credit Flash Loans", "free_daily": 0, "category": "E", "unit": "per loan"},
@@ -123,6 +124,8 @@ _PAID_ROUTES: dict[str, dict] = {
     "GET:/api/v1/billing/ledger":                       {"price_usdc": 0.002, "name": "Institutional Ledger Billing History", "free_daily": 0, "category": "E", "unit": "per query"},
     "GET:/api/v1/vnp/stakes":                           {"price_usdc": 0.002, "name": "SLA Validator Stakes Escrow", "free_daily": 0, "category": "E", "unit": "per lookup"},
     "GET:/api/v1/billing/receipts/{receipt_id}":        {"price_usdc": 0.001, "name": "Audit Invoice Query", "free_daily": 0, "category": "E", "unit": "per query"},
+    "GET:/api/v1/benchmarks/staking/state":             {"price_usdc": 0.002, "name": "VNP Stakes & Staking State Engine", "free_daily": 0, "category": "E", "unit": "per query"},
+    "GET:/api/v1/benchmarks/leaderboard":               {"price_usdc": 0.002, "name": "VNP Leaderboard & API Trust Rankings", "free_daily": 0, "category": "E", "unit": "per query"},
 
     # Category F: Audit-Trails & Legal Compliance (9 Endpoints)
     "POST:/api/v1/compliance/check":                     {"price_usdc": 0.01,  "name": "Automated Compliance Audit Engine", "free_daily": 0, "category": "F", "unit": "per check"},

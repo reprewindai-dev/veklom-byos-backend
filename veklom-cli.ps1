@@ -9,6 +9,7 @@ function veklom-help {
     Write-Host '  veklom-stake-ledger : Live query of the permanent VNP Micro-Staking DB'
     Write-Host '  veklom-audit-routes : Run the Governance Integrity Audit on FastAPI routes'
     Write-Host '  veklom-rag-sync     : Synchronize the IdentityRAG Golden Record'
+    Write-Host '  veklom-test-audit   : Run programmatic pytest plugin & cache audit'
     Write-Host '=====================================================' -ForegroundColor Magenta
 }
 
@@ -42,6 +43,13 @@ function veklom-audit-routes {
 function veklom-rag-sync {
     $env:PYTHONPATH = (Get-Location).Path
     python scripts/cli_helper.py rag
+}
+
+function veklom-test-audit {
+    Write-Host '[Veklom OS] Running program-level pytest plugin & cache audit...' -ForegroundColor Cyan
+    $env:PYTHONPATH = (Get-Location).Path
+    python scripts/pytest_plugin_audit.py
+    Write-Host '[Veklom OS] Test audit completed.' -ForegroundColor Green
 }
 
 veklom-help

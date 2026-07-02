@@ -144,6 +144,22 @@ def _user_dict(user: User) -> dict:
     }
 
 
+def _apikey_dict(key: APIKey) -> dict:
+    return {
+        "id": key.id,
+        "name": key.name,
+        "prefix": key.key_prefix,
+        "key_prefix": key.key_prefix,
+        "is_active": key.is_active,
+        "created_at": key.created_at.isoformat() if key.created_at else None,
+        "last_used_at": key.last_used.isoformat() if key.last_used else None,
+    }
+
+
+def _default_api_keys() -> list:
+    return []
+
+
 def _external_origin(request: Request) -> str:
     proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
     host = (

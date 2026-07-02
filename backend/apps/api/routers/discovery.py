@@ -35,11 +35,21 @@ VEKLOM_PRICING = {
     "compliance_report":   {"price_usdc": 0.010, "unit": "per report",   "name": "Compliance Report"},
     "marketplace_acquire": {"price_usdc": 0.050, "unit": "per acquire",  "name": "Marketplace Acquire"},
     "audit_verify":        {"price_usdc": 0.003, "unit": "per verify",   "name": "Audit Verification"},
-    "x402_search":         {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Search"},
-    "x402_evaluate":       {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Evaluate"},
-    "x402_governance":     {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Governance"},
-    "x402_score":          {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Score"},
-    "x402_verify":         {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Verify"},
+    "x402_search":         {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Search"},
+    "x402_evaluate":       {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Evaluate"},
+    "x402_governance":     {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Governance"},
+    "x402_score":          {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Score"},
+    "x402_verify":         {"price_usdc": 0.15,  "unit": "per request",  "name": "Machine Verify"},
+    # Specialized Sovereign Agentic Security & Settlement APIs (Niche Catalog)
+    "forensics_replay":    {"price_usdc": 0.020, "unit": "per replay",   "name": "Sovereign Forensics Replay (Time-Travel Audit)"},
+    "simulate_policy":     {"price_usdc": 0.015, "unit": "per simulation", "name": "Active Policy Simulation"},
+    "pgl_quarantine":      {"price_usdc": 0.010, "unit": "per quarantine", "name": "PGL Dynamic Decoy Quarantine Hub"},
+    "x402_flash_loan":     {"price_usdc": 0.050, "unit": "per loan",     "name": "E2E x402 Micropayment Flash Loan"},
+    "diplomacy_treaty":    {"price_usdc": 0.050, "unit": "per treaty",   "name": "Multi-Agent Diplomacy Treaty Negotiation"},
+    "vnp_bounty_submit":   {"price_usdc": 0.010, "unit": "per submission", "name": "VNP SLA Real-Time Performance Bond"},
+    "pgl_genealogy":       {"price_usdc": 0.010, "unit": "per lookup",   "name": "Merkle Genealogy DNA Ancestry Lineage Proof"},
+    "governed_capi":       {"price_usdc": 0.020, "unit": "per compilation", "name": "Governed cAPI 9-Phase Interceptor Compile"},
+    "pgl_identity_rag":    {"price_usdc": 0.010, "unit": "per resolution", "name": "PGL Cross-Cluster Dynamic Identity RAG"},
 }
 import os
 import logging as _logging
@@ -489,102 +499,36 @@ async def machine_pricing():
     """
     Machine-readable pricing for every governed operation.
     """
+    routes_list = []
+    for key, cfg in _PAID_ROUTES.items():
+        if "category" in cfg:
+            method = "POST"
+            path = key
+            if ":" in key:
+                parts = key.split(":", 1)
+                if parts[0] in ("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+                    method = parts[0]
+                    path = parts[1]
+            
+            routes_list.append({
+                "path": path,
+                "method": method,
+                "unit": cfg.get("unit", "per_call").replace(" ", "_"),
+                "price": str(cfg["price_usdc"]),
+                "price_usdc": cfg["price_usdc"],
+                "name": cfg.get("name", ""),
+                "category": cfg["category"],
+                "free_trial_eligible": cfg.get("free_daily", 0) > 0
+            })
+
+    # Sort routes_list by category and then by path for nice presentation
+    routes_list.sort(key=lambda r: (r["category"], r["path"]))
+
     return JSONResponse({
-        "version": "2026-05-27",
+        "version": "2026-07-02",
         "currency": "USDC",
         "network": "base",
-        "routes": [
-            {
-                "path": "/api/v1/ai/inference",
-                "unit": "per_request",
-                "price": "0.008",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/ai/chat",
-                "unit": "per_request",
-                "price": "0.005",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/gpc/compile",
-                "unit": "per_compile",
-                "price": "0.015",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/gpc/intent-to-plan",
-                "unit": "per_plan",
-                "price": "0.010",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/gpc/runs",
-                "unit": "per_run",
-                "price": "0.020",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/pipelines/trigger",
-                "unit": "per_trigger",
-                "price": "0.025",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/runtime/jobs",
-                "unit": "per_job",
-                "price": "0.020",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/evidence/export",
-                "unit": "per_export",
-                "price": "0.005",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/compliance/report",
-                "unit": "per_report",
-                "price": "0.010",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/marketplace/acquire",
-                "unit": "per_acquire",
-                "price": "0.050",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/search",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/evaluate",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/governance",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/score",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/verify",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            }
-        ]
+        "routes": routes_list
     }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=300"})
 
 

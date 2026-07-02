@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 # Pricing table (mirrors discovery.py — kept in sync)
 # ---------------------------------------------------------------------------
 _PAID_ROUTES: dict[str, dict] = {
+    # --- Standard / Backward Compatible Fallbacks ---
     "/api/v1/ai/inference":        {"price_usdc": 0.008, "name": "AI Inference",       "free_daily": 5},
     "/api/v1/ai/chat":             {"price_usdc": 0.005, "name": "AI Chat",            "free_daily": 5},
     "/api/v1/gpc/compile":         {"price_usdc": 0.015, "name": "GPC Compile",        "free_daily": 3},
@@ -65,25 +66,105 @@ _PAID_ROUTES: dict[str, dict] = {
     "/api/v1/marketplace/acquire": {"price_usdc": 0.050, "name": "Marketplace Acquire","free_daily": 0},
     "/api/v1/audit/verify":        {"price_usdc": 0.003, "name": "Audit Verify",       "free_daily": 5},
     "/api/v1/x402/protected-test": {"price_usdc": 0.025, "name": "Protected Test Route", "free_daily": 0},
-    "/api/v1/x402/search":         {"price_usdc": 0.10,  "name": "Machine Search",       "free_daily": 0},
-    "/api/v1/x402/evaluate":       {"price_usdc": 0.10,  "name": "Machine Evaluate",     "free_daily": 0},
-    "/api/v1/x402/governance":     {"price_usdc": 0.10,  "name": "Machine Governance",   "free_daily": 0},
-    "/api/v1/x402/score":          {"price_usdc": 0.10,  "name": "Machine Score",        "free_daily": 0},
-    "/api/v1/x402/verify":         {"price_usdc": 0.10,  "name": "Machine Verify",       "free_daily": 0},
-    # Chet Parker's Gold/Niche APIs
-    "/api/v1/forensics/replay":                     {"price_usdc": 0.02,  "name": "Forensics Replay",                    "free_daily": 0},
-    "/api/v1/governance/simulate-policy":           {"price_usdc": 0.015, "name": "Simulate Policy",                     "free_daily": 0},
-    "/api/v1/authority/simulate-policy":            {"price_usdc": 0.015, "name": "Simulate Policy (Actual)",              "free_daily": 0},
-    "/api/v1/pgl/{agent_id}/quarantine":            {"price_usdc": 0.01,  "name": "PGL Agent Quarantine",                "free_daily": 0},
-    "/api/v1/x402/flash-loan":                      {"price_usdc": 0.05,  "name": "x402 Flash Loan",                     "free_daily": 0},
-    "/api/v1/governance/diplomacy/negotiate-treaty": {"price_usdc": 0.05,  "name": "Governance Diplomacy Negotiate Treaty", "free_daily": 0},
-    "/api/v1/authority/diplomacy/negotiate-treaty":  {"price_usdc": 0.05,  "name": "Governance Diplomacy Negotiate Treaty (Actual)", "free_daily": 0},
-    "/api/v1/vnp/bounty/submit-proof":              {"price_usdc": 0.01,  "name": "VNP Bounty Submit Proof",             "free_daily": 0},
-    "/api/v1/incidents/bounty/submit-proof":        {"price_usdc": 0.01,  "name": "VNP Bounty Submit Proof (Actual)",    "free_daily": 0},
-    "/api/v1/pgl/{agent_id}/genealogy":             {"price_usdc": 0.01,  "name": "PGL Agent Genealogy",                 "free_daily": 0},
-    "/api/v1/governed/capi/compile":                {"price_usdc": 0.02,  "name": "Governed cAPI Compile",               "free_daily": 0},
-    "/api/v1/pgl/identity-rag/resolve":             {"price_usdc": 0.01,  "name": "PGL Identity RAG Resolve",            "free_daily": 0},
+    "/api/v1/x402/search":         {"price_usdc": 0.15,  "name": "Machine Search",       "free_daily": 0},
+    "/api/v1/x402/evaluate":       {"price_usdc": 0.15,  "name": "Machine Evaluate",     "free_daily": 0},
+    "/api/v1/x402/governance":     {"price_usdc": 0.15,  "name": "Machine Governance",   "free_daily": 0},
+    "/api/v1/x402/score":          {"price_usdc": 0.15,  "name": "Machine Score",        "free_daily": 0},
+    "/api/v1/x402/verify":         {"price_usdc": 0.002, "name": "Machine Verify",       "free_daily": 0},
 
+    # --- Method-Aware Niche Compliance APIs (PayAPI Catalog) ---
+    
+    # Category A: The GPC (Governed Plan Compiler) Pipeline (7 Endpoints)
+    "POST:/api/v1/gpc/intent-to-plan":  {"price_usdc": 0.02,   "name": "Messy Intent-To-Plan Compiler", "free_daily": 3, "category": "A", "unit": "per plan"},
+    "POST:/api/v1/gpc/plans":           {"price_usdc": 0.005,  "name": "GPC Plan Saver", "free_daily": 0, "category": "A", "unit": "per plan"},
+    "GET:/api/v1/gpc/plans":            {"price_usdc": 0.001,  "name": "GPC Plans List", "free_daily": 0, "category": "A", "unit": "per list"},
+    "POST:/api/v1/gpc/runs":            {"price_usdc": 0.02,   "name": "GPC Background Dispatcher", "free_daily": 0, "category": "A", "unit": "per run"},
+    "GET:/api/v1/gpc/runs":             {"price_usdc": 0.002,  "name": "GPC Runs List", "free_daily": 0, "category": "A", "unit": "per list"},
+    "GET:/api/v1/gpc/events":           {"price_usdc": 0.001,  "name": "GPC Real-Time Status Signals", "free_daily": 0, "category": "A", "unit": "per stream"},
+    "GET:/api/v1/gpc/bootstrap":        {"price_usdc": 0.001,  "name": "GPC System Core Bootstrap", "free_daily": 0, "category": "A", "unit": "per bootstrap"},
+
+    # Category B: The cAPI (Constitutional API) 9-Phase Hard Gate (8 Endpoints)
+    "POST:/api/v1/capi/execute":                         {"price_usdc": 0.05,  "name": "Governed Execution Interception Gateway", "free_daily": 0, "category": "B", "unit": "per execution"},
+    "GET:/api/v1/capi/quarantine":                       {"price_usdc": 0.005, "name": "Human-in-the-Loop Quarantine Fetcher", "free_daily": 0, "category": "B", "unit": "per fetch"},
+    "POST:/api/v1/capi/quarantine/{quarantine_id}/resolve": {"price_usdc": 0.01,  "name": "Quarantine Intent Resolver", "free_daily": 0, "category": "B", "unit": "per resolution"},
+    "GET:/api/v1/authority/runs":                        {"price_usdc": 0.002, "name": "Active Authority Runs", "free_daily": 0, "category": "B", "unit": "per list"},
+    "GET:/api/v1/authority/runs/{run_id}/decisions":     {"price_usdc": 0.003, "name": "Authority Run Detail & Decisions", "free_daily": 0, "category": "B", "unit": "per lookup"},
+    "GET:/api/v1/authority/bundles":                     {"price_usdc": 0.002, "name": "Dynamic Policy Bundle Manifest", "free_daily": 0, "category": "B", "unit": "per manifest"},
+    "GET:/api/v1/authority/context":                     {"price_usdc": 0.001, "name": "Active Authority Context", "free_daily": 0, "category": "B", "unit": "per lookup"},
+    "POST:/api/v1/autonomous":                           {"price_usdc": 0.01,  "name": "Sovereign Autonomous Interrogator", "free_daily": 0, "category": "B", "unit": "per query"},
+
+    # Category C: PGL Identity & Sovereign Workforce (8 Endpoints)
+    "POST:/api/v1/pgl/identity-rag/resolve":            {"price_usdc": 0.01,  "name": "IdentityRAG Cross-Cluster Resolver", "free_daily": 0, "category": "C", "unit": "per resolution"},
+    "GET:/api/v1/pgl/{agent_id}/genealogy":             {"price_usdc": 0.01,  "name": "Merkle Genealogy DNA Proof", "free_daily": 0, "category": "C", "unit": "per proof"},
+    "POST:/api/v1/pgl/{agent_id}/quarantine":            {"price_usdc": 0.01,  "name": "Dynamic RLS Decoy Quarantine", "free_daily": 0, "category": "C", "unit": "per quarantine"},
+    "GET:/api/v1/agents/law":                            {"price_usdc": 0.001, "name": "Agent Constitutional Law Ingress", "free_daily": 0, "category": "C", "unit": "per query"},
+    "GET:/api/v1/agents/registry":                       {"price_usdc": 0.002, "name": "Workforce Registry Directory", "free_daily": 0, "category": "C", "unit": "per directory"},
+    "GET:/api/v1/agents/fleet":                          {"price_usdc": 0.005, "name": "Workspace Workforce Aggregator", "free_daily": 0, "category": "C", "unit": "per fleet"},
+    "GET:/api/v1/agents/registry/{agent_number}":        {"price_usdc": 0.001, "name": "Individual Agent Detail Inspector", "free_daily": 0, "category": "C", "unit": "per inspect"},
+    "GET:/api/v1/agents/skills":                         {"price_usdc": 0.002, "name": "Active Workforce Capabilities", "free_daily": 0, "category": "C", "unit": "per listing"},
+
+    # Category D: Dynamic Guardrails & Memory Interceptors (8 Endpoints)
+    "POST:/api/v1/agent-guardrails/{agent_id}/guardrails":         {"price_usdc": 0.01,  "name": "Live Guardrail Injector", "free_daily": 0, "category": "D", "unit": "per injection"},
+    "POST:/api/v1/agent-guardrails/{agent_id}/evaluate-input":     {"price_usdc": 0.01,  "name": "Pre-Reasoning Input Interceptor", "free_daily": 0, "category": "D", "unit": "per input"},
+    "POST:/api/v1/agent-guardrails/{agent_id}/evaluate-output":    {"price_usdc": 0.01,  "name": "Post-Reasoning Egress Interceptor", "free_daily": 0, "category": "D", "unit": "per output"},
+    "POST:/api/v1/agent-guardrails/{agent_id}/evaluate-tool-call":  {"price_usdc": 0.015, "name": "Dynamic Tool-Call Schema Moat", "free_daily": 0, "category": "D", "unit": "per check"},
+    "POST:/api/v1/agent-memory/{agent_id}/memory/store":           {"price_usdc": 0.005, "name": "Ephemeral Vector Memory Writer", "free_daily": 0, "category": "D", "unit": "per write"},
+    "GET:/api/v1/agent-memory/{agent_id}/memory/search":           {"price_usdc": 0.004, "name": "Semantic Memory Search", "free_daily": 0, "category": "D", "unit": "per search"},
+    "POST:/api/v1/agent-memory/{agent_id}/context/{context_id}/update": {"price_usdc": 0.005, "name": "Live Prompt Context Mutator", "free_daily": 0, "category": "D", "unit": "per mutation"},
+    "DELETE:/api/v1/agent-memory/{agent_id}/memory/{memory_id}":    {"price_usdc": 0.002, "name": "Memory Erasure Compliance Hook", "free_daily": 0, "category": "D", "unit": "per delete"},
+
+    # Category E: On-Chain Settlement & Flash Compute Credits (9 Endpoints)
+    "POST:/api/v1/x402/register-api":                   {"price_usdc": 0.01,  "name": "Dynamic API Gateway Self-Registration", "free_daily": 0, "category": "E", "unit": "per registration"},
+    "POST:/api/v1/x402/verify":                         {"price_usdc": 0.002, "name": "Offline EVM Signed Receipt Validator", "free_daily": 0, "category": "E", "unit": "per verification"},
+    "POST:/api/v1/x402/flash-loan":                      {"price_usdc": 0.05,  "name": "Trustless Compute Credit Flash Loans", "free_daily": 0, "category": "E", "unit": "per loan"},
+    "POST:/api/v1/agents/skills/{skill_id}/invoke":     {"price_usdc": 0.02,  "name": "Dynamic Paid Skill Invocation", "free_daily": 0, "category": "E", "unit": "per invocation"},
+    "POST:/api/v1/vnp/bounty/submit-proof":              {"price_usdc": 0.01,  "name": "VNP SLA Performance Bond Slasher", "free_daily": 0, "category": "E", "unit": "per submission"},
+    "POST:/api/v1/vnp/beacon":                          {"price_usdc": 0.001, "name": "Heartbeat SLA Beacon Broadcaster", "free_daily": 0, "category": "E", "unit": "per beacon"},
+    "GET:/api/v1/billing/ledger":                       {"price_usdc": 0.002, "name": "Institutional Ledger Billing History", "free_daily": 0, "category": "E", "unit": "per query"},
+    "GET:/api/v1/vnp/stakes":                           {"price_usdc": 0.002, "name": "SLA Validator Stakes Escrow", "free_daily": 0, "category": "E", "unit": "per lookup"},
+    "GET:/api/v1/billing/receipts/{receipt_id}":        {"price_usdc": 0.001, "name": "Audit Invoice Query", "free_daily": 0, "category": "E", "unit": "per query"},
+
+    # Category F: Audit-Trails & Legal Compliance (9 Endpoints)
+    "POST:/api/v1/compliance/check":                     {"price_usdc": 0.01,  "name": "Automated Compliance Audit Engine", "free_daily": 0, "category": "F", "unit": "per check"},
+    "GET:/api/v1/compliance/frameworks":                 {"price_usdc": 0.002, "name": "SOC2 & ISO42001 Compliance Frameworks Registry", "free_daily": 0, "category": "F", "unit": "per registry"},
+    "POST:/api/v1/privacy/detect-pii":                   {"price_usdc": 0.005, "name": "Token PII Scanner", "free_daily": 0, "category": "F", "unit": "per scan"},
+    "POST:/api/v1/privacy/mask-pii":                     {"price_usdc": 0.005, "name": "Context-based PII Masker", "free_daily": 0, "category": "F", "unit": "per mask"},
+    "POST:/api/v1/content-safety/scan":                  {"price_usdc": 0.005, "name": "Toxicity Alignment Checker", "free_daily": 0, "category": "F", "unit": "per scan"},
+    "GET:/api/v1/audit/verify/{log_id}":                 {"price_usdc": 0.01,  "name": "SHA-256 Audit Chain Integrity Verifier", "free_daily": 0, "category": "F", "unit": "per verify"},
+    "GET:/api/v1/audit/logs":                            {"price_usdc": 0.002, "name": "Consolidated Tenant Logs Stream", "free_daily": 0, "category": "F", "unit": "per query"},
+    "GET:/api/v1/audit/logs/{log_id}":                   {"price_usdc": 0.001, "name": "Audit Entry Inspector", "free_daily": 0, "category": "F", "unit": "per lookup"},
+    "GET:/api/v1/compliance/evidence/{framework_id}/export": {"price_usdc": 0.02,  "name": "Dynamic UACP Evidence Export", "free_daily": 0, "category": "F", "unit": "per export"},
+
+    # Category G: Self-Learning Feedback & Observability (11 Endpoints)
+    "GET:/api/v1/gpc/stats":                            {"price_usdc": 0.005, "name": "UACP Core Pressure Estimator", "free_daily": 0, "category": "G", "unit": "per stats"},
+    "GET:/api/v1/explain/routing/{decision_id}":        {"price_usdc": 0.005, "name": "Explanatory Weight Router Resolver", "free_daily": 0, "category": "G", "unit": "per explanation"},
+    "GET:/api/v1/explain/cost/{prediction_id}":         {"price_usdc": 0.005, "name": "Budget Risk Predictor", "free_daily": 0, "category": "G", "unit": "per prediction"},
+    "GET:/api/v1/gpc/ssrn-signals":                     {"price_usdc": 0.002, "name": "Academic SSRN Research Feed Signals", "free_daily": 0, "category": "G", "unit": "per stream"},
+    "GET:/api/v1/gpc/observability/signals":            {"price_usdc": 0.002, "name": "Dynamic Observability Telemetry", "free_daily": 0, "category": "G", "unit": "per signals"},
+    "POST:/api/v1/onboarding/register":                 {"price_usdc": 0.01,  "name": "Institutional Profile Onboarding Register", "free_daily": 0, "category": "G", "unit": "per register"},
+    "POST:/api/v1/playground/evaluate":                 {"price_usdc": 0.01,  "name": "Sandbox Evaluation Engine", "free_daily": 0, "category": "G", "unit": "per evaluation"},
+    "POST:/api/v1/copilot/explain":                     {"price_usdc": 0.01,  "name": "Generative Code Risk Explanation", "free_daily": 0, "category": "G", "unit": "per explanation"},
+    "POST:/api/v1/terminal/command":                    {"price_usdc": 0.02,  "name": "Sandboxed Terminal Commander", "free_daily": 0, "category": "G", "unit": "per command"},
+    "GET:/api/v1/forensics/replay":                     {"price_usdc": 0.02,  "name": "Forensics Black Box Replayer", "free_daily": 0, "category": "G", "unit": "per replay"},
+    "GET:/api/v1/onboarding/metrics":                   {"price_usdc": 0.002, "name": "Onboarding Compliance Metrics", "free_daily": 0, "category": "G", "unit": "per metrics"},
+
+    # Category H: Mission Lock, Behavioral Governance & Conformance Analytics (7 Endpoints)
+    "POST:/api/v1/mission-lock/agents/{agent_id}/act":     {"price_usdc": 0.015, "name": "Agent Conformance Action Step", "free_daily": 0, "category": "H", "unit": "per action"},
+    "POST:/api/v1/mission-lock/agents/{agent_id}/update":  {"price_usdc": 0.01,  "name": "Behavioral Reward Signal Update", "free_daily": 0, "category": "H", "unit": "per reward"},
+    "GET:/api/v1/mission-lock/agents/{agent_id}/state":    {"price_usdc": 0.002, "name": "Lock State and Parameter Queries", "free_daily": 0, "category": "H", "unit": "per query"},
+    "POST:/api/v1/mission-lock/agents/{agent_id}/adjust":  {"price_usdc": 0.01,  "name": "Rigidity Adjustment Dispatcher", "free_daily": 0, "category": "H", "unit": "per adjustment"},
+    "GET:/api/v1/mission-lock/teams/{team_id}/coordinate": {"price_usdc": 0.005, "name": "Team Coordination Snapshot", "free_daily": 0, "category": "H", "unit": "per snapshot"},
+    "GET:/api/v1/mission-lock/agents/{agent_id}/trace":    {"price_usdc": 0.003, "name": "Forensics Action Trace Reader", "free_daily": 0, "category": "H", "unit": "per trace"},
+    "GET:/api/v1/mission-lock/agents/{agent_id}/metrics":  {"price_usdc": 0.002, "name": "Conformance and Recovery Metrics Cache", "free_daily": 0, "category": "H", "unit": "per metrics"},
+
+    # Plural/Singular Aliases for Category H Robustness
+    "POST:/api/v1/mission-lock/agent/{agent_id}/act":     {"price_usdc": 0.015, "name": "Agent Conformance Action Step", "free_daily": 0, "category": "H", "unit": "per action"},
+    "POST:/api/v1/mission-lock/agent/{agent_id}/update":  {"price_usdc": 0.01,  "name": "Behavioral Reward Signal Update", "free_daily": 0, "category": "H", "unit": "per reward"},
+    "GET:/api/v1/mission-lock/agent/{agent_id}/state":    {"price_usdc": 0.002, "name": "Lock State and Parameter Queries", "free_daily": 0, "category": "H", "unit": "per query"},
+    "POST:/api/v1/mission-lock/agent/{agent_id}/adjust":  {"price_usdc": 0.01,  "name": "Rigidity Adjustment Dispatcher", "free_daily": 0, "category": "H", "unit": "per adjustment"},
+    "GET:/api/v1/mission-lock/team/{team_id}/coordinate": {"price_usdc": 0.005, "name": "Team Coordination Snapshot", "free_daily": 0, "category": "H", "unit": "per snapshot"},
+    "GET:/api/v1/mission-lock/agent/{agent_id}/trace":    {"price_usdc": 0.003, "name": "Forensics Action Trace Reader", "free_daily": 0, "category": "H", "unit": "per trace"},
+    "GET:/api/v1/mission-lock/agent/{agent_id}/metrics":  {"price_usdc": 0.002, "name": "Conformance and Recovery Metrics Cache", "free_daily": 0, "category": "H", "unit": "per metrics"},
 }
 
 _FREE_ROUTES_PREFIX = (
@@ -98,7 +179,7 @@ _FREE_ROUTES_PREFIX = (
     "/api/v1/sys/health", "/api/v1/sys/gpu",
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
     "/api/v1/integrations/", "/api/v1/receipts", "/api/v1/evidence/verify",
-    "/api/v1/x402/config", "/api/v1/x402/register-api"
+    "/api/v1/x402/config"
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
@@ -187,14 +268,37 @@ def _match_route(path: str, pattern: str) -> bool:
     return bool(_compiled_patterns[pattern].match(path))
 
 
-def _get_route_config(path: str) -> Optional[dict]:
-    # Check if there's an exact match in _PAID_ROUTES first
+def _get_route_config(path: str, method: str) -> Optional[dict]:
+    method = method.upper()
+    
+    # 1. Method-specific exact match (e.g. POST:/api/v1/gpc/plans)
+    method_exact_key = f"{method}:{path}"
+    if method_exact_key in _PAID_ROUTES:
+        return _PAID_ROUTES[method_exact_key]
+        
+    # 2. Path-only exact match (for legacy/backward compatible keys)
     if path in _PAID_ROUTES:
         return _PAID_ROUTES[path]
-    # Check each registered path pattern using our regex-based match
+        
+    # 3. Method-specific pattern matching
     for pattern, cfg in _PAID_ROUTES.items():
+        if ":" in pattern:
+            parts = pattern.split(":", 1)
+            if parts[0] in ("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+                pattern_method = parts[0]
+                pattern_path = parts[1]
+                if pattern_method == method and _match_route(path, pattern_path):
+                    return cfg
+                    
+    # 4. Path-only pattern matching
+    for pattern, cfg in _PAID_ROUTES.items():
+        if ":" in pattern:
+            parts = pattern.split(":", 1)
+            if parts[0] in ("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+                continue
         if _match_route(path, pattern):
             return cfg
+            
     return None
 
 
@@ -626,7 +730,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         if method == "OPTIONS" or _is_free_route(path):
             return await call_next(request)
 
-        route_cfg = _get_route_config(path)
+        route_cfg = _get_route_config(path, method)
         if route_cfg is None:
             return await call_next(request)
 

@@ -16,7 +16,7 @@ from backend.core.services.mission_lock_service import (
     MissionLockService, MissionLockAgent, MissionDNA, MissionPath, TeamCoordinator
 )
 from backend.db.models.mission_lock import (
-    TenantRole, EpisodeTelemetry, RecoveryEvent, DNAAudit, MissionLockAgentState
+    TenantRole, EpisodeTelemetry, RecoveryEvent, DNAAudit, MissionLockAgentState, TeamState, AgentActionTrace
 )
 
 logger = logging.getLogger(__name__)
@@ -199,6 +199,21 @@ class RecoveryEventCreate(BaseModel):
 
 class RecoveryEventResponse(RecoveryEventCreate):
     id: str
+    timestamp: datetime
+    tenant_id: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class AgentActionTraceResponse(BaseModel):
+    id: str
+    agent_id: str
+    state: str
+    action: str
+    reward: float
+    next_state: str
+    on_path: bool
+    cue: bool
     timestamp: datetime
     tenant_id: Optional[str]
 
@@ -991,3 +1006,112 @@ async def get_dna_audit_log(
         )
         for log in logs
     ]
+
+
+@router.get("/agent/{agent_id}/state", response_model=AgentStateResponse)
+async def get_agent_state(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+) -> AgentStateResponse:
+    """Retrieve current parameters and state for a target agent."""
+    tenant_id = current_user.workspace_id
+    await enforce_authz(current_user.id, tenant_id, "READ", f"agent/{agent_id}/state", db)
+
+    dna = await MissionLockService.get_mission_dna(agent_id, db)
+    if not dna:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent {agent_id} not found")
+
+    if dna.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access denied")
+
+    stmt = select(MissionLockAgentState).where(MissionLockAgentState.agent_id == agent_id)
+    res = await db.execute(stmt)
+    state = res.scalar_one_or_none()
+    if not state:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"State for agent {agent_id} not found")
+
+    return state
+
+
+@router.get("/agents/{agent_id}/state", response_model=AgentStateResponse)
+async def get_agents_state_plural(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+) -> AgentStateResponse:
+    """Plural alias: Retrieve current parameters and state for a target agent."""
+    return await get_agent_state(agent_id, db, current_user)
+
+
+@router.get("/team/{team_id}/coordinate", response_model=TeamStateResponse)
+async def get_team_coordinate(
+    team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+) -> TeamStateResponse:
+    """Retrieve team coordination snapshot state."""
+    tenant_id = current_user.workspace_id
+    await enforce_authz(current_user.id, tenant_id, "READ", f"team/{team_id}/coordinate", db)
+
+    stmt = select(TeamState).where(TeamState.team_id == team_id)
+    res = await db.execute(stmt)
+    team_state = res.scalar_one_or_none()
+    if not team_state:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Team state for team {team_id} not found")
+
+    if team_state.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access denied")
+
+    return team_state
+
+
+@router.get("/teams/{team_id}/coordinate", response_model=TeamStateResponse)
+async def get_teams_coordinate_plural(
+    team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+) -> TeamStateResponse:
+    """Plural alias: Retrieve team coordination snapshot state."""
+    return await get_team_coordinate(team_id, db, current_user)
+
+
+@router.get("/agent/{agent_id}/trace", response_model=List[AgentActionTraceResponse])
+async def get_agent_trace(
+    agent_id: str,
+    limit: int = Query(100, le=1000),
+    db: AsyncSession = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+) -> List[AgentActionTraceResponse]:
+    """Retrieve trace log of exact action sequences & conformance for a target agent."""
+    tenant_id = current_user.workspace_id
+    await enforce_authz(current_user.id, tenant_id, "READ", f"agent/{agent_id}/trace", db)
+
+    dna = await MissionLockService.get_mission_dna(agent_id, db)
+    if not dna:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent {agent_id} not found")
+
+    if dna.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access denied")
+
+    stmt = (
+        select(AgentActionTrace)
+        .where(AgentActionTrace.agent_id == agent_id)
+        .order_by(AgentActionTrace.timestamp.desc())
+        .limit(limit)
+    )
+    res = await db.execute(stmt)
+    traces = res.scalars().all()
+
+    return list(traces)
+
+
+@router.get("/agents/{agent_id}/trace", response_model=List[AgentActionTraceResponse])
+async def get_agents_trace_plural(
+    agent_id: str,
+    limit: int = Query(100, le=1000),
+    db: AsyncSession = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+) -> List[AgentActionTraceResponse]:
+    """Plural alias: Retrieve trace log of exact action sequences & conformance for a target agent."""
+    return await get_agent_trace(agent_id, limit, db, current_user)

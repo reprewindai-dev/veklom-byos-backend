@@ -233,45 +233,53 @@ async def test_x402_comprehensive():
 @pytest.mark.asyncio
 async def test_payapi_dynamic_registration_and_parameterized_matching():
     client = TestClient(app)
-    
-    # 1. Dynamic Route Registration
-    register_payload = {
-        "name": "Dynamic Niche API",
-        "path": "/api/v1/niche-test/{item_id}/process",
-        "price": 0.045,
-        "description": "A dynamic endpoint listed on PayAPI on-the-fly",
-        "openapi_schema_url": "https://api.veklom.com/openapi.json"
-    }
-    
-    resp = client.post("/api/v1/x402/register-api", json=register_payload)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["success"] is True
-    assert data["registered_path"] == "/api/v1/niche-test/{item_id}/process"
-    assert data["price_usdc"] == 0.045
-    
-    # 2. Config Discovery verification
-    config_resp = client.get("/api/v1/x402/config")
-    assert config_resp.status_code == 200
-    config_data = config_resp.json()
-    assert "/api/v1/niche-test/{item_id}/process" in config_data["protected_routes"]
-    
-    # 3. Requesting dynamic path with placeholder match
-    response = client.post("/api/v1/niche-test/item_abc123/process", json={})
-    assert response.status_code == 402
-    challenge = response.json()
-    assert challenge["error"] == "payment_required"
-    assert challenge["amount"] == 0.045
-    assert challenge["currency"] == "USDC"
-    assert challenge["route"] == "/api/v1/niche-test/item_abc123/process"
-    
-    # 4. Verification of parameterized matching for preconfigured route
-    # Route: /api/v1/pgl/{agent_id}/quarantine -> Price: 0.01 USDC
-    quarantine_resp = client.post("/api/v1/pgl/agent_xyz_99/quarantine", json={})
-    assert quarantine_resp.status_code == 402
-    quarantine_challenge = quarantine_resp.json()
-    assert quarantine_challenge["error"] == "payment_required"
-    assert quarantine_challenge["amount"] == 0.01
-    assert quarantine_challenge["currency"] == "USDC"
-    assert quarantine_challenge["route"] == "/api/v1/pgl/agent_xyz_99/quarantine"
+    original_mode = settings.X402_TEST_PROOF_MODE
+    settings.X402_TEST_PROOF_MODE = True
+    try:
+        # 1. Dynamic Route Registration
+        register_payload = {
+            "name": "Dynamic Niche API",
+            "path": "/api/v1/niche-test/{item_id}/process",
+            "price": 0.045,
+            "description": "A dynamic endpoint listed on PayAPI on-the-fly",
+            "openapi_schema_url": "https://api.veklom.com/openapi.json"
+        }
+        
+        resp = client.post(
+            "/api/v1/x402/register-api", 
+            json=register_payload,
+            headers={"X-Payment": "test_proof_register"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["registered_path"] == "/api/v1/niche-test/{item_id}/process"
+        assert data["price_usdc"] == 0.045
+        
+        # 2. Config Discovery verification
+        config_resp = client.get("/api/v1/x402/config")
+        assert config_resp.status_code == 200
+        config_data = config_resp.json()
+        assert "/api/v1/niche-test/{item_id}/process" in config_data["protected_routes"]
+        
+        # 3. Requesting dynamic path with placeholder match
+        response = client.post("/api/v1/niche-test/item_abc123/process", json={})
+        assert response.status_code == 402
+        challenge = response.json()
+        assert challenge["error"] == "payment_required"
+        assert challenge["amount"] == 0.045
+        assert challenge["currency"] == "USDC"
+        assert challenge["route"] == "/api/v1/niche-test/item_abc123/process"
+        
+        # 4. Verification of parameterized matching for preconfigured route
+        # Route: /api/v1/pgl/{agent_id}/quarantine -> Price: 0.01 USDC
+        quarantine_resp = client.post("/api/v1/pgl/agent_xyz_99/quarantine", json={})
+        assert quarantine_resp.status_code == 402
+        quarantine_challenge = quarantine_resp.json()
+        assert quarantine_challenge["error"] == "payment_required"
+        assert quarantine_challenge["amount"] == 0.01
+        assert quarantine_challenge["currency"] == "USDC"
+        assert quarantine_challenge["route"] == "/api/v1/pgl/agent_xyz_99/quarantine"
+    finally:
+        settings.X402_TEST_PROOF_MODE = original_mode
 

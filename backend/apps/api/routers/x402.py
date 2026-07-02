@@ -172,7 +172,16 @@ async def get_x402_config():
     is_enabled = len(missing_config) == 0
 
     # Dynamically pull all protected routes directly from _PAID_ROUTES (no drift!)
-    protected_routes = list(_PAID_ROUTES.keys())
+    # Strip any METHOD: prefixes, deduplicate, and sort them
+    unique_routes = set()
+    for k in _PAID_ROUTES.keys():
+        if ":" in k:
+            parts = k.split(":", 1)
+            if parts[0] in ("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+                unique_routes.add(parts[1])
+                continue
+        unique_routes.add(k)
+    protected_routes = sorted(list(unique_routes))
 
     return X402ConfigResponse(
         enabled=is_enabled,

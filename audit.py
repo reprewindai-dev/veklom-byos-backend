@@ -149,16 +149,27 @@ def route_declarations(source: str) -> set[tuple[str, str]]:
             if not isinstance(decorator, ast.Call):
                 continue
             func = decorator.func
-            if not (
-                isinstance(func, ast.Attribute)
-                and func.attr.lower() in HTTP_METHODS
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "router"
-            ):
+            if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "router"):
                 continue
-            route_path = literal_string(decorator.args[0]) if decorator.args else None
-            if route_path and route_path.startswith("/"):
-                routes.add((func.attr.upper(), route_path))
+
+            if func.attr.lower() in HTTP_METHODS:
+                route_path = literal_string(decorator.args[0]) if decorator.args else None
+                if route_path and route_path.startswith("/"):
+                    routes.add((func.attr.upper(), route_path))
+            elif func.attr == "api_route":
+                route_path = literal_string(decorator.args[0]) if decorator.args else None
+                if route_path and route_path.startswith("/"):
+                    # Check for methods keyword
+                    for keyword in decorator.keywords:
+                        if keyword.arg == "methods":
+                            if isinstance(keyword.value, ast.List):
+                                for elt in keyword.value.elts:
+                                    method_name = literal_string(elt)
+                                    if method_name:
+                                        routes.add((method_name.upper(), route_path))
+                    # Default to GET if no methods specified
+                    if not any(keyword.arg == "methods" for keyword in decorator.keywords):
+                         routes.add(("GET", route_path))
     return routes
 
 

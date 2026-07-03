@@ -613,7 +613,10 @@ class BankerAgentService:
             }
 
             signed = acct.sign_transaction(tx)
-            raw_tx = signed.raw_transaction.hex()
+            raw_tx_bytes = getattr(signed, "rawTransaction", getattr(signed, "raw_transaction", None))
+            if raw_tx_bytes is None:
+                raise BankerAgentError("SignedTransaction object missing both rawTransaction and raw_transaction properties")
+            raw_tx = raw_tx_bytes.hex()
             if not raw_tx.startswith("0x"):
                 raw_tx = "0x" + raw_tx
 

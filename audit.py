@@ -89,6 +89,13 @@ def literal_string(node: ast.AST | None) -> str | None:
     return None
 
 
+def literal_string_sequence(node: ast.AST | None) -> set[str]:
+    """Extract literal strings from a static list, tuple, or set node."""
+    if not isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return set()
+    return {value for element in node.elts if (value := literal_string(element))}
+
+
 def parse_python(path: Path) -> ast.Module:
     """Parse a Python file for static route discovery without importing it."""
     try:
@@ -138,8 +145,20 @@ def discover_router_mounts() -> list[tuple[str, str]]:
     return mounts
 
 
+def api_route_methods(decorator: ast.Call) -> set[str]:
+    """Collect static HTTP methods from `@router.api_route(..., methods=[...])`."""
+    for keyword in decorator.keywords:
+        if keyword.arg == "methods":
+            return {
+                method.upper()
+                for method in literal_string_sequence(keyword.value)
+                if method.lower() in HTTP_METHODS
+            }
+    return set()
+
+
 def route_declarations(source: str) -> set[tuple[str, str]]:
-    """Collect `@router.<method>('/path')` declarations from router source."""
+    """Collect static `@router.<method>(...)` route declarations from source."""
     tree = ast.parse(source)
     routes: set[tuple[str, str]] = set()
     for node in ast.walk(tree):
@@ -149,16 +168,15 @@ def route_declarations(source: str) -> set[tuple[str, str]]:
             if not isinstance(decorator, ast.Call):
                 continue
             func = decorator.func
-            if not (
-                isinstance(func, ast.Attribute)
-                and func.attr.lower() in HTTP_METHODS
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "router"
-            ):
+            if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "router"):
                 continue
             route_path = literal_string(decorator.args[0]) if decorator.args else None
-            if route_path and route_path.startswith("/"):
+            if not route_path or not route_path.startswith("/"):
+                continue
+            if func.attr.lower() in HTTP_METHODS:
                 routes.add((func.attr.upper(), route_path))
+            elif func.attr == "api_route":
+                routes.update((method, route_path) for method in api_route_methods(decorator))
     return routes
 
 

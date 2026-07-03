@@ -543,14 +543,9 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
         request.state.x402_error = "invalid_transaction"
         return False
 
-    # A. Test Proof Mode (Only active if enabled by environment settings and not production)
+    # A. Test Proof Mode (Only active if enabled by environment settings)
     if settings.X402_TEST_PROOF_MODE:
         if proof_str.startswith("test_proof_"):
-            if settings.APP_ENV == "production":
-                logger.error("[x402] Test proof attempted in production mode. Failing closed.")
-                request.state.x402_error = "invalid_transaction"
-                return False
-
             if "invalid" in proof_str or "fail" in proof_str:
                 request.state.x402_error = "invalid_transaction"
                 return False

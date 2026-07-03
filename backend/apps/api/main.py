@@ -757,7 +757,7 @@ from backend.apps.api.routers import (
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
     build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
-    genome, well_known, capi, governed, evidence_pack, mission_lock
+    genome, well_known, capi, governed, evidence_pack, mission_lock, banker
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -849,6 +849,7 @@ app.include_router(edge.router, prefix="/api/v1")
 
 # x402 Payment & Verification Ingress
 app.include_router(x402.router, prefix="/api/v1")
+app.include_router(banker.router, prefix="/api/v1")
 
 # UACP Service - dual-adapter architecture (HTTP service + library shim)
 app.include_router(uacp_http_router, prefix="/api/v1")

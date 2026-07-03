@@ -573,7 +573,6 @@ class BankerAgentService:
             route_paid_for = route,
             purpose       = purpose,
             status        = "pending",
-            pgl_cert_id   = pgl_ctx.pre_execution_cert_id,   # link to PGL certificate
         )
         db.add(ledger_row)
         await db.commit()

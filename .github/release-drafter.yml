@@ -1,5 +1,10 @@
 name-template: "Veklom OS Backend $NEXT_PATCH_VERSION"
 tag-template: "v$NEXT_PATCH_VERSION"
+template: |
+  ## What's Changed
+
+  $CHANGES
+
 categories:
   - title: "Revenue Surface"
     labels:

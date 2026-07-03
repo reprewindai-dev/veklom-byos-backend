@@ -94,7 +94,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "POST:/api/v1/autonomous":                           {"price_usdc": 0.01,  "name": "Sovereign Autonomous Interrogator", "free_daily": 0, "category": "B", "unit": "per query"},
     "POST:/api/v1/governed/capi/compile":                {"price_usdc": 50.00, "name": "Governed cAPI Immutable Compiler", "free_daily": 0, "category": "B", "unit": "per compilation"},
 
-    # Category C: PGL Identity & Sovereign Workforce (8 Endpoints)
+    # Category C: PGL Identity & Sovereign Workforce (10 Endpoints)
     "POST:/api/v1/pgl/identity-rag/resolve":            {"price_usdc": 0.01,  "name": "IdentityRAG Cross-Cluster Resolver", "free_daily": 0, "category": "C", "unit": "per resolution"},
     "GET:/api/v1/pgl/{agent_id}/genealogy":             {"price_usdc": 0.01,  "name": "Merkle Genealogy DNA Proof", "free_daily": 0, "category": "C", "unit": "per proof"},
     "POST:/api/v1/pgl/{agent_id}/quarantine":            {"price_usdc": 0.01,  "name": "Dynamic RLS Decoy Quarantine", "free_daily": 0, "category": "C", "unit": "per quarantine"},
@@ -103,6 +103,8 @@ _PAID_ROUTES: dict[str, dict] = {
     "GET:/api/v1/agents/fleet":                          {"price_usdc": 0.005, "name": "Workspace Workforce Aggregator", "free_daily": 0, "category": "C", "unit": "per fleet"},
     "GET:/api/v1/agents/registry/{agent_number}":        {"price_usdc": 0.001, "name": "Individual Agent Detail Inspector", "free_daily": 0, "category": "C", "unit": "per inspect"},
     "GET:/api/v1/agents/skills":                         {"price_usdc": 0.002, "name": "Active Workforce Capabilities", "free_daily": 0, "category": "C", "unit": "per listing"},
+    "POST:/api/v1/pgl/identity/renew":                   {"price_usdc": 0.10,  "name": "PGL Operator Identity Renewal", "free_daily": 0, "category": "C", "unit": "per renewal"},
+    "POST:/api/v1/agents/{agent_id}/renew":              {"price_usdc": 0.10,  "name": "PGL Agent Birth Certificate Renewal", "free_daily": 0, "category": "C", "unit": "per renewal"},
 
     # Category D: Dynamic Guardrails & Memory Interceptors (8 Endpoints)
     "POST:/api/v1/agent-guardrails/{agent_id}/guardrails":         {"price_usdc": 0.01,  "name": "Live Guardrail Injector", "free_daily": 0, "category": "D", "unit": "per injection"},

@@ -40,7 +40,11 @@ class PGLCertificate(Base):
     output_hash = Column(String(128), nullable=True)
     outcome_hash = Column(String(128), nullable=True)
     pre_certificate_id = Column(String(64), nullable=True, index=True)  # post -> pre link
-    status = Column(String(32), nullable=False, default="committed")
+    status = Column(String(32), nullable=False, default="OPEN")         # 'OPEN' | 'SUCCEEDED' | 'FAILED' | 'ROLLED_BACK' | 'ABANDONED'
+    signature = Column(String(256), nullable=True)                      # Cryptographic signature from the PGL authority
+    expires_at = Column(DateTime(timezone=True), nullable=True)         # Hard expiration window
+    scope = Column(String(64), nullable=True, index=True)               # e.g., 'wallet:spend', 'pipeline:exec', 'run:commit'
+    resolved_at = Column(DateTime(timezone=True), nullable=True)        # Closed or reconciled timestamp
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     
     pgl_identity = relationship("PGLIdentity")
@@ -82,4 +86,18 @@ class PGLIdentity(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     rotated_at = Column(DateTime(timezone=True), nullable=True)
     metadata_json = Column("metadata", JSON, default=dict)
+
+
+class PGLAnchor(Base):
+    """Immutable audit records anchoring ledger head hashes externally."""
+
+    __tablename__ = "pgl_anchors"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workspace_id = Column(String(64), nullable=False, index=True)
+    ledger_head_hash = Column(String(128), nullable=False, index=True)
+    anchored_tx_hash = Column(String(256), nullable=False)
+    status = Column(String(32), nullable=False, default="anchored") # 'pending' | 'anchored'
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
 

@@ -1004,6 +1004,26 @@ async def redirect_workspace_root(request: Request):
     return RedirectResponse(url=f"https://control.veklom.com/dashboard/{query_str}", status_code=307)
 
 
+@app.get("/login")
+@app.get("/login/")
+@app.get("/workspace/login")
+@app.get("/workspace/login/")
+async def redirect_login(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com/login{query_str}", status_code=307)
+
+
+@app.get("/signup")
+@app.get("/signup/")
+@app.get("/workspace/signup")
+@app.get("/workspace/signup/")
+async def redirect_signup(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com/signup{query_str}", status_code=307)
+
+
 @app.get("/terminal")
 @app.get("/terminal/")
 @app.get("/terrrinal")

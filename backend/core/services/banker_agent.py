@@ -250,6 +250,11 @@ def _record_daily_spend(amount_usdc: float) -> None:
 
 async def _get_usdc_balance(address: str) -> int:
     """Returns raw USDC balance in micro-USDC (6 decimals) via eth_call."""
+    from backend.core.config.settings import settings
+    if settings.X402_TEST_PROOF_MODE:
+        logger.info(f"[BankerAgent] (sim-balance) Returning mock funded balance for address: {address}")
+        return 100_000_000 # 100.00 USDC
+
     from web3 import Web3
 
     # balanceOf(address) selector = keccak256("balanceOf(address)")[:4]
@@ -625,6 +630,21 @@ class BankerAgentService:
             raise BankerAgentError(f"Failed to build/sign transaction: {exc}")
 
         # 6. Broadcast
+        from backend.core.config.settings import settings
+        if settings.X402_TEST_PROOF_MODE:
+            tx_hash = f"test_proof_{uuid.uuid4().hex[:12]}"
+            logger.info(f"[BankerAgent] (sim-broadcast) Bypassing RPC broadcast. Generated mock proof hash: {tx_hash}")
+            await _persist_ledger_async(db, ledger_id, {"tx_hash": tx_hash, "status": "confirmed", "confirmed_at": datetime.now(timezone.utc)})
+            
+            # PGL post-execution attestation
+            await BankerAgentPGLGuard.attest_success(
+                db          = db,
+                pgl_ctx     = pgl_ctx,
+                tx_hash     = tx_hash,
+                block_number = 123456,
+            )
+            return tx_hash
+
         try:
             await _persist_ledger_async(db, ledger_id, {"status": "broadcast"})
             tx_hash = await _broadcast_raw_tx(raw_tx)

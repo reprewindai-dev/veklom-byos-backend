@@ -144,7 +144,7 @@ test.describe('Veklom smoke', () => {
 
     // Navigate to login (redirects to /workspace/login in the SPA)
     await gotoDuringRollout(page, `${BASE}/login`, 'login route');
-    await page.waitForLoadState('domcontentloaded');
+    await page.waitForLoadState('networkidle');
 
     // The control plane is a Next App Router export, not a Vite SPA; assert the rendered auth shell.
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
@@ -187,9 +187,7 @@ test.describe('Veklom smoke', () => {
 
   test('@smoke workspace basics (terminal/run present)', async ({ page }) => {
     await gotoDuringRollout(page, `${BASE}/workspace`, 'workspace route');
-    // We already waited for domcontentloaded in gotoDuringRollout.
-    // The control plane is extremely fast but we give it a few seconds to boot if it's struggling under CI.
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000); // networkidle flakes due to cloudflare beacon tracking scripts
 
     // The workspace route may redirect unauthenticated users into the Next auth shell.
     await expect(page.locator('body')).toBeVisible({ timeout: 15000 });

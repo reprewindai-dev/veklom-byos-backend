@@ -1,9 +1,13 @@
+
+
 """JWT auth utilities."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status, Request
+import bcrypt
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -11,12 +15,11 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
-from backend.core.database.database import get_db_session, get_db
+from backend.core.database.database import get_db, get_db_session
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security_scheme = HTTPBearer(auto_error=False)
 
-import bcrypt
 
 def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -46,7 +49,6 @@ def create_access_token(
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-import logging
 
 def verify_token(token: str, enforce_replay: bool = False) -> dict:
     try:
@@ -146,21 +148,30 @@ async def get_current_user(
         status_value = (user.status or "").upper()
         if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
-            
+
         if status_value == "PENDING_VERIFICATION":
             allowed_paths = ["/me", "/resend-verification", "/verify-email", "/logout", "/onboarding/vertical", "/config"]
             if not any(request.url.path.endswith(p) for p in allowed_paths):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
 
-        user.last_activity = datetime.utcnow()
-        
+        now = datetime.utcnow()
+        needs_commit = False
+
+        if not user.last_activity or (now - user.last_activity) > timedelta(minutes=5):
+            user.last_activity = now
+            needs_commit = True
+
         # Omniscient Platform Admin override
         if user.email == "reprewindai@gmail.com":
-            user.role = "admin"
-            if hasattr(user, "is_superuser"):
+            if user.role != "admin":
+                user.role = "admin"
+                needs_commit = True
+            if hasattr(user, "is_superuser") and not user.is_superuser:
                 user.is_superuser = True
-                
-        await db.commit()
+                needs_commit = True
+
+        if needs_commit:
+            await db.commit()
         return user
 
 
@@ -248,8 +259,12 @@ async def get_current_user_optional(
         status_value = (user.status or "").upper()
         if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
             return _GUEST_USER
-        user.last_activity = datetime.utcnow()
-        await db.commit()
+
+        now = datetime.utcnow()
+        last_activity = getattr(user, 'last_activity', None)
+        if not last_activity or (now - last_activity) > timedelta(minutes=5):
+            user.last_activity = now
+            await db.commit()
         return user
 
 
@@ -268,15 +283,22 @@ async def get_current_user_or_api_key(
 
         prefix = api_key_header[:10]
         from backend.db.models.user import APIKey, User
-        result = await db.execute(select(APIKey).where(APIKey.key_prefix == prefix, APIKey.is_active == True))
+        result = await db.execute(select(APIKey).where(APIKey.key_prefix == prefix, APIKey.is_active))
         keys = result.scalars().all()
         for key in keys:
             if verify_password(api_key_header, key.key_hash):
                 user_res = await db.execute(select(User).where(User.id == key.user_id))
                 user = user_res.scalar_one_or_none()
                 if user and user.status == "active":
-                    user.last_activity = datetime.now(timezone.utc)
-                    await db.commit()
+                    now = datetime.utcnow()
+                    if getattr(user, 'last_activity', None) and getattr(user.last_activity, 'tzinfo', None):
+                        last_activity = user.last_activity.replace(tzinfo=None)
+                    else:
+                        last_activity = user.last_activity
+
+                    if not last_activity or (now - last_activity) > timedelta(minutes=5):
+                        user.last_activity = now
+                        await db.commit()
                     return user
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or inactive API Key")
 
@@ -327,7 +349,7 @@ async def get_rls_db(
     The session is safely reset in a finally block to prevent leakage across pooled connections.
     """
     tenant_id = getattr(user, "workspace_id", None) or getattr(user, "tenant_id", "default_tenant")
-    
+
     # Inject tenant variable
     await db.execute(text("SET LOCAL app.current_tenant_id = :tenant_id"), {"tenant_id": tenant_id})
     try:

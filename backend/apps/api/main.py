@@ -1997,7 +1997,9 @@ app.include_router(mcp.router, prefix="/api/v1")
 app.include_router(agent_memory.router, prefix="/api/v1")
 app.include_router(conversation_memory.router, prefix="/api/v1")
 
-# Layer 5: Evapp.add_middleware(CORSMiddleware,
+# Layer 5: Ev
+
+app.add_middleware(CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_credentials=True,

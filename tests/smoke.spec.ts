@@ -187,7 +187,6 @@ test.describe('Veklom smoke', () => {
 
   test('@smoke workspace basics (terminal/run present)', async ({ page }) => {
     await gotoDuringRollout(page, `${BASE}/workspace`, 'workspace route');
-    await page.waitForLoadState('networkidle');
 
     // The workspace route may redirect unauthenticated users into the Next auth shell.
     await expect(page.locator('body')).toBeVisible({ timeout: 15000 });

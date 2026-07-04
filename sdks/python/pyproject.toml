@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veklom"
+version = "0.1.0"
+description = "Official Python client for governed inference, audit logging, model routing, and compliance via the Veklom API."
+authors = [
+    {name = "Veklom Nexus Protocol"}
+]
+dependencies = [
+    "requests>=2.25.1",
+    "pydantic>=2.0.0"
+]
+requires-python = ">=3.9"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]

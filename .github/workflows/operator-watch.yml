@@ -19,15 +19,15 @@ jobs:
           INTERNAL_OPERATOR_TOKEN: ${{ secrets.INTERNAL_OPERATOR_TOKEN || secrets.INTERNAL_API_KEY }}
         run: |
           set -euo pipefail
-          test -n "${INTERNAL_OPERATOR_TOKEN:-}" || (
-            echo "INTERNAL_OPERATOR_TOKEN/INTERNAL_API_KEY is missing. Create a superuser-owned API key with AUTOMATION or ADMIN scope and save it as the GitHub Actions secret INTERNAL_OPERATOR_TOKEN."
-            exit 1
-          )
+          if [ -z "${INTERNAL_OPERATOR_TOKEN:-}" ]; then
+            echo "::notice title=Operator Watch skipped::INTERNAL_OPERATOR_TOKEN/INTERNAL_API_KEY is not configured, so the scheduled operator watch did not run."
+            exit 0
+          fi
           RESPONSE="$(curl -fsS -X POST \
             -H "Authorization: Bearer ${INTERNAL_OPERATOR_TOKEN}" \
             "${BACKEND_URL%/}/api/v1/internal/operators/watch")"
           echo "$RESPONSE"
-          STATUS="$(python - <<'PY' "$RESPONSE"
+          STATUS="$(python3 - <<'PY' "$RESPONSE"
           import json, sys
           print(json.loads(sys.argv[1]).get("status", "unknown"))
           PY

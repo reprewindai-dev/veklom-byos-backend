@@ -632,6 +632,11 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     # D. Configurable required confirmations - default to 1 in production, 0 in dev if not specified
     default_confirmations = 1 if settings.APP_ENV == "production" else 0
     required_confirmations = int(os.environ.get("X402_REQUIRED_CONFIRMATIONS", str(default_confirmations)))
+    
+    if settings.APP_ENV == "production" and required_confirmations < 1:
+        logger.error("[SECURITY WARNING] required_confirmations < 1 in PRODUCTION. Enforcing minimum of 1.")
+        required_confirmations = 1
+
     confirmations = 0
     if tx_receipt.get("blockNumber") and rpc_url_used:
         try:
@@ -722,7 +727,8 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         # Test-mode bypass — set X402_DISABLED=true to skip all payment enforcement
         if os.environ.get("X402_DISABLED", "").lower() in ("1", "true", "yes"):
             if settings.APP_ENV == "production" or os.getenv("ENVIRONMENT") == "production":
-                logger.error("[SECURITY WARNING] X402_DISABLED bypass attempted in PRODUCTION environment. This is forbidden!")
+                logger.error("[SECURITY PANIC] X402_DISABLED bypass attempted in PRODUCTION environment. This is forbidden!")
+                return JSONResponse(status_code=500, content={"error": "Server misconfiguration. X402 payment enforcement cannot be disabled in production."})
             else:
                 return await call_next(request)
 

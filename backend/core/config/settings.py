@@ -277,4 +277,14 @@ class Settings(BaseSettings):
                 return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
+    def validate_production(self):
+        """Guard to ensure insecure defaults are not used in production environments."""
+        if self.APP_ENV == "production":
+            if self.SECRET_KEY == "change-me-in-production":
+                raise ValueError("SECURITY PANIC: SECRET_KEY is set to default 'change-me-in-production' in a production environment. This is a critical security risk. Refusing to start.")
+            if self.ENCRYPTION_KEY == "change-me-in-production-aes-256":
+                raise ValueError("SECURITY PANIC: ENCRYPTION_KEY is set to default 'change-me-in-production-aes-256' in a production environment. Refusing to start.")
+            if self.DATABASE_URL.startswith("postgresql+asyncpg://byos:password@localhost:5432/byos_ai"):
+                raise ValueError("SECURITY PANIC: DATABASE_URL uses the default local credentials in a production environment. Refusing to start.")
+
 settings = Settings()

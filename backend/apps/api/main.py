@@ -244,6 +244,9 @@ from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Enforce security configurations
+    settings.validate_production()
+
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
 
@@ -661,14 +664,6 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts())
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(X402PaymentMiddleware)
-
-app.add_middleware(CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_origin_regex=_CORS_ORIGIN_REGEX,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 # --- Exception handlers ---
@@ -2002,4 +1997,11 @@ app.include_router(mcp.router, prefix="/api/v1")
 app.include_router(agent_memory.router, prefix="/api/v1")
 app.include_router(conversation_memory.router, prefix="/api/v1")
 
-# Layer 5: Ev
+# Layer 5: Evapp.add_middleware(CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-VNP-Stake-Result", "X-VNP-Signature", "X-Veklom-Receipt-ID"]
+)

@@ -132,15 +132,10 @@ def _user_dict(user: User) -> dict:
 
     is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
 
-    # Try to get workspace name if workspace relationship exists
+    # Workspace name: user is detached (expunged) after get_current_user,
+    # so lazy-loading relationships is unsafe (triggers greenlet errors).
+    # Use workspace_id only; name is resolved by callers with a live session.
     workspace_name = ""
-    if hasattr(user, 'workspace') and user.workspace:
-        workspace_name = user.workspace.name or ""
-    elif user.workspace_id:
-        # Fallback: try to fetch workspace by ID if not already loaded
-        from backend.db.models.workspace import Workspace
-        # Note: This requires a db session, so we'll use a simple fallback for now
-        workspace_name = ""
 
     return {
         "id": user.id,

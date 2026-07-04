@@ -6,7 +6,7 @@ STANDALONE SERVICE — Aligned with Veklom Production Architecture.
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import intent, receipt, governance, webcapi
+from .routes import intent, receipt, governance, webcapi, x402
 
 app = FastAPI(
     title="interlink-cAPI",
@@ -27,6 +27,7 @@ app.include_router(intent.router, prefix="/capi")
 app.include_router(receipt.router, prefix="/capi")
 app.include_router(governance.router, prefix="/capi")
 app.include_router(webcapi.router, prefix="/capi")
+app.include_router(x402.router, prefix="/capi")
 
 @app.get("/")
 async def root():

@@ -37,7 +37,7 @@ async def get_docs_home(
 async def get_docs_path(
     path: str,
     local: bool = Query(default=False),
-    format: str = Query(default="html", regex="^(html|json|md)$"),
+    format: str = Query(default="html", pattern="^(html|json|md)$"),
     user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get documentation path with proper routing."""
@@ -53,7 +53,7 @@ async def get_docs_path(
 
 @router.get("/docs/api/overview")
 async def get_api_overview(
-    format: str = Query(default="html", regex="^(html|json)$"),
+    format: str = Query(default="html", pattern="^(html|json)$"),
     user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get API overview documentation."""
@@ -138,7 +138,7 @@ async def get_api_overview(
 
 @router.get("/docs/guides/quickstart")
 async def get_quickstart_guide(
-    format: str = Query(default="html", regex="^(html|json|md)$"),
+    format: str = Query(default="html", pattern="^(html|json|md)$"),
     user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get quickstart guide."""
@@ -209,7 +209,7 @@ async def get_quickstart_guide(
 
 @router.get("/docs/guides/pgl-onboarding")
 async def get_pgl_onboarding_guide(
-    format: str = Query(default="html", regex="^(html|json|md)$"),
+    format: str = Query(default="html", pattern="^(html|json|md)$"),
     user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get PGL onboarding guide."""
@@ -313,7 +313,7 @@ async def get_pgl_onboarding_guide(
 
 @router.get("/docs/reference/seked")
 async def get_seked_reference(
-    format: str = Query(default="html", regex="^(html|json|md)$"),
+    format: str = Query(default="html", pattern="^(html|json|md)$"),
     user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get SEKED measurement system reference."""
@@ -460,7 +460,7 @@ def markdown_to_html(md_text: str) -> str:
 @router.get("/docs/search")
 async def search_docs(
     q: str = Query(..., min_length=1),
-    format: str = Query(default="json", regex="^(json|html)$"),
+    format: str = Query(default="json", pattern="^(json|html)$"),
     user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Search documentation filesystem."""

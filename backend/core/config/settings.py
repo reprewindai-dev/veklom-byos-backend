@@ -280,6 +280,7 @@ class Settings(BaseSettings):
     def validate_production(self):
         """Guard to ensure insecure defaults are not used in production environments."""
         if self.APP_ENV == "production":
+            self.JWT_AUD_ENFORCEMENT = "enforce"
             if self.SECRET_KEY == "change-me-in-production":
                 raise ValueError("SECURITY PANIC: SECRET_KEY is set to default 'change-me-in-production' in a production environment. This is a critical security risk. Refusing to start.")
             if self.ENCRYPTION_KEY == "change-me-in-production-aes-256":

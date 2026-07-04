@@ -6,29 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-DISABLE_PGVECTOR = os.environ.get("DISABLE_PGVECTOR", "true").lower() == "true"
-
-try:
-    if DISABLE_PGVECTOR:
-        raise ImportError("pgvector explicitly disabled via DISABLE_PGVECTOR")
-    from pgvector.sqlalchemy import Vector
-    logger.info("pgvector.sqlalchemy imported successfully")
-except Exception as e:
-    logger.warning(f"Using fallback Vector type because: {e}")
-    from sqlalchemy.types import TypeDecorator
-    from sqlalchemy.sql.expression import literal
-
-    class Vector(TypeDecorator):
-        impl = ARRAY(Float)
-        cache_ok = True
-
-        def __init__(self, dim):
-            super().__init__()
-            self.dim = dim
-
-        class comparator_factory(ARRAY.Comparator):
-            def cosine_distance(self, other):
-                return literal(0.0)
+from pgvector.sqlalchemy import Vector
 
 class AgentMemoryStore(Base):
     """

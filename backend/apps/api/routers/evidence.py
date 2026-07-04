@@ -233,7 +233,7 @@ async def get_evidence_pack(
 @router.get("/packs/{evidence_pack_id}/export")
 async def export_evidence_pack(
     evidence_pack_id: str,
-    format: str = Query("json", regex="^(json|csv)$", description="Export format"),
+    format: str = Query("json", pattern="^(json|csv)$", description="Export format"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

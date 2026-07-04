@@ -8,43 +8,24 @@ from sqlalchemy.orm import DeclarativeBase
 from backend.core.config.settings import settings
 
 db_url = settings.DATABASE_URL
-if not db_url or not db_url.strip():
-    print("WARNING: DATABASE_URL not set in environment. Falling back to in-memory SQLite.")
-    db_url = "sqlite+aiosqlite:///:memory:"
+if not db_url or not db_url.strip() or "sqlite" in db_url:
+    raise ValueError("A valid PostgreSQL DATABASE_URL is required. SQLite is not supported due to pgvector/JSONB requirements.")
 
 try:
-    if "sqlite" in db_url:
-        from sqlalchemy.pool import StaticPool
-        engine = create_async_engine(
-            db_url,
-            echo=settings.DEBUG,
-            future=True,
-            poolclass=StaticPool,
-            connect_args={"check_same_thread": False},
-        )
-    else:
-        engine = create_async_engine(
-            db_url,
-            echo=settings.DEBUG,
-            future=True,
-            pool_size=20,
-            max_overflow=15,
-            pool_timeout=30,
-            pool_pre_ping=True,
-            pool_recycle=1800,
-            connect_args={"timeout": 10, "command_timeout": 10},
-        )
-except Exception as e:
-    print(f"WARNING: Database engine creation failed: {e}. Falling back to in-memory SQLite.")
-    db_url = "sqlite+aiosqlite:///:memory:"
-    from sqlalchemy.pool import StaticPool
     engine = create_async_engine(
         db_url,
         echo=settings.DEBUG,
         future=True,
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
+        pool_size=20,
+        max_overflow=15,
+        pool_timeout=30,
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        connect_args={"timeout": 10, "command_timeout": 10},
     )
+except Exception as e:
+    print(f"WARNING: Database engine creation failed: {e}")
+    raise e
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 print(f"DATABASE ENGINE INITIALIZED: ID={id(engine)}, URL={db_url}")

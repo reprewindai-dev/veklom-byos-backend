@@ -1,0 +1,4 @@
+{
+  "description": "!!! abstract \"Usage Documentation\"\n    [`RootModel` and Custom Root Types](../concepts/models.md#rootmodel-and-custom-root-types)\n\nA Pydantic `BaseModel` for the root object of the model.\n\nAttributes:\n    root: The root object of the model.\n    __pydantic_root_model__: Whether the model is a RootModel.\n    __pydantic_private__: Private fields in the model.\n    __pydantic_extra__: Extra fields in the model.",
+  "title": "RootModel"
+}

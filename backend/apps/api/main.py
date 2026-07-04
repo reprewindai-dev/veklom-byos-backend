@@ -667,10 +667,19 @@ app.add_middleware(X402PaymentMiddleware)
 
 
 # --- Exception handlers ---
+def _add_cors_headers(request: Request, response):
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, x-vnp-stake"
+    return response
+
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
     if request.url.path.startswith("/api/"):
-        return JSONResponse(status_code=404, content={"detail": "Not found"})
+        return _add_cors_headers(request, JSONResponse(status_code=404, content={"detail": "Not found"}))
     
     is_workspace = request.url.path.startswith("/workspace")
     is_github = request.url.path.startswith("/github")
@@ -726,16 +735,16 @@ async def internal_error(request: Request, exc):
         sanitized_resp, diag_log = global_error_sanitizer.sanitize_exception(exc)
         import logging
         logging.getLogger("backend.apps.api.main").error(f"[Global500] Unhandled exception occurred:\n{diag_log}")
-        return JSONResponse(status_code=500, content=sanitized_resp)
+        return _add_cors_headers(request, JSONResponse(status_code=500, content=sanitized_resp))
     except Exception as parse_err:
-        return JSONResponse(
+        return _add_cors_headers(request, JSONResponse(
             status_code=500, 
             content={
                 "error": "CRITICAL_FALLBACK_FAILURE",
                 "message": "An unhandled exception occurred and the error sanitizer failed. This incident has been logged.",
                 "fallback_detail": str(parse_err)
             }
-        )
+        ))
 
 
 # --- Import and register all routers ---

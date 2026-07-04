@@ -745,6 +745,12 @@ async def internal_error(request: Request, exc):
 
 # --- Import and register all routers ---
 from backend.apps.api.routers import (
+    duel,
+    bingo,
+    veklom_id,
+    discovery
+)
+from backend.apps.api.routers import (
     agent_arena, agent_evaluation, agent_guardrails, agent_memory, agents, ai, amphoteric, auth, authority,
     authority_runs, autonomous, billing, command_center, compliance,
     copilot, diagnostics, discovery, docs, edge, edge_llm, evaluations,
@@ -757,7 +763,7 @@ from backend.apps.api.routers import (
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
     build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
-    genome, well_known, capi, governed, evidence_pack, mission_lock, banker
+    genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -777,6 +783,8 @@ app.include_router(agents.router, prefix="/api/v1")
 app.include_router(hrm.router, prefix="/api/v1")
 app.include_router(terminal.router, prefix="/api/terminal")
 app.include_router(amphoteric.router, prefix="/api/v1")
+app.include_router(claims.router, prefix="/api/v1")
+app.include_router(badges.router, prefix="/api/v1")
 
 # System utilities
 app.include_router(system.router, prefix="/api/v1")
@@ -835,6 +843,11 @@ app.include_router(nexus.router, prefix="/api/v1")
 
 # Pipelines, deployments, routing, autonomous, edge/canary
 app.include_router(pipelines.router, prefix="/api/v1")
+app.include_router(health.router)
+app.include_router(duel.router, prefix="/api/v1")
+app.include_router(bingo.router, prefix="/api/v1")
+app.include_router(veklom_id.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(pipelines.router)
 app.include_router(routing.router, prefix="/api/v1")
 
@@ -925,6 +938,11 @@ app.include_router(benchmarks.router, prefix="/api/v1")
 
 # VNP - Data Plane Ingestion and Route Beacon
 from backend.apps.api.routers import vnp, vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
+app.include_router(vnp_incidents.router, prefix="/api/v1")
+app.include_router(banker.router, prefix="/api/v1")
+app.include_router(wallet.router, prefix="/api/v1")
+app.include_router(duel.router, prefix="/api/v1")
+app.include_router(autonomous.router, prefix="/api/v1")
 app.include_router(vnp.router, prefix="/api")
 app.include_router(vnp_ingest.router, prefix="/api/v1")
 app.include_router(vnp_beacon.router, prefix="/api/v1")

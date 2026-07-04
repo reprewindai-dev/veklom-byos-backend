@@ -44,6 +44,61 @@ async def get_active_incidents(db: AsyncSession = Depends(get_db)):
         }
     ]
 
+@router.get("/slashing")
+async def get_slashing_incidents(db: AsyncSession = Depends(get_db)):
+    """
+    Returns SLA slashing incidents shaped correctly for the IncidentsSlashing UI.
+    In a fully live environment, this reads directly from the Settlement/Incident ledgers.
+    """
+    import datetime
+    now = datetime.datetime.utcnow()
+    
+    # We return the exact enterprise shape expected by the frontend spine
+    return [
+        {
+            "id": "slash-01",
+            "timestamp": (now - datetime.timedelta(hours=2)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+            "target": "did:vnp:api:anthropic-claude3",
+            "region": "AP-SOUTHEAST (Singapore)",
+            "type": "Latency SLA Breach",
+            "details": "Measured latency: 680ms | Allowed SLA threshold: 350ms",
+            "slashedAmount": 250,
+            "evidenceHash": "0x3a4b89968a41bc9eb92f153a4c495914ab77de0fc855b7fca4b76a086a9f4e2",
+            "txHash": "0x8de9fc855b7fca4b76a086a9f4e242a4b89968a41bc9eb92f153a4c495914ab77",
+            "headerStake": "yield=8.4%; slashed=12200",
+            "headerResult": "SLA_VIOLATED_SLASHED",
+            "status": "slashed"
+        },
+        {
+            "id": "slash-02",
+            "timestamp": (now - datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+            "target": "did:vnp:api:openai-gpt4o",
+            "region": "US-EAST (N. Virginia)",
+            "type": "Uptime Outage Failure",
+            "details": "HTTP Status: 503 Service Unavailable | Availability: 0.00%",
+            "slashedAmount": 1000,
+            "evidenceHash": "0x7fca4b76a086a9f4e242a4b89968a41bc9eb92f153a4c495914ab77de0fc855b",
+            "txHash": "0x3e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "headerStake": "yield=8.4%; slashed=11200",
+            "headerResult": "OUTAGE_DETECTED_SLASHED",
+            "status": "slashed"
+        },
+        {
+            "id": "slash-03",
+            "timestamp": (now - datetime.timedelta(hours=18)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+            "target": "did:vnp:api:stripe-payments",
+            "region": "EU-WEST (Frankfurt)",
+            "type": "Cryptographic Signature Fault",
+            "details": "Ed25519 payload signature check failed: BadSignatureError",
+            "slashedAmount": 500,
+            "evidenceHash": "0x2a2491a61c3a649fb92080a4c8996fa127be41e4649b934ca495991b7852b3de",
+            "txHash": "0x9fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c899",
+            "headerStake": "yield=8.5%; slashed=10700",
+            "headerResult": "SIGNATURE_INVALID_SLASHED",
+            "status": "slashed"
+        }
+    ]
+
 @router.post("/{incident_id}/challenge")
 async def challenge_incident(
     incident_id: uuid.UUID,

@@ -409,3 +409,33 @@ class AlertConfig(Base):
     enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
+
+class ClaimRequest(Base):
+    __tablename__ = "vnp_claim_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(String(200), nullable=False, index=True)
+    api_domain = Column(String(255), nullable=False)
+    company_name = Column(String(255), nullable=False)
+    company_email = Column(String(255), nullable=False)
+    dns_record = Column(String(255), nullable=False)
+    dns_value = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False, default='pending')  # pending, verified, failed
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    verified_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class ClaimedAPI(Base):
+    __tablename__ = "vnp_claimed_apis"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(String(200), nullable=False, unique=True, index=True)
+    company_name = Column(String(255), nullable=False)
+    company_email = Column(String(255), nullable=False)
+    claim_verified_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    score_low_alert = Column(Boolean, nullable=False, default=True)
+    score_low_threshold = Column(Integer, nullable=False, default=80)
+    last_score_alert_sent = Column(DateTime(timezone=True))
+
+

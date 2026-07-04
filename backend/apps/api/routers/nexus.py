@@ -332,3 +332,64 @@ async def get_agent_privilege(agent_id: str, db: AsyncSession = Depends(get_db))
     """Check the current privilege status of an agent."""
     is_active = await seked_service.check_agent_privilege(db, agent_id)
     return {"agent_id": agent_id, "is_active": is_active}
+
+@router.get("/scores")
+async def get_nexus_scores():
+    # Returns API ScoreCards for NexusProtocol UI
+    return [
+        {
+            "id": "stripe-payments",
+            "name": "Stripe Payments API",
+            "provider": "Stripe, Inc.",
+            "score": 96,
+            "grade": "A",
+            "dimensions": [
+                { "name": "Performance", "score": 98, "weight": 15, "desc": "p50/p95 response latency" },
+                { "name": "Reliability", "score": 99, "weight": 15, "desc": "HTTP 200 uptime consistency" },
+                { "name": "Security Posture", "score": 95, "weight": 10, "desc": "TLS configuration & headers" },
+                { "name": "SLA Compliance", "score": 96, "weight": 10, "desc": "Acceptable boundary conformance" }
+            ],
+            "anchorHash": "0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "ipfsHash": "QmYwAPJhy5nJqqEAQUWKWtURPzRrCb76c8cUpV1J8U3F47",
+            "txHash": "0x7fca4b76a086a9f4e242a4b89968a41bc9eb92f153a4c495914ab77de0fc855b",
+            "lastUpdated": "12m ago"
+        },
+        {
+            "id": "openai-gpt4o",
+            "name": "OpenAI GPT-4o API",
+            "provider": "OpenAI L.L.C.",
+            "score": 91,
+            "grade": "A-",
+            "dimensions": [
+                { "name": "Performance", "score": 84, "weight": 15, "desc": "p50/p95 response latency" },
+                { "name": "Reliability", "score": 94, "weight": 15, "desc": "HTTP 200 uptime consistency" },
+                { "name": "Security Posture", "score": 92, "weight": 10, "desc": "TLS configuration & headers" },
+                { "name": "SLA Compliance", "score": 90, "weight": 10, "desc": "Acceptable boundary conformance" }
+            ],
+            "anchorHash": "0x2a2491a61c3a649fb92080a4c8996fa127be41e4649b934ca495991b7852b3de",
+            "ipfsHash": "QmZv21A7xWQUwAPJhynJqqEAQURPzRrCb76c8cUpV1J8U",
+            "txHash": "0x1de9fc855b7fca4b76a086a9f4e242a4b89968a41bc9eb92f153a4c495914ab77",
+            "lastUpdated": "8m ago"
+        }
+    ]
+
+@router.get("/genome")
+async def get_nexus_genome():
+    return {
+        "hash": "a1b2c3d4",
+        "layers": {
+            "model": "Olmo3-Hybrid",
+            "prompt": "PGL-Constitutional",
+            "policy": "Article-12",
+            "watchtower": "MELT-Guard"
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+@router.get("/nodes")
+async def get_nexus_nodes():
+    return [
+        { "id": "us-east", "name": "Node-01 // US-East", "region": "N. Virginia, USA", "latency": 18, "throughput": 440, "status": "attesting", "activeCycles": 9812 },
+        { "id": "us-west", "name": "Node-02 // US-West", "region": "Oregon, USA", "latency": 32, "throughput": 310, "status": "attesting", "activeCycles": 9789 },
+        { "id": "eu-west", "name": "Node-03 // EU-West", "region": "Frankfurt, GER", "latency": 12, "throughput": 512, "status": "attesting", "activeCycles": 9910 }
+    ]

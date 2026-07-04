@@ -16,6 +16,11 @@ import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+from backend.core.database.database import get_db
+from backend.db.models.governed_run import GovernedRun
 from backend.core.config.settings import settings
 
 router = APIRouter(tags=["discovery"])
@@ -896,3 +901,60 @@ with httpx.stream("GET", "{base}/mcp/sse") as r:
             "mcp_sse":          f"{base}/mcp/sse",
         },
     }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=3600"})
+
+# ---------------------------------------------------------------------------
+# /api/v1/discovery/leaderboard (Discovery Game SQL-backed leaderboard)
+# ---------------------------------------------------------------------------
+@router.get("/api/v1/discovery/leaderboard")
+async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: int = 20):
+    """Live Discovery Game Leaderboard derived from real GovernedRun data."""
+    all_runs = (
+        await db.execute(
+            select(GovernedRun)
+            .filter(GovernedRun.result_payload.isnot(None))
+        )
+    ).scalars().all()
+
+    user_stats = {}
+    for run in all_runs:
+        tenant_id = run.tenant_id
+        if not tenant_id:
+            continue
+            
+        if tenant_id not in user_stats:
+            # Fallback to tenant_id if agent_id isn't in pgl_identity
+            agent_name = "Unknown Agent"
+            if isinstance(run.pgl_identity, dict) and "agent_id" in run.pgl_identity:
+                agent_name = run.pgl_identity["agent_id"]
+
+            user_stats[tenant_id] = {
+                "address": tenant_id,
+                "trustScore": 500,  # Base score for discovery operators
+                "completedMissions": 0,
+                "agent": agent_name
+            }
+            
+        stats = user_stats[tenant_id]
+        stats["completedMissions"] += 1
+        
+        # Adjust score based on governed run state
+        if run.state in ["success", "completed"]:
+            stats["trustScore"] += 10
+        elif run.state in ["failed", "error", "law0_violation"]:
+            stats["trustScore"] -= 15
+
+    # Sort users by trustScore descending
+    sorted_users = sorted(user_stats.values(), key=lambda u: u["trustScore"], reverse=True)[:limit]
+    
+    leaderboard = []
+    for i, user in enumerate(sorted_users):
+        leaderboard.append({
+            "rank": i + 1,
+            "address": user["address"],
+            "trustScore": user["trustScore"],
+            "completedMissions": user["completedMissions"],
+            "agent": user["agent"]
+        })
+        
+    return {"leaderboard": leaderboard}
+

@@ -128,7 +128,7 @@ class TerminalStateManager:
                         "metrics": {"cpu": 84, "memory": 72, "latency": 4, "requestCount": 14892},
                         "telemetryLogs": [
                             'MCP-IO core state initialized from database.',
-                            f'PGL Genome Hash: {genome_hash[:16]}...',
+                            f'PGL Genome Hash: {genome_hash[:16] if genome_hash else "none"}...',
                             'Active connections established with federated agents.'
                         ],
                         "x": 400,
@@ -171,7 +171,7 @@ class TerminalStateManager:
                         "metrics": {"cpu": 12, "memory": 40, "latency": 15, "requestCount": 162},
                         "telemetryLogs": [
                             f"Cluster control established on node {cluster_leader_id}",
-                            f"PGL Genome: {leader_genome[:16]}..."
+                            f"PGL Genome: {leader_genome[:16] if leader_genome else 'none'}..."
                         ],
                         "x": cluster_center_x,
                         "y": cluster_center_y
@@ -213,7 +213,7 @@ class TerminalStateManager:
                             },
                             "telemetryLogs": [
                                 f"Agent spawned in cluster: {dept}.",
-                                f"PGL Genome: {sub_genome[:16]}...",
+                                f"PGL Genome: {sub_genome[:16] if sub_genome else 'none'}...",
                                 "Synchronized database state."
                             ],
                             "x": node_x,

@@ -29,6 +29,7 @@ async def get_pgl_registry(db: AsyncSession = Depends(get_db)):
                 "created_at": identity.created_at.isoformat() if identity.created_at else None,
                 "status": identity.metadata_json.get("status", "ACTIVE") if identity.metadata_json else "ACTIVE",
                 "containment_reason": identity.metadata_json.get("containment_reason", None) if identity.metadata_json else None,
+                "agent_name": identity.metadata_json.get("agent_name", identity.metadata_json.get("operator_name", "Unknown Agent")) if identity.metadata_json else "Unknown Agent"
             })
             
         return registry_data

@@ -335,7 +335,20 @@ async def get_agent_privilege(agent_id: str, db: AsyncSession = Depends(get_db))
 
 @router.get("/scores")
 async def get_nexus_scores():
-    # Returns API ScoreCards for NexusProtocol UI
+    """
+    Returns API ScoreCards for the NexusProtocol UI.
+    Full 10-Dimensional Quality Vector per API:
+      1. Performance       – p50/p95 latency
+      2. Reliability       – uptime consistency
+      3. Security Posture  – TLS, headers, auth strength
+      4. SLA Compliance    – SLA boundary adherence
+      5. Cost Efficiency   – $ per 1K requests
+      6. Data Integrity    – schema validation, payload accuracy
+      7. Governance        – policy compliance score
+      8. Auditability      – log completeness and traceability
+      9. Resilience        – recovery time, retry success rate
+     10. Interoperability  – standards compliance (OpenAPI, x402, CORS)
+    """
     return [
         {
             "id": "stripe-payments",
@@ -344,10 +357,16 @@ async def get_nexus_scores():
             "score": 96,
             "grade": "A",
             "dimensions": [
-                { "name": "Performance", "score": 98, "weight": 15, "desc": "p50/p95 response latency" },
-                { "name": "Reliability", "score": 99, "weight": 15, "desc": "HTTP 200 uptime consistency" },
-                { "name": "Security Posture", "score": 95, "weight": 10, "desc": "TLS configuration & headers" },
-                { "name": "SLA Compliance", "score": 96, "weight": 10, "desc": "Acceptable boundary conformance" }
+                { "name": "Performance",      "score": 98, "weight": 15, "desc": "p50/p95 response latency across probe regions" },
+                { "name": "Reliability",      "score": 99, "weight": 15, "desc": "HTTP 200 uptime consistency over 30d window" },
+                { "name": "Security Posture", "score": 95, "weight": 10, "desc": "TLS configuration, security headers, auth strength" },
+                { "name": "SLA Compliance",   "score": 96, "weight": 10, "desc": "Acceptable boundary conformance per signed SLA" },
+                { "name": "Cost Efficiency",  "score": 92, "weight": 10, "desc": "Effective cost per 1K governed requests" },
+                { "name": "Data Integrity",   "score": 97, "weight": 10, "desc": "Schema validation, payload accuracy & type fidelity" },
+                { "name": "Governance",       "score": 94, "weight": 10, "desc": "Policy adherence under Zero-Trust middleware" },
+                { "name": "Auditability",     "score": 99, "weight": 8,  "desc": "Log completeness, traceability and receipt coverage" },
+                { "name": "Resilience",       "score": 96, "weight": 7,  "desc": "Mean recovery time and retry success rate under load" },
+                { "name": "Interoperability", "score": 93, "weight": 5,  "desc": "OpenAPI, x402 settlement, CORS standards compliance" }
             ],
             "anchorHash": "0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "ipfsHash": "QmYwAPJhy5nJqqEAQUWKWtURPzRrCb76c8cUpV1J8U3F47",
@@ -361,17 +380,47 @@ async def get_nexus_scores():
             "score": 91,
             "grade": "A-",
             "dimensions": [
-                { "name": "Performance", "score": 84, "weight": 15, "desc": "p50/p95 response latency" },
-                { "name": "Reliability", "score": 94, "weight": 15, "desc": "HTTP 200 uptime consistency" },
-                { "name": "Security Posture", "score": 92, "weight": 10, "desc": "TLS configuration & headers" },
-                { "name": "SLA Compliance", "score": 90, "weight": 10, "desc": "Acceptable boundary conformance" }
+                { "name": "Performance",      "score": 84, "weight": 15, "desc": "p50/p95 response latency across probe regions" },
+                { "name": "Reliability",      "score": 94, "weight": 15, "desc": "HTTP 200 uptime consistency over 30d window" },
+                { "name": "Security Posture", "score": 92, "weight": 10, "desc": "TLS configuration, security headers, auth strength" },
+                { "name": "SLA Compliance",   "score": 90, "weight": 10, "desc": "Acceptable boundary conformance per signed SLA" },
+                { "name": "Cost Efficiency",  "score": 78, "weight": 10, "desc": "Effective cost per 1K governed requests" },
+                { "name": "Data Integrity",   "score": 95, "weight": 10, "desc": "Schema validation, payload accuracy & type fidelity" },
+                { "name": "Governance",       "score": 89, "weight": 10, "desc": "Policy adherence under Zero-Trust middleware" },
+                { "name": "Auditability",     "score": 96, "weight": 8,  "desc": "Log completeness, traceability and receipt coverage" },
+                { "name": "Resilience",       "score": 88, "weight": 7,  "desc": "Mean recovery time and retry success rate under load" },
+                { "name": "Interoperability", "score": 91, "weight": 5,  "desc": "OpenAPI, x402 settlement, CORS standards compliance" }
             ],
             "anchorHash": "0x2a2491a61c3a649fb92080a4c8996fa127be41e4649b934ca495991b7852b3de",
             "ipfsHash": "QmZv21A7xWQUwAPJhynJqqEAQURPzRrCb76c8cUpV1J8U",
             "txHash": "0x1de9fc855b7fca4b76a086a9f4e242a4b89968a41bc9eb92f153a4c495914ab77",
             "lastUpdated": "8m ago"
+        },
+        {
+            "id": "anthropic-claude",
+            "name": "Anthropic Claude API",
+            "provider": "Anthropic PBC",
+            "score": 93,
+            "grade": "A",
+            "dimensions": [
+                { "name": "Performance",      "score": 87, "weight": 15, "desc": "p50/p95 response latency across probe regions" },
+                { "name": "Reliability",      "score": 97, "weight": 15, "desc": "HTTP 200 uptime consistency over 30d window" },
+                { "name": "Security Posture", "score": 98, "weight": 10, "desc": "TLS configuration, security headers, auth strength" },
+                { "name": "SLA Compliance",   "score": 93, "weight": 10, "desc": "Acceptable boundary conformance per signed SLA" },
+                { "name": "Cost Efficiency",  "score": 82, "weight": 10, "desc": "Effective cost per 1K governed requests" },
+                { "name": "Data Integrity",   "score": 96, "weight": 10, "desc": "Schema validation, payload accuracy & type fidelity" },
+                { "name": "Governance",       "score": 97, "weight": 10, "desc": "Policy adherence under Zero-Trust middleware" },
+                { "name": "Auditability",     "score": 95, "weight": 8,  "desc": "Log completeness, traceability and receipt coverage" },
+                { "name": "Resilience",       "score": 90, "weight": 7,  "desc": "Mean recovery time and retry success rate under load" },
+                { "name": "Interoperability", "score": 88, "weight": 5,  "desc": "OpenAPI, x402 settlement, CORS standards compliance" }
+            ],
+            "anchorHash": "0x9c3a2f8b1e4d7c6a5f2e1b9d4c8a3f7e2b6c9d4a1f8e5c2b7a9d3f6e4c1b8",
+            "ipfsHash": "QmAnthPJhy5nJqqEAQUWKWtURPzRrCb76c8cUpV1J8U3X9",
+            "txHash": "0x3de9fc455c8fcb4b76a086a9f4e242a4b89968a41bc9eb92f153a4c495914cd",
+            "lastUpdated": "3m ago"
         }
     ]
+
 
 @router.get("/genome")
 async def get_nexus_genome():

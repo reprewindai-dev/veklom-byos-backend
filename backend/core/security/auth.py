@@ -161,7 +161,17 @@ async def get_current_user(
                 user.is_superuser = True
                 
         await db.commit()
+        # Expunge the user from this internal session before it closes.
+        # After commit(), SQLAlchemy expires all attributes; if any route accesses
+        # a relationship on the returned user, it would trigger a lazy-load inside
+        # a closed session (the greenlet "missing greenlet" error). Expunging makes
+        # the object detached — column values are preserved, relationships are not
+        # lazily fetched (raises DetachedInstanceError if accessed, but that's safe
+        # and catchable). Routes that need relationships should re-query via their
+        # own injected db session.
+        db.expunge(user)
         return user
+
 
 
 async def get_current_admin(user=Depends(get_current_user)):

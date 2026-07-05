@@ -46,17 +46,13 @@ class EnhancedMCPAPIRuntime:
             self.redis_client = None
 
     def _mark_nonce_spent(self, nonce: str, ttl_seconds: int = 3600) -> bool:
-        """Atomic compare-and-set to burn a nonce. Returns True if successfully burned, False if already burned."""
+        """Atomic consume-once token burning using SET NX EX."""
         if not self.redis_client:
-            # Fallback for environments lacking redis
             return True
         key = f"veklom:nonce:spent:{nonce}"
-        # SETNX returns 1 if key was set, 0 if it already existed
-        is_new = self.redis_client.setnx(key, "spent")
-        if is_new:
-            self.redis_client.expire(key, ttl_seconds)
-            return True
-        return False
+        # Atomic SET with NX (not exists) and EX (expire in seconds)
+        is_new = self.redis_client.set(key, "spent", nx=True, ex=ttl_seconds)
+        return bool(is_new)
 
     def _is_nonce_spent(self, nonce: str) -> bool:
         """Check if a nonce has been spent."""
@@ -64,15 +60,7 @@ class EnhancedMCPAPIRuntime:
             return False
         return self.redis_client.exists(f"veklom:nonce:spent:{nonce}") == 1
 
-    def _get_and_update_merkle_head(self, new_hash: str) -> str:
-        """Atomically fetch the previous head and update to the new hash. (Thread-safe on Redis via Lua or transactions, using GETSET for simplicity here)"""
-        if not self.redis_client:
-            return "0000000000000000000000000000000000000000000000000000000000000000"
-        key = "veklom:audit:head_hash"
-        previous = self.redis_client.getset(key, new_hash)
-        if not previous:
-            return "0000000000000000000000000000000000000000000000000000000000000000"
-        return previous
+    # _get_and_update_merkle_head removed in favor of inline WATCH transaction
 
     async def process_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -264,28 +252,42 @@ class EnhancedMCPAPIRuntime:
             
             run_timeline.append({"phase": "FINAL_LEDGER_EVENT", "status": "SUCCESS"})
             
-            # PREPARE MERKLE CHAIN HASH
-            # Generate temporary hash to fetch previous, then update head atomically
-            temp_hash = hashlib.sha256(json.dumps({
-                "connection_id": connection_id,
-                "nonce": request_nonce,
-                "unified_run_timeline": run_timeline
-            }).encode()).hexdigest()
+            # ATOMIC MERKLE CHAIN HASH WITH OPTIMISTIC LOCKING (WATCH)
+            final_pgl_hash = ""
+            previous_hash = "0000000000000000000000000000000000000000000000000000000000000000"
             
-            previous_hash = self._get_and_update_merkle_head(temp_hash)
-            
-            # Re-hash incorporating the previous hash explicitly
-            final_pgl_hash = hashlib.sha256(json.dumps({
-                "connection_id": connection_id,
-                "nonce": request_nonce,
-                "unified_run_timeline": run_timeline,
-                "previous_audit_hash": previous_hash
-            }).encode()).hexdigest()
-            
-            # We explicitly update the head *again* to the true final hash
-            # (In a real system, this is a single Lua script block to prevent race conditions)
             if self.redis_client:
-                self.redis_client.set("veklom:audit:head_hash", final_pgl_hash)
+                head_key = "veklom:audit:head_hash"
+                max_retries = 3
+                for _ in range(max_retries):
+                    try:
+                        with self.redis_client.pipeline() as pipe:
+                            pipe.watch(head_key)
+                            current_head = pipe.get(head_key)
+                            if current_head:
+                                previous_hash = current_head
+                                
+                            final_pgl_hash = hashlib.sha256(json.dumps({
+                                "connection_id": connection_id,
+                                "nonce": request_nonce,
+                                "unified_run_timeline": run_timeline,
+                                "previous_audit_hash": previous_hash
+                            }).encode()).hexdigest()
+                            
+                            pipe.multi()
+                            pipe.set(head_key, final_pgl_hash)
+                            pipe.execute()
+                            break # Success
+                    except redis.WatchError:
+                        continue # Retry if head was modified concurrently
+            else:
+                final_pgl_hash = hashlib.sha256(json.dumps({
+                    "connection_id": connection_id,
+                    "nonce": request_nonce,
+                    "unified_run_timeline": run_timeline,
+                    "previous_audit_hash": previous_hash
+                }).encode()).hexdigest()
+            
             
             risk_profile = self.risk_scoring.calculate_risk_score(agent_id, {"anomaly_score": 0})
             

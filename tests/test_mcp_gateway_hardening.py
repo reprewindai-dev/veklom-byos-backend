@@ -8,29 +8,49 @@ from unittest.mock import MagicMock, patch
 from backend.security.mcp_gateway import EnhancedMCPAPIRuntime
 from backend.core.governance.compliance_profiles import get_compliance_profile
 
+class MockPipeline:
+    def __init__(self, store):
+        self.store = store
+        self.watched = False
+        self.operations = []
+        
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+        
+    def watch(self, *keys):
+        self.watched = True
+        
+    def get(self, key):
+        return self.store.get(key)
+        
+    def multi(self):
+        pass
+        
+    def set(self, key, value):
+        self.operations.append((key, value))
+        
+    def execute(self):
+        for key, value in self.operations:
+            self.store[key] = value
+
 class MockRedis:
     def __init__(self):
         self.store = {}
         
-    def setnx(self, key, value):
-        if key in self.store:
-            return 0
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.store:
+            return None
         self.store[key] = value
-        return 1
-        
-    def expire(self, key, time):
-        pass
+        return True
         
     def exists(self, key):
         return 1 if key in self.store else 0
         
-    def getset(self, key, value):
-        old_value = self.store.get(key)
-        self.store[key] = value
-        return old_value
-        
-    def set(self, key, value):
-        self.store[key] = value
+    def pipeline(self):
+        return MockPipeline(self.store)
 
 @patch('redis.Redis.from_url')
 async def test_mcp_gateway(mock_redis_from_url):

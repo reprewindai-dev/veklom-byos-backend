@@ -33,6 +33,7 @@ class SafetyCheck:
     reason: Optional[str] = None
     modified_data: Optional[Dict[str, Any]] = None
     risk_score: float = 0.0
+    violations: Optional[List[Dict[str, Any]]] = None
 
 
 class RealGuardrailService:
@@ -138,7 +139,8 @@ class RealGuardrailService:
                 passed=passed,
                 reason=f"Found {len(violations)} violations" if violations else None,
                 modified_data=modified_data if modified_data != input_data else None,
-                risk_score=min(risk_score, 1.0)
+                risk_score=min(risk_score, 1.0),
+                violations=violations
             )
             
         except Exception as e:
@@ -199,7 +201,8 @@ class RealGuardrailService:
                 passed=passed,
                 reason=f"Found {len(violations)} violations" if violations else None,
                 modified_data=modified_data if modified_data != output_data else None,
-                risk_score=min(risk_score, 1.0)
+                risk_score=min(risk_score, 1.0),
+                violations=violations
             )
             
         except Exception as e:
@@ -274,7 +277,8 @@ class RealGuardrailService:
             return SafetyCheck(
                 passed=passed,
                 reason=f"Tool safety check failed: {[v['message'] for v in violations]}" if violations else None,
-                risk_score=min(risk_score, 1.0)
+                risk_score=min(risk_score, 1.0),
+                violations=violations
             )
             
         except Exception as e:

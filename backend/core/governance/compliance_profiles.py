@@ -62,6 +62,17 @@ US_HIPAA = ComplianceProfile(
     description="US regulated profile with strict auditing and BAA compliance."
 )
 
+# Fail-Closed Profile (Used when configuration is missing or invalid)
+FAIL_CLOSED = ComplianceProfile(
+    id="fail_closed",
+    region=ComplianceRegion.GLOBAL,
+    requires_explicit_evidence_logging=True,
+    requires_data_residency=True,
+    strict_retention_days=0, # Retain nothing
+    allowed_model_regions=[], # Allow nothing
+    description="Failsafe profile that blocks all execution due to missing or invalid compliance configuration."
+)
+
 def get_compliance_profile(profile_id: str) -> ComplianceProfile:
     profiles = {
         "global_default": GLOBAL_DEFAULT,
@@ -69,4 +80,5 @@ def get_compliance_profile(profile_id: str) -> ComplianceProfile:
         "eu_gdpr": EU_GDPR_STRICT,
         "us_hipaa": US_HIPAA
     }
-    return profiles.get(profile_id.lower(), GLOBAL_DEFAULT)
+    # If the requested profile is unknown, fail completely closed.
+    return profiles.get(profile_id.lower(), FAIL_CLOSED)

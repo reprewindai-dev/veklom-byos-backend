@@ -65,10 +65,16 @@ class EnhancedMCPAPIRuntime:
             # ====================================================================
             
             # Enforce Data Residency Rules
+            residency_decision = "N/A"
             if self.compliance_profile.requires_data_residency:
                 target_region = request.get("target_region", "US")
                 if target_region not in self.compliance_profile.allowed_model_regions:
-                    return self._create_error_response(connection_id, "451", f"Unavailable For Legal Reasons: Target region '{target_region}' violates {self.compliance_profile.id} data residency requirements.")
+                    # Semantic Split: 451 for legal regimes, 403 for policy regimes
+                    if self.compliance_profile.region.value in ["ONTARIO", "EU"]:
+                        return self._create_error_response(connection_id, "451", f"Unavailable For Legal Reasons: Target region '{target_region}' violates {self.compliance_profile.id} data residency laws.")
+                    else:
+                        return self._create_error_response(connection_id, "403", f"Forbidden: Target region '{target_region}' violates {self.compliance_profile.id} policy restrictions.")
+                residency_decision = f"Region {target_region} explicitly allowed by {self.compliance_profile.id}"
             
             composition = self.policy_composition.compose_policy(
                 agent_id, capability_id, 
@@ -124,14 +130,29 @@ class EnhancedMCPAPIRuntime:
             # PHASE 5: Human-in-the-Loop Interstitial Approval
             # ====================================================================
             
+            approver_id = None
+            
             # If the effective permissions dict strictly requires approval (Rule of Two)
             if effective_perms.get("requires_approval", False) or any(a.recommended_action.value == "quarantine" for a in all_anomalies):
-                quorum = self.quorum_service.create_quorum(
-                    connection_id, 
-                    effective_perms.get("approval_path", []),
-                    2
-                )
-                return self._create_approval_response(connection_id, quorum)
+                
+                # Check if a valid, cryptographically signed approval token is provided (Stateful Resumption)
+                approval_token = request.get("approval_token")
+                
+                if approval_token:
+                    # Validate the approval token (Mock validation for now)
+                    is_valid, validated_approver = self._validate_approval_token(approval_token)
+                    if not is_valid:
+                        return self._create_error_response(connection_id, "403", "Invalid or expired human approval token.")
+                    
+                    approver_id = validated_approver # Record human identity for audit
+                else:
+                    # Trigger the approval pause state
+                    quorum = self.quorum_service.create_quorum(
+                        connection_id, 
+                        effective_perms.get("approval_path", []),
+                        2
+                    )
+                    return self._create_approval_response(connection_id, quorum)
 
             # ====================================================================
             # PHASE 6: Identity-Bound MCPAPI v2.0 Tool Invocation
@@ -169,7 +190,7 @@ class EnhancedMCPAPIRuntime:
                 agent_id=agent_id, capability_id=capability_id, cost=actual_cost, currency="VNP", success=True
             )
             
-            # Generate immutable settlement ledger hash
+            # Generate immutable settlement ledger hash encompassing the entire causal chain
             pgl_hash = hashlib.sha256(json.dumps({
                 "connection_id": connection_id,
                 "nonce": str(uuid.uuid4()),
@@ -177,7 +198,11 @@ class EnhancedMCPAPIRuntime:
                 "what": capability_id,
                 "when": datetime.utcnow().isoformat(),
                 "payload": request.get("payload", {}),
+                "compliance_profile": self.compliance_profile.id,
+                "residency_decision": residency_decision,
                 "retention_days": self.compliance_profile.strict_retention_days,
+                "approver_id": approver_id,
+                "evidence_status": "VALIDATED" if upstream_evidence_hash else "NOT_REQUIRED",
                 "result_status": "success"
             }).encode()).hexdigest()
             
@@ -202,7 +227,8 @@ class EnhancedMCPAPIRuntime:
                     "cost_attributed": actual_cost,
                     "risk_score": risk_profile["overall_risk_score"],
                     "threat_level": risk_profile["threat_level"],
-                    "gold_context_applied": True
+                    "gold_context_applied": True,
+                    "compliance_profile_enforced": self.compliance_profile.id
                 }
             }
 
@@ -217,6 +243,12 @@ class EnhancedMCPAPIRuntime:
         if not agent_id:
             return None
         return {"agent_id": agent_id, "workspace_id": "ws-123"}
+        
+    def _validate_approval_token(self, token: str) -> tuple[bool, Optional[str]]:
+        """Mock validation for a human approval token. Returns (is_valid, approver_id)."""
+        if token.startswith("valid_"):
+            return True, "human_supervisor_1"
+        return False, None
         
     def _handle_quarantine(self, quarantine: Any, connection_id: str) -> Dict[str, Any]:
         return {

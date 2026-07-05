@@ -723,7 +723,10 @@ async def not_found(request: Request, exc):
                 "Expires": "0",
             },
         )
-    return await _serve_frontend(request)
+    
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com{request.url.path}{query_str}", status_code=302)
 
 
 from backend.core.security.sanitizer import InProcessErrorSanitizer
@@ -1389,7 +1392,16 @@ async def root(request: Request):
         if lockerphycer_index.exists():
             return FileResponse(str(lockerphycer_index))
         return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
-    return await _serve_frontend(None)
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=_fallback_html(), status_code=200)
+
+@app.get("/workspace")
+@app.get("/login")
+@app.get("/signup")
+async def frontend_redirects(request: Request):
+    from fastapi.responses import RedirectResponse
+    path = request.url.path
+    return RedirectResponse(url=f"https://control.veklom.com{path}", status_code=302)
 
 
 @app.get("/legal/privacy")
@@ -1724,16 +1736,6 @@ async def status_page():
     return HTMLResponse(content="<html><body><h1>System Status: All Systems Operational</h1><p>Status page stub for testing.</p></body></html>")
 
 
-from fastapi.responses import RedirectResponse, FileResponse
-
-async def _serve_frontend(request: Request):
-    landing_index = LANDING_DIR / "index.html"
-    static_index = FRONTEND_DIR / "index.html"
-    if landing_index.exists():
-        return FileResponse(str(landing_index))
-    elif static_index.exists():
-        return FileResponse(str(static_index))
-    return HTMLResponse(content=_fallback_html(), status_code=200)
 # The /terminal path is now mounted directly as a static directory serving the built React app from agent-control-need-pgl
 
 

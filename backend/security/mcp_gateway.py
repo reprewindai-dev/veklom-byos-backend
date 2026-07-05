@@ -52,11 +52,20 @@ class EnhancedMCPAPIRuntime:
             
             # BYOS Node 4 Enforcement: Cryptographically verify upstream evidence
             upstream_evidence_hash = request.get("upstream_evidence_hash")
-            if not upstream_evidence_hash:
-                 return self._create_error_response(connection_id, "403", "Missing upstream evidence hash from Node 3")
+            if self.compliance_profile.requires_explicit_evidence_logging and not upstream_evidence_hash:
+                 return self._create_error_response(connection_id, "403", f"Missing upstream evidence hash (Required by {self.compliance_profile.id} compliance profile)")
                  
             # Note: Signature verification, replay prevention, and hash validation go here.
             
+            # BYOS Node 4 Enforcement: Data Residency & Model Region
+            if self.compliance_profile.requires_data_residency:
+                target_region = request.get("target_region", "US") # Default assumption if unspecified
+                if target_region not in self.compliance_profile.allowed_model_regions:
+                    return self._create_error_response(connection_id, "451", f"Unavailable For Legal Reasons: Target region '{target_region}' violates {self.compliance_profile.id} data residency requirements.")
+            
+            # Attach strict retention policy to the audit trail
+            request["__audit_retention_days"] = self.compliance_profile.strict_retention_days
+
             # ====================================================================
             # PHASE 2: CAPABILITY & POLICY
             # ====================================================================

@@ -765,7 +765,7 @@ from backend.apps.api.routers import (
     evidence, fax, forensics, health, integrations, internal_uacp,
     mcp, monitoring, onboarding_dashboard, onboarding_demo, payments,
     pgl, pgl_adapter, pgl_onboarding, plugins, pricing, providers, rag,
-    referrals, repo_risk_gate, routing, runs, runtime_jobs,
+    referrals, repo_risk_gate, repogate_api, routing, runs, runtime_jobs,
     runtime_telemetry, security, seked, smoke, system, team, upload, vnp,
     vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2,
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
@@ -787,6 +787,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(evaluations.router, prefix="/api/v1")
 app.include_router(smoke.router, prefix="/api/v1")
 app.include_router(repo_risk_gate.router, prefix="/api/v1")
+app.include_router(repogate_api.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(hrm.router, prefix="/api/v1")
 app.include_router(terminal.router, prefix="/api/terminal")

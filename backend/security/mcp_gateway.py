@@ -130,15 +130,28 @@ class EnhancedMCPAPIRuntime:
             # PHASE 7: EVIDENCE & PROOF
             # ====================================================================
             
+            # Enforce VNP budget deduction based on actual execution time
+            actual_cost = estimated_workload_cost + (execution_time_ms / 1000.0) * 0.5
+            self.cost_attribution.record_cost(
+                agent_id=agent_id, 
+                capability_id=capability_id, 
+                cost=actual_cost, 
+                currency="VNP", 
+                success=True
+            )
+            
             import hashlib
             import json
             import uuid
             
             # Generate immutable evidence hash
             pgl_hash = hashlib.sha256(json.dumps({
+                "connection_id": connection_id,
+                "nonce": str(uuid.uuid4()),
                 "who": agent_id,
                 "what": capability_id,
                 "when": datetime.utcnow().isoformat(),
+                "payload": request.get("payload", {}),
                 "result_status": "success"
             }).encode()).hexdigest()
 
@@ -165,7 +178,7 @@ class EnhancedMCPAPIRuntime:
                     "new_trust_score": 52,
                     "audit_logged": True,
                     "anomalies_detected": len(all_anomalies),
-                    "cost_attributed": 10.0,
+                    "cost_attributed": actual_cost,
                     "risk_score": risk_profile["overall_risk_score"],
                     "threat_level": risk_profile["threat_level"]
                 }

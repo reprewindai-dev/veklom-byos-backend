@@ -259,7 +259,8 @@ class EnhancedMCPAPIRuntime:
             if self.redis_client:
                 head_key = "veklom:audit:head_hash"
                 max_retries = 3
-                for _ in range(max_retries):
+                retries_used = 0
+                for attempt in range(max_retries):
                     try:
                         with self.redis_client.pipeline() as pipe:
                             pipe.watch(head_key)
@@ -267,27 +268,35 @@ class EnhancedMCPAPIRuntime:
                             if current_head:
                                 previous_hash = current_head
                                 
-                            final_pgl_hash = hashlib.sha256(json.dumps({
+                            event_payload = json.dumps({
                                 "connection_id": connection_id,
                                 "nonce": request_nonce,
                                 "unified_run_timeline": run_timeline,
                                 "previous_audit_hash": previous_hash
-                            }).encode()).hexdigest()
+                            })
+                            final_pgl_hash = hashlib.sha256(event_payload.encode()).hexdigest()
                             
+                            # BOTH head update and event write in same MULTI/EXEC block
                             pipe.multi()
                             pipe.set(head_key, final_pgl_hash)
+                            pipe.set(f"veklom:audit:event:{final_pgl_hash}", event_payload)
                             pipe.execute()
                             break # Success
                     except redis.WatchError:
+                        retries_used += 1
+                        if attempt == max_retries - 1:
+                            run_timeline.append({"phase": "SYSTEM_FAULT", "error": "Max retries exceeded during audit head update due to high contention."})
+                            return self._create_error_response(connection_id, "500", "Audit ledger contention too high.")
                         continue # Retry if head was modified concurrently
             else:
-                final_pgl_hash = hashlib.sha256(json.dumps({
+                event_payload = json.dumps({
                     "connection_id": connection_id,
                     "nonce": request_nonce,
                     "unified_run_timeline": run_timeline,
                     "previous_audit_hash": previous_hash
-                }).encode()).hexdigest()
-            
+                })
+                final_pgl_hash = hashlib.sha256(event_payload.encode()).hexdigest()
+                retries_used = 0
             
             risk_profile = self.risk_scoring.calculate_risk_score(agent_id, {"anomaly_score": 0})
             
@@ -309,7 +318,8 @@ class EnhancedMCPAPIRuntime:
                     "threat_level": risk_profile["threat_level"],
                     "compliance_profile_enforced": self.compliance_profile.id,
                     "unified_run_timeline": run_timeline,
-                    "merkle_previous_hash": previous_hash
+                    "merkle_previous_hash": previous_hash,
+                    "audit_transaction_retries": retries_used
                 }
             }
 

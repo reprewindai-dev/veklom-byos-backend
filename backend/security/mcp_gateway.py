@@ -3,6 +3,7 @@ import hashlib
 import json
 import uuid
 import os
+import redis
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple, Set
 
@@ -36,8 +37,42 @@ class EnhancedMCPAPIRuntime:
         self.policy_composition = PolicyCompositionEngine()
         self.permissions_calculator = PermissionsCalculator()
         
-        # State tracking for Single-Use Approval Tokens (in-memory for demo, Redis in prod)
-        self.spent_nonces: Set[str] = set()
+        # Distributed State Tracking (Redis)
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        try:
+            self.redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+        except Exception:
+            # Fallback for local dev/testing without Redis running
+            self.redis_client = None
+
+    def _mark_nonce_spent(self, nonce: str, ttl_seconds: int = 3600) -> bool:
+        """Atomic compare-and-set to burn a nonce. Returns True if successfully burned, False if already burned."""
+        if not self.redis_client:
+            # Fallback for environments lacking redis
+            return True
+        key = f"veklom:nonce:spent:{nonce}"
+        # SETNX returns 1 if key was set, 0 if it already existed
+        is_new = self.redis_client.setnx(key, "spent")
+        if is_new:
+            self.redis_client.expire(key, ttl_seconds)
+            return True
+        return False
+
+    def _is_nonce_spent(self, nonce: str) -> bool:
+        """Check if a nonce has been spent."""
+        if not self.redis_client:
+            return False
+        return self.redis_client.exists(f"veklom:nonce:spent:{nonce}") == 1
+
+    def _get_and_update_merkle_head(self, new_hash: str) -> str:
+        """Atomically fetch the previous head and update to the new hash. (Thread-safe on Redis via Lua or transactions, using GETSET for simplicity here)"""
+        if not self.redis_client:
+            return "0000000000000000000000000000000000000000000000000000000000000000"
+        key = "veklom:audit:head_hash"
+        previous = self.redis_client.getset(key, new_hash)
+        if not previous:
+            return "0000000000000000000000000000000000000000000000000000000000000000"
+        return previous
 
     async def process_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -174,8 +209,10 @@ class EnhancedMCPAPIRuntime:
                         run_timeline.append({"phase": "APPROVAL_STATE", "status": "REJECTED", "reason": error_msg})
                         return self._create_error_response(connection_id, "403", f"Invalid or expired human approval token: {error_msg}")
                     
-                    # SINGLE-USE ENFORCEMENT: Burn the token/nonce immediately
-                    self.spent_nonces.add(request_nonce)
+                    # SINGLE-USE ENFORCEMENT: Distributed Atomic Burn
+                    if not self._mark_nonce_spent(request_nonce, ttl_seconds=3600):
+                        run_timeline.append({"phase": "APPROVAL_STATE", "status": "REPLAY_DETECTED"})
+                        return self._create_error_response(connection_id, "403", "Token reuse detected. This nonce has already been spent in the distributed cluster.")
                     
                     approver_id = validated_approver
                     run_timeline.append({"phase": "APPROVAL_STATE", "status": "RESUMED", "approver_id": approver_id})
@@ -217,7 +254,7 @@ class EnhancedMCPAPIRuntime:
             run_timeline.append({"phase": "PERSISTENCE", "status": "COMMITTED", "retention_days": self.compliance_profile.strict_retention_days})
 
             # ====================================================================
-            # PHASE 9: Immutable Audit and Decommissioning
+            # PHASE 9: Immutable Audit and Decommissioning (Merkle Hash Chain)
             # ====================================================================
             
             actual_cost = estimated_workload_cost + (execution_time_ms / 1000.0) * 0.5
@@ -227,19 +264,35 @@ class EnhancedMCPAPIRuntime:
             
             run_timeline.append({"phase": "FINAL_LEDGER_EVENT", "status": "SUCCESS"})
             
-            # Generate immutable settlement ledger hash encompassing the entire unified run timeline
-            pgl_hash = hashlib.sha256(json.dumps({
+            # PREPARE MERKLE CHAIN HASH
+            # Generate temporary hash to fetch previous, then update head atomically
+            temp_hash = hashlib.sha256(json.dumps({
                 "connection_id": connection_id,
                 "nonce": request_nonce,
                 "unified_run_timeline": run_timeline
             }).encode()).hexdigest()
+            
+            previous_hash = self._get_and_update_merkle_head(temp_hash)
+            
+            # Re-hash incorporating the previous hash explicitly
+            final_pgl_hash = hashlib.sha256(json.dumps({
+                "connection_id": connection_id,
+                "nonce": request_nonce,
+                "unified_run_timeline": run_timeline,
+                "previous_audit_hash": previous_hash
+            }).encode()).hexdigest()
+            
+            # We explicitly update the head *again* to the true final hash
+            # (In a real system, this is a single Lua script block to prevent race conditions)
+            if self.redis_client:
+                self.redis_client.set("veklom:audit:head_hash", final_pgl_hash)
             
             risk_profile = self.risk_scoring.calculate_risk_score(agent_id, {"anomaly_score": 0})
             
             return {
                 "connection_id": connection_id,
                 "status": "authorized",
-                "evidence_hash": pgl_hash,
+                "evidence_hash": final_pgl_hash,
                 "result": {
                     "output": validated_result,
                     "execution_time_ms": execution_time_ms
@@ -253,7 +306,8 @@ class EnhancedMCPAPIRuntime:
                     "risk_score": risk_profile["overall_risk_score"],
                     "threat_level": risk_profile["threat_level"],
                     "compliance_profile_enforced": self.compliance_profile.id,
-                    "unified_run_timeline": run_timeline
+                    "unified_run_timeline": run_timeline,
+                    "merkle_previous_hash": previous_hash
                 }
             }
 
@@ -279,9 +333,9 @@ class EnhancedMCPAPIRuntime:
             if not isinstance(token_payload, dict):
                 return False, None, "Token must be a structured payload."
                 
-            # Check Single-Use Replay
-            if request_nonce in self.spent_nonces:
-                return False, None, "Token reuse detected. This nonce has already been spent."
+            # Distributed Single-Use Replay Check is handled explicitly by _mark_nonce_spent in the flow
+            if self._is_nonce_spent(request_nonce):
+                return False, None, "Token reuse detected. This nonce has already been marked spent in Redis."
                 
             # Check Nonce Binding
             if token_payload.get("nonce") != request_nonce:

@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends
-from backend.apps.api.deps import get_current_user
+from backend.core.security.auth import get_current_user
 
 router = APIRouter(tags=["marketplace"])
 

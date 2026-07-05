@@ -95,8 +95,15 @@ A formal review of the operator-facing approval design must be conducted to ensu
 **5. Publication of a Public Claims Policy:**
 Prior to launch, the organization must finalize and publish a strict public claims policy. This policy must explicitly delineate what the ambient system can do, what it is strictly prohibited from doing, what specific actions perpetually require human oversight, and how the system handles uncertainty.
 
-## Jurisdictional Compliance Matrix: Quinte West, Ontario, Canada
-An ambient intelligence system does not operate in a theoretical vacuum; it is subject to the complex, overlapping jurisdictions of federal, provincial, and municipal law. Deploying the Veklom mesh in Quinte West, Ontario, Canada, necessitates strict, verifiable alignment with a rapidly evolving regulatory matrix. Failure to map the technical architecture of the mesh directly to these specific localized frameworks introduces severe compliance liabilities.
+## The Global-First Architecture and Compliance Profiles
+Veklom is architected as a **global core** with modular compliance configurations. From the very beginning, it is not restricted to a single jurisdiction. Instead, it utilizes a "Jurisdiction-Aware Architecture" that allows organizations to select a `ComplianceProfile` that fits their localized regulatory realities without sacrificing the immense capability of the ambient mesh. 
+
+The core platform features—Identity Resolution, Rule of Two, Evidence Hashing, Gold-Only Learning, Replay Protection, and Cost Enforcement—are universal mechanisms designed to provide strict governance across any environment. 
+
+To demonstrate how the Global Core adapts to extreme regulatory density, the following sections detail the **Ontario Public Sector Profile**. This is a specific deployment profile engineered to satisfy the strictest localized mandates of Quinte West, Ontario, PIPEDA, MFIPPA, and the IPC-OHRC. If Veklom can satisfy this extreme matrix, it can seamlessly be reconfigured for EU GDPR, US HIPAA, or standard global enterprise environments.
+
+### Example Profile: The Jurisdictional Compliance Matrix for Quinte West, Ontario
+For organizations operating within the Canadian public sector and highly regulated private enterprise domains, generic cloud security standards are legally and operationally insufficient. The deployment of artificial intelligence must conform to a labyrinthine regulatory matrix. Veklom's sovereign architecture is explicitly engineered to satisfy the strictest localized mandates. Failure to map the technical architecture of the mesh directly to these specific localized frameworks introduces severe compliance liabilities.
 
 ### The Federal Environment: Navigating the Canadian Landscape
 At the federal level, the regulatory landscape for artificial intelligence is in a state of highly monitored transition. The Artificial Intelligence and Data Act (AIDA), originally introduced to regulate high-impact systems under Bill C-27, ultimately died in parliament in early 2025. While a successor bill is widely anticipated to be tabled in 2026, Canadian enterprises currently operate without a comprehensive, binding federal statute specifically targeting artificial intelligence.

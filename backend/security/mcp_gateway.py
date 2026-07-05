@@ -11,9 +11,14 @@ from backend.services.safety_layer import (
 )
 from backend.services.intelligence_layer import CostAttributionService, RiskScoringService
 from backend.services.governance_layer import PolicyCompositionEngine, PermissionsCalculator
+from backend.core.governance.compliance_profiles import get_compliance_profile, ComplianceProfile
 
 class EnhancedMCPAPIRuntime:
-    def __init__(self):
+    def __init__(self, compliance_profile_id: str = "global_default"):
+        import os
+        profile_id = os.getenv("VEKLOM_COMPLIANCE_PROFILE", compliance_profile_id)
+        self.compliance_profile = get_compliance_profile(profile_id)
+        
         # Safety Layer
         self.baseline_service = BehavioralBaselineService()
         self.anomaly_detection = AnomalyDetectionService(self.baseline_service)

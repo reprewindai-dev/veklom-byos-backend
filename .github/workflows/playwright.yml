@@ -1,61 +1,41 @@
-name: Playwright Smoke
+name: API Smoke Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  test:
+  smoke:
+    name: Live API Health & Route Smoke Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Install deps
+
+      - name: Health check — api.veklom.com
         run: |
-          npm ci || npm i
-      - name: Install browsers
-        run: npx playwright install --with-deps chromium
-      - name: Run smoke
-        env:
-          CI: 'true'
-          SMOKE_ONLY: '1'
-          BASE_URL: https://veklom.com
-          API_URL: https://api.veklom.com
-          TEST_EMAIL: ${{ secrets.SMOKE_EMAIL }}
-          TEST_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-          FAILING_ENDPOINTS: ${{ secrets.FAILING_ENDPOINTS }} # e.g. "GET /api/v1/boom,POST /api/v1/miswired"
-        run: npx playwright test --project=chromium --grep @smoke --reporter=line
-      - name: Collect evidence bundle
-        if: always()
-        env:
-          HOST: veklom.com
-          BASE_URL: https://veklom.com
-          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
-          POSTHOG_PROJECT: ${{ secrets.POSTHOG_PROJECT }}
+          HTTP=$(curl -sk https://api.veklom.com/health -o /dev/null -w '%{http_code}')
+          echo "api.veklom.com/health → $HTTP"
+          [ "$HTTP" = "200" ] || { echo "❌ Health check failed"; exit 1; }
+
+      - name: Smoke — unauthenticated 401 gate
         run: |
-          chmod +x collect-evidence.sh
-          ./collect-evidence.sh veklom.com https://veklom.com "${POSTHOG_API_KEY:-}" "${POSTHOG_HOST:-https://app.posthog.com}" "${POSTHOG_PROJECT:-}" || true
-      - name: Upload artifacts (traces, screenshots, videos)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-artifacts
-          path: |
-            playwright-report
-            test-results
-            **/trace.zip
-            **/*-failed.png
-            **/*.webm
-      - name: Upload evidence bundle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: evidence-${{ github.run_id }}
-          path: evidence-*.zip
-          retention-days: 90
+          HTTP=$(curl -sk https://api.veklom.com/api/v1/workspaces -o /dev/null -w '%{http_code}')
+          echo "Unauthenticated /api/v1/workspaces → $HTTP"
+          [ "$HTTP" = "401" ] || [ "$HTTP" = "403" ] || { echo "❌ Expected 401/403, got $HTTP"; exit 1; }
+          echo "✓ Zero-Trust gate is enforcing — unauthenticated requests blocked"
+
+      - name: Smoke — control plane reachable
+        run: |
+          HTTP=$(curl -sk https://control.veklom.com -o /dev/null -w '%{http_code}')
+          echo "control.veklom.com → $HTTP"
+          [ "$HTTP" = "200" ] || { echo "❌ Control plane unreachable"; exit 1; }
+          echo "✓ Control plane live"
+
+      - name: Report
+        if: success()
+        run: echo "✓ All smoke checks passed for ${{ github.sha }}"

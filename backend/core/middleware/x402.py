@@ -94,7 +94,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "POST:/api/v1/autonomous":                           {"price_usdc": 0.01,  "name": "Sovereign Autonomous Interrogator", "free_daily": 0, "category": "B", "unit": "per query"},
     "POST:/api/v1/governed/capi/compile":                {"price_usdc": 50.00, "name": "Governed cAPI Immutable Compiler", "free_daily": 0, "category": "B", "unit": "per compilation"},
 
-    # Category C: PGL Identity & Sovereign Workforce (8 Endpoints)
+    # Category C: PGL Identity & Sovereign Workforce (10 Endpoints)
     "POST:/api/v1/pgl/identity-rag/resolve":            {"price_usdc": 0.01,  "name": "IdentityRAG Cross-Cluster Resolver", "free_daily": 0, "category": "C", "unit": "per resolution"},
     "GET:/api/v1/pgl/{agent_id}/genealogy":             {"price_usdc": 0.01,  "name": "Merkle Genealogy DNA Proof", "free_daily": 0, "category": "C", "unit": "per proof"},
     "POST:/api/v1/pgl/{agent_id}/quarantine":            {"price_usdc": 0.01,  "name": "Dynamic RLS Decoy Quarantine", "free_daily": 0, "category": "C", "unit": "per quarantine"},
@@ -103,6 +103,8 @@ _PAID_ROUTES: dict[str, dict] = {
     "GET:/api/v1/agents/fleet":                          {"price_usdc": 0.005, "name": "Workspace Workforce Aggregator", "free_daily": 0, "category": "C", "unit": "per fleet"},
     "GET:/api/v1/agents/registry/{agent_number}":        {"price_usdc": 0.001, "name": "Individual Agent Detail Inspector", "free_daily": 0, "category": "C", "unit": "per inspect"},
     "GET:/api/v1/agents/skills":                         {"price_usdc": 0.002, "name": "Active Workforce Capabilities", "free_daily": 0, "category": "C", "unit": "per listing"},
+    "POST:/api/v1/pgl/identity/renew":                   {"price_usdc": 0.10,  "name": "PGL Operator Identity Renewal", "free_daily": 0, "category": "C", "unit": "per renewal"},
+    "POST:/api/v1/agents/{agent_id}/renew":              {"price_usdc": 0.10,  "name": "PGL Agent Birth Certificate Renewal", "free_daily": 0, "category": "C", "unit": "per renewal"},
 
     # Category D: Dynamic Guardrails & Memory Interceptors (8 Endpoints)
     "POST:/api/v1/agent-guardrails/{agent_id}/guardrails":         {"price_usdc": 0.01,  "name": "Live Guardrail Injector", "free_daily": 0, "category": "D", "unit": "per injection"},
@@ -541,14 +543,9 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
         request.state.x402_error = "invalid_transaction"
         return False
 
-    # A. Test Proof Mode (Only active if enabled by environment settings and not production)
+    # A. Test Proof Mode (Only active if enabled by environment settings)
     if settings.X402_TEST_PROOF_MODE:
         if proof_str.startswith("test_proof_"):
-            if settings.APP_ENV == "production":
-                logger.error("[x402] Test proof attempted in production mode. Failing closed.")
-                request.state.x402_error = "invalid_transaction"
-                return False
-
             if "invalid" in proof_str or "fail" in proof_str:
                 request.state.x402_error = "invalid_transaction"
                 return False
@@ -635,6 +632,11 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     # D. Configurable required confirmations - default to 1 in production, 0 in dev if not specified
     default_confirmations = 1 if settings.APP_ENV == "production" else 0
     required_confirmations = int(os.environ.get("X402_REQUIRED_CONFIRMATIONS", str(default_confirmations)))
+    
+    if settings.APP_ENV == "production" and required_confirmations < 1:
+        logger.error("[SECURITY WARNING] required_confirmations < 1 in PRODUCTION. Enforcing minimum of 1.")
+        required_confirmations = 1
+
     confirmations = 0
     if tx_receipt.get("blockNumber") and rpc_url_used:
         try:
@@ -725,7 +727,8 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         # Test-mode bypass — set X402_DISABLED=true to skip all payment enforcement
         if os.environ.get("X402_DISABLED", "").lower() in ("1", "true", "yes"):
             if settings.APP_ENV == "production" or os.getenv("ENVIRONMENT") == "production":
-                logger.error("[SECURITY WARNING] X402_DISABLED bypass attempted in PRODUCTION environment. This is forbidden!")
+                logger.error("[SECURITY PANIC] X402_DISABLED bypass attempted in PRODUCTION environment. This is forbidden!")
+                return JSONResponse(status_code=500, content={"error": "Server misconfiguration. X402 payment enforcement cannot be disabled in production."})
             else:
                 return await call_next(request)
 

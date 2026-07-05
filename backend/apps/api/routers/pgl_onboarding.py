@@ -3,10 +3,19 @@
 DB-BACKED. Every step writes to pgl_certificates, pgl_ledger_events, and
 pgl_identities tables. No in-memory dicts. No shared global state.
 
+KEY INVARIANTS:
+  1. IDEMPOTENT — if a user already has a pgl_id, onboarding returns the
+     existing identity. A new ID is NEVER issued to replace an existing one.
+     Re-onboarding the same agent = no-op + return existing ID.
+  2. HUMAN-FIRST — the human_id anchor is always current_user.id (from JWT),
+     NEVER from the request body. This is what locks the PGL identity to the
+     actual authenticated human who owns the agents.
+  3. LIFECYCLE — every identity starts PROBATIONARY (90 days), then ACTIVE.
+     Annual renewal required. Same ID, new expiry date every year.
+
 Tenant isolation is enforced at every handler: all queries are filtered by
 current_user.workspace_id so User A's onboarding state can NEVER affect
-User B's workspace. has_pgl_profile is derived by querying the database for
-an active PGLCertificate scoped to this workspace_id.
+User B's workspace.
 """
 
 from __future__ import annotations
@@ -24,6 +33,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
+from backend.core.services.pgl_identity_lifecycle import (
+    compute_lifecycle,
+    stamp_new_human_identity,
+    build_renewal_patch,
+)
 from backend.db.models.pgl import PGLCertificate, PGLIdentity, PGLLedgerEvent
 from backend.db.models.user import User
 
@@ -218,58 +232,93 @@ async def create_operator_identity(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Step 1: Bootstrap operator identity — writes a PGLIdentity row and
-    a 'operator_created' ledger event for this workspace.
+    """Step 1: Bootstrap human operator identity — IDEMPOTENT.
+
+    CRITICAL INVARIANT: If this user already has a pgl_id, the existing
+    identity is returned immediately. A new ID is NEVER issued.
+    An agent gets one ID for life. Re-onboarding = no-op.
+
+    The human_id anchor (current_user.id) comes from the JWT, never from
+    the request body. This is what locks the PGL identity to the real human.
     """
     workspace_id = str(current_user.workspace_id)
-    actor_id = str(current_user.id)
+    actor_id     = str(current_user.id)  # JWT-extracted, not from body
 
+    # ── IDEMPOTENCY CHECK — return existing identity if already onboarded ────
+    if current_user.pgl_id:
+        existing = await db.execute(
+            select(PGLIdentity).where(PGLIdentity.id == current_user.pgl_id)
+        )
+        identity = existing.scalar_one_or_none()
+        if identity:
+            lifecycle = compute_lifecycle(
+                metadata=identity.metadata_json or {},
+                created_at=identity.created_at,
+            )
+            return {
+                "operator_identity_id": identity.metadata_json.get("operator_identity_id", actor_id),
+                "pgl_id":              identity.id,
+                "workspace_id":        workspace_id,
+                "status":              "already_onboarded",
+                "lifecycle":           lifecycle.to_dict(),
+                "message":             (
+                    "Identity already exists — returning existing PGL ID. "
+                    "An agent's ID is issued once and kept for life."
+                ),
+            }
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # First time — issue the identity
     operator_identity_id = f"op_{uuid.uuid4().hex[:16]}"
 
+    # Build lifecycle-stamped metadata — human_id = current_user.id (JWT)
+    lifecycle_meta = stamp_new_human_identity(
+        human_id=actor_id,
+        human_email=current_user.email or "",
+        workspace_id=workspace_id,
+    )
     payload = {
+        **lifecycle_meta,
         "operator_identity_id": operator_identity_id,
-        "operator_name": operator_data.get("operator_name", current_user.full_name or "Primary Operator"),
-        "jurisdiction": operator_data.get("jurisdiction", "US"),
-        "declared_purpose": operator_data.get("declared_purpose", "AI Agent Management"),
-        "workspace_id": workspace_id,
-        "user_id": actor_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "operator_name":        operator_data.get("operator_name", current_user.full_name or "Primary Operator"),
+        "jurisdiction":         operator_data.get("jurisdiction", "US"),
+        "declared_purpose":     operator_data.get("declared_purpose", "AI Agent Management"),
     }
 
-    # Write the PGL Identity record (Ed25519 placeholder — real key rotation is out of scope here)
-    pgl_id = str(uuid.uuid4())
+    pgl_id   = str(uuid.uuid4())
     identity = PGLIdentity(
         id=pgl_id,
         tenant_id=workspace_id,
-        primary_public_key=f"placeholder_ed25519_{operator_identity_id}",
+        primary_public_key=f"ed25519_placeholder_{operator_identity_id}",
         key_type="ed25519",
         metadata_json=payload,
     )
     db.add(identity)
 
-    # Update user with the PGL id
+    # Lock the user to this PGL ID — the permanent anchor
     current_user.pgl_id = pgl_id
     db.add(current_user)
 
-    # Write hash-chained ledger event
     event = await _write_ledger_event(
         db,
         workspace_id=workspace_id,
         actor_id=actor_id,
-        event_type="operator_created",
+        event_type="operator_identity_issued",
         payload=payload,
         pgl_identity_id=pgl_id,
     )
 
     await db.commit()
 
+    lifecycle = compute_lifecycle(metadata=payload, created_at=identity.created_at)
     return {
         "operator_identity_id": operator_identity_id,
-        "pgl_id": pgl_id,
-        "workspace_id": workspace_id,
-        "ledger_event_hash": event.event_hash,
-        "status": "created",
-        "message": "Operator identity written to PGL ledger",
+        "pgl_id":               pgl_id,
+        "workspace_id":         workspace_id,
+        "ledger_event_hash":    event.event_hash,
+        "status":               "created",
+        "lifecycle":            lifecycle.to_dict(),
+        "message":              "PGL identity issued. This ID is permanent — renew annually.",
     }
 
 
@@ -781,3 +830,119 @@ async def complete_alias(
         current_user=current_user,
         db=db,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /pgl/identity/status  — lifecycle check (probation / renewal)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/identity/status")
+async def get_identity_lifecycle_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the full lifecycle status of the current user's PGL identity.
+
+    Tells you:
+    - Are you PROBATIONARY, ACTIVE, RENEWAL_DUE, or EXPIRED?
+    - When does probation end?
+    - When is renewal due?
+    - Can you execute right now?
+    """
+    if not current_user.pgl_id:
+        raise HTTPException(
+            status_code=404,
+            detail="No PGL identity found. Complete onboarding at POST /api/v1/pgl/onboarding/operator-identity.",
+        )
+
+    result = await db.execute(
+        select(PGLIdentity).where(PGLIdentity.id == current_user.pgl_id)
+    )
+    identity = result.scalar_one_or_none()
+    if not identity:
+        raise HTTPException(status_code=404, detail=f"PGL identity {current_user.pgl_id} not found in ledger.")
+
+    lifecycle = compute_lifecycle(
+        metadata=identity.metadata_json or {},
+        created_at=identity.created_at,
+    )
+
+    return {
+        "pgl_id":        identity.id,
+        "workspace_id":  str(current_user.workspace_id),
+        "human_id":      identity.metadata_json.get("human_id") if identity.metadata_json else None,
+        "lifecycle":     lifecycle.to_dict(),
+        "can_execute":   lifecycle.can_execute,
+        "warning":       lifecycle.warning,
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /pgl/identity/renew  — annual renewal (same ID, new expiry)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/identity/renew")
+async def renew_identity(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Renew the current user's PGL identity.
+
+    INVARIANT: The PGL ID never changes. Only the expiry date is pushed
+    forward by 365 days. Same ID, new expiry. Exactly like renewing a
+    driver's license — same license number, new sticker on the back.
+
+    In production: gate this behind a payment check before calling.
+    No payment = renewal denied = ID stays expired = no execution.
+    """
+    if not current_user.pgl_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot renew: no PGL identity found. Complete onboarding first.",
+        )
+
+    result = await db.execute(
+        select(PGLIdentity).where(PGLIdentity.id == current_user.pgl_id)
+    )
+    identity = result.scalar_one_or_none()
+    if not identity:
+        raise HTTPException(status_code=404, detail=f"PGL identity {current_user.pgl_id} not found.")
+
+    # Apply renewal patch — same ID, new expiry, bumped version
+    new_metadata = build_renewal_patch(identity.metadata_json or {})
+    identity.metadata_json = new_metadata
+    identity.rotated_at = datetime.now(timezone.utc)
+    db.add(identity)
+
+    # Write renewal to ledger chain
+    event = await _write_ledger_event(
+        db,
+        workspace_id=str(current_user.workspace_id),
+        actor_id=str(current_user.id),
+        event_type="identity_renewed",
+        payload={
+            "pgl_id":           identity.id,
+            "renewal_count":    new_metadata["renewal_count"],
+            "new_renewal_due":  new_metadata["renewal_due_at"],
+            "identity_version": new_metadata["identity_version"],
+        },
+        pgl_identity_id=identity.id,
+    )
+
+    await db.commit()
+
+    lifecycle = compute_lifecycle(metadata=new_metadata, created_at=identity.created_at)
+    return {
+        "pgl_id":           identity.id,
+        "status":           "renewed",
+        "renewal_count":    new_metadata["renewal_count"],
+        "new_expiry":       new_metadata["renewal_due_at"],
+        "ledger_event_hash": event.event_hash,
+        "lifecycle":        lifecycle.to_dict(),
+        "message":          (
+            f"Identity renewed. Same ID, new expiry: {new_metadata['renewal_due_at'][:10]}. "
+            f"Renewal #{new_metadata['renewal_count']}."
+        ),
+    }

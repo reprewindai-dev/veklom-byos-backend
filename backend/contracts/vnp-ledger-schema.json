@@ -1,0 +1,140 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2026-07-01",
+      "default": "2026-07-01",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "chain_id": {
+      "title": "Chain Id",
+      "type": "string"
+    },
+    "block_index": {
+      "minimum": 0,
+      "title": "Block Index",
+      "type": "integer"
+    },
+    "prev_hash": {
+      "title": "Prev Hash",
+      "type": "string"
+    },
+    "block_hash": {
+      "title": "Block Hash",
+      "type": "string"
+    },
+    "stream_id": {
+      "title": "Stream Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "workspace_id": {
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "event_id": {
+      "title": "Event Id",
+      "type": "string"
+    },
+    "transition": {
+      "enum": [
+        "yield",
+        "slash"
+      ],
+      "title": "Transition",
+      "type": "string"
+    },
+    "amount_vnp": {
+      "title": "Amount Vnp",
+      "type": "integer"
+    },
+    "reason_code": {
+      "enum": [
+        "RUN_SUCCESS",
+        "PROMPT_INJECTION_BLOCKED",
+        "DEPTH_LIMIT_EXCEEDED",
+        "POLICY_DENIED",
+        "SYSTEM_ERROR"
+      ],
+      "title": "Reason Code",
+      "type": "string"
+    },
+    "trace_hash": {
+      "title": "Trace Hash",
+      "type": "string"
+    },
+    "receipt_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Receipt Hash"
+    },
+    "policy_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Ref"
+    },
+    "emitted_at": {
+      "format": "date-time",
+      "title": "Emitted At",
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "chain_id",
+    "block_index",
+    "prev_hash",
+    "block_hash",
+    "stream_id",
+    "run_id",
+    "workspace_id",
+    "event_id",
+    "transition",
+    "amount_vnp",
+    "reason_code",
+    "trace_hash",
+    "emitted_at"
+  ],
+  "title": "VnpBlock",
+  "type": "object"
+}

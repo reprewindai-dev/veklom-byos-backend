@@ -2,6 +2,8 @@ import hashlib
 import json
 import logging
 import uuid
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 
 from sqlalchemy import select, func, desc
@@ -60,6 +62,7 @@ class PGLClient:
         self.db.add(PGLLedgerEvent(
             workspace_id=workspace_id,
             actor_id=actor_id,
+            pgl_identity_id=actor_id,
             certificate_id=certificate_id,
             event_type=event_type,
             payload=payload,
@@ -78,12 +81,37 @@ class PGLClient:
         plan_hash: Optional[str] = None,
         tool_manifest_hash: Optional[str] = None,
         delegation_chain_hash: Optional[str] = None,
-        input_hash: Optional[str] = None
+        input_hash: Optional[str] = None,
+        scope: Optional[str] = "wallet:spend",
     ) -> Dict[str, Any]:
-        """Commit constitutional identity + pre-execution proof. Returns a pre-execution certificate."""
+        """Commit constitutional identity + pre-execution proof. Returns a signed pre-execution certificate."""
+        import hmac
+        import json
         pre_execution_certificate_id = f"pgl_cert_pre_{uuid.uuid4().hex[:12]}"
+        
+        # Determine time-bounded expiration (default to 5 minutes)
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(seconds=300)
+
+        # Multi-key selection logic for rotation
+        raw_keys = os.environ.get("PGL_AUTHORITY_KEYS_JSON")
+        active_key_id = "v1"
+        authority_key = "pgl_default_authority_signing_secret_key_v1".encode()
+        
+        if raw_keys:
+            try:
+                keys_config = json.loads(raw_keys)
+                active_key_id = keys_config.get("active_key_id", "v1")
+                authority_key = keys_config.get("keys", {}).get(active_key_id, "pgl_default_authority_signing_secret_key_v1").encode()
+            except Exception:
+                pass
+
+        sign_payload = f"{pre_execution_certificate_id}:{actor_id}:{scope or ''}:{expires_at.isoformat()}"
+        signature_hash = hmac.new(authority_key, sign_payload.encode(), hashlib.sha256).hexdigest()
+        signature = f"{active_key_id}:{signature_hash}"
+
         result = {
-            "status": "committed",
+            "status": "OPEN",
             "pre_execution_certificate_id": pre_execution_certificate_id,
             "genome_hash": genome_hash,
             "constitution_hash": constitution_hash,
@@ -91,6 +119,9 @@ class PGLClient:
             "tool_manifest_hash": tool_manifest_hash,
             "delegation_chain_hash": delegation_chain_hash,
             "input_hash": input_hash,
+            "signature": signature,
+            "scope": scope,
+            "expires_at": expires_at.isoformat(),
             "lineage_parent_hashes": [],
             "persisted": False,
         }
@@ -105,14 +136,18 @@ class PGLClient:
             kind="pre",
             workspace_id=workspace_id,
             actor_id=actor_id,
+            pgl_identity_id=actor_id,  # Assume user/identity ID matches actor_id or resolves
             genome_hash=genome_hash,
             constitution_hash=constitution_hash,
             plan_hash=plan_hash,
-            status="committed",
+            status="OPEN",
+            signature=signature,
+            expires_at=expires_at,
+            scope=scope,
         ))
         event_hash = await self._append_event(
             workspace_id, actor_id, pre_execution_certificate_id, "commit_intent",
-            {"genome_hash": genome_hash, "constitution_hash": constitution_hash, "plan_hash": plan_hash},
+            {"genome_hash": genome_hash, "constitution_hash": constitution_hash, "plan_hash": plan_hash, "scope": scope, "expires_at": expires_at.isoformat()},
         )
         result["persisted"] = True
         result["event_hash"] = event_hash
@@ -131,7 +166,7 @@ class PGLClient:
         """Record outcome/output hashes after execution. Issues the post-execution certificate."""
         post_execution_certificate_id = f"pgl_cert_post_{uuid.uuid4().hex[:12]}"
         result = {
-            "status": "attested",
+            "status": "SUCCEEDED",
             "pre_execution_certificate_id": pre_execution_certificate_id,
             "post_execution_certificate_id": post_execution_certificate_id,
             "output_hash": output_hash,
@@ -152,15 +187,21 @@ class PGLClient:
         ws = workspace_id or (pre.workspace_id if pre else "unknown")
         actor = actor_id or (pre.actor_id if pre else "unknown")
 
+        if pre:
+            pre.status = "SUCCEEDED"
+            pre.resolved_at = datetime.now(timezone.utc)
+
         self.db.add(PGLCertificate(
             certificate_id=post_execution_certificate_id,
             kind="post",
             workspace_id=ws,
             actor_id=actor,
+            pgl_identity_id=actor,
             output_hash=output_hash,
             outcome_hash=outcome_hash,
             pre_certificate_id=pre_execution_certificate_id,
-            status="attested",
+            status="SUCCEEDED",
+            resolved_at=datetime.now(timezone.utc),
         ))
         event_hash = await self._append_event(
             ws, actor, post_execution_certificate_id, "attest_outcome",
@@ -179,7 +220,7 @@ class PGLClient:
         """Register a rollback event in the ledger."""
         rollback_event_id = f"pgl_rb_{uuid.uuid4().hex[:12]}"
         result = {
-            "status": "rolled_back",
+            "status": "ROLLED_BACK",
             "rollback_event_id": rollback_event_id,
             "post_execution_certificate_id": post_execution_certificate_id,
             "reason": reason,
@@ -197,7 +238,16 @@ class PGLClient:
         ws = post.workspace_id if post else "unknown"
         actor = post.actor_id if post else "unknown"
         if post:
-            post.status = "rolled_back"
+            post.status = "ROLLED_BACK"
+            post.resolved_at = datetime.now(timezone.utc)
+            if post.pre_certificate_id:
+                pre = (await self.db.execute(
+                    select(PGLCertificate).where(PGLCertificate.certificate_id == post.pre_certificate_id)
+                )).scalar_one_or_none()
+                if pre:
+                    pre.status = "ROLLED_BACK"
+                    pre.resolved_at = datetime.now(timezone.utc)
+
         event_hash = await self._append_event(
             ws, actor, post_execution_certificate_id, "rollback",
             {"rollback_event_id": rollback_event_id, "reason": reason},

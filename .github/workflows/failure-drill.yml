@@ -11,6 +11,22 @@ jobs:
   failure-drill:
     name: Blast-Radius & Recovery SLO Test
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: veklom
+          POSTGRES_PASSWORD: veklom_ci
+          POSTGRES_DB: veklom_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -21,37 +37,49 @@ jobs:
           python-version: '3.11'
 
       - name: Install Application Dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Start API Server
+        env:
+          DATABASE_URL: "postgresql+asyncpg://veklom:veklom_ci@localhost:5432/veklom_test"
+          REDIS_ENABLED: "False"
+          REDIS_URL: "redis://localhost:6379"
+          SECRET_KEY: "ci-test-secret-key-not-real"
+          ENVIRONMENT: "test"
+          SKIP_DB_MIGRATIONS: "true"
         run: |
-          DATABASE_URL="sqlite+aiosqlite:///:memory:" REDIS_ENABLED="False" uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
           for i in {1..30}; do
             curl -s http://127.0.0.1:8088/health && break
             sleep 1
           done
 
       - name: Simulate Service Crash & Recover SLO Assertion
+        env:
+          DATABASE_URL: "postgresql+asyncpg://veklom:veklom_ci@localhost:5432/veklom_test"
+          REDIS_ENABLED: "False"
+          REDIS_URL: "redis://localhost:6379"
+          SECRET_KEY: "ci-test-secret-key-not-real"
+          ENVIRONMENT: "test"
+          SKIP_DB_MIGRATIONS: "true"
         run: |
           echo "=== Step 1: Verify API Server Healthy ==="
           curl -f http://127.0.0.1:8088/health
-          
+
           echo "=== Step 2: Terminate Server (SIGTERM Crash simulation) ==="
           pkill -TERM -f uvicorn
           sleep 5
-          
+
           echo "=== Step 3: Assert Failed Requests yield clean exceptions ==="
-          # curl should fail with connection error
           curl -s --connect-timeout 2 http://127.0.0.1:8088/health && { echo "❌ Server should be down!"; exit 1; } || echo "✓ Server down successfully."
-          
+
           echo "=== Step 4: Restart Server & Confirm Auto-Recovery ==="
-          DATABASE_URL="sqlite+aiosqlite:///:memory:" REDIS_ENABLED="False" uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
           for i in {1..30}; do
             curl -s http://127.0.0.1:8088/health && break
             sleep 1
           done
-          
+
           echo "=== Step 5: Final Health Check ==="
           curl -f http://127.0.0.1:8088/health
           echo "✓ Blast-radius & Auto-Recovery SLO successfully satisfied."

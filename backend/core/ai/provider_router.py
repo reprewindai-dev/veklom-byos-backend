@@ -15,6 +15,17 @@ from backend.core.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# OLLAMA_ONLY safety guard
+# When OLLAMA_ONLY=true in the environment, ALL requests are forced to Ollama
+# and NO paid provider (OpenAI, Groq, Gemini, HuggingFace) will EVER be called.
+# This prevents surprise bills. Set OLLAMA_ONLY=false to re-enable paid providers.
+# ---------------------------------------------------------------------------
+import os as _os
+OLLAMA_ONLY: bool = _os.environ.get("OLLAMA_ONLY", "true").strip().lower() in ("1", "true", "yes")
+if OLLAMA_ONLY:
+    logger.info("[COST GUARD] OLLAMA_ONLY=true — all completions forced to local Ollama. Paid providers DISABLED.")
+
 
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -95,6 +106,10 @@ def _configured_provider(provider: str) -> bool:
 
 
 def provider_order(body: dict) -> list[str]:
+    # Hard safety guard: if OLLAMA_ONLY is set, never return any paid provider
+    if OLLAMA_ONLY:
+        return ["ollama"]
+
     raw = body.get("provider") or settings.LLM_PROVIDER or settings.DEFAULT_AI_PROVIDER or settings.AI_PROVIDER
     parts: list[str] = []
     for chunk in str(raw).replace(",", "/").split("/"):
@@ -118,6 +133,11 @@ def provider_order(body: dict) -> list[str]:
 
 
 async def run_completion(body: dict, stream: bool = False) -> CompletionResult:
+    # Hard safety guard
+    if OLLAMA_ONLY:
+        body = {**body, "provider": "ollama", "model": settings.OLLAMA_MODEL}
+        return CompletionResult("ollama", await _ollama_completion(body))
+
     model_requested = (body.get("model") or "").lower()
     provider_requested = (body.get("provider") or "").lower()
     is_openai_req = ("gpt-4" in model_requested or "openai" in provider_requested)

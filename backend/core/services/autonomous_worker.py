@@ -120,12 +120,64 @@ async def _update_pipeline_run(run_id: str, updates: dict):
         logger.error(f"Failed to update PipelineRun {run_id}: {e}")
 
 async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id: str, user_id: str, resume_context: dict | None = None, start_index: int = 0):
-    """Executes a pipeline autonomously in the background and updates Postgres."""
+    """Executes a pipeline autonomously in the background and updates Postgres.
+
+    GOVERNANCE: Every pipeline run goes through PGL identity resolution before
+    any step executes. If the operator (user_id) has no gnomledger identity or
+    is quarantined, the run is hard-blocked and marked failed immediately.
+    No if, and, or but.
+    """
     await _update_pipeline_run(transaction_id, {
         "status": "running",
         "progress": max(0, min(100, int((start_index or 0) * 5))),
         "current_step": "Source" if not resume_context else "Test"
     })
+
+    # ── PGL HARD GATE ─────────────────────────────────────────────────────────
+    # Every pipeline run is attributable to the actor who launched it (user_id).
+    # Resolve their gnomledger identity before any computation starts.
+    _pgl_ctx = None
+    try:
+        from backend.core.services.pgl_identity_gate import (
+            PGLIdentityGate,
+            PGLIdentityError,
+            AgentKind,
+        )
+        async with get_db_session() as _pgl_db:
+            _pgl_ctx = await PGLIdentityGate.require(
+                db       = _pgl_db,
+                actor_id = user_id,
+                action   = "run_pipeline_background",
+                payload  = {
+                    "transaction_id": transaction_id,
+                    "workspace_id":   workspace_id,
+                    "step_count":     len(steps) if hasattr(steps, "__len__") else "unknown",
+                    "start_index":    start_index,
+                },
+                kind = AgentKind.PIPELINE,
+                scope = "pipeline:exec",
+            )
+            await _pgl_db.commit()
+        logger.info(
+            f"[PGLGate] ✅ Pipeline cleared — actor='{user_id}' "
+            f"txn='{transaction_id}' cert='{_pgl_ctx.pre_execution_cert_id}'"
+        )
+    except Exception as _pgl_exc:
+        _reason = f"PGL identity gate blocked pipeline execution for actor='{user_id}': {_pgl_exc}"
+        logger.error(f"[PGLGate] 🚫 HARD BLOCK — {_reason}")
+        await _update_pipeline_run(transaction_id, {
+            "status":       "failed",
+            "progress":     0,
+            "current_step": "PGL Identity Check",
+            "error":        _reason,
+            "output": {
+                "pgl_denied": True,
+                "actor_id":   user_id,
+                "reason":     _reason,
+            },
+        })
+        return
+    # ──────────────────────────────────────────────────────────────────────────
 
     await asyncio.sleep(0.01)
     execution = _build_execution_plan(steps)
@@ -169,6 +221,7 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
     context["workspace_id"] = workspace_id
     context["user_id"] = user_id
     context["preflight"] = preflight
+    context["pgl_ctx"] = _pgl_ctx       # carry PGL context for downstream attest
 
     await _set_lifecycle_stage(transaction_id, "Test", 36, {"preflight": preflight})
     for i, step in enumerate(execution[start_index:], start=start_index):
@@ -219,6 +272,16 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
             node_label = step.get("label") or step.get("name") or step.get("node_type") or "node"
             logger.error(f"Pipeline node {node_label} failed: {e}")
             receipt = _build_run_receipt(transaction_id, context, execution, workspace_id, user_id, "failed", str(e))
+            
+            # Close PGL cert chain with failure
+            if _pgl_ctx:
+                try:
+                    async with get_db_session() as _pgl_db:
+                        await PGLIdentityGate.attest_failure(_pgl_db, _pgl_ctx, reason=str(e))
+                        await _pgl_db.commit()
+                except Exception as pgl_err:
+                    logger.error(f"[PGLGate] Failed to attest pipeline failure: {pgl_err}")
+
             await _update_pipeline_run(transaction_id, {
                 "status": "failed",
                 "error": f"Failed at {node_label}: {str(e)}",
@@ -250,6 +313,16 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
 
     final_text = str(context.get("text", ""))
     receipt = _build_run_receipt(transaction_id, context, execution, workspace_id, user_id, "completed")
+    
+    # Close PGL cert chain with success
+    if _pgl_ctx:
+        try:
+            async with get_db_session() as _pgl_db:
+                await PGLIdentityGate.attest_success(_pgl_db, _pgl_ctx, output={"receipt_id": receipt.get("evidence_id")})
+                await _pgl_db.commit()
+        except Exception as pgl_err:
+            logger.error(f"[PGLGate] Failed to attest pipeline success: {pgl_err}")
+
     await _update_pipeline_run(transaction_id, {
         "status": "completed",
         "progress": 100,

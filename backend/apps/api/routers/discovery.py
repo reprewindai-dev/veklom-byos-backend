@@ -16,6 +16,11 @@ import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+from backend.core.database.database import get_db
+from backend.db.models.governed_run import GovernedRun
 from backend.core.config.settings import settings
 
 router = APIRouter(tags=["discovery"])
@@ -194,7 +199,22 @@ async def x402_json():
         "/api/v1/x402/evaluate",
         "/api/v1/x402/governance",
         "/api/v1/x402/score",
-        "/api/v1/x402/verify"
+        "/api/v1/x402/verify",
+        # Interlink cAPI — 9-Phase Governed Connection Layer
+        "/api/v1/capi/execute",
+        "/api/v1/capi/state",
+        "/api/v1/capi/agents",
+        "/api/v1/capi/policies",
+        "/api/v1/capi/ledger",
+        "/api/v1/capi/quarantine",
+        "/api/v1/capi/compose",
+        "/api/v1/capi/discover",
+        "/api/v1/capi/replay",
+        "/api/v1/interlink/state",
+        "/api/v1/interlink/execute",
+        "/api/v1/interlink/agents",
+        "/api/v1/interlink/policies",
+        "/api/v1/interlink/ledger"
     ]
 
     return JSONResponse({
@@ -300,6 +320,18 @@ POST /api/v1/runtime/jobs        — Submit runtime job                  $0.020/
 GET  /api/v1/evidence/export     — Export SHA-256 evidence package     $0.005/export
 GET  /api/v1/compliance/report   — Generate compliance report          $0.010/report
 POST /api/v1/marketplace/acquire — Acquire marketplace model           $0.050/acquire
+
+## Interlink cAPI — Governed Connection Layer (9-Phase Pipeline)
+
+POST /api/v1/capi/execute        — Submit agent intent through 9-phase gate  $0.020/call
+GET  /api/v1/capi/state          — Live snapshot: agents, policies, ledger    $0.005/req
+GET  /api/v1/capi/agents         — Agent trust scores + risk profiles         $0.005/req
+GET  /api/v1/capi/policies       — Active policy composition (3-tier)         $0.005/req
+GET  /api/v1/capi/ledger         — PGL hash-chained evidence records          $0.005/req
+POST /api/v1/capi/quarantine     — Quarantine review + quorum approval        $0.010/req
+GET  /api/v1/capi/compose        — Effective permissions for agent+capability $0.005/req
+GET  /api/v1/capi/discover       — Capability discovery for an agent          $0.005/req
+GET  /api/v1/capi/replay         — Replay evidence chain from any hash        $0.010/req
 
 ## Free routes (no payment required)
 
@@ -412,6 +444,49 @@ async def mcp_sse(request: Request):
             },
             "price_usdc": 0.015,
             "endpoint": f"{VEKLOM_API_BASE}/gpc/compile",
+        },
+        {
+            "name": "veklom_interlink_execute",
+            "description": "Submit an agent execution intent through the Interlink cAPI 9-phase governed pipeline (Identity → Policy → Safety → Cost → Approval → Execution → Evidence → Audit → Response). Returns a signed receipt with trust delta, evidence hash, and verdict.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "agent_id":        {"type": "string", "description": "Unique agent identifier"},
+                    "pgl_id":          {"type": "string", "description": "Cryptographic PGL signature of the agent"},
+                    "target_protocol": {"type": "string", "description": "Protocol: mcp, http, local_tool, model_inference"},
+                    "action":          {"type": "string", "description": "Tool or action being requested"},
+                    "payload":         {"type": "object", "description": "Arguments for execution"},
+                    "mission_id":      {"type": "string", "description": "Active mission file ID (optional)"},
+                },
+                "required": ["agent_id", "pgl_id", "target_protocol", "action", "payload"],
+            },
+            "price_usdc": 0.020,
+            "endpoint": f"{VEKLOM_API_BASE}/capi/execute",
+        },
+        {
+            "name": "veklom_interlink_state",
+            "description": "Get a live snapshot of the Interlink cAPI runtime — agents, trust scores, active policies, PGL ledger entries, anomalies, and quarantine queue.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+            "price_usdc": 0.005,
+            "endpoint": f"{VEKLOM_API_BASE}/capi/state",
+        },
+        {
+            "name": "veklom_interlink_compose",
+            "description": "Compute the effective permissions for a given agent + capability pair. Composes system, owner, and runtime policy tiers to return a deterministic allow/deny with full audit trace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "agent_id":      {"type": "string", "description": "Agent to check permissions for"},
+                    "capability_id": {"type": "string", "description": "Capability to check"},
+                },
+                "required": ["agent_id", "capability_id"],
+            },
+            "price_usdc": 0.005,
+            "endpoint": f"{VEKLOM_API_BASE}/capi/compose",
         },
         {
             "name": "veklom_ai_inference",
@@ -826,3 +901,60 @@ with httpx.stream("GET", "{base}/mcp/sse") as r:
             "mcp_sse":          f"{base}/mcp/sse",
         },
     }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=3600"})
+
+# ---------------------------------------------------------------------------
+# /api/v1/discovery/leaderboard (Discovery Game SQL-backed leaderboard)
+# ---------------------------------------------------------------------------
+@router.get("/api/v1/discovery/leaderboard")
+async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: int = 20):
+    """Live Discovery Game Leaderboard derived from real GovernedRun data."""
+    all_runs = (
+        await db.execute(
+            select(GovernedRun)
+            .filter(GovernedRun.result_payload.isnot(None))
+        )
+    ).scalars().all()
+
+    user_stats = {}
+    for run in all_runs:
+        tenant_id = run.tenant_id
+        if not tenant_id:
+            continue
+            
+        if tenant_id not in user_stats:
+            # Fallback to tenant_id if agent_id isn't in pgl_identity
+            agent_name = "Unknown Agent"
+            if isinstance(run.pgl_identity, dict) and "agent_id" in run.pgl_identity:
+                agent_name = run.pgl_identity["agent_id"]
+
+            user_stats[tenant_id] = {
+                "address": tenant_id,
+                "trustScore": 500,  # Base score for discovery operators
+                "completedMissions": 0,
+                "agent": agent_name
+            }
+            
+        stats = user_stats[tenant_id]
+        stats["completedMissions"] += 1
+        
+        # Adjust score based on governed run state
+        if run.state in ["success", "completed"]:
+            stats["trustScore"] += 10
+        elif run.state in ["failed", "error", "law0_violation"]:
+            stats["trustScore"] -= 15
+
+    # Sort users by trustScore descending
+    sorted_users = sorted(user_stats.values(), key=lambda u: u["trustScore"], reverse=True)[:limit]
+    
+    leaderboard = []
+    for i, user in enumerate(sorted_users):
+        leaderboard.append({
+            "rank": i + 1,
+            "address": user["address"],
+            "trustScore": user["trustScore"],
+            "completedMissions": user["completedMissions"],
+            "agent": user["agent"]
+        })
+        
+    return {"leaderboard": leaderboard}
+

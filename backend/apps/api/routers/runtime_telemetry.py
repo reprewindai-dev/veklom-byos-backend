@@ -11,10 +11,12 @@ from backend.db.models.vnp import Api, RegionalTelemetry, Incident, AuditLog, Al
 
 router = APIRouter(prefix="/vnp", tags=["runtime", "vnp"])
 
+from sqlalchemy.orm import selectinload
+
 @router.get("/metrics")
 async def get_metrics(db: AsyncSession = Depends(get_db)):
-    # Fetch real APIs from database
-    apis_result = await db.execute(select(Api))
+    # Fetch real APIs from database with their provider relationship eagerly loaded
+    apis_result = await db.execute(select(Api).options(selectinload(Api.provider)))
     apis = apis_result.scalars().all()
     
     # We can fetch latest regional telemetry to construct full ApiState if needed,

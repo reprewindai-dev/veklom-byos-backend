@@ -266,6 +266,10 @@ async def gpc_stats(user=Depends(get_current_user_optional)):
         "policyAlignment": 99.9,
         "uacp_pressure": load,
         "quantum_coherence": 85.0 + active_runs,
+        "plans_total": active_plans,
+        "runs_total": total_runs,
+        "signals_total": total_events,
+        "latest_hash": "gpc_live_" + datetime.now(timezone.utc).strftime("%Y%m%d"),
         "signals": [
             {"id": "UACP_PRESSURE", "title": "UACP Core Pressure", "value": load, "timestamp": datetime.now(timezone.utc).isoformat(), "category": "system"}
         ]

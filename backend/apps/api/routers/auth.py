@@ -39,6 +39,25 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 CONTROL_PLANE_URL = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
+def safe_posthog_capture(*args, **kwargs):
+    """Wrap PostHog capture to ensure it never blocks or crashes auth endpoints."""
+    try:
+        # Give it a small timeout for any synchronous DNS resolution the library might attempt
+        import threading
+        
+        def _capture():
+            try:
+                posthog_service.capture(*args, **kwargs)
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_capture)
+        t.start()
+        t.join(timeout=0.5)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"PostHog capture failed: {e}")
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
@@ -113,15 +132,10 @@ def _user_dict(user: User) -> dict:
 
     is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
 
-    # Try to get workspace name if workspace relationship exists
+    # Workspace name: user is detached (expunged) after get_current_user,
+    # so lazy-loading relationships is unsafe (triggers greenlet errors).
+    # Use workspace_id only; name is resolved by callers with a live session.
     workspace_name = ""
-    if hasattr(user, 'workspace') and user.workspace:
-        workspace_name = user.workspace.name or ""
-    elif user.workspace_id:
-        # Fallback: try to fetch workspace by ID if not already loaded
-        from backend.db.models.workspace import Workspace
-        # Note: This requires a db session, so we'll use a simple fallback for now
-        workspace_name = ""
 
     return {
         "id": user.id,
@@ -682,10 +696,10 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
     except HTTPException:
         raise
     except Exception as e:
+        import logging
         import traceback
-        error_detail = f"Registration error: {str(e)}\nTraceback: {traceback.format_exc()}"
-        print(error_detail)
-        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+        logging.getLogger(__name__).error(f"Registration error: {str(e)}\nTraceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again later.")
 
 
 @router.get("/verify-email")
@@ -908,7 +922,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
     if not user or not verify_password(body.password, user.hashed_password):
         # Track failed login
-        posthog_service.capture(
+        safe_posthog_capture(
             distinct_id=email,
             event="auth_login_failed",
             properties={
@@ -945,7 +959,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
     status_value = (user.status or "").upper()
     if status_value in ("LOCKED", "SUSPENDED"):
-        posthog_service.capture(
+        safe_posthog_capture(
             distinct_id=str(user.id),
             event="auth_login_failed",
             properties={
@@ -968,7 +982,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         raise HTTPException(status_code=401, detail="Account is locked or suspended")
 
     if status_value == "INACTIVE" or not user.is_active:
-        posthog_service.capture(
+        safe_posthog_capture(
             distinct_id=str(user.id),
             event="auth_login_failed",
             properties={
@@ -1037,7 +1051,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     await db.commit()
 
     # Track successful login
-    posthog_service.capture(
+    safe_posthog_capture(
         distinct_id=str(user.id),
         event="auth_login_success",
         properties={

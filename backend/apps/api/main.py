@@ -755,7 +755,8 @@ from backend.apps.api.routers import (
     duel,
     bingo,
     veklom_id,
-    discovery
+    discovery,
+    marketplace_api
 )
 from backend.apps.api.routers import (
     agent_arena, agent_evaluation, agent_guardrails, agent_memory, agents, ai, amphoteric, auth, authority,
@@ -1974,6 +1975,9 @@ app.include_router(authority_runs.router, prefix="/api/v1")
 # PGL Adapter - Agent Management
 from backend.apps.api.routers import identity_rag
 app.include_router(identity_rag.router)
+app.include_router(copilot.router, prefix="/api/v1")
+app.include_router(workspace.router, prefix="/api/v1")
+app.include_router(marketplace_api.router, prefix="/api/v1/marketplace")
 app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
 app.include_router(pgl_adapter.router, prefix="/api/v1")

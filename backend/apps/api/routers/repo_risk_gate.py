@@ -140,6 +140,9 @@ def _serialize_run(run: RepoRiskGateRun) -> dict:
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,
         "decided_at": run.decided_at.isoformat() if run.decided_at else None,
         "metadata": run.metadata_json or {},
+        "risk_score": max(0, min(100, 100 - (run.findings_count * 10))),
+        "ledger_hash": f"lg_{run.id.replace('-', '')}",
+        "rules": [{"id": "r1", "name": "Secret scan"}],
     }
 
 

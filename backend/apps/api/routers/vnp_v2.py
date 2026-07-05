@@ -35,7 +35,7 @@ MOCK_CAPABILITIES = [
         tags=["github", "read"],
         risk=RiskLevel.Low,
         scopes=["repo:read"],
-        input_schema={"type": "object", "properties": {"owner": {"type": "string"}, "repo": {"type": "string"}}, "required": ["owner", "repo"]},
+        input_schema={"type": "object", "additionalProperties": False, "strict": True, "properties": {"owner": {"type": "string"}, "repo": {"type": "string"}}, "required": ["owner", "repo"]},
         output_schema={"type": "object"},
         toolset="github"
     ),
@@ -46,7 +46,7 @@ MOCK_CAPABILITIES = [
         tags=["github", "write"],
         risk=RiskLevel.Medium,
         scopes=["repo:write"],
-        input_schema={"type": "object", "properties": {"owner": {"type": "string"}, "repo": {"type": "string"}, "title": {"type": "string"}}, "required": ["owner", "repo", "title"]},
+        input_schema={"type": "object", "additionalProperties": False, "strict": True, "properties": {"owner": {"type": "string"}, "repo": {"type": "string"}, "title": {"type": "string"}}, "required": ["owner", "repo", "title"]},
         output_schema={"type": "object"},
         toolset="github"
     )

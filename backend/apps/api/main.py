@@ -771,7 +771,7 @@ from backend.apps.api.routers import (
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
     build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
-    genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges
+    genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges, tasks
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -794,6 +794,7 @@ app.include_router(terminal.router, prefix="/api/terminal")
 app.include_router(amphoteric.router, prefix="/api/v1")
 app.include_router(claims.router, prefix="/api/v1")
 app.include_router(badges.router, prefix="/api/v1")
+app.include_router(tasks.router, prefix="/api/v1/tasks")
 
 # System utilities
 app.include_router(system.router, prefix="/api/v1")

@@ -380,7 +380,7 @@ async def lifespan(app: FastAPI):
             "version": "0.1",
             "description": (
                 "Finds high-demand, legally usable RAG dataset opportunities and "
-                "creates draft Veklom marketplace listings. Does NOT publish without "
+                "creates draft Veklom discovery listings. Does NOT publish without "
                 "explicit operator approval. Rule: if invoked without implementation, "
                 "returns SKILL_MISSING."
             ),
@@ -390,7 +390,7 @@ async def lifespan(app: FastAPI):
                 "The skill is catalogued per spec. "
                 "To implement: create a route that calls a real dataset-discovery "
                 "API, checks license suitability, and POSTs draft listings to "
-                "/api/v1/marketplace/listings with status=draft. "
+                "/api/v1/discovery/listings with status=draft. "
                 "Do not publish or upload datasets without license verification."
             ),
             "input_schema": {
@@ -561,7 +561,7 @@ Drop-in replacement: `base_url=https://api.veklom.com/v1`
         {"name": "Evidence",    "description": "SHA-256 sealed audit evidence for every governed execution."},
         {"name": "Compliance",  "description": "Compliance reports for SOC2, HIPAA, GDPR, ISO 27001, EU AI Act, FedRAMP."},
         {"name": "Billing",     "description": "Operating reserve, wallet top-up, subscriptions, invoices, budget caps."},
-        {"name": "Marketplace", "description": "Sovereign AI model marketplace — acquire, configure, and deploy governed models."},
+        {"name": "discovery", "description": "Sovereign AI model discovery — acquire, configure, and deploy governed models."},
         {"name": "Monitoring",  "description": "Real-time observability, structured logs, alerts, and platform pulse."},
         {"name": "discovery",   "description": "Machine-readable discovery: .well-known, llms.txt, mcp/sse, pricing, SDK examples."},
         {"name": "Auth",        "description": "JWT authentication, GitHub OAuth, multi-tenant workspace registration."},
@@ -756,7 +756,7 @@ from backend.apps.api.routers import (
     bingo,
     veklom_id,
     discovery,
-    marketplace_api
+    discovery_api
 )
 from backend.apps.api.routers import (
     agent_arena, agent_evaluation, agent_guardrails, agent_memory, agents, ai, amphoteric, auth, authority,
@@ -1387,7 +1387,7 @@ async def root(request: Request):
     host = request.headers.get("host", "")
     if "co2router.com" in host:
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/workspace#/marketplace/ls_co2router", status_code=301)
+        return RedirectResponse(url="/workspace#/discovery/ls_co2router", status_code=301)
     if "lockerphycer.veklom.com" in host:
         lockerphycer_index = FRONTEND_DIR / "lockerphycer" / "index.html"
         if lockerphycer_index.exists():
@@ -1754,11 +1754,11 @@ async def lockerphycer_assets(path: str):
     if lockerphycer_file.exists() and lockerphycer_file.is_file():
         return FileResponse(str(lockerphycer_file))
     return JSONResponse(status_code=404, content={"detail": "File not found"})
-@app.get("/marketplace")
-async def marketplace_info():
+@app.get("/discovery")
+async def discovery_info():
     return {
         "platform": "Veklom",
-        "description": "Marketplace products built for governed execution",
+        "description": "discovery products built for governed execution",
         "products": [
             {
                 "id": "py03-irongrid",
@@ -1770,26 +1770,26 @@ async def marketplace_info():
             {
                 "id": "lockerphycer",
                 "name": "Lockerphycer",
-                "type": "Marketplace Product",
-                "description": "A Veklom marketplace product for controlled, governed execution workflows.",
+                "type": "discovery Product",
+                "description": "A Veklom discovery product for controlled, governed execution workflows.",
                 "url": "https://lockerphycer-git-main-dksummers-projects.vercel.app/"
             }
         ]
     }
 
-@app.get("/marketplace/lockerphycer")
-async def marketplace_lockerphycer():
+@app.get("/discovery/lockerphycer")
+async def discovery_lockerphycer():
     return {
         "id": "lockerphycer",
         "name": "Lockerphycer",
-        "type": "Marketplace Product",
-        "description": "A Veklom marketplace product for controlled, governed execution workflows.",
+        "type": "discovery Product",
+        "description": "A Veklom discovery product for controlled, governed execution workflows.",
         "demo_url": "https://lockerphycer-git-main-dksummers-projects.vercel.app/",
         "status": "Available in Veklom ecosystem"
     }
 
-@app.get("/marketplace/py03-irongrid")
-async def marketplace_py03():
+@app.get("/discovery/py03-irongrid")
+async def discovery_py03():
     return {
         "id": "py03-irongrid",
         "name": "PY03 IronGrid API",
@@ -1977,7 +1977,7 @@ from backend.apps.api.routers import identity_rag
 app.include_router(identity_rag.router)
 app.include_router(copilot.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")
-app.include_router(marketplace_api.router, prefix="/api/v1/marketplace")
+app.include_router(discovery_api.router, prefix="/api/v1/discovery")
 app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
 app.include_router(pgl_adapter.router, prefix="/api/v1")

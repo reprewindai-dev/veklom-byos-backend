@@ -2,11 +2,11 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends
 from backend.core.security.auth import get_current_user
 
-router = APIRouter(tags=["marketplace"])
+router = APIRouter(tags=["discovery"])
 
 @router.get("/listings", response_model=List[Dict[str, Any]])
-async def get_listings(user=Depends(get_current_user)):
-    # Returns dummy/static marketplace listings until fully integrated
+async def get_discovery_agents(current_user: dict = Depends(get_current_user)):
+    # Returns dummy/static discovery listings until fully integrated
     return [
         {
             "id": "ls_co2router",
@@ -31,9 +31,9 @@ async def get_listings(user=Depends(get_current_user)):
     ]
 
 @router.get("/installed", response_model=List[Dict[str, Any]])
-async def get_installed(user=Depends(get_current_user)):
+async def get_installed_agents(current_user: dict = Depends(get_current_user)):
     # Returns dummy/static installed assets for this workspace
-    ws_id = user.workspace_id if user and hasattr(user, 'workspace_id') else "ws_unknown"
+    ws_id = current_user.workspace_id if current_user and hasattr(current_user, 'workspace_id') else "ws_unknown"
     return [
         {
             "id": "inst_123",

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import json
 import os
@@ -61,6 +62,11 @@ class GitHubApiError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+def safe_exception_detail(exc: Exception, action: str) -> str:
+    """Return a report-safe error summary without driver-provided details."""
+    return f"{type(exc).__name__}: {action}; raw exception details omitted to avoid leaking credentials."
 
 
 def parse_datetime(value: str | None) -> datetime | None:
@@ -280,35 +286,36 @@ def audit_database_api_keys(
     findings: list[Finding] = []
     rows_checked = 0
     try:
-        with psycopg2.connect(database_url, connect_timeout=10) as conn:
-            with conn.cursor() as cursor:
-                for table, query, timestamp_column in queries:
-                    try:
-                        cursor.execute(query)
-                    except Exception as exc:
-                        conn.rollback()
-                        findings.append(
-                            Finding("WARN", f"{table} audit skipped", f"{type(exc).__name__}: {exc}")
-                        )
-                        continue
-                    for key_id, label, prefix, timestamp in cursor.fetchall():
-                        rows_checked += 1
-                        checked_at = timestamp
-                        if checked_at is not None and checked_at.tzinfo is None:
-                            checked_at = checked_at.replace(tzinfo=timezone.utc)
-                        days = age_days(checked_at, now)
-                        if days is None:
+        with contextlib.closing(psycopg2.connect(database_url, connect_timeout=10)) as conn:
+            with conn:
+                with conn.cursor() as cursor:
+                    for table, query, timestamp_column in queries:
+                        try:
+                            cursor.execute(query)
+                        except Exception as exc:
+                            conn.rollback()
                             findings.append(
-                                Finding("FAIL", f"{table}:{key_id} has no {timestamp_column}", "Cannot determine API-key age.")
+                                Finding("WARN", f"{table} audit skipped", safe_exception_detail(exc, "query failed"))
                             )
-                        elif days > max_age_days:
-                            findings.append(
-                                Finding(
-                                    "FAIL",
-                                    f"{table}:{label or key_id} exceeds rotation window",
-                                    f"Key prefix {prefix or '<none>'} is {days} days old; policy maximum is {max_age_days} days.",
+                            continue
+                        for key_id, label, prefix, timestamp in cursor.fetchall():
+                            rows_checked += 1
+                            checked_at = timestamp
+                            if checked_at is not None and checked_at.tzinfo is None:
+                                checked_at = checked_at.replace(tzinfo=timezone.utc)
+                            days = age_days(checked_at, now)
+                            if days is None:
+                                findings.append(
+                                    Finding("FAIL", f"{table}:{key_id} has no {timestamp_column}", "Cannot determine API-key age.")
                                 )
-                            )
+                            elif days > max_age_days:
+                                findings.append(
+                                    Finding(
+                                        "FAIL",
+                                        f"{table}:{label or key_id} exceeds rotation window",
+                                        f"Key prefix {prefix or '<none>'} is {days} days old; policy maximum is {max_age_days} days.",
+                                    )
+                                )
     except Exception as exc:
         return DbAuditResult(
             "failed",
@@ -317,7 +324,7 @@ def audit_database_api_keys(
                 Finding(
                     "FAIL",
                     "Database API-key audit failed",
-                    f"{type(exc).__name__}: {exc}",
+                    safe_exception_detail(exc, "connection or audit failed"),
                 )
             ],
         )
@@ -395,11 +402,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run(args: argparse.Namespace) -> AuditResult:
+def run(args: argparse.Namespace, forced_names: set[str] | None = None) -> AuditResult:
     now = parse_datetime(args.now) if args.now else datetime.now(timezone.utc)
     if now is None:
         raise ValueError("--now could not be parsed.")
-    forced_names = parse_csv_names(args.force_rotate)
+    if forced_names is None:
+        forced_names = parse_csv_names(args.force_rotate)
     findings: list[Finding] = []
 
     try:
@@ -439,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     forced_names = parse_csv_names(args.force_rotate)
-    result = run(args)
+    result = run(args, forced_names)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(render_report(result, forced_names), encoding="utf-8")
     print(f"Secret rotation audit {'failed' if result.failed else 'passed'}. Report: {args.report}")

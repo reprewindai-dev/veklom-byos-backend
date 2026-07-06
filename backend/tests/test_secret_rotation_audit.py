@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -109,6 +110,38 @@ class SecretRotationAuditTests(unittest.TestCase):
         self.assertIn("GH_TOKEN/GITHUB_TOKEN is not configured", report)
         self.assertIn("SECRET_ROTATION_GH_TOKEN", report)
 
+    def test_database_audit_omits_raw_connection_error_from_report(self):
+        class FakePsycopg2:
+            @staticmethod
+            def connect(database_url, connect_timeout):
+                raise RuntimeError(f"could not connect to {database_url}")
+
+        database_url = "postgresql://audit_user:super-secret@db.example.com/veklom"
+
+        with patch.dict(sys.modules, {"psycopg2": FakePsycopg2}):
+            result = audit.audit_database_api_keys(
+                database_url=database_url,
+                skip_db=False,
+                now=audit.parse_datetime("2026-07-05T00:00:00Z"),
+                max_age_days=90,
+            )
+
+        report = audit.render_report(
+            audit.AuditResult(
+                generated_at=audit.parse_datetime("2026-07-05T00:00:00Z"),
+                max_age_days=90,
+                warn_age_days=75,
+                secrets=[],
+                findings=[],
+                db=result,
+            ),
+            set(),
+        )
+        self.assertTrue(result.findings)
+        self.assertIn("raw exception details omitted", report)
+        self.assertNotIn("super-secret", report)
+        self.assertNotIn(database_url, report)
+
     def test_user_repos_can_skip_missing_organization_secrets_endpoint(self):
         calls = []
 
@@ -119,7 +152,7 @@ class SecretRotationAuditTests(unittest.TestCase):
             return [audit.SecretRecord("REPO_SECRET", audit.parse_datetime("2026-07-01T00:00:00Z"), scope)]
 
         with patch.object(audit, "fetch_paginated_secrets", side_effect=fake_fetch):
-            records = audit.fetch_github_secret_records("FeeeeelixWong/veklom-byos-backend", "token", "https://api.github.com")
+            records = audit.fetch_github_secret_records("owner/repo", "token", "https://api.github.com")
 
         self.assertEqual(["repository", "organization"], calls)
         self.assertEqual(["REPO_SECRET"], [record.name for record in records])

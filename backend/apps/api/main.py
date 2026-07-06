@@ -435,6 +435,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] skills: seed warning: {type(e).__name__}: {e}")
 
+    # Seed initial Demo API for VNP Probing if none exist
+    try:
+        from backend.db.models.vnp import Api, ApiRegion
+        from backend.core.database.database import async_session
+        async with async_session() as seed_db:
+            existing_api = (await seed_db.execute(select(Api).limit(1))).scalar_one_or_none()
+            if not existing_api:
+                demo_api = Api(
+                    id="api_demo_veklom_1",
+                    provider_id="veklom",
+                    name="Veklom Sovereign API",
+                    endpoint_url="https://api.veklom.com",
+                    health_path="/health",
+                    pricing_model="metered",
+                    x402_ready=True,
+                    stability_rating="Stable",
+                    current_composite_score=99.9
+                )
+                seed_db.add(demo_api)
+                demo_region = ApiRegion(
+                    api_id=demo_api.id,
+                    region_code="global",
+                    endpoint_url="https://api.veklom.com",
+                    active=True
+                )
+                seed_db.add(demo_region)
+                await seed_db.commit()
+                print("[startup] vnp: seeded demo API (api.veklom.com) for edge probing")
+    except Exception as e:
+        print(f"[startup] vnp: seed warning: {type(e).__name__}: {e}")
+
     # Seed default budget caps for minimum live operator set.
     # These are conservative defaults — adjust per operator via the API.
     _OPERATOR_BUDGETS = [
@@ -767,7 +798,7 @@ from backend.apps.api.routers import (
     pgl, pgl_adapter, pgl_onboarding, plugins, pricing, providers, rag,
     referrals, repo_risk_gate, repogate_api, routing, runs, runtime_jobs,
     runtime_telemetry, security, seked, smoke, system, team, upload, vnp,
-    vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2,
+    vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2, vnp_onboarding, vnp_stream,
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
     build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
@@ -793,6 +824,8 @@ app.include_router(agents.router, prefix="/api/v1")
 app.include_router(hrm.router, prefix="/api/v1")
 app.include_router(terminal.router, prefix="/api/terminal")
 app.include_router(amphoteric.router, prefix="/api/v1")
+app.include_router(vnp_onboarding.router, prefix="/api/v1")
+app.include_router(vnp_stream.router, prefix="/api/v1")
 app.include_router(claims.router, prefix="/api/v1")
 app.include_router(badges.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1/tasks")

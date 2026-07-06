@@ -188,9 +188,13 @@ class ProbeEvent(Base):
     worker_signature = Column(String, nullable=False)
     latency_ms = Column(Float)
     status_code = Column(Integer)
+    http_version = Column(String(10))
+    tls_version = Column(String(20))
     error_reason = Column(String)
     measured_at = Column(DateTime(timezone=True), nullable=False, index=True)
     evidence_hash = Column(String)
+    provenance_hash = Column(String)
+    cryptography_anchor = Column(String)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     # Note: Real PostgreSQL partitioning requires __table_args__ with postgresql_partition_by
@@ -218,6 +222,8 @@ class RegionalTelemetry(Base):
     uptime_percent = Column(Numeric(5, 2), nullable=False)
     throughput_rps = Column(Integer, nullable=False, default=0)
     trust_score = Column(Numeric(5, 2), nullable=False)
+    provenance_hash = Column(String)
+    on_chain_anchor = Column(String)
     measured_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     __table_args__ = (

@@ -967,6 +967,10 @@ app.include_router(internal_uacp.autonomous_router, prefix="/api/v1")
 # Provider management — BYOK, routing rules, audit logs
 app.include_router(providers.router, prefix="/api/v1")
 
+# Dynamic MCP Proxy Gateway — OpenAPI dynamic tools & transparent proxying
+from backend.apps.api.routers import mcp_proxy
+app.include_router(mcp_proxy.router)
+
 # Team management — members, invitations, roles, SSO, MFA
 app.include_router(team.router, prefix="/api/v1")
 

@@ -545,6 +545,19 @@ async def mcp_sse(request: Request):
             "endpoint": f"{VEKLOM_API_BASE}/kill-switch/activate",
         },
     ]
+    # Load custom registered MCP tools from Redis/JSON store
+    from backend.apps.api.routers.mcp_proxy import get_all_registered_servers
+    try:
+        custom_servers = get_all_registered_servers()
+        for server_id, server in custom_servers.items():
+            for t in server.get("tools", []):
+                # Copy and set proxy endpoint
+                custom_tool = dict(t)
+                path = custom_tool.get("path", "").lstrip("/")
+                custom_tool["endpoint"] = f"{VEKLOM_API_BASE}/proxy/{server_id}/{path}"
+                tools.append(custom_tool)
+    except Exception as e:
+        _disc_log.error(f"Failed to integrate custom MCP tools: {e}")
 
     async def event_stream():
         yield f"data: {json.dumps({'type': 'server_info', 'name': 'Veklom MCP', 'version': '1.0', 'protocol': 'mcp/1.0'})}\n\n"

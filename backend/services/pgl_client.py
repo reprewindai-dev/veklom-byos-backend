@@ -33,6 +33,8 @@ class PGLClient:
     """
 
     def __init__(self, db: Optional[AsyncSession] = None, pgl_endpoint: str = "http://pgl-ledger:50051"):
+        if os.getenv("CAPPO_REQUIRE_PERSISTENT_PGL", "").lower() == "true" and db is None:
+            raise RuntimeError("PGLClient must be initialized with a DB session in production (CAPPO_REQUIRE_PERSISTENT_PGL is set). Simulated fallback is forbidden.")
         self.db = db
         self.endpoint = pgl_endpoint
 

@@ -32,11 +32,11 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
+          pip install pytest asyncpg
 
       - name: Run Tiering Parity Contract Test
         run: |
           cd veklom-byos-backend-2
-          pip install -e .
+          pip install -e .[production]
           # Add backend to PYTHONPATH so imports work
           PYTHONPATH=$PYTHONPATH:$(pwd) pytest backend/tests/contract_tests/test_tiering_parity.py -v

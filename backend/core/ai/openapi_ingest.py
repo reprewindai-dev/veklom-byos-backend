@@ -1,11 +1,15 @@
 import re
 import httpx
 import logging
+import hashlib
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-class OpenAPItoMCPTranslator:
+class OpenAPICompiler:
+    """Compiles OpenAPI specs into V1 MCP tool manifests."""
+    
     @staticmethod
     async def fetch_schema(openapi_url: str) -> Optional[Dict[str, Any]]:
         """Fetch OpenAPI schema from URL."""
@@ -20,40 +24,101 @@ class OpenAPItoMCPTranslator:
         return None
 
     @classmethod
-    def translate_schema(cls, schema: Dict[str, Any], server_id: str) -> List[Dict[str, Any]]:
-        """Translate OpenAPI schema JSON into a list of MCP-compatible tools."""
-        mcp_tools = []
+    def compile_manifest(cls, schema: Dict[str, Any], server_id: str, openapi_url: str) -> List[Dict[str, Any]]:
+        """Compile an OpenAPI schema into a list of normalized tool manifests."""
+        manifests = []
         paths = schema.get("paths", {})
         components = schema.get("components", {})
         schemas = components.get("schemas", {})
+
+        # Compute hash
+        import json
+        spec_hash = hashlib.sha256(json.dumps(schema, sort_keys=True).encode("utf-8")).hexdigest()
+        manifest_version = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         for path, path_item in paths.items():
             for method, operation in path_item.items():
                 if method.lower() not in ("get", "post", "put", "delete", "patch"):
                     continue
 
+                # Filter out unsupported routes
+                if cls._has_unsupported_patterns(operation):
+                    logger.warning(f"Skipping unsupported route: {method.upper()} {path}")
+                    continue
+
                 operation_id = operation.get("operationId")
                 if not operation_id:
-                    # Fallback to path and method
                     clean_path = re.sub(r'[{}]', '', path).replace("/", "_").strip("_")
                     operation_id = f"{method.lower()}_{clean_path}"
 
-                # Namespacing tool name to avoid collisions
-                tool_name = f"{server_id}_{operation_id}"
-                description = operation.get("summary") or operation.get("description") or f"Execute {method.upper()} on {path}"
+                tool_name = f"{server_id}__{operation_id}"
+                summary = operation.get("summary") or f"Execute {method.upper()} on {path}"
+                description = operation.get("description") or summary
                 
                 input_schema = cls._build_input_schema(method, operation, schemas)
-
-                mcp_tools.append({
-                    "name": tool_name,
+                
+                tags = operation.get("tags", [])
+                
+                manifest = {
+                    "tool_name": tool_name,
+                    "display_name": summary,
+                    "server_id": server_id,
+                    "manifest_version": manifest_version,
+                    "source_spec_hash": f"sha256:{spec_hash}",
+                    "operation_id": operation_id,
+                    "summary": summary,
                     "description": description,
-                    "inputSchema": input_schema,
+                    "tags": tags,
                     "method": method.upper(),
-                    "path": path,
-                    "price_usdc": 0.010, # Standard pricing for custom plugins
-                })
+                    "path_template": path,
+                    "base_url_ref": f"server:{server_id}",
+                    "input_schema": input_schema,
+                    "output_schema": {"type": "object"}, # Simplified for V1
+                    "auth_profile": {
+                        "scheme": "bearer",
+                        "credential_ref": f"vault://tenant/{server_id}/credential"
+                    },
+                    "billing_profile": {
+                        "billable": True,
+                        "cost_class": "standard",
+                        "x402_required": True
+                    },
+                    "risk_profile": {
+                        "risk_class": "read_only" if method.lower() == "get" else "write",
+                        "approval_required": False,
+                        "environment": "prod"
+                    },
+                    "execution_profile": {
+                        "timeout_ms": 15000,
+                        "retry_policy": "idempotent-read" if method.lower() == "get" else "none",
+                        "cache_class": "hotpath" if method.lower() == "get" else "none"
+                    },
+                    "conversion_notes": {
+                        "flattened_request": True,
+                        "refs_resolved": True,
+                        "unsupported_features": []
+                    }
+                }
+                
+                manifests.append(manifest)
 
-        return mcp_tools
+        return manifests
+
+    @classmethod
+    def _has_unsupported_patterns(cls, operation: Dict[str, Any]) -> bool:
+        """Check if an operation contains features we do not support in V1 (streaming, multipart)."""
+        request_body = operation.get("requestBody", {})
+        content = request_body.get("content", {})
+        
+        # Reject multipart/form-data
+        if "multipart/form-data" in content:
+            return True
+        
+        # Reject generic file uploads if explicitly marked
+        if "application/octet-stream" in content:
+            return True
+            
+        return False
 
     @classmethod
     def _build_input_schema(cls, method: str, operation: Dict[str, Any], schemas: Dict[str, Any]) -> Dict[str, Any]:
@@ -68,13 +133,12 @@ class OpenAPItoMCPTranslator:
             param_schema = param.get("schema", {})
             param_desc = param.get("description", "")
             
-            # Resolve refs if needed
             if "$ref" in param_schema:
                 param_schema = cls._resolve_ref(param_schema["$ref"], schemas)
 
             prop = {
                 "type": param_schema.get("type", "string"),
-                "description": param_desc or f"Query parameter: {name}"
+                "description": param_desc or f"Parameter: {name}"
             }
             if "default" in param_schema:
                 prop["default"] = param_schema["default"]
@@ -82,10 +146,10 @@ class OpenAPItoMCPTranslator:
                 prop["enum"] = param_schema["enum"]
 
             input_properties[name] = prop
-            if param.get("required", False):
+            if param.get("required", False) or param.get("in") == "path":
                 required_fields.append(name)
 
-        # 2. Parse requestBody parameters (typically for POST/PUT)
+        # 2. Parse requestBody parameters
         request_body = operation.get("requestBody", {})
         content = request_body.get("content", {})
         json_content = content.get("application/json", {})
@@ -120,6 +184,7 @@ class OpenAPItoMCPTranslator:
                     "type": body_type,
                     "description": "Raw request body payload"
                 }
+                required_fields.append("body")
 
         schema = {
             "type": "object",

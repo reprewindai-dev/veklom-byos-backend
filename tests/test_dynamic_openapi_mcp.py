@@ -1,10 +1,9 @@
 import pytest
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from backend.apps.api.main import app
 from backend.core.config.settings import settings
-from backend.apps.api.routers.mcp_proxy import _save_server_to_store, _delete_server_from_store
 
 # Mock OpenAPI specification schema
 MOCK_OPENAPI_SPEC = {
@@ -36,23 +35,24 @@ MOCK_OPENAPI_SPEC = {
 }
 
 @pytest.mark.asyncio
-async def test_openapi_to_mcp_translation():
-    from backend.core.ai.mcp_connector import OpenAPItoMCPTranslator
+async def test_openapi_compiler():
+    from backend.core.ai.openapi_ingest import OpenAPICompiler
     
     # Test translate schema
-    tools = OpenAPItoMCPTranslator.translate_schema(MOCK_OPENAPI_SPEC, "air-intercept")
-    assert len(tools) == 1
-    tool = tools[0]
-    assert tool["name"] == "air-intercept_deploy_service"
+    manifests = OpenAPICompiler.compile_manifest(MOCK_OPENAPI_SPEC, "air-intercept", "https://api.airintercept.com/openapi.json")
+    assert len(manifests) == 1
+    tool = manifests[0]
+    assert tool["tool_name"] == "air-intercept__deploy_service"
     assert tool["method"] == "POST"
-    assert tool["path"] == "/deploy"
-    assert "service_name" in tool["inputSchema"]["properties"]
-    assert "required" in tool["inputSchema"]
-    assert "service_name" in tool["inputSchema"]["required"]
+    assert tool["path_template"] == "/deploy"
+    assert "service_name" in tool["input_schema"]["properties"]
+    assert "required" in tool["input_schema"]
+    assert "service_name" in tool["input_schema"]["required"]
+    assert tool["server_id"] == "air-intercept"
 
 @pytest.mark.asyncio
-@patch("backend.core.ai.mcp_connector.OpenAPItoMCPTranslator.fetch_schema")
-async def test_mcp_server_registration_and_proxy(mock_fetch_schema):
+@patch("backend.core.ai.openapi_ingest.OpenAPICompiler.fetch_schema")
+async def test_mcp_gateway_registration_and_invoke(mock_fetch_schema):
     mock_fetch_schema.return_value = MOCK_OPENAPI_SPEC
     
     client = TestClient(app)
@@ -91,16 +91,23 @@ async def test_mcp_server_registration_and_proxy(mock_fetch_schema):
             list_resp = client.get("/api/v1/mcp/servers", headers=headers)
             assert list_resp.status_code == 200
             servers = list_resp.json()
+            
             assert len(servers) > 0
             assert any(s["server_id"] == "air-intercept" for s in servers)
     
-            # 3. Verify tool is returned in /mcp/sse stream
-            sse_resp = client.get("/mcp/sse", headers=headers)
-            assert sse_resp.status_code == 200
-            assert "air-intercept_deploy_service" in sse_resp.text
+            # 3. Verify tools are returned in /tools endpoint
+            tools_resp = client.get("/api/v1/mcp/tools", headers=headers)
+            assert tools_resp.status_code == 200
+            tools = tools_resp.json()
+            assert any(t["tool_name"] == "air-intercept__deploy_service" for t in tools)
     
-            # 4. Test proxy routing execution (governed)
-            proxy_body = {"service_name": "backend-core", "region": "us-east"}
+            # 4. Test proxy routing execution (governed via :invoke endpoint)
+            invoke_body = {
+                "parameters": {
+                    "service_name": "backend-core",
+                    "region": "us-east"
+                }
+            }
         
             # Mock downstream HTTPX call and governance process_request
             with patch("httpx.AsyncClient.request") as mock_request, \
@@ -114,10 +121,10 @@ async def test_mcp_server_registration_and_proxy(mock_fetch_schema):
                 mock_response.headers = {"Content-Type": "application/json"}
                 mock_request.return_value = mock_response
                 
-                # Exec proxy POST
+                # Exec invoke endpoint
                 proxy_resp = client.post(
-                    "/api/v1/proxy/air-intercept/deploy",
-                    json=proxy_body,
+                    "/api/v1/mcp/tools/air-intercept__deploy_service:invoke",
+                    json=invoke_body,
                     headers={"X-Veklom-Nonce": "nonce_999", "Authorization": "Bearer mock_token"}
                 )
                 
@@ -129,9 +136,9 @@ async def test_mcp_server_registration_and_proxy(mock_fetch_schema):
                 # Verify custom auth header was injected in the downstream call
                 args, kwargs = mock_request.call_args
                 assert kwargs["headers"]["X-Air-Token"] == "secret_saas_token_abc"
+                
+                # Verify body was sent as JSON correctly
+                assert kwargs["json"]["service_name"] == "backend-core"
+                
         finally:
             app.dependency_overrides.clear()
-            # Clean up store
-            _delete_server_from_store("air-intercept")
-
-from unittest.mock import MagicMock

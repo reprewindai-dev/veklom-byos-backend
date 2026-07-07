@@ -545,17 +545,20 @@ async def mcp_sse(request: Request):
             "endpoint": f"{VEKLOM_API_BASE}/kill-switch/activate",
         },
     ]
-    # Load custom registered MCP tools from Redis/JSON store
-    from backend.apps.api.routers.mcp_proxy import get_all_registered_servers
+    # Load custom registered MCP tools from Manifest Store
+    from backend.core.ai.tool_manifest_store import ToolManifestStore
     try:
-        custom_servers = get_all_registered_servers()
-        for server_id, server in custom_servers.items():
-            for t in server.get("tools", []):
-                # Copy and set proxy endpoint
-                custom_tool = dict(t)
-                path = custom_tool.get("path", "").lstrip("/")
-                custom_tool["endpoint"] = f"{VEKLOM_API_BASE}/proxy/{server_id}/{path}"
-                tools.append(custom_tool)
+        manifests = await ToolManifestStore.get_all_manifests()
+        for tool_name, m in manifests.items():
+            custom_tool = {
+                "name": m["tool_name"],
+                "description": m["description"],
+                "inputSchema": m["input_schema"],
+                "method": "POST",
+                "endpoint": f"{VEKLOM_API_BASE}/mcp/tools/{tool_name}:invoke",
+                "price_usdc": 0.010
+            }
+            tools.append(custom_tool)
     except Exception as e:
         _disc_log.error(f"Failed to integrate custom MCP tools: {e}")
 

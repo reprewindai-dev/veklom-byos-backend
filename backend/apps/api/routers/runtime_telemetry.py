@@ -3,11 +3,22 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from datetime import datetime
+from sqlalchemy import select, desc, func
+from datetime import datetime, timezone
 
 from backend.core.database.database import get_db
-from backend.db.models.vnp import Api, RegionalTelemetry, Incident, AuditLog, AlertConfig, ProbeEvent
+from backend.db.models.vnp import (
+    Api,
+    RegionalTelemetry,
+    Incident,
+    AuditLog,
+    AlertConfig,
+    ProbeEvent,
+    Validator,
+    SettlementEntry,
+    LedgerEntryType,
+    VnpMetric,
+)
 
 router = APIRouter(prefix="/vnp", tags=["runtime", "vnp"])
 
@@ -30,12 +41,55 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
             "compositeScore": float(api.current_composite_score),
             "status": api.status.value,
         })
-    
-    # Optional: fetch a real block anchor count or trust beacon merkle from Ledger
+
+    validator_count_result = await db.execute(
+        select(func.count(Validator.id)).where(Validator.status == "active")
+    )
+    active_validators = int(validator_count_result.scalar_one() or 0)
+
+    api_count_result = await db.execute(
+        select(func.count(Api.id)).where(Api.status == "active")
+    )
+    active_apis = int(api_count_result.scalar_one() or 0)
+
+    probe_count_result = await db.execute(select(func.count(ProbeEvent.id)))
+    total_probes = int(probe_count_result.scalar_one() or 0)
+
+    physical_probe_count_result = await db.execute(select(func.count(VnpMetric.id)))
+    total_physical_probes = int(physical_probe_count_result.scalar_one() or 0)
+
+    slash_result = await db.execute(
+        select(func.coalesce(func.sum(SettlementEntry.amount_minor), 0))
+        .where(SettlementEntry.entry_type == LedgerEntryType.slash)
+    )
+    total_slashed_minor = int(slash_result.scalar_one() or 0)
+
+    settlement_count_result = await db.execute(select(func.count(SettlementEntry.id)))
+    settlement_entries = int(settlement_count_result.scalar_one() or 0)
+
+    avg_score_result = await db.execute(
+        select(func.coalesce(func.avg(Api.current_composite_score), 100.0))
+        .where(Api.status == "active")
+    )
+    avg_composite_score = round(float(avg_score_result.scalar_one() or 100.0), 2)
+
     return {
         "apis": api_list,
-        "trustBeaconMerkle": "db_hash_not_implemented",
-        "blockAnchored": len(api_list) * 42 # dummy block anchored for now
+        "network_status": "operational",
+        "active_validators": active_validators,
+        "active_apis": active_apis,
+        "total_probes_recorded": total_probes,
+        "total_physical_probes_recorded": total_physical_probes,
+        "total_slashed_minor": total_slashed_minor,
+        "avg_composite_score": avg_composite_score,
+        "settlement_entries": settlement_entries,
+        "trustBeaconMerkle": None,
+        "trustBeaconStatus": "Not Yet Wired",
+        "blockAnchored": settlement_entries,
+        "blockAnchoredStatus": "Connected" if settlement_entries else "Config Incomplete",
+        "protocol_version": "1.0.0",
+        "methodology": "VNP Methodology v1.0",
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @router.get("/alerts/config")

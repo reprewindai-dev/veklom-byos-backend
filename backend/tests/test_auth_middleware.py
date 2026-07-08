@@ -18,6 +18,14 @@ def mock_verify_email():
 def mock_resend_verification():
     return {"message": "reached_resend_verification"}
 
+@app.get("/api/v1/demo/pipeline/health")
+def mock_demo_pipeline_health():
+    return {"llm_ok": True, "groq_fallback_enabled": True}
+
+@app.get("/api/v1/demo/pipeline/health-sensitive")
+def mock_demo_pipeline_health_sensitive():
+    return {"message": "should_not_be_public"}
+
 @app.get("/api/v1/secure-endpoint")
 def mock_secure():
     return {"message": "reached_secure"}
@@ -37,5 +45,17 @@ def test_zerotrust_middleware_bypasses_verify_email():
 
     # 3. secure endpoint should be blocked (returns 401)
     response = client.get("/api/v1/secure-endpoint")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Missing authentication credentials"}
+
+
+def test_zerotrust_middleware_bypasses_only_demo_pipeline_health():
+    client = TestClient(app)
+
+    response = client.get("/api/v1/demo/pipeline/health")
+    assert response.status_code == 200
+    assert response.json() == {"llm_ok": True, "groq_fallback_enabled": True}
+
+    response = client.get("/api/v1/demo/pipeline/health-sensitive")
     assert response.status_code == 401
     assert response.json() == {"detail": "Missing authentication credentials"}

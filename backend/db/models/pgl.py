@@ -101,3 +101,26 @@ class PGLAnchor(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
+class ExecutionIdentity(Base):
+    """Append-only record of minted execution identities."""
+
+    __tablename__ = "execution_identities"
+
+    id = Column(String(36), primary_key=True)
+    run_id = Column(String(36), ForeignKey("veklom_runs.run_id"), nullable=False, index=True)
+    workspace_id = Column(String(64), nullable=False, index=True)
+    pre_execution_certificate_id = Column(String(64), ForeignKey("pgl_certificates.certificate_id"), nullable=False, index=True)
+    
+    # Payload elements from the CAPPO Gold Blueprint
+    genome_hash = Column(String(128), nullable=True)
+    constitution_hash = Column(String(128), nullable=True)
+    plan_hash = Column(String(128), nullable=True)
+    seked_directive = Column(JSON, nullable=True)
+    scope = Column(String(64), nullable=True)
+    budget = Column(JSON, nullable=True)
+    delegation_depth = Column(Integer, nullable=True, default=0)
+    
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    hash = Column(String(128), nullable=False)
+    signature = Column(String(256), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)

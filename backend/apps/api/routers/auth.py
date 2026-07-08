@@ -37,6 +37,19 @@ from backend.db.models.workspace import Workspace, WorkspaceMember
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+@router.post("/demo-pgl")
+async def issue_demo_pgl():
+    """
+    Issues a valid PGL JWT for the public landing page demo.
+    This proves the agent identity layer is real, without exposing an actual tenant account.
+    """
+    access_token_expires = timedelta(minutes=15)
+    access_token = create_access_token(
+        data={"sub": "demo-pgl-tenant", "role": "ANALYST", "workspace_id": "demo-workspace"},
+        expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
 CONTROL_PLANE_URL = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 def safe_posthog_capture(*args, **kwargs):

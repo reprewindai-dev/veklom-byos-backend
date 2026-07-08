@@ -48,6 +48,26 @@ def create_access_token(
 
 
 import logging
+import redis
+
+# Global Redis client for JTI replay checking to prevent connection pool exhaustion on every token verification
+_auth_redis_client: Optional[redis.Redis] = None
+
+
+def _get_auth_redis() -> Optional[redis.Redis]:
+    global _auth_redis_client
+    if _auth_redis_client is None:
+        try:
+            _auth_redis_client = redis.Redis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=2
+            )
+        except Exception as e:
+            logging.error(f"[REDIS_ERR] Failed to initialize global Auth Redis client: {e}")
+            _auth_redis_client = None
+    return _auth_redis_client
 
 
 def verify_token(token: str, enforce_replay: bool = False) -> dict:
@@ -75,26 +95,26 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
         # JTI replay checks (optional/configurable)
         jti = payload.get("jti")
         if jti:
-            import redis
-            try:
-                r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=2)
-                replay_mode = str(getattr(settings, "JWT_REPLAY_ENFORCEMENT", "off")).lower()
-                replay_seen = bool(r.exists(f"jti_cache:{jti}"))
-                if replay_seen:
-                    if enforce_replay or replay_mode == "strict":
-                        logging.critical(f"[JWT_REPLAY_DETECTED] Token replay attempted for JTI {jti}")
-                        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token replay detected")
-                    if replay_mode == "warn":
-                        logging.warning(f"[JWT_REPLAY_WARN] repeated JTI observed for token {jti}")
+            r = _get_auth_redis()
+            if r is not None:
+                try:
+                    replay_mode = str(getattr(settings, "JWT_REPLAY_ENFORCEMENT", "off")).lower()
+                    replay_seen = bool(r.exists(f"jti_cache:{jti}"))
+                    if replay_seen:
+                        if enforce_replay or replay_mode == "strict":
+                            logging.critical(f"[JWT_REPLAY_DETECTED] Token replay attempted for JTI {jti}")
+                            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token replay detected")
+                        if replay_mode == "warn":
+                            logging.warning(f"[JWT_REPLAY_WARN] repeated JTI observed for token {jti}")
 
-                exp = payload.get("exp")
-                if exp:
-                    ttl = int(exp - datetime.now(timezone.utc).timestamp())
-                    if ttl > 0 and not replay_seen:
-                        r.setex(f"jti_cache:{jti}", ttl, "1")
-            except redis.RedisError as e:
-                logging.error(f"[REDIS_ERR] Failed to connect to Redis for JTI check: {e}")
-                # Fail-open if Redis is down
+                    exp = payload.get("exp")
+                    if exp:
+                        ttl = int(exp - datetime.now(timezone.utc).timestamp())
+                        if ttl > 0 and not replay_seen:
+                            r.setex(f"jti_cache:{jti}", ttl, "1")
+                except redis.RedisError as e:
+                    logging.error(f"[REDIS_ERR] Failed to check Redis for JTI: {e}")
+                    # Fail-open if Redis is down
 
         return payload
     except JWTError as exc:

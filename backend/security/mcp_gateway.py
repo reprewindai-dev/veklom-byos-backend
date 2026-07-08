@@ -7,6 +7,22 @@ import redis
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple, Set
 
+# Global Redis client to prevent connection pool exhaustion on every EnhancedMCPAPIRuntime initialization
+_mcp_gateway_redis_client: Optional[redis.Redis] = None
+
+
+def _get_mcp_gateway_redis() -> Optional[redis.Redis]:
+    global _mcp_gateway_redis_client
+    if _mcp_gateway_redis_client is None:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        try:
+            _mcp_gateway_redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+        except Exception:
+            # Fallback for local dev/testing without Redis running
+            _mcp_gateway_redis_client = None
+    return _mcp_gateway_redis_client
+
+
 from backend.services.governance_layer import PermissionsCalculator, PolicyCompositionEngine
 from backend.services.intelligence_layer import CostAttributionService, RiskScoringService
 from backend.services.safety_layer import (
@@ -38,12 +54,7 @@ class EnhancedMCPAPIRuntime:
         self.permissions_calculator = PermissionsCalculator()
         
         # Distributed State Tracking (Redis)
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        try:
-            self.redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
-        except Exception:
-            # Fallback for local dev/testing without Redis running
-            self.redis_client = None
+        self.redis_client = _get_mcp_gateway_redis()
 
     def _mark_nonce_spent(self, nonce: str, ttl_seconds: int = 3600) -> bool:
         """Atomic consume-once token burning using SET NX EX."""

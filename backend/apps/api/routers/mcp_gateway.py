@@ -22,12 +22,18 @@ router = APIRouter(prefix="/api/v1", tags=["MCP Gateway"])
 # Helper for registered connections list
 SERVERS_STORE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/mcp_servers_registry.json"))
 
+# Global Redis client pool to prevent connection pool exhaustion during router operations
+_router_redis_client = None
+
 def _get_redis_client():
-    try:
-        import redis
-        return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
-    except Exception:
-        return None
+    global _router_redis_client
+    if _router_redis_client is None:
+        try:
+            import redis
+            _router_redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        except Exception:
+            _router_redis_client = None
+    return _router_redis_client
 
 def _save_server_registry(server_id: str, server_data: Dict[str, Any]):
     redis_client = _get_redis_client()

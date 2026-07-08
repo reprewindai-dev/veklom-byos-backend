@@ -20,7 +20,7 @@ celery==5.3.6
 certifi==2026.6.17
 cffi==2.0.0
 charset-normalizer==3.4.7
-ckzg==1.0.2
+ckzg==2.1.5
 click==8.4.2
 click-didyoumean==0.3.1
 click-plugins==1.1.1.2

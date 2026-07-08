@@ -520,7 +520,7 @@ async def lifespan(app: FastAPI):
     scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
     
     # Start the new physical edge probes
-    from backend.core.tasks.vnp_probes import run_vnp_probes
+    from backend.core.vnp.probes import run_vnp_probes
     physical_probes_task = asyncio.create_task(run_vnp_probes())
 
     from backend.apps.api.terminal_state import terminal_state_manager

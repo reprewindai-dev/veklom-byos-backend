@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.ml.tier_types import DataTier
 from backend.db.models.ai import ExecutionLog, ForecastModel
 
 DEFAULT_WINDOW_DAYS = 30
@@ -95,7 +96,11 @@ def project_total(params: dict[str, Any], horizon_days: int) -> float:
 # DB-backed fit / persist / read
 # ---------------------------------------------------------------------------
 async def _daily_series(
-    db: AsyncSession, workspace_id: str, window_days: int = DEFAULT_WINDOW_DAYS
+    db: AsyncSession,
+    workspace_id: str,
+    window_days: int = DEFAULT_WINDOW_DAYS,
+    locked_execution_log_ids: list[str] | None = None,
+    require_locked_gold: bool = False,
 ) -> tuple[list[float], int, datetime | None]:
     """Return (per-day cost list over the active span, total sample count, first_ts).
 
@@ -103,17 +108,32 @@ async def _daily_series(
     prod, SQLite fallback in dev).  Internal zero-spend days are real zeros and
     are kept; we do NOT pad leading zeros from before the workspace had any
     activity (that would dilute the average dishonestly).
+
+    Training invariant: when locked_execution_log_ids are provided, this query
+    only reads those explicitly locked Gold execution logs. This prevents the
+    training path from silently mixing Bronze, Silver, unrated, failed, or
+    unlocked rows into the fitted model.
     """
+    if require_locked_gold and not locked_execution_log_ids:
+        return [], 0, None
+
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=window_days)
-    rows = (
-        await db.execute(
-            select(ExecutionLog.created_at, ExecutionLog.cost).where(
-                ExecutionLog.workspace_id == workspace_id,
-                ExecutionLog.created_at >= start,
-            )
+
+    stmt = select(ExecutionLog.created_at, ExecutionLog.cost).where(
+        ExecutionLog.workspace_id == workspace_id,
+        ExecutionLog.created_at >= start,
+    )
+
+    if locked_execution_log_ids is not None:
+        stmt = stmt.where(
+            ExecutionLog.id.in_(locked_execution_log_ids),
+            ExecutionLog.data_tier == DataTier.gold,
+            ExecutionLog.eligible_for_training.is_(True),
+            ExecutionLog.training_locked_at.is_not(None),
         )
-    ).all()
+
+    rows = (await db.execute(stmt)).all()
 
     sample_count = len(rows)
     if sample_count == 0:
@@ -171,10 +191,40 @@ def _fit(daily: list[float], sample_count: int) -> dict[str, Any]:
 
 
 async def train_and_persist(
-    db: AsyncSession, workspace_id: str, window_days: int = DEFAULT_WINDOW_DAYS
+    db: AsyncSession,
+    workspace_id: str,
+    window_days: int = DEFAULT_WINDOW_DAYS,
+    locked_execution_log_ids: list[str] | None = None,
+    require_locked_gold: bool = False,
 ) -> dict[str, Any]:
-    """Fit the spend model and upsert the persisted row.  Returns the record."""
-    daily, sample_count, _ = await _daily_series(db, workspace_id, window_days)
+    """Fit the spend model and upsert the persisted row.  Returns the record.
+
+    If require_locked_gold=True, the service refuses to train from the broad
+    workspace history and only uses explicitly locked Gold execution logs.
+    """
+    daily, sample_count, _ = await _daily_series(
+        db,
+        workspace_id,
+        window_days,
+        locked_execution_log_ids=locked_execution_log_ids,
+        require_locked_gold=require_locked_gold,
+    )
+
+    if require_locked_gold and sample_count == 0:
+        return {
+            "trained": False,
+            "method": "no_valid_locked_gold_records",
+            "samples_used": 0,
+            "confidence": 0.0,
+            "params": {
+                "method": "no_valid_locked_gold_records",
+                "sample_count": 0,
+                "min_samples": MIN_SAMPLES,
+            },
+            "model_version": MODEL_VERSION,
+            "trained_at": None,
+        }
+
     params = _fit(daily, sample_count)
     confidence = _confidence(sample_count, daily)
 

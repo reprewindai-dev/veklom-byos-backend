@@ -87,14 +87,11 @@ def train_forecast_models_task(workspace_id: str = None):
         async with async_session() as db:
             ws_id = workspace_id or "default"
             
-            # Absolute invariant: Training data source = Gold only.
-            # Batch locking inside training task
-            # Using FOR UPDATE SKIP LOCKED to acquire exclusive batch.
+            # Absolute invariant: Training data source = locked Gold only.
+            # Batch locking inside training task uses FOR UPDATE SKIP LOCKED to
+            # acquire the exact sample IDs that may be read by the forecast trainer.
             now_utc = datetime.now(timezone.utc)
             
-            # Subquery to lock rows
-            # Note: in SQLAlchemy, we can write a text query or use ORM with with_for_update(skip_locked=True)
-            from sqlalchemy import text
             lock_query = text("""
                 UPDATE execution_logs
                 SET training_locked_at = :now
@@ -112,7 +109,7 @@ def train_forecast_models_task(workspace_id: str = None):
                 RETURNING id;
             """)
             
-            # Execute the lock and retrieve locked IDs
+            # Execute the lock and retrieve the only IDs allowed for this training run.
             locked_result = await db.execute(lock_query, {"now": now_utc, "ws_id": ws_id})
             locked_ids = [row[0] for row in locked_result.fetchall()]
             
@@ -122,11 +119,16 @@ def train_forecast_models_task(workspace_id: str = None):
                 
             logger.info(f"Locked {len(locked_ids)} Gold records for training.")
             
-            # Train model
-            result = await forecast_svc.train_and_persist(db, ws_id)
+            # Train model only from the locked Gold sample IDs. The forecast service
+            # re-validates data_tier, eligible_for_training, and training_locked_at
+            # before reading any samples.
+            result = await forecast_svc.train_and_persist(
+                db,
+                ws_id,
+                locked_execution_log_ids=locked_ids,
+                require_locked_gold=True,
+            )
             
-            # Mark these specific records with the generated result/version
-            # In a full system, you would attach the model version or training job ID
             await db.commit()
             
             result["locked_samples"] = len(locked_ids)

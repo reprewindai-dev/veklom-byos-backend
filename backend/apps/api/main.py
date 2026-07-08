@@ -1936,11 +1936,13 @@ async def auto_editor_script():
 
 
 @app.get("/gpc")
-async def gpc_page():
-    index_path = GPC_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(str(index_path))
-    return HTMLResponse(content=_gpc_html(), status_code=200)
+@app.get("/gpc/")
+@app.get("/pipelines")
+@app.get("/pipelines/")
+async def redirect_gpc(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com/gpc{query_str}", status_code=307)
 
 
 # Command Center config endpoint for frontend
@@ -2055,6 +2057,10 @@ app.include_router(mcp.router, prefix="/api/v1")
 # Layer 3: Memory and Context
 app.include_router(agent_memory.router, prefix="/api/v1")
 app.include_router(conversation_memory.router, prefix="/api/v1")
+
+# Generative Pipeline Compiler (GPC)
+from backend.apps.gpc import routes as gpc_routes
+app.include_router(gpc_routes.router, prefix="/api/v1")
 
 # Layer 5: Ev
 

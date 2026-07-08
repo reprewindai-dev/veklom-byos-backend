@@ -150,8 +150,15 @@ async def get_current_user(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
 
         if status_value == "PENDING_VERIFICATION":
-            allowed_paths = ["/me", "/resend-verification", "/verify-email", "/logout", "/onboarding/vertical", "/config"]
-            if not any(request.url.path.endswith(p) for p in allowed_paths):
+            allowed_paths = {
+                "/api/v1/auth/me",
+                "/api/v1/auth/resend-verification",
+                "/api/v1/auth/verify-email",
+                "/api/v1/auth/logout",
+                "/api/v1/workspace/onboarding/vertical",
+                "/api/v1/workspace/config",
+            }
+            if request.url.path not in allowed_paths:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
 
         now_utc = datetime.utcnow()

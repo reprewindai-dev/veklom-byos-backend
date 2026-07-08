@@ -16,6 +16,11 @@ import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+from backend.core.database.database import get_db
+from backend.db.models.governed_run import GovernedRun
 from backend.core.config.settings import settings
 
 router = APIRouter(tags=["discovery"])
@@ -40,6 +45,16 @@ VEKLOM_PRICING = {
     "x402_governance":     {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Governance"},
     "x402_score":          {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Score"},
     "x402_verify":         {"price_usdc": 0.10,  "unit": "per request",  "name": "Machine Verify"},
+    # Specialized Sovereign Agentic Security & Settlement APIs (Niche Catalog)
+    "forensics_replay":    {"price_usdc": 0.020, "unit": "per replay",   "name": "Sovereign Forensics Replay (Time-Travel Audit)"},
+    "simulate_policy":     {"price_usdc": 0.015, "unit": "per simulation", "name": "Active Policy Simulation"},
+    "pgl_quarantine":      {"price_usdc": 0.010, "unit": "per quarantine", "name": "PGL Dynamic Decoy Quarantine Hub"},
+    "x402_flash_loan":     {"price_usdc": 0.050, "unit": "per loan",     "name": "E2E x402 Micropayment Flash Loan"},
+    "diplomacy_treaty":    {"price_usdc": 0.050, "unit": "per treaty",   "name": "Multi-Agent Diplomacy Treaty Negotiation"},
+    "vnp_bounty_submit":   {"price_usdc": 0.010, "unit": "per submission", "name": "VNP SLA Real-Time Performance Bond"},
+    "pgl_genealogy":       {"price_usdc": 0.010, "unit": "per lookup",   "name": "Merkle Genealogy DNA Ancestry Lineage Proof"},
+    "governed_capi":       {"price_usdc": 0.020, "unit": "per compilation", "name": "Governed cAPI 9-Phase Interceptor Compile"},
+    "pgl_identity_rag":    {"price_usdc": 0.010, "unit": "per resolution", "name": "PGL Cross-Cluster Dynamic Identity RAG"},
 }
 import os
 import logging as _logging
@@ -155,8 +170,9 @@ async def agent_json():
 
 
 # ---------------------------------------------------------------------------
-# /.well-known/x402.json  (x402 payment protocol configuration)
+# /.well-known/x402 and /.well-known/x402.json  (x402 payment protocol configuration)
 # ---------------------------------------------------------------------------
+@router.get("/.well-known/x402")
 @router.get("/.well-known/x402.json")
 async def x402_json():
     missing_config = []
@@ -183,12 +199,27 @@ async def x402_json():
         "/api/v1/x402/evaluate",
         "/api/v1/x402/governance",
         "/api/v1/x402/score",
-        "/api/v1/x402/verify"
+        "/api/v1/x402/verify",
+        # Interlink cAPI — 9-Phase Governed Connection Layer
+        "/api/v1/capi/execute",
+        "/api/v1/capi/state",
+        "/api/v1/capi/agents",
+        "/api/v1/capi/policies",
+        "/api/v1/capi/ledger",
+        "/api/v1/capi/quarantine",
+        "/api/v1/capi/compose",
+        "/api/v1/capi/discover",
+        "/api/v1/capi/replay",
+        "/api/v1/interlink/state",
+        "/api/v1/interlink/execute",
+        "/api/v1/interlink/agents",
+        "/api/v1/interlink/policies",
+        "/api/v1/interlink/ledger"
     ]
 
     return JSONResponse({
         "enabled": is_enabled,
-        "x402_version": "1.0.0",
+        "x402_version": 2,
         "accepted_assets": [
             {"asset": VEKLOM_USDC_ADDRESS, "symbol": "USDC", "decimals": 6}
         ],
@@ -197,7 +228,7 @@ async def x402_json():
         "pay_to": treasury,
         "treasury": treasury,
         "protected_routes": protected_routes,
-        "proof_header_name": "X-Payment-Proof",
+        "proof_header_name": "X-PAYMENT",
         "challenge_ttl_seconds": 300,
         "replay_protection": {
             "enabled": True,
@@ -289,6 +320,18 @@ POST /api/v1/runtime/jobs        — Submit runtime job                  $0.020/
 GET  /api/v1/evidence/export     — Export SHA-256 evidence package     $0.005/export
 GET  /api/v1/compliance/report   — Generate compliance report          $0.010/report
 POST /api/v1/marketplace/acquire — Acquire marketplace model           $0.050/acquire
+
+## Interlink cAPI — Governed Connection Layer (9-Phase Pipeline)
+
+POST /api/v1/capi/execute        — Submit agent intent through 9-phase gate  $0.020/call
+GET  /api/v1/capi/state          — Live snapshot: agents, policies, ledger    $0.005/req
+GET  /api/v1/capi/agents         — Agent trust scores + risk profiles         $0.005/req
+GET  /api/v1/capi/policies       — Active policy composition (3-tier)         $0.005/req
+GET  /api/v1/capi/ledger         — PGL hash-chained evidence records          $0.005/req
+POST /api/v1/capi/quarantine     — Quarantine review + quorum approval        $0.010/req
+GET  /api/v1/capi/compose        — Effective permissions for agent+capability $0.005/req
+GET  /api/v1/capi/discover       — Capability discovery for an agent          $0.005/req
+GET  /api/v1/capi/replay         — Replay evidence chain from any hash        $0.010/req
 
 ## Free routes (no payment required)
 
@@ -403,6 +446,49 @@ async def mcp_sse(request: Request):
             "endpoint": f"{VEKLOM_API_BASE}/gpc/compile",
         },
         {
+            "name": "veklom_interlink_execute",
+            "description": "Submit an agent execution intent through the Interlink cAPI 9-phase governed pipeline (Identity → Policy → Safety → Cost → Approval → Execution → Evidence → Audit → Response). Returns a signed receipt with trust delta, evidence hash, and verdict.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "agent_id":        {"type": "string", "description": "Unique agent identifier"},
+                    "pgl_id":          {"type": "string", "description": "Cryptographic PGL signature of the agent"},
+                    "target_protocol": {"type": "string", "description": "Protocol: mcp, http, local_tool, model_inference"},
+                    "action":          {"type": "string", "description": "Tool or action being requested"},
+                    "payload":         {"type": "object", "description": "Arguments for execution"},
+                    "mission_id":      {"type": "string", "description": "Active mission file ID (optional)"},
+                },
+                "required": ["agent_id", "pgl_id", "target_protocol", "action", "payload"],
+            },
+            "price_usdc": 0.020,
+            "endpoint": f"{VEKLOM_API_BASE}/capi/execute",
+        },
+        {
+            "name": "veklom_interlink_state",
+            "description": "Get a live snapshot of the Interlink cAPI runtime — agents, trust scores, active policies, PGL ledger entries, anomalies, and quarantine queue.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+            "price_usdc": 0.005,
+            "endpoint": f"{VEKLOM_API_BASE}/capi/state",
+        },
+        {
+            "name": "veklom_interlink_compose",
+            "description": "Compute the effective permissions for a given agent + capability pair. Composes system, owner, and runtime policy tiers to return a deterministic allow/deny with full audit trace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "agent_id":      {"type": "string", "description": "Agent to check permissions for"},
+                    "capability_id": {"type": "string", "description": "Capability to check"},
+                },
+                "required": ["agent_id", "capability_id"],
+            },
+            "price_usdc": 0.005,
+            "endpoint": f"{VEKLOM_API_BASE}/capi/compose",
+        },
+        {
             "name": "veklom_ai_inference",
             "description": "Run policy-gated AI inference. Routes to Ollama (default), Groq, Gemini, or HuggingFace.",
             "inputSchema": {
@@ -459,6 +545,22 @@ async def mcp_sse(request: Request):
             "endpoint": f"{VEKLOM_API_BASE}/kill-switch/activate",
         },
     ]
+    # Load custom registered MCP tools from Manifest Store
+    from backend.core.ai.tool_manifest_store import ToolManifestStore
+    try:
+        manifests = await ToolManifestStore.get_all_manifests()
+        for tool_name, m in manifests.items():
+            custom_tool = {
+                "name": m["tool_name"],
+                "description": m["description"],
+                "inputSchema": m["input_schema"],
+                "method": "POST",
+                "endpoint": f"{VEKLOM_API_BASE}/mcp/tools/{tool_name}:invoke",
+                "price_usdc": 0.010
+            }
+            tools.append(custom_tool)
+    except Exception as e:
+        _disc_log.error(f"Failed to integrate custom MCP tools: {e}")
 
     async def event_stream():
         yield f"data: {json.dumps({'type': 'server_info', 'name': 'Veklom MCP', 'version': '1.0', 'protocol': 'mcp/1.0'})}\n\n"
@@ -488,102 +590,37 @@ async def machine_pricing():
     """
     Machine-readable pricing for every governed operation.
     """
+    from backend.core.middleware.x402 import _PAID_ROUTES
+    routes_list = []
+    for key, cfg in _PAID_ROUTES.items():
+        if "category" in cfg:
+            method = "POST"
+            path = key
+            if ":" in key:
+                parts = key.split(":", 1)
+                if parts[0] in ("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+                    method = parts[0]
+                    path = parts[1]
+            
+            routes_list.append({
+                "path": path,
+                "method": method,
+                "unit": cfg.get("unit", "per_call").replace(" ", "_"),
+                "price": str(cfg["price_usdc"]),
+                "price_usdc": cfg["price_usdc"],
+                "name": cfg.get("name", ""),
+                "category": cfg["category"],
+                "free_trial_eligible": cfg.get("free_daily", 0) > 0
+            })
+
+    # Sort routes_list by category and then by path for nice presentation
+    routes_list.sort(key=lambda r: (r["category"], r["path"]))
+
     return JSONResponse({
-        "version": "2026-05-27",
+        "version": "2026-07-02",
         "currency": "USDC",
         "network": "base",
-        "routes": [
-            {
-                "path": "/api/v1/ai/inference",
-                "unit": "per_request",
-                "price": "0.008",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/ai/chat",
-                "unit": "per_request",
-                "price": "0.005",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/gpc/compile",
-                "unit": "per_compile",
-                "price": "0.015",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/gpc/intent-to-plan",
-                "unit": "per_plan",
-                "price": "0.010",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/gpc/runs",
-                "unit": "per_run",
-                "price": "0.020",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/pipelines/trigger",
-                "unit": "per_trigger",
-                "price": "0.025",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/runtime/jobs",
-                "unit": "per_job",
-                "price": "0.020",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/evidence/export",
-                "unit": "per_export",
-                "price": "0.005",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/compliance/report",
-                "unit": "per_report",
-                "price": "0.010",
-                "free_trial_eligible": True
-            },
-            {
-                "path": "/api/v1/marketplace/acquire",
-                "unit": "per_acquire",
-                "price": "0.050",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/search",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/evaluate",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/governance",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/score",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            },
-            {
-                "path": "/api/v1/x402/verify",
-                "unit": "per_request",
-                "price": "0.10",
-                "free_trial_eligible": False
-            }
-        ]
+        "routes": routes_list
     }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=300"})
 
 
@@ -880,3 +917,60 @@ with httpx.stream("GET", "{base}/mcp/sse") as r:
             "mcp_sse":          f"{base}/mcp/sse",
         },
     }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=3600"})
+
+# ---------------------------------------------------------------------------
+# /api/v1/discovery/leaderboard (Discovery Game SQL-backed leaderboard)
+# ---------------------------------------------------------------------------
+@router.get("/api/v1/discovery/leaderboard")
+async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: int = 20):
+    """Live Discovery Game Leaderboard derived from real GovernedRun data."""
+    all_runs = (
+        await db.execute(
+            select(GovernedRun)
+            .filter(GovernedRun.result_payload.isnot(None))
+        )
+    ).scalars().all()
+
+    user_stats = {}
+    for run in all_runs:
+        tenant_id = run.tenant_id
+        if not tenant_id:
+            continue
+            
+        if tenant_id not in user_stats:
+            # Fallback to tenant_id if agent_id isn't in pgl_identity
+            agent_name = "Unknown Agent"
+            if isinstance(run.pgl_identity, dict) and "agent_id" in run.pgl_identity:
+                agent_name = run.pgl_identity["agent_id"]
+
+            user_stats[tenant_id] = {
+                "address": tenant_id,
+                "trustScore": 500,  # Base score for discovery operators
+                "completedMissions": 0,
+                "agent": agent_name
+            }
+            
+        stats = user_stats[tenant_id]
+        stats["completedMissions"] += 1
+        
+        # Adjust score based on governed run state
+        if run.state in ["success", "completed"]:
+            stats["trustScore"] += 10
+        elif run.state in ["failed", "error", "law0_violation"]:
+            stats["trustScore"] -= 15
+
+    # Sort users by trustScore descending
+    sorted_users = sorted(user_stats.values(), key=lambda u: u["trustScore"], reverse=True)[:limit]
+    
+    leaderboard = []
+    for i, user in enumerate(sorted_users):
+        leaderboard.append({
+            "rank": i + 1,
+            "address": user["address"],
+            "trustScore": user["trustScore"],
+            "completedMissions": user["completedMissions"],
+            "agent": user["agent"]
+        })
+        
+    return {"leaderboard": leaderboard}
+

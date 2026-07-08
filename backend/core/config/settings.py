@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     # LLM Engine
     LLM_BASE_URL: str = "http://host.docker.internal:11434"
-    LLM_MODEL_DEFAULT: str = "qwen2.5:3b"
+    LLM_MODEL_DEFAULT: str = "qwen2.5-coder:1.5b"
     LLM_FALLBACK: str = "groq"
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_TOKENS: int = 2048
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     BEDROCK_MODEL_ID: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5:3b"
+    OLLAMA_MODEL: str = "qwen2.5-coder:1.5b"
     OLLAMA_AUTOSTART: bool = True
     OLLAMA_PULL_ON_BOOT: bool = True
     OLLAMA_STARTUP_TIMEOUT_MS: int = 120000
@@ -276,5 +276,16 @@ class Settings(BaseSettings):
                 # Fallback to comma separated
                 return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
+
+    def validate_production(self):
+        """Guard to ensure insecure defaults are not used in production environments."""
+        if self.APP_ENV == "production":
+            self.JWT_AUD_ENFORCEMENT = "enforce"
+            if self.SECRET_KEY == "change-me-in-production":
+                raise ValueError("SECURITY PANIC: SECRET_KEY is set to default 'change-me-in-production' in a production environment. This is a critical security risk. Refusing to start.")
+            if self.ENCRYPTION_KEY == "change-me-in-production-aes-256":
+                raise ValueError("SECURITY PANIC: ENCRYPTION_KEY is set to default 'change-me-in-production-aes-256' in a production environment. Refusing to start.")
+            if self.DATABASE_URL.startswith("postgresql+asyncpg://byos:password@localhost:5432/byos_ai"):
+                raise ValueError("SECURITY PANIC: DATABASE_URL uses the default local credentials in a production environment. Refusing to start.")
 
 settings = Settings()

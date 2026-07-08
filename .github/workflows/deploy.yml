@@ -63,15 +63,23 @@ jobs:
           chmod 600 ~/.ssh/veklom-deploy
           ssh-keyscan -H 5.78.135.11 >> ~/.ssh/known_hosts
 
-      - name: Pull, Build, and Zero-Downtime Swap on Server
+      - name: Pull, Build, and Swap on Server
         run: |
           ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 "
             set -e
             APP=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru
             cd \$APP
             git pull origin main
-            docker build -t n13gp1nhrcdp0hvazvbnlxru:${{ github.sha }} .
-            python3 \$APP/veklom_swap.py ${{ github.sha }}
+            docker build -t veklom-local:latest .
+            docker stop n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
+            docker rm n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
+            docker run -d \
+              --name n13gp1nhrcdp0hvazvbnlxru-213557155694 \
+              --network coolify \
+              --env-file \$APP/.env \
+              --restart unless-stopped \
+              -p 8088:8088 \
+              veklom-local:latest
             echo 'Deployment complete: ${{ github.sha }}'
           "
 

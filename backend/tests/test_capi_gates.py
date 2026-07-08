@@ -3,13 +3,14 @@ from fastapi import HTTPException
 from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
 import uuid
+import json
 
 from backend.apps.api.routers.capi import (
     governed_execution_intercept,
     evaluate_intent_governed,
     ExecutionIntent
 )
-from backend.db.models.agent import Agent
+from backend.db.models.agent import Agent, AgentIdentity
 from backend.db.models.authority import AuthorityBundle, AuthorityRun
 from backend.db.models.billing import BudgetRule
 from backend.db.models.ai import ExecutionLog
@@ -61,7 +62,7 @@ async def test_capi_gate_unknown_agent(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_missing_sig(mock_db, base_intent):
-    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
+    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
     async def mock_execute(query):
         mock_val = MagicMock()
         mock_val.scalar_one_or_none.return_value = agent_id_mock
@@ -79,7 +80,7 @@ async def test_capi_gate_missing_sig(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_bad_sig(mock_db, base_intent):
-    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
+    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
     async def mock_execute(query):
         mock_val = MagicMock()
         mock_val.scalar_one_or_none.return_value = agent_id_mock
@@ -97,11 +98,11 @@ async def test_capi_gate_bad_sig(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_system_veto_root(mock_db, base_intent):
-    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
+    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
-        if "agents" in query_str:
+        if "agent_identities" in query_str:
             mock_val.scalar_one_or_none.return_value = agent_id_mock
         else:
             mock_val.scalar_one_or_none.return_value = None
@@ -121,12 +122,12 @@ async def test_capi_gate_system_veto_root(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_implicit_deny(mock_db, base_intent):
-    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
+    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
     bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"other_tool": "ALLOW"})
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
-        if "agents" in query_str:
+        if "agent_identities" in query_str:
             mock_val.scalar_one_or_none.return_value = agent_id_mock
         elif "authority_bundles" in query_str:
             mock_val.scalar_one_or_none.return_value = bundle_mock
@@ -145,12 +146,12 @@ async def test_capi_gate_implicit_deny(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_gate_approval_escalation(mock_db, base_intent):
-    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
+    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
     bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"db.drop_tables": "ALLOW"})
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
-        if "agents" in query_str:
+        if "agent_identities" in query_str:
             mock_val.scalar_one_or_none.return_value = agent_id_mock
         elif "authority_bundles" in query_str:
             mock_val.scalar_one_or_none.return_value = bundle_mock
@@ -170,14 +171,20 @@ async def test_capi_gate_approval_escalation(mock_db, base_intent):
 
 @pytest.mark.anyio
 async def test_capi_execution_approved(mock_db, mock_user, base_intent):
-    agent_id_mock = Agent(id=1, tenant_id="test-workspace", name="Test Agent", pgl_identity={"created_by": "user-01"})
+    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
     bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"mcp": "ALLOW"})
     run_mock = AuthorityRun(id="run-1", authority_bundle_id="bundle-1", agent_id="agent-001", workspace_id="test-workspace", executor_id="test-user-id")
     
+    # Ensure db async methods are awaitable
+    mock_db.commit = AsyncMock()
+    mock_db.refresh = AsyncMock()
+    mock_db.flush = AsyncMock()
+    mock_db.rollback = AsyncMock()
+
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
-        if "agents" in query_str:
+        if "agent_identities" in query_str:
             mock_val.scalar_one_or_none.return_value = agent_id_mock
         elif "authority_bundles" in query_str:
             mock_val.scalar_one_or_none.return_value = bundle_mock
@@ -190,12 +197,32 @@ async def test_capi_execution_approved(mock_db, mock_user, base_intent):
         return mock_val
     mock_db.execute = AsyncMock(side_effect=mock_execute)
     
-    receipt = await governed_execution_intercept(
+    response = await governed_execution_intercept(
         intent=base_intent,
         db=mock_db,
         current_user=mock_user
     )
     
-    assert receipt.verdict == "APPROVED_BY_cAPI"
-    assert receipt.status == "EXECUTED"
-    assert receipt.result["status"] == "success"
+    receipt_data = None
+    async for chunk in response.body_iterator:
+        if isinstance(chunk, bytes):
+            chunk_str = chunk.decode("utf-8")
+        else:
+            chunk_str = chunk
+        print("DEBUG_CHUNK:", chunk_str)
+            
+        for line in chunk_str.split("\n"):
+            line = line.strip()
+            if line.startswith("data: "):
+                try:
+                    parsed = json.loads(line[6:])
+                    if parsed.get("type") == "receipt":
+                        receipt_data = parsed.get("data")
+                except Exception as e:
+                    print("DEBUG_JSON_ERR:", e)
+                    pass
+                    
+    assert receipt_data is not None, f"Receipt data was not found in the StreamingResponse stream"
+    assert receipt_data["verdict"] == "APPROVED_BY_cAPI"
+    assert receipt_data["status"] == "EXECUTED"
+    assert receipt_data["result"]["status"] == "success"

@@ -1,0 +1,186 @@
+{
+  "session_id": "0f942468-6851-45aa-8ae3-82568f67e8d4",
+  "agent_id": "agent-001",
+  "model": "gpt-4o",
+  "transport": "openai",
+  "policy_id": "policy-prod-strict",
+  "status": "completed",
+  "total_usd": 1.0,
+  "transitions": [
+    {
+      "seq": 0,
+      "type": "session.open",
+      "timestamp": 1782698294.3524907,
+      "data": {
+        "agent_id": "agent-001",
+        "transport": "openai",
+        "model": "gpt-4o",
+        "policy_id": "policy-prod-strict",
+        "rules": [
+          "no-direct-db-write",
+          "require-approval-deploy",
+          "eu-data-only"
+        ]
+      },
+      "prev_hash": "genesis"
+    },
+    {
+      "seq": 1,
+      "type": "intent.received",
+      "timestamp": 1782698294.3525014,
+      "data": {
+        "intent": "Deploy latest build to production",
+        "source": "user:admin"
+      },
+      "prev_hash": "80b6c22738d27aea547b63c5fa79eb00ff78c475fa9c673975be550a531eb2ad"
+    },
+    {
+      "seq": 2,
+      "type": "plan.compiled",
+      "timestamp": 1782698294.3525915,
+      "data": {
+        "plan": {
+          "steps": [
+            "run_tests",
+            "build_image",
+            "deploy_code"
+          ],
+          "target": "prod-cluster-eu"
+        }
+      },
+      "prev_hash": "1cddbf664aa922cbd6b9a631e2526cb17e920ce65ed3c562d33fd62f8a78d067"
+    },
+    {
+      "seq": 3,
+      "type": "policy.check",
+      "timestamp": 1782698294.3526218,
+      "data": {
+        "action_type": "run_tests",
+        "action_data": {
+          "suite": "integration"
+        },
+        "needs_approval": false,
+        "result": "approved"
+      },
+      "prev_hash": "16ec32ff6d8168c997dde41413b54a46f065091b9e360685d6611091576b2f33"
+    },
+    {
+      "seq": 4,
+      "type": "action.executed",
+      "timestamp": 1782698294.3526502,
+      "data": {
+        "action_type": "run_tests",
+        "result": {
+          "passed": 142,
+          "failed": 0
+        }
+      },
+      "prev_hash": "67be080acfa53f16420ee92440e2bd90b2c15958b0ccf5681807cf2dfebffc0a"
+    },
+    {
+      "seq": 5,
+      "type": "cost.recorded",
+      "timestamp": 1782698294.352673,
+      "data": {
+        "increment_usd": 0.12,
+        "total_usd": 0.12,
+        "detail": "test runner tokens"
+      },
+      "prev_hash": "c28fc421caa0c0dc98fb08aa8752e92ec9209674ed6d8c926e8cc6688c1a9951"
+    },
+    {
+      "seq": 6,
+      "type": "policy.check",
+      "timestamp": 1782698294.352695,
+      "data": {
+        "action_type": "deploy_code",
+        "action_data": {
+          "target": "prod-cluster-eu",
+          "version": "v2.4.1"
+        },
+        "needs_approval": true,
+        "result": "pending_approval"
+      },
+      "prev_hash": "ecf643bb522082e3a4a918e822059e0b3a5c2de16ad979fb2166b42636d8647a"
+    },
+    {
+      "seq": 7,
+      "type": "action.approved",
+      "timestamp": 1782698294.3527143,
+      "data": {
+        "action_type": "deploy_code",
+        "approved_by": "user:sarah"
+      },
+      "prev_hash": "494896b2a61445669ad8cab097ecf2c7a9187b110bd70a68dce7fa8e8748ad1e"
+    },
+    {
+      "seq": 8,
+      "type": "action.executed",
+      "timestamp": 1782698294.3527331,
+      "data": {
+        "action_type": "deploy_code",
+        "result": {
+          "status": "deployed",
+          "version": "v2.4.1"
+        }
+      },
+      "prev_hash": "dc3a3a9df139fd321a1d290afc113deac0060b647bd27f9797cabb1e01e00caf"
+    },
+    {
+      "seq": 9,
+      "type": "cost.recorded",
+      "timestamp": 1782698294.3527474,
+      "data": {
+        "increment_usd": 0.88,
+        "total_usd": 1.0,
+        "detail": "deploy execution"
+      },
+      "prev_hash": "f3d68d3743489f94c75d86c24f799151e77cd21b630f7225114a1082522364ac"
+    },
+    {
+      "seq": 10,
+      "type": "policy.injected",
+      "timestamp": 1782698294.352766,
+      "data": {
+        "old_rules": [
+          "no-direct-db-write",
+          "require-approval-deploy",
+          "eu-data-only"
+        ],
+        "new_rules": [
+          "no-direct-db-write",
+          "require-approval-deploy",
+          "eu-data-only",
+          "freeze-prod-writes"
+        ],
+        "injected_by": "policy_engine:compliance-bot"
+      },
+      "prev_hash": "a6dc25c51735e023f560b73b4c987e8077eba619a0a66119a5fb7b2534c16d46"
+    },
+    {
+      "seq": 11,
+      "type": "action.denied",
+      "timestamp": 1782698294.352782,
+      "data": {
+        "action_type": "drop_database",
+        "action_data": {
+          "db": "users"
+        },
+        "reason": "action type denied by policy"
+      },
+      "prev_hash": "4f924efebe76e64708d3c6b1ba37a6159fa6d1f48950a2690229a7df4d58ef04"
+    },
+    {
+      "seq": 12,
+      "type": "session.closed",
+      "timestamp": 1782698294.3528023,
+      "data": {
+        "outcome": "success",
+        "total_usd": 1.0
+      },
+      "prev_hash": "30549c31ef77b5aedabd044636f9ec0504ca066abec1ddcd1c327c12ae95ffff"
+    }
+  ],
+  "chain_hash": "4702fbd48a8328bf78c1441b6e56df087df33317ab76d011b575c3966399cb4a",
+  "signature": "5cad1ccbb332af32b7144026a7bf7d062803024b1b1cdf3ce4ba17fafe408405"
+}

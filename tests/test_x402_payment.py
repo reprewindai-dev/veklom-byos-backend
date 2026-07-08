@@ -16,6 +16,9 @@ from sqlalchemy import select
 
 @pytest.mark.asyncio
 async def test_x402_comprehensive():
+    import base64
+    import json
+
     # Store settings to restore later
     original_mode = settings.X402_TEST_PROOF_MODE
     original_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "")
@@ -34,25 +37,33 @@ async def test_x402_comprehensive():
 
     try:
         # A. DISCOVERY ASSERTIONS
-        # Assertion 1: /.well-known/x402.json and /api/v1/x402/config return 200 and deterministic discovery fields
+        # Assertion 1: both /.well-known/x402 and /.well-known/x402.json return identical 200 and application/json Content-Type
         disc_resp = client.get("/.well-known/x402.json")
         assert disc_resp.status_code == 200
+        assert "application/json" in disc_resp.headers.get("content-type", "")
         disc_data = disc_resp.json()
+
+        disc_resp_unsuffixed = client.get("/.well-known/x402")
+        assert disc_resp_unsuffixed.status_code == 200
+        assert "application/json" in disc_resp_unsuffixed.headers.get("content-type", "")
+        assert disc_data == disc_resp_unsuffixed.json()
+
         assert "enabled" in disc_data
-        assert disc_data["x402_version"] == "1.0.0"
+        assert disc_data["x402_version"] == 2
         assert "replay_protection" in disc_data
-        assert disc_data["proof_header_name"] == "X-Payment-Proof"
+        assert disc_data["proof_header_name"] == "X-PAYMENT"
 
         config_resp = client.get("/api/v1/x402/config")
         assert config_resp.status_code == 200
         config_data = config_resp.json()
         assert config_data["enabled"] is True
         assert config_data["chain_id"] == 8453
+        assert config_data["x402_version"] == 2
+        assert config_data["proof_header_name"] == "X-PAYMENT"
         assert config_data["environment_mode"] == settings.APP_ENV
 
         # Assertion 2: Discovery with missing config sets enabled=False
         with patch.dict(os.environ, {"VEKLOM_TREASURY_ADDRESS": ""}):
-            # Clear internal cache if applicable, or simply query config
             config_resp = client.get("/api/v1/x402/config")
             assert config_resp.json()["enabled"] is False
             assert "VEKLOM_TREASURY_ADDRESS" in config_resp.json()["missing_config"]
@@ -66,7 +77,7 @@ async def test_x402_comprehensive():
         assert response.status_code == 402
         challenge = response.json()
         assert challenge["error"] == "payment_required"
-        assert challenge["x402_version"] == "1.0.0"
+        assert challenge["x402_version"] == 2
         assert "challenge_id" in challenge
         assert "nonce" in challenge
         assert challenge["amount"] == 0.025
@@ -75,12 +86,31 @@ async def test_x402_comprehensive():
         assert challenge["route"] == "/api/v1/x402/protected-test"
         assert challenge["method"] == "POST"
         assert "expires_at" in challenge
-        assert challenge["proof_header_name"] == "X-Payment-Proof"
+        assert challenge["proof_header_name"] == "X-PAYMENT"
 
         # Assertion 3.2: 402 Headers exist on response
         assert response.headers.get("X-Payment-Required") == "true"
         assert "X-Payment-Challenge-ID" in response.headers
         assert "X-Payment-Nonce" in response.headers
+
+        # CDP v2 Compliant Headers Assertion
+        assert "payment-required" in response.headers
+        assert "Payment-Required" in response.headers
+        v2_b64 = response.headers["payment-required"]
+        v2_payload = json.loads(base64.b64decode(v2_b64).decode("utf-8"))
+        assert v2_payload["x402Version"] == 2
+        assert "resource" in v2_payload
+        assert v2_payload["resource"]["url"] == "https://api.veklom.com/api/v1/x402/protected-test"
+        assert len(v2_payload["accepts"]) == 1
+        accepts = v2_payload["accepts"][0]
+        assert accepts["scheme"] == "exact"
+        assert accepts["network"] == "eip155:8453"
+        assert accepts["amount"] == "25000"  # 0.025 * 1_000_000
+        assert accepts["asset"] == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        assert accepts["payTo"] == os.environ["VEKLOM_TREASURY_ADDRESS"]
+        assert accepts["maxTimeoutSeconds"] == 86400
+        assert accepts["extra"]["name"] == "USD Coin"
+        assert accepts["extra"]["version"] == "2"
 
         # C. PROOF VERIFICATION ASSERTIONS
         # Enable dev test proof mode for validation
@@ -88,11 +118,11 @@ async def test_x402_comprehensive():
 
         # Assertion 4: Missing proof is rejected (Already proven via 402 response)
         
-        # Assertion 5: Malformed/Invalid proof is rejected
+        # Assertion 5: Malformed/Invalid proof is rejected using standard X-Payment header
         response = client.post(
             "/api/v1/x402/protected-test",
             json=test_payload,
-            headers={"X-Payment-Proof": "test_proof_invalid"}
+            headers={"X-Payment": "test_proof_invalid"}
         )
         assert response.status_code == 402
         assert response.json()["detail"] == "invalid_transaction"
@@ -100,11 +130,11 @@ async def test_x402_comprehensive():
         # Assertion 6: Replayed proof is rejected
         valid_proof = f"test_proof_valid_{uuid.uuid4().hex[:8]}"
         
-        # Use first time -> Success (200)
+        # Use first time with standard X-Payment header -> Success (200)
         response = client.post(
             "/api/v1/x402/protected-test",
             json=test_payload,
-            headers={"X-Payment-Proof": valid_proof}
+            headers={"X-Payment": valid_proof}
         )
         assert response.status_code == 200
         assert response.headers.get("X-Payment-Test-Mode") == "true"
@@ -112,11 +142,11 @@ async def test_x402_comprehensive():
         receipt_id = response.headers["X-Veklom-Receipt-ID"]
         evidence_hash = response.headers["X-Veklom-Evidence-ID"]
         
-        # Use second time -> Replay Rejected (402)
+        # Use second time -> Replay Rejected (402) - verify we also check X-PAYMENT header
         response = client.post(
             "/api/v1/x402/protected-test",
             json=test_payload,
-            headers={"X-Payment-Proof": valid_proof}
+            headers={"X-PAYMENT": valid_proof}
         )
         assert response.status_code == 402
         assert response.json()["detail"] == "replay_detected"
@@ -132,7 +162,12 @@ async def test_x402_comprehensive():
             assert receipt_log.details["evidence_hash"] == evidence_hash
 
         # E. EVIDENCE VERIFICATION ASSERTIONS
-        # Assertion 8: POST /api/v1/x402/verify validates real stored receipt successfully
+        # First-Gate Enforcement Assertion: Posting empty payload or invalid JSON to /verify triggers 402 challenge first, NOT 422!
+        verify_empty_resp = client.post("/api/v1/x402/verify")
+        assert verify_empty_resp.status_code == 402
+        assert verify_empty_resp.json()["error"] == "payment_required"
+
+        # Assertion 8: POST /api/v1/x402/verify validates real stored receipt successfully when PAID
         import hashlib
         proof_hash = hashlib.sha256(valid_proof.encode()).hexdigest()
         
@@ -142,7 +177,12 @@ async def test_x402_comprehensive():
             "evidence_hash": evidence_hash
         }
         
-        verify_resp = client.post("/api/v1/x402/verify", json=verify_payload)
+        verify_proof_8 = f"test_proof_v8_{uuid.uuid4().hex[:8]}"
+        verify_resp = client.post(
+            "/api/v1/x402/verify", 
+            json=verify_payload,
+            headers={"X-Payment": verify_proof_8}
+        )
         assert verify_resp.status_code == 200
         verify_data = verify_resp.json()
         assert verify_data["valid"] is True
@@ -151,18 +191,28 @@ async def test_x402_comprehensive():
         assert verify_data["proof_hash_match"] is True
         assert verify_data["signature_valid"] is True
 
-        # Assertion 9: Wrong evidence hash fails verification
+        # Assertion 9: Wrong evidence hash fails verification when PAID
         bad_verify_payload = dict(verify_payload, evidence_hash="wrong_hash")
-        verify_resp = client.post("/api/v1/x402/verify", json=bad_verify_payload)
+        verify_proof_9 = f"test_proof_v9_{uuid.uuid4().hex[:8]}"
+        verify_resp = client.post(
+            "/api/v1/x402/verify", 
+            json=bad_verify_payload,
+            headers={"Payment-Signature": verify_proof_9} # verify title-case version too!
+        )
         assert verify_resp.status_code == 200
         verify_data = verify_resp.json()
         assert verify_data["valid"] is False
         assert verify_data["verification_status"] == "mismatched"
         assert "evidence_hash mismatch" in verify_data["reason"]
 
-        # Assertion 10: Querying non-existent receipt fails verification cleanly
+        # Assertion 10: Querying non-existent receipt fails verification cleanly when PAID
         missing_verify_payload = dict(verify_payload, receipt_id="rcpt_missing123")
-        verify_resp = client.post("/api/v1/x402/verify", json=missing_verify_payload)
+        verify_proof_10 = f"test_proof_v10_{uuid.uuid4().hex[:8]}"
+        verify_resp = client.post(
+            "/api/v1/x402/verify", 
+            json=missing_verify_payload,
+            headers={"X-Payment-Proof": verify_proof_10} # verify legacy fallback as well!
+        )
         assert verify_resp.status_code == 200
         verify_data = verify_resp.json()
         assert verify_data["valid"] is False
@@ -178,3 +228,74 @@ async def test_x402_comprehensive():
         settings.X402_TEST_PROOF_MODE = original_mode
         if original_treasury:
             os.environ["VEKLOM_TREASURY_ADDRESS"] = original_treasury
+
+
+@pytest.mark.asyncio
+async def test_payapi_dynamic_registration_and_parameterized_matching():
+    client = TestClient(app)
+    original_mode = settings.X402_TEST_PROOF_MODE
+    settings.X402_TEST_PROOF_MODE = True
+    try:
+        # 1. Dynamic Route Registration
+        register_payload = {
+            "name": "Dynamic Niche API",
+            "path": "/api/v1/niche-test/{item_id}/process",
+            "price": 0.045,
+            "description": "A dynamic endpoint listed on PayAPI on-the-fly",
+            "openapi_schema_url": "https://api.veklom.com/openapi.json"
+        }
+        
+        resp = client.post(
+            "/api/v1/x402/register-api", 
+            json=register_payload,
+            headers={"X-Payment": "test_proof_register"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["registered_path"] == "/api/v1/niche-test/{item_id}/process"
+        assert data["price_usdc"] == 0.045
+        
+        # 2. Config Discovery verification
+        config_resp = client.get("/api/v1/x402/config")
+        assert config_resp.status_code == 200
+        config_data = config_resp.json()
+        assert "/api/v1/niche-test/{item_id}/process" in config_data["protected_routes"]
+        
+        # 3. Requesting dynamic path with placeholder match
+        response = client.post("/api/v1/niche-test/item_abc123/process", json={})
+        assert response.status_code == 402
+        challenge = response.json()
+        assert challenge["error"] == "payment_required"
+        assert challenge["amount"] == 0.045
+        assert challenge["currency"] == "USDC"
+        assert challenge["route"] == "/api/v1/niche-test/item_abc123/process"
+        
+        # 4. Verification of parameterized matching for preconfigured route
+        # Route: /api/v1/pgl/{agent_id}/quarantine -> Price: 0.01 USDC
+        quarantine_resp = client.post("/api/v1/pgl/agent_xyz_99/quarantine", json={})
+        assert quarantine_resp.status_code == 402
+        quarantine_challenge = quarantine_resp.json()
+        assert quarantine_challenge["error"] == "payment_required"
+        assert quarantine_challenge["amount"] == 0.01
+        assert quarantine_challenge["currency"] == "USDC"
+        assert quarantine_challenge["route"] == "/api/v1/pgl/agent_xyz_99/quarantine"
+        # 5. Verification of public /pricing and /api/v1/pricing
+        pricing_resp = client.get("/pricing")
+        assert pricing_resp.status_code == 200
+        pricing_data = pricing_resp.json()
+        assert pricing_data["currency"] == "USDC"
+        assert "routes" in pricing_data
+        assert len(pricing_data["routes"]) > 0
+        
+        # Verify a specific route is present
+        routes_paths = [r["path"] for r in pricing_data["routes"]]
+        assert "/api/v1/mission-lock/agents/{agent_id}/state" in routes_paths
+
+        # Verify /api/v1/pricing alias behaves identically
+        pricing_v1_resp = client.get("/api/v1/pricing")
+        assert pricing_v1_resp.status_code == 200
+        assert pricing_v1_resp.json() == pricing_data
+    finally:
+        settings.X402_TEST_PROOF_MODE = original_mode
+

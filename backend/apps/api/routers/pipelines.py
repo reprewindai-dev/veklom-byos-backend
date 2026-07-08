@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
+from backend.core.config.settings import settings
 from backend.core.security.auth import get_current_user
 from backend.db.models.pipelines import Deployment, Pipeline, PipelineRun
 from backend.core.services.autonomous_worker import run_pipeline_background
@@ -16,6 +17,39 @@ import asyncio
 import uuid
 
 router = APIRouter(tags=["Pipelines"])
+
+
+def _configured_setting(value: str | None) -> bool:
+    if not value:
+        return False
+    normalized = value.strip()
+    if not normalized:
+        return False
+    lowered = normalized.lower()
+    placeholders = ("need_from_", "your-", "your_", "example", "placeholder", "changeme")
+    return not any(marker in lowered for marker in placeholders)
+
+
+def _demo_llm_integrity_status() -> dict:
+    fallback = str(getattr(settings, "LLM_FALLBACK", "groq") or "").strip().lower()
+    groq_fallback_enabled = (
+        fallback == "groq"
+        and _configured_setting(getattr(settings, "GROQ_API_KEY", ""))
+    )
+    provider_ready = {
+        "ollama": _configured_setting(getattr(settings, "OLLAMA_BASE_URL", "")),
+        "groq": groq_fallback_enabled,
+        "openai_gateway": _configured_setting(getattr(settings, "OPENAI_API_KEY", "")),
+    }
+    providers_configured = sorted(name for name, ready in provider_ready.items() if ready)
+    return {
+        "llm_ok": bool(providers_configured),
+        "llm_model": getattr(settings, "LLM_MODEL_DEFAULT", "qwen2.5:3b"),
+        "groq_fallback_enabled": groq_fallback_enabled,
+        "providers_configured": providers_configured,
+    }
+
+
 
 
 def _default_pipeline_graph(template: str = "clinical-rag") -> dict:
@@ -935,9 +969,11 @@ async def interactive_session(user=Depends(get_current_user)):
 # --- Demo Pipeline ---
 @router.get("/demo/pipeline/health")
 async def demo_pipeline_health():
+    llm_status = _demo_llm_integrity_status()
     return {
         "status": "healthy",
         "pipeline": "demo",
+        **llm_status,
         "stages": ["Source", "Build", "Validate", "Test", "Stage", "Gate", "Deploy"],
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -1346,5 +1382,4 @@ async def trigger_github_deployment(workspace_id: str, user=Depends(get_current_
         "deployment_id": new_dep.id,
         "message": "Deployment triggered successfully" if status == "success" else f"Deployment failed: {error_msg}"
     }
-
 

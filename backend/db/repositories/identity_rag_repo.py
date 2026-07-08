@@ -8,7 +8,8 @@ from backend.schemas.identity_rag import (
     GoldenRecordGovernance,
     GoldenRecordIdentity,
 )
-from backend.db.models.pgl import PGLIdentity, Certificate, Lineage
+from backend.db.models.pgl import PGLIdentity, PGLCertificate
+from backend.db.models.lineage import BirthCertificate
 from backend.db.models.ai import ExecLog
 from backend.db.models.authority import AuthorityRun
 from backend.db.models.ledger import SettlementLedger
@@ -40,10 +41,10 @@ async def resolve_identity_golden_record(
     # ── 2. Deterministic survivorship aggregations ──────────────────────────
     #   Identity root: PGLIdentity is canonical.
     certificate_count = await db.scalar(
-        select(func.count()).select_from(Certificate).where(Certificate.pgl_identity_id == pgl.id)
+        select(func.count()).select_from(PGLCertificate).where(PGLCertificate.pgl_identity_id == pgl.id)
     )
     lineage_depth = await db.scalar(
-        select(func.count()).select_from(Lineage).where(Lineage.pgl_identity_id == pgl.id)
+        select(func.count()).select_from(BirthCertificate).where(BirthCertificate.pgl_identity_id == pgl.id)
     )
 
     #   Financial truth: SettlementLedger is canonical for volume and reliability.

@@ -192,7 +192,7 @@ async def verify_evidence_pack_get(
 @router.get("/pack/{pack_id}/export", response_model=Dict[str, Any])
 async def export_evidence_pack(
     pack_id: str,
-    format: str = Query("json", regex="^(json|yaml|cbor)$"),
+    format: str = Query("json", pattern="^(json|yaml|cbor)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

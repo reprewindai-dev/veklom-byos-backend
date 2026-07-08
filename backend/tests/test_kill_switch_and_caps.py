@@ -80,9 +80,13 @@ async def test_capi_gate_global_kill_switch():
             if "authority_bundles" in query_str:
                 mock_bundle = MagicMock()
                 mock_bundle.tool_permissions = {"filesystem.read": "ALLOW"}
+                mock_bundle.time_restrictions = None
                 mock_val.scalar_one_or_none.return_value = mock_bundle
             else:
-                mock_val.scalar_one_or_none.return_value = MagicMock()
+                mock_agent = MagicMock()
+                mock_agent.public_key = None
+                mock_agent.metadata_json = {"trust_score": 90}
+                mock_val.scalar_one_or_none.return_value = mock_agent
             return mock_val
             
         db.execute.side_effect = mock_execute

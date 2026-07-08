@@ -188,9 +188,13 @@ class ProbeEvent(Base):
     worker_signature = Column(String, nullable=False)
     latency_ms = Column(Float)
     status_code = Column(Integer)
+    http_version = Column(String(10))
+    tls_version = Column(String(20))
     error_reason = Column(String)
     measured_at = Column(DateTime(timezone=True), nullable=False, index=True)
     evidence_hash = Column(String)
+    provenance_hash = Column(String)
+    cryptography_anchor = Column(String)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     # Note: Real PostgreSQL partitioning requires __table_args__ with postgresql_partition_by
@@ -218,6 +222,8 @@ class RegionalTelemetry(Base):
     uptime_percent = Column(Numeric(5, 2), nullable=False)
     throughput_rps = Column(Integer, nullable=False, default=0)
     trust_score = Column(Numeric(5, 2), nullable=False)
+    provenance_hash = Column(String)
+    on_chain_anchor = Column(String)
     measured_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     __table_args__ = (
@@ -395,3 +401,47 @@ class AuditLog(Base):
     __table_args__ = (
         Index("idx_audit_logs_scope_time", "scope_type", "scope_id", "created_at"),
     )
+
+class AlertConfig(Base):
+    __tablename__ = "vnp_alert_configs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    target_api = Column(String(100), nullable=False) # 'all' or API DID
+    metric_type = Column(String(50), nullable=False)
+    condition = Column(String(20), nullable=False) # '>', '<', etc.
+    threshold_value = Column(Float, nullable=False)
+    region = Column(String(50), nullable=False)
+    actions = Column(JSONB, nullable=False, default=[])
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class ClaimRequest(Base):
+    __tablename__ = "vnp_claim_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(String(200), nullable=False, index=True)
+    api_domain = Column(String(255), nullable=False)
+    company_name = Column(String(255), nullable=False)
+    company_email = Column(String(255), nullable=False)
+    dns_record = Column(String(255), nullable=False)
+    dns_value = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False, default='pending')  # pending, verified, failed
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    verified_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class ClaimedAPI(Base):
+    __tablename__ = "vnp_claimed_apis"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(String(200), nullable=False, unique=True, index=True)
+    company_name = Column(String(255), nullable=False)
+    company_email = Column(String(255), nullable=False)
+    claim_verified_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    score_low_alert = Column(Boolean, nullable=False, default=True)
+    score_low_threshold = Column(Integer, nullable=False, default=80)
+    last_score_alert_sent = Column(DateTime(timezone=True))
+
+

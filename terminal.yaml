@@ -1,0 +1,15 @@
+http:
+  routers:
+    terminal:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`terminal.veklom.com`)"
+      service: terminal
+      tls:
+        certResolver: letsencrypt
+  services:
+    terminal:
+      loadBalancer:
+        servers:
+          - url: "http://terminal-veklom:80"

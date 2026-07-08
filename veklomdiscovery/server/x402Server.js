@@ -3,7 +3,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 
 export const X402_RECIPIENT =
-  process.env.VEKLOM_ADDRESS || "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d";
+  process.env.VEKLOM_ADDRESS || "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970";
 
 const hasCdpCredentials = Boolean(process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET);
 

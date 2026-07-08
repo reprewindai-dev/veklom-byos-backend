@@ -128,5 +128,14 @@ class AgentIdentity(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+class AgentTrustScore(Base):
+    """Time-series ledger of agent trust score changes for MCPAPI v2.0."""
+    __tablename__ = "agent_trust_scores"
 
-
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agent_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_identities.id"), nullable=False, index=True)
+    intent_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    trust_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    new_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -1,0 +1,22 @@
+{
+  "name": "@veklom/sdk",
+  "version": "0.1.0",
+  "description": "Official JavaScript/TypeScript client for governed inference via the Veklom API.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "veklom",
+    "ai",
+    "llm",
+    "inference",
+    "governance"
+  ],
+  "author": "Veklom Nexus Protocol",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

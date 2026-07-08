@@ -9,24 +9,41 @@ from backend.core.config.settings import settings
 router = APIRouter(tags=["Health"])
 
 
-@router.get("/health")
+@router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": settings.VERSION,
-        "service": settings.APP_NAME,
-    }
+    import traceback
+    try:
+        # Check DB
+        from sqlalchemy import text
+        from backend.core.database.database import engine
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+            
+        # Check Redis
+        from backend.core.database.redis_client import redis_client
+        if redis_client:
+            await redis_client.ping()
+            
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "version": settings.VERSION,
+            "service": settings.APP_NAME,
+        }
+    except Exception as e:
+        from fastapi import HTTPException
+        import logging
+        logging.getLogger(__name__).error(f"Health check failed: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=503, detail="Service Unavailable: core dependencies unreachable")
 
 
 
-
-@router.get("/api/v1/health")
+@router.api_route("/api/v1/health", methods=["GET", "HEAD"])
 async def health_check_v1():
     """Alias for /health — keeps API consistency for clients that call /api/v1/health."""
     return await health_check()
 
-@router.get("/api/health")
+@router.api_route("/api/health", methods=["GET", "HEAD"])
 async def health_check_api():
     """Alias for /health — explicitly requested by observability script."""
     return await health_check()

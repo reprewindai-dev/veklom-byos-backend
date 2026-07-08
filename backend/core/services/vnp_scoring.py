@@ -73,3 +73,53 @@ async def get_cached_api_score(api_id: str) -> dict:
     if cached:
         return json.loads(cached)
     return {"score": 100.0, "rating": "Unknown", "updated_at": None}
+
+
+async def update_agent_governance_score(session: AsyncSession, agent_id: str) -> float:
+    """Calculate real-time trust score based on path conformance, safety violations and dominance."""
+    from backend.db.models.mission_lock import MissionLockAgentState
+    
+    stmt = select(MissionLockAgentState).where(MissionLockAgentState.agent_id == agent_id)
+    result = await session.execute(stmt)
+    state = result.scalar_one_or_none()
+    
+    if not state:
+        return 100.0  # Perfect baseline for new/unmonitored agents
+        
+    conformance = float(state.path_conformance or 0.0)
+    # If path_conformance is scaled 0.0 to 1.0, normalize it to 100%
+    if conformance <= 1.0:
+        conformance_percentage = conformance * 100.0
+    else:
+        conformance_percentage = conformance
+        
+    violations = int(state.safety_violations or 0)
+    
+    # Base trust starts at path conformance (100 points max)
+    trust_score = conformance_percentage
+    
+    # Direct safety penalties: -15 points per violation
+    trust_score -= (violations * 15.0)
+    
+    # Epsilon exploration penalty: minor penalty for too much random exploration if dominance is degraded
+    dominance = float(state.current_dominance or 0.85)
+    if dominance < 0.60:
+        trust_score -= (1.0 - dominance) * 10.0
+        
+    # Clamp score between 0.0 and 100.0
+    trust_score = max(0.0, min(100.0, trust_score))
+    
+    # Update cache
+    cache_key = f"vnp:agent:governance:{agent_id}"
+    cache_data = {
+        "agent_id": agent_id,
+        "trust_score": trust_score,
+        "conformance": conformance_percentage,
+        "violations": violations,
+        "dominance": dominance,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await redis_cache.set(cache_key, json.dumps(cache_data), ttl=300)
+    
+    return trust_score
+

@@ -31,7 +31,6 @@ distro==1.9.0
 dnspython==2.8.0
 ecdsa==0.19.2
 email-validator==2.3.0
-eth-account==0.11.3
 eth-hash==0.8.0
 eth-keyfile==0.9.1
 eth-keys==0.7.0

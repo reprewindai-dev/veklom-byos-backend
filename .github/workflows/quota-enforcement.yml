@@ -37,7 +37,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install Application Dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -e .[production]
 
       - name: Start API Server
         env:

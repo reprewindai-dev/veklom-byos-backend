@@ -9,10 +9,10 @@ import socket
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import unquote, urlparse
 
 import sentry_sdk
-from fastapi import FastAPI, Request, Query, Depends, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -23,25 +23,22 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-from backend.core.security.middlewares import (
-    ZeroTrustMiddleware,
-    MetricsMiddleware,
-    IntelligentRoutingMiddleware,
-    BudgetCheckMiddleware
-)
-
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine, get_db
-from backend.core.plugins.manager import plugin_manager
-from backend.core.security.middleware import SecurityHeadersMiddleware
-from backend.core.middleware.x402 import X402PaymentMiddleware
 from backend.core.middleware.amphoteric import AmphotericSensingMiddleware
 from backend.core.middleware.ratelimit import RateLimitMiddleware
+from backend.core.middleware.x402 import X402PaymentMiddleware
+from backend.core.plugins.manager import plugin_manager
+from backend.core.security.middleware import SecurityHeadersMiddleware
+from backend.core.security.middlewares import (
+    BudgetCheckMiddleware,
+    IntelligentRoutingMiddleware,
+    MetricsMiddleware,
+    ZeroTrustMiddleware,
+)
 
 # --- Production Startup Guards ---
 if settings.APP_ENV == "production" or os.getenv("ENVIRONMENT") == "production":
@@ -107,13 +104,25 @@ if has_valid_endpoint and has_valid_headers:
 
 import asyncio
 import time
-import httpx
 import uuid
-from sqlalchemy import select, func, update
-from datetime import datetime, timezone, timedelta
-from backend.apps.api.services.vnp_engine import current_epoch, compute_deviation
+from datetime import timedelta
+
+import httpx
+from sqlalchemy import func
+
+from backend.apps.api.services.vnp_engine import compute_deviation, current_epoch
 from backend.core.database.database import async_session
-from backend.db.models.vnp import Api, ApiRegion, ProbeEvent, ProbeResultState, RegionalTelemetry, SettlementEntry, LedgerEntryType, SettlementState
+from backend.db.models.vnp import (
+    Api,
+    ApiRegion,
+    LedgerEntryType,
+    ProbeEvent,
+    ProbeResultState,
+    RegionalTelemetry,
+    SettlementEntry,
+    SettlementState,
+)
+
 
 async def vnp_background_indexer():
     """Production-grade background task to compute VNP Stakes Engine updates and perform real probes."""
@@ -125,16 +134,16 @@ async def vnp_background_indexer():
             try:
                 ep = current_epoch()
                 print(f"[vnp-engine] Running production indexer for epoch {ep}")
-                
+
                 async with async_session() as db:
                     # 1. Fetch real API endpoints to probe
                     result = await db.execute(
                         select(Api, ApiRegion)
                         .join(ApiRegion, Api.id == ApiRegion.api_id)
-                        .where(ApiRegion.active == True)
+                        .where(ApiRegion.active)
                     )
                     rows = result.all()
-                    
+
                     for api, region in rows:
                         target_url = f"{region.endpoint_url.rstrip('/')}{api.health_path}"
                         start_time = time.time()
@@ -235,12 +244,13 @@ async def vnp_background_indexer():
                                     db.add(settlement)
 
                     await db.commit()
-                
+
             except Exception as e:
                 print(f"[vnp-engine] Error in production indexer: {e}")
             await asyncio.sleep(interval)
 
 from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -269,10 +279,10 @@ async def lifespan(app: FastAPI):
             print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")
             from sqlalchemy import inspect
             critical = ("users", "execution_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
-            
+
             def get_present_tables(sync_conn):
                 return inspect(sync_conn).get_table_names()
-            
+
             present_tables = await conn.run_sync(get_present_tables)
             present = set(present_tables)
             missing = [t for t in critical if t not in present]
@@ -437,8 +447,8 @@ async def lifespan(app: FastAPI):
 
     # Seed initial Demo API for VNP Probing if none exist
     try:
-        from backend.db.models.vnp import Api, ApiRegion
         from backend.core.database.database import async_session
+        from backend.db.models.vnp import Api, ApiRegion
         async with async_session() as seed_db:
             existing_api = (await seed_db.execute(select(Api).limit(1))).scalar_one_or_none()
             if not existing_api:
@@ -483,8 +493,8 @@ async def lifespan(app: FastAPI):
         {"worker_id": "scout",    "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
     ]
     try:
-        from backend.db.models.internal_operators import InternalOperatorBudget
         from backend.core.database.database import async_session
+        from backend.db.models.internal_operators import InternalOperatorBudget
         async with async_session() as seed_db:
             for b in _OPERATOR_BUDGETS:
                 existing = (await seed_db.execute(
@@ -516,11 +526,11 @@ async def lifespan(app: FastAPI):
         traceback.print_exc()
 
     # Start VNP background indexers and scoring engine
-    vnp_task = asyncio.create_task(vnp_background_indexer())
-    scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
+    asyncio.create_task(vnp_background_indexer())
+    asyncio.create_task(VNPScoringEngine.run_loop())
 
     from backend.apps.api.terminal_state import terminal_state_manager
-    terminal_state_task = asyncio.create_task(terminal_state_manager.state_loop())
+    asyncio.create_task(terminal_state_manager.state_loop())
 
     yield
 
@@ -620,6 +630,7 @@ _CORS_ORIGIN_REGEX = (
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
+
 class X402DiscoverableMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -638,6 +649,7 @@ app.add_middleware(IntelligentRoutingMiddleware)
 app.add_middleware(BudgetCheckMiddleware)
 
 from backend.core.security.middlewares import AgentTelemetryMiddleware, IPRateLimitMiddleware
+
 app.add_middleware(AgentTelemetryMiddleware)
 app.add_middleware(IPRateLimitMiddleware)
 
@@ -711,7 +723,7 @@ def _add_cors_headers(request: Request, response):
 async def not_found(request: Request, exc):
     if request.url.path.startswith("/api/"):
         return _add_cors_headers(request, JSONResponse(status_code=404, content={"detail": "Not found"}))
-    
+
     is_workspace = request.url.path.startswith("/workspace")
     is_github = request.url.path.startswith("/github")
 
@@ -719,10 +731,10 @@ async def not_found(request: Request, exc):
         from fastapi.responses import RedirectResponse
         subpath = request.url.path[len("/workspace"):].lstrip("/")
         query_str = f"?{request.url.query}" if request.url.query else ""
-        if subpath and not subpath.endswith("/") and not "." in subpath:
+        if subpath and not subpath.endswith("/") and "." not in subpath:
             subpath = f"{subpath}/"
         return RedirectResponse(url=f"https://control.veklom.com/{subpath}{query_str}", status_code=307)
-    
+
     if request.url.path in ("/login", "/signup", "/governance", "/governance/"):
         from fastapi.responses import RedirectResponse
         query_str = f"?{request.url.query}" if request.url.query else ""
@@ -754,13 +766,14 @@ async def not_found(request: Request, exc):
                 "Expires": "0",
             },
         )
-    
+
     from fastapi.responses import RedirectResponse
     query_str = f"?{request.url.query}" if request.url.query else ""
     return RedirectResponse(url=f"https://control.veklom.com{request.url.path}{query_str}", status_code=302)
 
 
 from backend.core.security.sanitizer import InProcessErrorSanitizer
+
 global_error_sanitizer = InProcessErrorSanitizer()
 
 @app.exception_handler(500)
@@ -772,7 +785,7 @@ async def internal_error(request: Request, exc):
         return _add_cors_headers(request, JSONResponse(status_code=500, content=sanitized_resp))
     except Exception as parse_err:
         return _add_cors_headers(request, JSONResponse(
-            status_code=500, 
+            status_code=500,
             content={
                 "error": "CRITICAL_FALLBACK_FAILURE",
                 "message": "An unhandled exception occurred and the error sanitizer failed. This incident has been logged.",
@@ -783,30 +796,101 @@ async def internal_error(request: Request, exc):
 
 # --- Import and register all routers ---
 from backend.apps.api.routers import (
-    duel,
+    admin,
+    admin_billing,
+    agency,
+    agent_arena,
+    agent_memory,
+    agents,
+    ai,
+    amphoteric,
+    arena,
+    auth,
+    authority,
+    authority_runs,
+    autonomous,
+    badges,
+    banker,
+    benchmarks,
+    billing,
     bingo,
-    veklom_id,
+    build_release,
+    capi,
+    cappo,
+    claims,
+    command_center,
+    compliance,
+    conversation_memory,
+    copilot,
+    decision_frames,
+    demo,
     discovery,
-    discovery_api
-)
-from backend.apps.api.routers import (
-    agent_arena, agent_evaluation, agent_guardrails, agent_memory, agents, ai, amphoteric, auth, authority,
-    authority_runs, autonomous, billing, command_center, compliance,
-    copilot, diagnostics, discovery, docs, edge, edge_llm, evaluations,
-    evidence, fax, forensics, health, integrations, internal_uacp,
-    mcp, monitoring, onboarding_dashboard, onboarding_demo, payments,
-    pgl, pgl_adapter, pgl_onboarding, plugins, pricing, providers, rag,
-    referrals, repo_risk_gate, repogate_api, routing, runs, runtime_jobs,
-    runtime_telemetry, security, seked, smoke, system, team, upload, vnp,
-    vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2, vnp_onboarding, vnp_stream,
-    workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
-    benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
-    build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
-    genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges, tasks,
-    demo
+    discovery_api,
+    duel,
+    edge,
+    edge_llm,
+    evaluations,
+    evidence,
+    evidence_pack,
+    exec_router,
+    fax,
+    forensics,
+    genome,
+    gfr,
+    governed,
+    health,
+    hrm,
+    integrations,
+    internal_operators,
+    internal_uacp,
+    locks,
+    mcp,
+    mission_lock,
+    monitoring,
+    nexus,
+    onboarding_dashboard,
+    onboarding_demo,
+    payments,
+    pgl,
+    pgl_adapter,
+    pgl_onboarding,
+    pipelines,
+    playground,
+    plugins,
+    pricing,
+    providers,
+    referrals,
+    repo_risk_gate,
+    repogate_api,
+    routing,
+    runs,
+    runtime_jobs,
+    runtime_telemetry,
+    security,
+    seked,
+    smoke,
+    system,
+    tasks,
+    team,
+    terminal,
+    upload,
+    veklom_id,
+    vnp,
+    vnp_beacon,
+    vnp_control,
+    vnp_incidents,
+    vnp_ingest,
+    vnp_onboarding,
+    vnp_stream,
+    vnp_v2,
+    wallet,
+    webhook,
+    webhooks,
+    well_known,
+    workspace,
+    x402,
 )
 from backend.services.uacp.http import router as uacp_http_router
-from backend.apps.api.routers import admin_billing
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
 app.include_router(discovery.router)
@@ -915,15 +999,12 @@ app.include_router(demo.router, prefix="/api/v1/demo")
 app.include_router(uacp_http_router, prefix="/api/v1")
 
 # Integrations (PagerDuty, Slack, etc.)
-from backend.apps.api.routers import integrations
 app.include_router(integrations.router, prefix="/api/v1")
 
 # Fax Connector Integrations (Hospitals, Legal, Government, Financial Services)
-from backend.apps.api.routers import fax
 app.include_router(fax.router, prefix="/api/v1")
 
 # Forensics Flight Recorder (Black Box Replay)
-from backend.apps.api.routers import forensics
 app.include_router(forensics.router, prefix="/api/v1")
 
 
@@ -933,8 +1014,8 @@ app.include_router(admin_billing.router, prefix="/api/v1")
 app.include_router(upload.router, prefix="/api/v1")
 
 # GPC (Governed Plan Compiler) + Decision Frames
-app.include_router(gpc.router, prefix="/api/v1")
 from backend.apps.gpc import gpc_routes
+
 app.include_router(gpc_routes.router)
 app.include_router(decision_frames.router, prefix="/api/v1")
 
@@ -969,6 +1050,7 @@ app.include_router(providers.router, prefix="/api/v1")
 
 # Dynamic MCP Proxy Gateway — OpenAPI dynamic tools & transparent proxying
 from backend.apps.api.routers import mcp_gateway
+
 app.include_router(mcp_gateway.router)
 
 # Team management — members, invitations, roles, SSO, MFA
@@ -988,7 +1070,6 @@ app.include_router(arena.router)
 app.include_router(benchmarks.router, prefix="/api/v1")
 
 # VNP - Data Plane Ingestion and Route Beacon
-from backend.apps.api.routers import vnp, vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
 app.include_router(vnp_incidents.router, prefix="/api/v1")
 app.include_router(banker.router, prefix="/api/v1")
 app.include_router(wallet.router, prefix="/api/v1")
@@ -1002,7 +1083,6 @@ app.include_router(vnp_control.router, prefix="/api/v1")
 app.include_router(vnp_incidents.router, prefix="/api/v1")
 
 # VNP v2.0 - Unified Execution Core (Aligned with Interlink Prototype)
-from backend.apps.api.routers import vnp_v2
 app.include_router(vnp_v2.router, prefix="/api")
 
 
@@ -1135,12 +1215,13 @@ _PAID_ROLES = {"OWNER", "SUPER_ADMIN", "ADMIN", "owner", "super_admin", "admin"}
 
 async def _get_user_from_request(request):
     """Extract and verify JWT from Authorization header or cookie, then fetch user."""
-    from backend.core.security.auth import verify_token
-    from backend.core.database.database import get_db_session
     from sqlalchemy import select
-    from backend.db.models.user import User
+
+    from backend.core.database.database import get_db_session
+    from backend.core.security.auth import verify_token
     from backend.core.services.entitlements import get_workspace_plan
-    
+    from backend.db.models.user import User
+
     token = None
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -1167,7 +1248,7 @@ async def _get_user_from_request(request):
                 workspace = ws_result.scalar_one_or_none()
                 if workspace:
                     industry = workspace.industry or "generic"
-                
+
                 plan_val = await get_workspace_plan(db, user.workspace_id)
                 if plan_val:
                     plan = plan_val.lower()
@@ -1259,7 +1340,7 @@ async def enforce_route_access(request, call_next):
                     </body></html>
                     '''
                     return HTMLResponse(html)
-                
+
                 if user.get("industry") == "generic":
                     html = '''
                     <html><head><title>Workspace Setup</title>
@@ -1561,10 +1642,8 @@ async def submit_feedback(
     subject: str = Query(None),
     body: str = Query(None)
 ):
-    from typing import Optional
-    from fastapi import Query
     from fastapi.responses import JSONResponse
-    
+
     json_data = {}
     try:
         content_type = request.headers.get("content-type", "")
@@ -1583,8 +1662,8 @@ async def submit_feedback(
     print(f"[feedback] category={cat} subject={subj!r} body={feedback_body[:80]!r}")
 
     # Send email notification to Admin/Founder via Resend
-    from backend.core.utils.email import send_email_via_resend
     from backend.core.config.settings import settings
+    from backend.core.utils.email import send_email_via_resend
 
     admin_email = settings.ADMIN_EMAIL or "founder@veklom.com"
     email_subject = f"[Veklom Feedback] {cat.upper()}: {subj}"
@@ -1614,8 +1693,8 @@ async def submit_contact(request: Request):
     Emails sales@veklom.com and sends a confirmation to the submitter.
     """
     from fastapi.responses import JSONResponse
+
     from backend.core.utils.email import send_email_via_resend
-    from backend.core.config.settings import settings
 
     json_data = {}
     try:
@@ -1735,7 +1814,6 @@ async def status_html_file():
     from fastapi.responses import HTMLResponse
     return HTMLResponse(content="<html><body><h1>System Status: All Systems Operational</h1><p>Status page stub for testing.</p></body></html>")
 
-import httpx
 
 @app.post("/api/run-sample")
 @app.post("/api/v1/terminal/run")
@@ -1744,11 +1822,11 @@ async def run_sample_unified(request: Request, db: AsyncSession = Depends(get_db
     THE GOVERNED TERMINAL ENDPOINT.
     Refactored to enforce Fail-Closed PGL validation via cAPI.
     """
-    from backend.apps.api.routers.capi import ExecutionIntent, evaluate_intent_governed, governed_execution_intercept
+    from backend.apps.api.routers.capi import ExecutionIntent, governed_execution_intercept
 
     body = await request.json()
     intent_prompt = body.get("intent", "Execute default quantum instruction")
-    
+
     # 1. Wrap the terminal command in a Governed Intent Envelope
     # In a real scenario, the terminal (frontend) would sign this.
     # Here we simulate the signed intent for the fast terminal transition.
@@ -1759,7 +1837,7 @@ async def run_sample_unified(request: Request, db: AsyncSession = Depends(get_db
         action="terminal.execute",
         payload={"command": intent_prompt}
     )
-    
+
     # 2. Execute via the governed interceptor (The 9-Phase Gate)
     # This ensures that even "fast" terminal commands are audited and policy-checked.
     try:
@@ -1909,7 +1987,7 @@ async def auto_editor_script():
                     btn.click();
                 }
             });
-            
+
             // Alternative: try to find and click any button that might open the editor
             setTimeout(() => {
                 const buttons = document.querySelectorAll('button');
@@ -1927,7 +2005,7 @@ async def auto_editor_script():
     // Run on page load and hash change
     window.addEventListener('load', checkPipelinePage);
     window.addEventListener('hashchange', checkPipelinePage);
-    
+
     // Also run immediately in case we're already loaded
     setTimeout(checkPipelinePage, 100);
 })();
@@ -1956,7 +2034,7 @@ async def command_center_config():
 @app.post("/api/v1/config")
 async def update_command_center_config(request: Request):
     """Update configuration for Command Center frontend."""
-    body = await request.json()
+    await request.json()
     # Configuration is stored in settings, not dynamically updated
     # This endpoint exists for compatibility with Command Center frontend
     return {"success": True, "config": {
@@ -2017,6 +2095,7 @@ app.include_router(authority_runs.router, prefix="/api/v1")
 
 # PGL Adapter - Agent Management
 from backend.apps.api.routers import identity_rag
+
 app.include_router(identity_rag.router)
 app.include_router(copilot.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")

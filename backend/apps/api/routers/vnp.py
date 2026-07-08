@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from backend.core.database.database import get_db
 from backend.db.models.vnp import (
     Api, Validator, ProbeEvent, RegionalTelemetry,
-    SettlementEntry, LedgerEntryType, SettlementState,
+    SettlementEntry, LedgerEntryType, SettlementState, VnpMetric
 )
 from backend.core.services.vnp_scoring import update_api_composite_score, get_cached_api_score
 
@@ -177,3 +177,27 @@ async def vnp_metrics(db: AsyncSession = Depends(get_db)):
         "protocol_version": "1.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+@router.get("/directory/realtime")
+async def get_realtime_directory(db: AsyncSession = Depends(get_db)):
+    """
+    Returns the latest physical edge probe latency for each API target.
+    """
+    # Get the latest metric for each API using a distinct ON clause or window function.
+    # Since sqlite doesn't support DISTINCT ON, we'll fetch recent records and filter in Python.
+    # Or just fetch the latest 50 records and group.
+    stmt = select(VnpMetric).order_by(VnpMetric.measured_at.desc()).limit(100)
+    result = await db.execute(stmt)
+    metrics = result.scalars().all()
+    
+    latest_metrics = {}
+    for m in metrics:
+        if m.api_name not in latest_metrics:
+            latest_metrics[m.api_name] = {
+                "latency_ms": m.latency_ms,
+                "is_up": m.is_up,
+                "measured_at": m.measured_at.isoformat()
+            }
+            
+    return {"status": "ok", "realtime_metrics": latest_metrics}

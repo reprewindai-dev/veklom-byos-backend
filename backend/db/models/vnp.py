@@ -444,4 +444,14 @@ class ClaimedAPI(Base):
     score_low_threshold = Column(Integer, nullable=False, default=80)
     last_score_alert_sent = Column(DateTime(timezone=True))
 
+class VnpMetric(Base):
+    __tablename__ = "vnp_metrics_realtime"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_name = Column(String(100), nullable=False, index=True)
+    latency_ms = Column(Integer, nullable=False)
+    is_up = Column(Boolean, nullable=False)
+    measured_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False, index=True)
+
+
 

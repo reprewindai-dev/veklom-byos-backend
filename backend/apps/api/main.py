@@ -518,6 +518,10 @@ async def lifespan(app: FastAPI):
     # Start VNP background indexers and scoring engine
     vnp_task = asyncio.create_task(vnp_background_indexer())
     scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
+    
+    # Start the new physical edge probes
+    from backend.core.tasks.vnp_probes import run_vnp_probes
+    physical_probes_task = asyncio.create_task(run_vnp_probes())
 
     from backend.apps.api.terminal_state import terminal_state_manager
     terminal_state_task = asyncio.create_task(terminal_state_manager.state_loop())
@@ -2059,8 +2063,8 @@ app.include_router(agent_memory.router, prefix="/api/v1")
 app.include_router(conversation_memory.router, prefix="/api/v1")
 
 # Generative Pipeline Compiler (GPC)
-from backend.apps.gpc import routes as gpc_routes
-app.include_router(gpc_routes.router, prefix="/api/v1")
+# from backend.apps.gpc import routes as gpc_routes
+# app.include_router(gpc_routes.router, prefix="/api/v1")
 
 # Layer 5: Ev
 

@@ -14,6 +14,11 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         
+        public_paths = (
+            "/demo/pipeline/health",
+            "/api/v1/demo/pipeline/health",
+        )
+
         # Public bypass routes
         public_prefixes = (
             "/status", "/health", "/api/health", "/api/v1/auth/login", "/api/v1/auth/register",
@@ -52,7 +57,12 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/beacon"
         )
         
-        if path == "/" or request.method == "OPTIONS" or any(path.startswith(prefix) for prefix in public_prefixes):
+        if (
+            path == "/"
+            or path in public_paths
+            or request.method == "OPTIONS"
+            or any(path.startswith(prefix) for prefix in public_prefixes)
+        ):
             return await call_next(request)
             
         auth_header = request.headers.get("Authorization")

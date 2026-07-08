@@ -1,0 +1,111 @@
+name: CI — Gate
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+      - name: Install linters
+        run: pip install ruff black isort
+      - name: Ruff lint
+        run: ruff check . --output-format=github
+      - name: Black format check
+        run: black --check .
+      - name: isort check
+        run: isort --check-only .
+
+  type-check:
+    name: Type Check
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install mypy
+        run: pip install mypy
+      - name: Run mypy
+        run: mypy backend/ --ignore-missing-imports --no-strict-optional || true
+
+  test:
+    name: Unit + Integration Tests
+    runs-on: self-hosted
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run tests with coverage
+        run: |
+          pytest --tb=short -q --cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 14
+
+  security-scan:
+    name: Security Scan (Bandit + Safety)
+    runs-on: self-hosted
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install scanners
+        run: pip install bandit safety
+      - name: Bandit SAST scan
+        run: bandit -r backend/ -ll -ii --format json -o bandit-report.json || true
+      - name: Safety dependency check
+        run: safety check --full-report || true
+      - name: Upload bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          retention-days: 30
+
+  docker-build:
+    name: Docker Build Check
+    runs-on: self-hosted
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t veklom-byos-backend:ci-${{ github.sha }} . --no-cache
+      - name: Clean up image
+        if: always()
+        run: docker rmi veklom-byos-backend:ci-${{ github.sha }} || true

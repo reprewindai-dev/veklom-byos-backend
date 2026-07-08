@@ -14,6 +14,39 @@ from backend.db.models.vnp import (
 
 logger = logging.getLogger(__name__)
 
+CANONICAL_VNP_NODES = [
+    {"id": "vnp-us-east-1", "region": "us-east-1", "name": "validator-us-east-1", "x": 270, "y": 180},
+    {"id": "vnp-us-west-2", "region": "us-west-2", "name": "validator-us-west-2", "x": 120, "y": 190},
+    {"id": "vnp-eu-west-1", "region": "eu-west-1", "name": "validator-eu-west-1", "x": 380, "y": 150},
+    {"id": "vnp-ap-southeast-1", "region": "ap-southeast-1", "name": "validator-ap-southeast-1", "x": 505, "y": 285},
+    {"id": "vnp-ap-northeast-1", "region": "ap-northeast-1", "name": "validator-ap-northeast-1", "x": 535, "y": 170},
+]
+
+REGION_ALIASES = {
+    "us-east": "us-east-1",
+    "useast": "us-east-1",
+    "us-west": "us-west-2",
+    "uswest": "us-west-2",
+    "eu-west": "eu-west-1",
+    "euwest": "eu-west-1",
+    "ap-southeast": "ap-southeast-1",
+    "apsoutheast": "ap-southeast-1",
+    "ap-northeast": "ap-northeast-1",
+    "apnortheast": "ap-northeast-1",
+}
+
+
+def canonical_region(value: Optional[str]) -> Optional[str]:
+    raw = (value or "").strip().lower().replace("_", "-")
+    if not raw:
+        return None
+    if raw in REGION_ALIASES:
+        return REGION_ALIASES[raw]
+    for node in CANONICAL_VNP_NODES:
+        if node["region"] in raw:
+            return node["region"]
+    return raw
+
 router = APIRouter(
     prefix="/beacon",
     tags=["VNP Data Plane"],
@@ -55,23 +88,33 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
     from backend.db.models.vnp import Validator
     from backend.db.models.ledger import SettlementLedger, SettlementStatus
     
-    # 1. Fetch active validators
+    # 1. Fetch active validators and project them into the canonical five-node frame.
     val_stmt = select(Validator).where(Validator.state == "active").limit(20)
     val_res = await db.execute(val_stmt)
     validators = val_res.scalars().all()
+    validators_by_region = {}
+    for validator in validators:
+        region_key = canonical_region(validator.operator_entity)
+        if region_key:
+            validators_by_region.setdefault(region_key, validator)
     
     nodes = []
-    for i, v in enumerate(validators):
+    active_node_count = 0
+    for canonical in CANONICAL_VNP_NODES:
+        v = validators_by_region.get(canonical["region"])
+        if v:
+            active_node_count += 1
         nodes.append({
-            "id": str(v.id),
-            "name": f"validator-{v.public_key[:8]}",
-            "region": v.operator_entity or "global",
-            "status": "ATTESTING",
-            "x": 100 + (i * 50) % 400,
-            "y": 100 + (i * 30) % 300,
-            "stakeUsd": float(v.stake_amount_minor or 0) / 1000000,
-            "cpuMs": 0.1,
-            "poolUtilization": 10,
+            "id": str(v.id) if v else canonical["id"],
+            "name": f"validator-{v.public_key[:8]}" if v else canonical["name"],
+            "region": canonical["region"],
+            "status": "ATTESTING" if v else "STANDBY",
+            "status_str": "Connected" if v else "Disconnected",
+            "x": canonical["x"],
+            "y": canonical["y"],
+            "stakeUsd": float(v.stake_amount_minor or 0) / 1000000 if v else 0,
+            "cpuMs": 0.1 if v else 0,
+            "poolUtilization": 10 if v else 0,
             "version": "vnp-v1.0.0",
             "tenantLock": "veklom"
         })
@@ -97,10 +140,10 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
         })
 
     eventsLog = []
-    if not nodes:
-        eventsLog.append("Awaiting PBFT consensus session establishment.")
+    if active_node_count < len(CANONICAL_VNP_NODES):
+        eventsLog.append(f"Five-node VNP frame loaded; {active_node_count}/5 validator regions connected.")
     else:
-        eventsLog.append(f"PBFT consensus session established globally with {len(nodes)} validators.")
+        eventsLog.append("Five-node VNP measurement frame connected across all canonical regions.")
 
     return {
         "status": "success",
@@ -109,6 +152,8 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
             "ledgerFeed": ledgerFeed,
             "eventsLog": eventsLog,
             "totalSettledUsd": round(total_settled_usd, 4),
+            "activeNodes": active_node_count,
+            "expectedNodes": len(CANONICAL_VNP_NODES),
             "isActiveStorm": False,
             "safetyGuardActive": True
         }

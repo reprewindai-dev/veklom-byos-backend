@@ -22,6 +22,17 @@ from backend.core.services.vnp_scoring import update_api_composite_score, get_ca
 router = APIRouter(prefix="/vnp", tags=["Veklom Network Protocol"])
 
 
+VNP_VERIFICATION_STACK = [
+    {"section": "Physical measurements", "status": "Live"},
+    {"section": "Signed telemetry", "status": "Live"},
+    {"section": "Route beacons", "status": "Connected"},
+    {"section": "Robust scoring", "status": "Connected"},
+    {"section": "x402 settlement evidence", "status": "Live"},
+    {"section": "PGL audit trails", "status": "Connected"},
+    {"section": "Agent/runtime enforcement", "status": "Connected", "backend": "cappo-backend"},
+]
+
+
 class ProbeMetricPayload(BaseModel):
     api_id: str
     validator_id: str
@@ -29,6 +40,46 @@ class ProbeMetricPayload(BaseModel):
     latency_ms: int
     http_status_code: int
     success: bool
+
+
+@router.get("/methodology")
+async def get_vnp_methodology() -> dict:
+    """Backend-backed VNP v1.0 methodology and route wiring manifest."""
+    return {
+        "methodology": "VNP Methodology v1.0",
+        "tagline": "Cryptographic API telemetry for the machine-to-machine economy",
+        "verification_stack": VNP_VERIFICATION_STACK,
+        "repo": "reprewindai-dev/veklom-byos-backend",
+        "backends": {
+            "byos": {
+                "status": "Live",
+                "responsibility": "VNP, x402, PGL, route beacons, scoring, settlement evidence",
+                "endpoints": {
+                    "vnp_metrics": "/api/v1/vnp/metrics",
+                    "vnp_beacon": "/api/v1/vnp/beacon",
+                    "vnp_ingestion": "/api/v1/vnp/ingestion",
+                    "x402_config": "/api/v1/x402/config",
+                    "x402_verify": "/api/v1/x402/verify",
+                    "x402_search": "/api/v1/x402/search",
+                    "x402_evaluate": "/api/v1/x402/evaluate",
+                    "x402_score": "/api/v1/x402/score",
+                    "x402_yield": "/api/v1/x402/yield/predict",
+                },
+            },
+            "cappo": {
+                "status": "Connected",
+                "responsibility": "Governed runtime execution, ExecutionIdentityV1, PGL certificates, LAW 0 enforcement",
+                "endpoint": "/v1/exec",
+            },
+        },
+        "stale_public_copy_removed": [
+            "10D",
+            "10-D",
+            "10-dimensional",
+            "10 immutable vectors",
+            "LOCKED SPECIFICATION v0.1.5",
+        ],
+    }
 
 
 @router.post("/ingestion", status_code=status.HTTP_201_CREATED)

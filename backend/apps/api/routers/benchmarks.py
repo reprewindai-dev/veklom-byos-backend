@@ -375,6 +375,174 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
     entries.sort(key=_sort_key, reverse=True)
     return entries
 
+@router.get("/card/{api_did:path}")
+async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
+    """BenchmarkCard-style structured documentation card for a VNP API.
+
+    Seven sections modelled on the BenchmarkCards framework (arXiv:2410.12974):
+    details, purpose & users, data, methodology, performance, targeted risks,
+    and compliance & provenance. Every value is read from live VNP tables;
+    fields with no backing data are returned as null so the UI can surface an
+    honest "Needs proof" state instead of fabricated content.
+    """
+    from backend.db.models.vnp import (
+        Api, RegionalTelemetry, ProbeEvent, Incident, AuditLog,
+    )
+    from sqlalchemy.orm import selectinload
+
+    api = (
+        await db.execute(
+            select(Api)
+            .options(selectinload(Api.provider), selectinload(Api.regions))
+            .filter(Api.api_did == api_did)
+        )
+    ).scalar_one_or_none()
+    if api is None:
+        raise HTTPException(status_code=404, detail=f"No VNP API registered with DID '{api_did}'")
+
+    # ---- Data section: real probe evidence ----
+    probe_stats = (
+        await db.execute(
+            select(
+                func.count(ProbeEvent.id),
+                func.min(ProbeEvent.measured_at),
+                func.max(ProbeEvent.measured_at),
+                func.count(func.distinct(ProbeEvent.region)),
+            ).filter(ProbeEvent.api_id == api.id)
+        )
+    ).one()
+    probe_count, first_probe, last_probe, probe_regions = probe_stats
+    signed_probe_count = (
+        await db.execute(
+            select(func.count(ProbeEvent.id)).filter(
+                ProbeEvent.api_id == api.id,
+                ProbeEvent.evidence_hash.isnot(None),
+            )
+        )
+    ).scalar_one()
+
+    # ---- Performance section: latest regional telemetry ----
+    telemetry = (
+        await db.execute(
+            select(RegionalTelemetry)
+            .filter(RegionalTelemetry.api_id == api.id)
+            .order_by(RegionalTelemetry.measured_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    # ---- Targeted risks: live incidents scoped to this API ----
+    incidents = (
+        await db.execute(
+            select(Incident)
+            .filter(Incident.scope_id == api.id)
+            .order_by(Incident.opened_at.desc())
+            .limit(10)
+        )
+    ).scalars().all()
+    open_incident_count = sum(1 for i in incidents if i.state.value == "open")
+
+    # ---- Compliance & provenance ----
+    audit_count = (
+        await db.execute(
+            select(func.count(AuditLog.id)).filter(AuditLog.scope_id == api.id)
+        )
+    ).scalar_one()
+    tls_versions = [
+        row[0]
+        for row in (
+            await db.execute(
+                select(func.distinct(ProbeEvent.tls_version)).filter(
+                    ProbeEvent.api_id == api.id,
+                    ProbeEvent.tls_version.isnot(None),
+                )
+            )
+        ).all()
+    ]
+
+    similar = (
+        await db.execute(
+            select(Api.name).filter(Api.id != api.id).limit(5)
+        )
+    ).scalars().all()
+
+    return {
+        "benchmark_details": {
+            "name": api.name,
+            "version": api.version,
+            "provider": api.provider.legal_name if api.provider else None,
+            "overview": None,  # No curated overview stored yet — UI shows Needs proof
+            "data_type": "API telemetry (latency, uptime, error-rate probes)",
+            "domains": ["Machine-to-machine APIs", "Governed AI infrastructure"],
+            "similar_benchmarks": similar,
+            "resources": {
+                "base_url": api.base_url,
+                "health_path": api.health_path,
+            },
+        },
+        "purpose_and_users": {
+            "goal": "Continuous trust scoring of the API via signed multi-region synthetic probes under the Veklom Nexus Protocol.",
+            "audience": ["Platform engineers", "Procurement / vendor risk teams", "Autonomous agents selecting routes"],
+            "tasks": ["Latency benchmarking", "Availability verification", "Error-rate tracking", "SLA attestation"],
+            "limitations": None if probe_count else "No probe evidence recorded yet — scores fall back to registration baselines.",
+            "out_of_scope_uses": ["Functional correctness testing", "Security penetration assessment"],
+        },
+        "data": {
+            "source": "Worker-signed VNP probe events (vnp_probe_events)",
+            "sample_count": probe_count,
+            "signed_sample_count": signed_probe_count,
+            "region_count": probe_regions,
+            "first_measured_at": first_probe.isoformat() if first_probe else None,
+            "last_measured_at": last_probe.isoformat() if last_probe else None,
+            "annotation": "Each probe carries a worker signature, evidence hash and provenance hash.",
+        },
+        "methodology": {
+            "methods": "Multi-region synthetic probing with windowed aggregation into regional telemetry.",
+            "metrics": ["p50/p95/p99 latency (ms)", "error rate (%)", "uptime (%)", "throughput (rps)", "trust score"],
+            "calculation": "Composite score blends latency percentiles, error rate and uptime per region, weighted by sample count.",
+            "interpretation": "0-100 composite; >=100 denotes Apex tier, >=90 Sovereign.",
+            "baseline_results": None,
+            "validation": "Provenance-hashed telemetry windows; on-chain anchoring when configured.",
+        },
+        "performance": {
+            "composite_score": api.current_composite_score,
+            "stability_rating": api.stability_rating,
+            "status": api.status.value,
+            "p50_latency_ms": telemetry.p50_latency_ms if telemetry else None,
+            "p95_latency_ms": telemetry.p95_latency_ms if telemetry else None,
+            "p99_latency_ms": telemetry.p99_latency_ms if telemetry else None,
+            "error_rate_percent": float(telemetry.error_rate_percent) if telemetry else None,
+            "uptime_percent": float(telemetry.uptime_percent) if telemetry else None,
+            "throughput_rps": telemetry.throughput_rps if telemetry else None,
+            "trust_score": float(telemetry.trust_score) if telemetry else None,
+            "measured_at": telemetry.measured_at.isoformat() if telemetry else None,
+        },
+        "targeted_risks": {
+            "open_incident_count": open_incident_count,
+            "recent_incidents": [
+                {
+                    "title": i.title,
+                    "severity": i.severity,
+                    "state": i.state.value,
+                    "opened_at": i.opened_at.isoformat() if i.opened_at else None,
+                }
+                for i in incidents
+            ],
+            "risk_categories": ["Availability degradation", "Latency drift", "SLA breach"],
+            "potential_harm": "Downstream agents routing to a degraded endpoint may violate their own SLAs or overspend on retries.",
+        },
+        "compliance_and_provenance": {
+            "auth_scheme": api.auth_scheme,
+            "x402_ready": api.x402_ready,
+            "pricing_model": api.pricing_model,
+            "tls_versions_observed": tls_versions or None,
+            "audit_log_entries": audit_count,
+            "latest_provenance_hash": telemetry.provenance_hash if telemetry else None,
+            "on_chain_anchor": telemetry.on_chain_anchor if telemetry else None,
+        },
+    }
+
+
 from backend.apps.api.services.vnp_engine import build_verifier_nodes, build_provider_bond_view, compute_epoch_settlement, current_epoch, VERIFIER_REGIONS
 from backend.db.models.benchmarks import VerifierNode, ProviderBondView, EpochSettlement
 

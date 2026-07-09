@@ -38,6 +38,11 @@ router = APIRouter(prefix="/banker", tags=["Banker Agent"])
 
 class BankerStatusResponse(BaseModel):
     enabled:            bool
+    configured:         bool
+    ready:              bool
+    funded:             bool
+    min_payment_usdc:   float
+    blockers:           list[str]
     agent_address:      Optional[str]
     usdc_balance:       float
     daily_spend:        dict
@@ -76,6 +81,21 @@ async def banker_status():
     enabled       = BankerAgentService.is_enabled()
     agent_address = BankerAgentService.get_agent_address()
     daily_spend   = BankerAgentService.get_daily_spend()
+    min_payment_usdc = 0.10
+    blockers: list[str] = []
+
+    if not enabled:
+        blockers.append("BANKER_AGENT_ENABLED is not true")
+
+    if not settings.VEKLOM_TREASURY_ADDRESS or not settings.VEKLOM_TREASURY_ADDRESS.startswith("0x"):
+        blockers.append("VEKLOM_TREASURY_ADDRESS is not configured")
+
+    try:
+        BankerAgentService.validate_runtime_configuration()
+        configured = True
+    except BankerAgentConfigError as exc:
+        configured = False
+        blockers.append(str(exc))
 
     usdc_balance = 0.0
     if agent_address:
@@ -83,9 +103,23 @@ async def banker_status():
             usdc_balance = await BankerAgentService.get_usdc_balance_usdc()
         except Exception as exc:
             logger.warning(f"[BankerRouter] Could not fetch USDC balance: {exc}")
+            blockers.append(f"Could not fetch USDC balance: {exc}")
+    else:
+        blockers.append("VEKLOM_AGENT_ADDRESS is not configured and no key-derived address is available")
+
+    funded = usdc_balance >= min_payment_usdc
+    if not funded:
+        blockers.append(f"Agent wallet has {usdc_balance:.6f} USDC; {min_payment_usdc:.2f} USDC required for self-prove")
+
+    ready = enabled and configured and funded and len(blockers) == 0
 
     return BankerStatusResponse(
         enabled          = enabled,
+        configured       = configured,
+        ready            = ready,
+        funded           = funded,
+        min_payment_usdc = min_payment_usdc,
+        blockers         = blockers,
         agent_address    = agent_address,
         usdc_balance     = usdc_balance,
         daily_spend      = daily_spend,

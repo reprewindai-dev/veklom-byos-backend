@@ -429,6 +429,12 @@ class BankerAgentService:
         return os.environ.get("BANKER_AGENT_ENABLED", "false").lower() in ("1", "true", "yes")
 
     @staticmethod
+    def validate_runtime_configuration() -> str:
+        """Validate the signing configuration and return the usable agent address."""
+        _, address = _load_and_validate_key()
+        return address
+
+    @staticmethod
     def get_agent_address() -> Optional[str]:
         """Returns the agent wallet address without loading the private key."""
         configured = os.environ.get("VEKLOM_AGENT_ADDRESS", "").strip()

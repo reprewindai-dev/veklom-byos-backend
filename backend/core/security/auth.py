@@ -1,8 +1,11 @@
 """JWT auth utilities."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt
+import redis
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -16,7 +19,20 @@ from backend.core.database.database import get_db, get_db_session
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security_scheme = HTTPBearer(auto_error=False)
 
-import bcrypt
+# Global Redis client for sync token replay checks
+_redis_client = None
+
+def _get_redis_client():
+    global _redis_client
+    if _redis_client is None:
+        try:
+            _redis_client = redis.Redis.from_url(
+                settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
+            )
+        except Exception as e:
+            logging.error(f"[REDIS_ERR] Failed to initialize Redis client: {e}")
+    return _redis_client
+
 
 
 def get_password_hash(password: str) -> str:
@@ -47,7 +63,6 @@ def create_access_token(
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-import logging
 
 
 def verify_token(token: str, enforce_replay: bool = False) -> dict:
@@ -75,9 +90,10 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
         # JTI replay checks (optional/configurable)
         jti = payload.get("jti")
         if jti:
-            import redis
             try:
-                r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=2)
+                r = _get_redis_client()
+                if r is None:
+                    raise redis.ConnectionError("Redis client not initialized")
                 replay_mode = str(getattr(settings, "JWT_REPLAY_ENFORCEMENT", "off")).lower()
                 replay_seen = bool(r.exists(f"jti_cache:{jti}"))
                 if replay_seen:

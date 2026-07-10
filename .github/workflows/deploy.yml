@@ -63,7 +63,7 @@ jobs:
           chmod 600 ~/.ssh/veklom-deploy
           ssh-keyscan -H 5.78.135.11 >> ~/.ssh/known_hosts
 
-      - name: Pull, Build, and Swap on Server
+      - name: Pull, Build, Migrate, and Swap on Server
         run: |
           ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 "
             set -e
@@ -71,6 +71,15 @@ jobs:
             cd \$APP
             git pull origin main
             docker build -t veklom-local:latest .
+
+            echo '--- Running Alembic migrations ---'
+            docker run --rm \
+              --network coolify \
+              --env-file \$APP/.env \
+              veklom-local:latest \
+              python -m alembic -c backend/db/migrations/alembic.ini upgrade head
+
+            echo '--- Swapping container ---'
             docker stop n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
             docker rm n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
             docker run -d \

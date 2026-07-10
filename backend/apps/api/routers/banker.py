@@ -7,7 +7,7 @@ Gold-Standard Architecture:
 
 Routes:
   POST /api/v1/banker/pay/prepare  — Create idempotency-checked pending row
-  POST /api/v1/banker/pay/confirm  — Record tx_hash + settlement proof from frontend
+  POST /api/v1/banker/pay/confirm  — Verify Base receipt and record settlement proof
   GET  /api/v1/banker/ledger       — Paginated payment history
   GET  /api/v1/banker/status       — Wallet config and treasury address
 """
@@ -26,6 +26,7 @@ from backend.core.services.banker_agent import (
     BankerAgentError,
     BankerAgentConfigError,
     BankerAgentDuplicatePaymentError,
+    BankerAgentProofError,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,8 +130,9 @@ async def banker_confirm_payment(
     """
     Step 2 of 2 in the payment flow.
 
-    Called by the frontend after the Base Account wallet provider confirms
-    the transaction. Records the tx_hash and settlement proof on the pending row.
+    Called by the frontend after the Base Account wallet provider returns
+    the transaction hash. The backend verifies the Base USDC receipt before
+    recording settlement proof on the pending row.
     """
     try:
         payment = await BankerAgentService.confirm_payment(
@@ -144,6 +146,8 @@ async def banker_confirm_payment(
         )
     except BankerAgentDuplicatePaymentError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except BankerAgentProofError as exc:
+        raise HTTPException(status_code=409, detail=f"Payment proof rejected: {exc}")
     except BankerAgentError as exc:
         raise HTTPException(status_code=500, detail=f"Payment confirmation failed: {exc}")
 

@@ -25,6 +25,7 @@ BASE_RPC_URL = os.getenv("BASE_RPC_URL", "https://mainnet.base.org")
 BASE_USDC_CONTRACT = os.getenv("BASE_USDC_CONTRACT", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
 VEKLOM_TREASURY_ADDRESS = os.getenv("VEKLOM_TREASURY_ADDRESS", "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970")
 ERC1271_MAGIC_VALUE = "1626ba7e"
+ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 
 class SessionNonceRequest(BaseModel):
@@ -116,6 +117,18 @@ class LobbyReadyRequest(LobbyCreateRequest):
 
 class LobbyEjectRequest(LobbyCreateRequest):
     ejected_multiplier: float = Field(..., gt=0, le=100)
+
+
+class SettlementProofRequest(LobbyCreateRequest):
+    settlement_tx_hash: str = Field(..., min_length=66, max_length=66)
+
+    @field_validator("settlement_tx_hash")
+    @classmethod
+    def validate_tx_hash(cls, value: str) -> str:
+        value = value.strip()
+        if not re.fullmatch(r"0x[a-fA-F0-9]{64}", value):
+            raise ValueError("settlement_tx_hash must be a 32-byte transaction hash")
+        return value.lower()
 
 
 def _normalize_address(value: str) -> str:
@@ -400,6 +413,87 @@ async def _base_usdc_balance(address: str) -> float:
     return round(raw / 1_000_000, 6)
 
 
+async def _base_rpc(method: str, params: list[Any]) -> Any:
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        response = await client.post(BASE_RPC_URL, json=payload)
+    response.raise_for_status()
+    data = response.json()
+    if data.get("error"):
+        raise HTTPException(status_code=502, detail=f"Base RPC {method} error: {data['error'].get('message', 'unknown')}")
+    return data.get("result")
+
+
+def _topic_address(topic: str) -> str:
+    clean = topic.lower().replace("0x", "")
+    if len(clean) != 64:
+        raise ValueError("invalid indexed address topic")
+    return f"0x{clean[-40:]}"
+
+
+async def _verified_usdc_settlement_proof(wager: AgentDuelWager, tx_hash: str) -> dict[str, Any]:
+    receipt = await _base_rpc("eth_getTransactionReceipt", [tx_hash])
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Settlement transaction was not found on Base")
+    if str(receipt.get("status", "")).lower() != "0x1":
+        raise HTTPException(status_code=409, detail="Settlement transaction did not succeed on Base")
+
+    tx = await _base_rpc("eth_getTransactionByHash", [tx_hash])
+    if not tx:
+        raise HTTPException(status_code=404, detail="Settlement transaction metadata was not found on Base")
+    tx_to = _normalize_address(str(tx.get("to", "")))
+    if tx_to != _normalize_address(BASE_USDC_CONTRACT):
+        raise HTTPException(status_code=409, detail="Settlement transaction is not addressed to the Base USDC contract")
+
+    expected_from = _normalize_address(wager.wallet_address)
+    expected_to = _normalize_address(VEKLOM_TREASURY_ADDRESS)
+    expected_amount = int(round(float(wager.wager_amount_usdc) * 1_000_000))
+    transfer_match: dict[str, Any] | None = None
+    for log in receipt.get("logs") or []:
+        topics = [str(topic).lower() for topic in (log.get("topics") or [])]
+        if len(topics) < 3 or topics[0] != ERC20_TRANSFER_TOPIC:
+            continue
+        if _normalize_address(str(log.get("address", ""))) != _normalize_address(BASE_USDC_CONTRACT):
+            continue
+        from_addr = _topic_address(topics[1])
+        to_addr = _topic_address(topics[2])
+        amount_micro = int(str(log.get("data", "0x0")), 16)
+        if from_addr == expected_from and to_addr == expected_to and amount_micro >= expected_amount:
+            transfer_match = {
+                "from": from_addr,
+                "to": to_addr,
+                "amount_micro": amount_micro,
+                "amount_usdc": round(amount_micro / 1_000_000, 6),
+                "log_index": int(str(log.get("logIndex", "0x0")), 16),
+            }
+            break
+    if not transfer_match:
+        raise HTTPException(status_code=409, detail="No matching Base USDC Transfer log found for wager wallet, treasury, and amount")
+
+    raw_input = str(tx.get("input") or tx.get("data") or "0x")
+    return {
+        "network": "base",
+        "chain_id": BASE_CHAIN_ID,
+        "tx_hash": tx_hash,
+        "basescan_url": f"https://basescan.org/tx/{tx_hash}",
+        "block_height": int(str(receipt.get("blockNumber", "0x0")), 16),
+        "tx_index": int(str(receipt.get("transactionIndex", "0x0")), 16),
+        "status": "success",
+        "tx_from": _normalize_address(str(tx.get("from", ""))),
+        "tx_to": tx_to,
+        "usdc_contract": _normalize_address(BASE_USDC_CONTRACT),
+        "gas": int(str(tx.get("gas", "0x0")), 16),
+        "gas_used": int(str(receipt.get("gasUsed", "0x0")), 16),
+        "gas_price_wei": int(str(tx.get("gasPrice", receipt.get("effectiveGasPrice", "0x0"))), 16),
+        "effective_gas_price_wei": int(str(receipt.get("effectiveGasPrice", tx.get("gasPrice", "0x0"))), 16),
+        "input": raw_input,
+        "function_selector": raw_input[:10] if raw_input.startswith("0x") and len(raw_input) >= 10 else None,
+        "transfer": transfer_match,
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+        "proof_source": "base_rpc_receipt",
+    }
+
+
 async def _get_session_or_404(db: AsyncSession, session_id: str) -> AgentDuelSession:
     session = await db.get(AgentDuelSession, session_id)
     if not session:
@@ -414,6 +508,8 @@ def _verify_session_token(session: AgentDuelSession, session_token: str | None) 
 
 
 def _wager_to_history(row: AgentDuelWager) -> dict[str, Any]:
+    metadata = row.metadata_json or {}
+    settlement_proof = metadata.get("settlement_proof") if isinstance(metadata, dict) else None
     return {
         "id": row.id,
         "session_id": row.session_id,
@@ -430,6 +526,12 @@ def _wager_to_history(row: AgentDuelWager) -> dict[str, Any]:
         "signature_hash": row.signature_hash,
         "proof_source": "agent_duel_wagers",
         "settlement_state": "verified_onchain" if row.settlement_tx_hash else "needs_settlement_proof",
+        "settlement_proof": settlement_proof,
+        "block_height": settlement_proof.get("block_height") if isinstance(settlement_proof, dict) else None,
+        "gas_used": settlement_proof.get("gas_used") if isinstance(settlement_proof, dict) else None,
+        "gas_price_wei": settlement_proof.get("gas_price_wei") if isinstance(settlement_proof, dict) else None,
+        "call_data": settlement_proof.get("input") if isinstance(settlement_proof, dict) else None,
+        "function_selector": settlement_proof.get("function_selector") if isinstance(settlement_proof, dict) else None,
     }
 
 
@@ -540,6 +642,7 @@ async def get_duel_proof(db: AsyncSession = Depends(get_db)):
             "outcome_persist": "verified",
             "multiplayer_lobbies": "verified",
             "wallet_balance": "base_rpc",
+            "settlement_proof_ingest": "verified",
             "settlement": "verified" if settled_count else "needs_proof",
         },
         "latest_wagers": [_wager_to_history(row) for row in latest],
@@ -778,6 +881,37 @@ async def settle_outcome(
         "settled_wagers": len(wagers),
         "outcome": body.outcome,
         "settlement_state": "verified_onchain" if body.settlement_tx_hash else "needs_settlement_proof",
+    }
+
+
+@router.post("/wagers/{wager_id}/settlement-proof")
+async def attach_wager_settlement_proof(
+    wager_id: str,
+    body: SettlementProofRequest,
+    duel_session_token: str | None = Header(default=None, alias="x-duel-session-token"),
+    db: AsyncSession = Depends(get_db),
+):
+    await _verified_session_for_wallet(db, body.session_id, body.wallet_address, duel_session_token)
+    wager = await db.get(AgentDuelWager, wager_id)
+    if not wager or wager.session_id != body.session_id or wager.wallet_address != body.wallet_address:
+        raise HTTPException(status_code=404, detail="Verified wager not found for settlement proof")
+    if wager.settlement_tx_hash and wager.settlement_tx_hash.lower() != body.settlement_tx_hash:
+        raise HTTPException(status_code=409, detail="Wager already has a different settlement tx hash")
+
+    settlement_proof = await _verified_usdc_settlement_proof(wager, body.settlement_tx_hash)
+    metadata = dict(wager.metadata_json or {})
+    metadata["settlement_proof"] = settlement_proof
+    wager.metadata_json = metadata
+    wager.settlement_tx_hash = body.settlement_tx_hash
+    wager.status = "settled" if wager.status in ("pending", "locked") else wager.status
+    wager.settled_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(wager)
+    return {
+        "success": True,
+        "source": "base_rpc_receipt",
+        "wager": _wager_to_history(wager),
+        "settlement_proof": settlement_proof,
     }
 
 

@@ -600,7 +600,7 @@ class BankerAgentService:
                 address=Web3.to_checksum_address(USDC_CONTRACT),
                 abi=[_ERC20_TRANSFER_ABI, _ERC20_BALANCE_ABI],
             )
-            data = usdc_iface.encodeABI(
+            data = usdc_iface.encode_abi(
                 fn_name="transfer",
                 args=[
                     Web3.to_checksum_address(treasury),

@@ -509,3 +509,109 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
             await db.commit()
     
     return response
+
+
+# ---------------------------------------------------------------------------
+# Real Threat Evaluation — no agent pre-registration needed
+# ---------------------------------------------------------------------------
+
+@router.post("/playground/evaluate")
+async def evaluate_threat(
+    body: dict,
+    user=Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Run a payload through the real guardrail engine without requiring a
+    pre-registered agent. Used by the playground threat scenarios to produce
+    genuine violation data instead of setTimeout theatre.
+
+    Body:
+        threat_type: "injection" | "depth" | "credentials" | "pii" | "schema"
+        payload: dict   — the adversarial payload to evaluate
+        prompt: str     — the user prompt context (used for injection checks)
+
+    Returns:
+        allowed: bool
+        blocked_at_phase: int          — which of the 5 moats caught it (1-5)
+        blocked_at_name: str
+        risk_score: float
+        violations: list[dict]
+        reason: str
+        scan_ms: int
+    """
+    import time as _time
+    from backend.core.services.guardrail_service import get_guardrail_service
+
+    threat_type = body.get("threat_type", "injection")
+    payload     = body.get("payload", {})
+    prompt      = body.get("prompt", "")
+    user_id     = user.id if user else "anonymous"
+
+    # Build the full input surface — combine the prompt text with the payload
+    # so the real regex scanners see the entire surface area of the request.
+    scan_target = {
+        **payload,
+        "_prompt": prompt,
+        "_threat_type": threat_type,
+    }
+
+    t0 = _time.monotonic()
+    gs = get_guardrail_service()
+
+    # No DB-stored rules needed — the built-in security scan is enough
+    safety = await gs.evaluate_input_safety(
+        input_data=scan_target,
+        user_id=user_id,
+        agent_id="playground",
+        rules=[],          # rely on built-in dangerous_patterns + blocked_keywords
+    )
+    scan_ms = int((_time.monotonic() - t0) * 1000)
+
+    # Map what the engine found to which named gateway moat blocked it.
+    # Order mirrors the frontend GATEWAY_PHASES array (1-indexed).
+    PHASE_MAP = {
+        "command_injection":  (4, "SEKED Policy Gate"),
+        "sql_injection":      (4, "SEKED Policy Gate"),
+        "script_injection":   (3, "Sanitization Moat"),
+        "path_traversal":     (2, "Schema Moat"),
+        "credential_exposure":(3, "Sanitization Moat"),
+        "data_leak":          (3, "Sanitization Moat"),
+        "blocked_content":    (4, "SEKED Policy Gate"),
+        "size_limit":         (1, "cAPI Intercept"),
+        "rate_limit":         (1, "cAPI Intercept"),
+        "pii_detection":      (3, "Sanitization Moat"),
+        "security":           (4, "SEKED Policy Gate"),
+    }
+
+    blocked_phase = 5
+    blocked_name  = "x402 Token Swap"
+
+    if not safety.passed and safety.violations:
+        for v in safety.violations:
+            vtype = v.get("type") or v.get("attack_type", "")
+            if vtype in PHASE_MAP:
+                candidate_phase, candidate_name = PHASE_MAP[vtype]
+                if candidate_phase < blocked_phase:
+                    blocked_phase = candidate_phase
+                    blocked_name  = candidate_name
+
+    # Build human-readable reason
+    if safety.violations:
+        reasons = []
+        for v in safety.violations:
+            msg = v.get("message") or v.get("attack_type") or v.get("type") or "policy violation"
+            reasons.append(msg)
+        reason = "; ".join(reasons[:3])
+    else:
+        reason = "All moats cleared."
+
+    return {
+        "allowed":          safety.passed,
+        "blocked_at_phase": blocked_phase if not safety.passed else None,
+        "blocked_at_name":  blocked_name  if not safety.passed else None,
+        "risk_score":       round(safety.risk_score, 3),
+        "violations":       safety.violations or [],
+        "reason":           reason,
+        "scan_ms":          scan_ms,
+    }

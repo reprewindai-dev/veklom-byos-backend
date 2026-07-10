@@ -1,6 +1,6 @@
-"""Playground routes — sessions, prompts, tools, response-format."""
-
 from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -11,6 +11,45 @@ from backend.core.security.auth import get_current_user, get_current_user_option
 from backend.db.models.playground import PlaygroundPrompt, PlaygroundSession
 
 router = APIRouter(tags=["Playground"])
+
+# --- Strict Pydantic models for OpenAPI schema hardening ---
+
+class PlaygroundSessionCreate(BaseModel):
+    name: Optional[str] = Field("New Session", description="Human-readable name of the session")
+    model: Optional[str] = Field("", description="Primary model ID")
+    mode: Optional[str] = Field("chat", description="Chat or completion mode")
+    system_prompt: Optional[str] = Field("", description="Default system prompt context")
+    messages: Optional[List[Dict[str, Any]]] = Field([], description="Normalized messages array")
+    tools: Optional[List[str]] = Field([], description="Enabled tool IDs list")
+    response_format: Optional[str] = Field("text", description="text, json or format specifications")
+    policy: Optional[str] = Field("", description="Associated policy bundle ID or inline rules")
+    tags: Optional[List[str]] = Field([], description="Labels and grouping metadata")
+
+class PlaygroundSessionUpdate(BaseModel):
+    name: Optional[str] = None
+    model: Optional[str] = None
+    mode: Optional[str] = None
+    system_prompt: Optional[str] = None
+    messages: Optional[List[Dict[str, Any]]] = None
+    tools: Optional[List[str]] = None
+    response_format: Optional[str] = None
+    policy: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class PlaygroundInferenceRequest(BaseModel):
+    session_id: Optional[str] = Field(None, description="Optional session context boundary")
+    message: Optional[str] = Field(None, description="User query prompt")
+    prompt: Optional[str] = Field(None, description="Legacy fallback user query")
+    messages: Optional[List[Dict[str, Any]]] = Field(None, description="Chat messages trace list")
+    model: Optional[str] = Field("llama3.2:latest", description="Target model ID")
+    temperature: Optional[float] = Field(0.7, description="Sampling temperature")
+    max_tokens: Optional[int] = Field(2048, description="Maximum Generation tokens")
+
+class PlaygroundEvaluateRequest(BaseModel):
+    threat_type: str = Field(..., description="The threat scenario category (injection, depth, credentials, pii)")
+    payload: Dict[str, Any] = Field(..., description="Adversarial input/payload parameters dict")
+    prompt: Optional[str] = Field("", description="Surrounding prompt text context")
+
 
 
 # ---------------------------------------------------------------------------
@@ -78,20 +117,21 @@ async def list_sessions(user=Depends(get_current_user), db: AsyncSession = Depen
 
 
 @router.post("/playground/sessions")
-async def create_session(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_session(body: PlaygroundSessionCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     now = datetime.now(timezone.utc)
+    body_dict = body.model_dump(exclude_unset=True)
     s = PlaygroundSession(
         user_id=user.id,
         workspace_id=user.workspace_id or "",
-        name=body.get("name", "New Session"),
-        model=body.get("model", ""),
-        mode=body.get("mode", "chat"),
-        system_prompt=body.get("system_prompt", ""),
-        messages=body.get("messages", []),
-        tools=body.get("tools", []),
-        response_format=body.get("response_format", "text"),
-        policy=body.get("policy", ""),
-        tags=body.get("tags", []),
+        name=body_dict.get("name", "New Session"),
+        model=body_dict.get("model", ""),
+        mode=body_dict.get("mode", "chat"),
+        system_prompt=body_dict.get("system_prompt", ""),
+        messages=body_dict.get("messages", []),
+        tools=body_dict.get("tools", []),
+        response_format=body_dict.get("response_format", "text"),
+        policy=body_dict.get("policy", ""),
+        tags=body_dict.get("tags", []),
         created_at=now,
         updated_at=now,
     )
@@ -116,7 +156,7 @@ async def get_session(session_id: str, user=Depends(get_current_user), db: Async
 
 
 @router.patch("/playground/sessions/{session_id}")
-async def update_session(session_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def update_session(session_id: str, body: PlaygroundSessionUpdate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(PlaygroundSession).where(
             PlaygroundSession.id == session_id,
@@ -126,9 +166,10 @@ async def update_session(session_id: str, body: dict, user=Depends(get_current_u
     s = result.scalar_one_or_none()
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    body_dict = body.model_dump(exclude_unset=True)
     for field in ("name", "model", "mode", "system_prompt", "messages", "tools", "response_format", "policy", "tags"):
-        if field in body:
-            setattr(s, field, body[field])
+        if field in body_dict and body_dict[field] is not None:
+            setattr(s, field, body_dict[field])
     s.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return _session_dict(s)
@@ -373,14 +414,15 @@ async def list_tools(
 @router.post("/playground/inference")
 @router.post("/ai/chat")
 @router.post("/chat/completions")
-async def run_inference(body: dict, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
+async def run_inference(body: PlaygroundInferenceRequest, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
     """Execute inference using the session configuration."""
-    session_id = body.get("session_id")
-    message = body.get("message", "")
+    body_dict = body.model_dump(exclude_unset=True)
+    session_id = body_dict.get("session_id")
+    message = body_dict.get("message", "")
     if not message:
-        message = body.get("prompt", "")
-    if not message and "messages" in body:
-        msgs = body.get("messages", [])
+        message = body_dict.get("prompt", "")
+    if not message and "messages" in body_dict:
+        msgs = body_dict.get("messages", [])
         if isinstance(msgs, list) and msgs:
             # Get the content of the last user message
             for msg in reversed(msgs):
@@ -396,7 +438,7 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
     # Enforce MCP Gateway checks: prompt injection scan, rate limits, and filesystem path blocks
     from backend.core.security.mcp_gateway import MCPGateway
     MCPGateway.sanitize_and_check(message, field_name="playground_prompt")
-    MCPGateway.enforce_rate_limit(f"user_{user.id}")
+    MCPGateway.enforce_rate_limit(f"user_{user.id}" if user else "anonymous")
     MCPGateway.pre_execution_file_hook(message)
     
     # If session_id provided, load session context
@@ -405,7 +447,7 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
         result = await db.execute(
             select(PlaygroundSession).where(
                 PlaygroundSession.id == session_id,
-                PlaygroundSession.workspace_id == (user.workspace_id or ""),
+                PlaygroundSession.workspace_id == (user.workspace_id or "" if user else ""),
             )
         )
         s = result.scalar_one_or_none()
@@ -421,7 +463,7 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
     # Call real AI completion
     from backend.core.ai.provider_router import run_completion
     
-    selected_model_id = session_context.get("model", body.get("model", "qwen2.5:3b"))
+    selected_model_id = session_context.get("model", body_dict.get("model", "qwen2.5:3b"))
     t0 = __import__("time").monotonic()
     try:
         result = await run_completion({
@@ -517,7 +559,7 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
 
 @router.post("/playground/evaluate")
 async def evaluate_threat(
-    body: dict,
+    body: PlaygroundEvaluateRequest,
     user=Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ):
@@ -525,27 +567,14 @@ async def evaluate_threat(
     Run a payload through the real guardrail engine without requiring a
     pre-registered agent. Used by the playground threat scenarios to produce
     genuine violation data instead of setTimeout theatre.
-
-    Body:
-        threat_type: "injection" | "depth" | "credentials" | "pii" | "schema"
-        payload: dict   — the adversarial payload to evaluate
-        prompt: str     — the user prompt context (used for injection checks)
-
-    Returns:
-        allowed: bool
-        blocked_at_phase: int          — which of the 5 moats caught it (1-5)
-        blocked_at_name: str
-        risk_score: float
-        violations: list[dict]
-        reason: str
-        scan_ms: int
     """
     import time as _time
     from backend.core.services.guardrail_service import get_guardrail_service
 
-    threat_type = body.get("threat_type", "injection")
-    payload     = body.get("payload", {})
-    prompt      = body.get("prompt", "")
+    payload_dict = body.model_dump()
+    threat_type = payload_dict.get("threat_type", "injection")
+    payload     = payload_dict.get("payload", {})
+    prompt      = payload_dict.get("prompt", "")
     user_id     = user.id if user else "anonymous"
 
     # Build the full input surface — combine the prompt text with the payload

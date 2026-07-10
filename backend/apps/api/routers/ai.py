@@ -3,6 +3,8 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional
 
 import time as _time
 
@@ -29,6 +31,31 @@ from backend.db.models.ai import ExecLog
 from backend.db.models.provider import ProviderKey
 from backend.core.security.key_encryption import decrypt_key
 
+# --- Strict Pydantic Models for OpenAPI Schema Hardening ---
+
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="Author role (system, user, assistant)")
+    content: str = Field(..., description="Message text content")
+
+class AICompleteRequest(BaseModel):
+    model: str = Field("llama3.2:latest", description="Target model ID")
+    messages: List[ChatMessage] = Field(..., description="Normalized chat completion messages")
+    temperature: Optional[float] = Field(0.7, description="Sampling temperature")
+    max_tokens: Optional[int] = Field(2048, description="Maximum response tokens")
+
+class AIPredictCostRequest(BaseModel):
+    model: Optional[str] = Field("gpt-4o", description="Model identifier to base pricing on")
+    input_tokens: Optional[int] = Field(1000, description="Number of input tokens")
+    estimated_tokens: Optional[int] = Field(None, description="Fallback input token estimate")
+    output_tokens: Optional[int] = Field(0, description="Number of output tokens")
+
+class AIInferenceRequest(BaseModel):
+    model: Optional[str] = Field("llama3.2:latest", description="Model ID to select")
+    messages: List[ChatMessage] = Field(..., description="Context messages array")
+    temperature: Optional[float] = Field(0.7, description="Sampling temperature")
+    max_tokens: Optional[int] = Field(2048, description="Maximum generation length")
+    stream: Optional[bool] = Field(False, description="Whether to enable SSE stream")
+
 router = APIRouter(
     prefix="/ai",
     tags=["AI"],
@@ -41,31 +68,14 @@ router = APIRouter(
 
 
 @router.post("/complete")
-async def ai_complete(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def ai_complete(body: AICompleteRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Handle an AI completion request, persist an execution log, and return the generated text with usage and billing metadata.
-    
-    Parameters:
-        body (dict): Completion request payload forwarded to the completion service; expected to include at least the model and messages/prompts.
-    
-    Returns:
-        dict: Response containing:
-            - id (str): Run identifier derived from the persisted ExecLog.
-            - response_text (str): Generated completion text.
-            - input_tokens (int): Number of prompt/input tokens used.
-            - output_tokens (int): Number of completion/output tokens produced.
-            - tokens_deducted (int): Total tokens charged (input + output).
-            - provider (str): Provider that produced the result.
-            - model (str): Model identifier used for the completion.
-            - route (str): Routing label used for the request.
-            - policy (dict): Policy evaluation summary for the request.
-            - audit_id (int): Database ExecLog primary key for this run.
-            - latency_ms (int): Round-trip latency in milliseconds measured for the completion call.
-            - cost_usd (float): Computed cost for the run in USD.
-            - content_safety_score (float): Safety score assigned to the response.
     """
     t0 = _time.monotonic()
-    result = await run_completion(body, stream=False)
+    # Convert request to dictionary for run_completion hook compatibility
+    payload_dict = body.model_dump()
+    result = await run_completion(payload_dict, stream=False)
     latency_ms = int((_time.monotonic() - t0) * 1000)
 
     data = result.payload
@@ -74,7 +84,7 @@ async def ai_complete(body: dict, user=Depends(get_current_user), db: AsyncSessi
     input_tokens = usage.get("prompt_tokens", 0)
     output_tokens = usage.get("completion_tokens", 0)
     total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
-    model = data.get("model", body.get("model", "unknown"))
+    model = data.get("model", body.model or "unknown")
 
     log = ExecLog(
         user_id=user.id,
@@ -112,14 +122,6 @@ async def ai_complete(body: dict, user=Depends(get_current_user), db: AsyncSessi
 async def list_models(user=Depends(get_current_user)):
     """
     Return available AI model metadata.
-    
-    Returns:
-        list[dict]: A list of model descriptors. Each dictionary contains:
-            - `id` (str): Model identifier.
-            - `provider` (str): Provider name.
-            - `name` (str): Human-readable model name.
-            - `context_window` (int): Maximum context length in tokens.
-            - `cost_per_1k_input` (float): Cost in USD per 1,000 input tokens.
     """
     return [
         {"id": "llama3.2:latest", "provider": "ollama", "name": "Ollama Llama 3.2 3B", "context_window": 32768, "cost_per_1k_input": 0.0},
@@ -135,44 +137,21 @@ async def list_models(user=Depends(get_current_user)):
 async def list_providers(user=Depends(get_current_user)):
     """
     Provides available AI providers and the default provider ordering.
-    
-    Returns:
-        dict: Mapping with keys:
-            - "default_order": dict mapping provider ID to numeric priority.
-            - "providers": list of provider IDs in the default sequence (e.g., ["ollama", "groq", "huggingface", "ollama", "groq", "huggingface", "gemini", "openai"]).
     """
     return {"default_order": provider_order({}), "providers": ["ollama", "groq", "huggingface", "ollama", "groq", "huggingface", "gemini", "openai"]}
 
 
 @router.post("/predict-cost")
-async def predict_cost(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def predict_cost(body: AIPredictCostRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Estimate API usage cost for a given model and token counts.
-    
-    Parameters:
-        body (dict): Request payload. Recognized keys:
-            - model (str): Model identifier to base pricing on; defaults to "gpt-4o".
-            - input_tokens (int): Number of input tokens to price. If absent, `estimated_tokens` is used; defaults to 1000.
-            - estimated_tokens (int): Fallback for input token estimate.
-            - output_tokens (int): Number of output tokens to price; defaults to 0.
-    
-    Returns:
-        dict: Cost estimate containing:
-            - model (str): The model id used for pricing.
-            - input_tokens (int): Input token count used.
-            - output_tokens (int): Output token count used.
-            - total_tokens (int): Sum of input and output tokens.
-            - cost_per_1k_input (float): Input cost per 1k tokens (USD).
-            - cost_per_1k_output (float): Output cost per 1k tokens (USD).
-            - estimated_cost_usd (float): Rounded total estimated cost in USD.
-            - currency (str): Currency code, always "USD".
     """
     from backend.db.models.workspace import ModelConfig
     from sqlalchemy import select
     
-    model_id = body.get("model", "gpt-4o")
-    input_tokens = body.get("input_tokens", body.get("estimated_tokens", 1000))
-    output_tokens = body.get("output_tokens", 0)
+    model_id = body.model or "gpt-4o"
+    input_tokens = body.input_tokens if body.input_tokens is not None else (body.estimated_tokens if body.estimated_tokens is not None else 1000)
+    output_tokens = body.output_tokens or 0
     
     # Try to get real model costs from database
     workspace_id = user.workspace_id or "default"
@@ -226,34 +205,16 @@ async def predict_cost(body: dict, user=Depends(get_current_user), db: AsyncSess
 # ---------------------------------------------------------------------------
 
 @router.post("/inference")
-async def ai_inference(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def ai_inference(body: AIInferenceRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Perform policy-guided AI inference with hot/warm caching and tenant-aware provider selection.
-    
-    Returns:
-        A mapping with inference results and metadata. Common keys:
-            id (str): Unique inference identifier.
-            response_text (str): Generated text from the model.
-            provider (str): Provider name that produced or would produce the response.
-            model (str): Model identifier used or returned by the provider.
-            tier (str): Selected task tier used for provider routing.
-            cache_hit (str|None): `"hot"` or `"warm"` when served from cache, `None` when freshly computed.
-            policy (dict): Policy evaluation summary (e.g., `{"status": "passed", ...}`).
-            latency_ms (int): Round-trip latency in milliseconds.
-            cost_usd (float): Estimated cost for the response (0.0 for cache hits).
-    
-        Additional keys present for cache misses:
-            escalation_reason (str|None): Reason for escalation when provider routing changed.
-            key_source (str|None): Source of the API key used for the outbound call.
-            audit_id (int): ID of the persisted execution log record.
-            input_tokens (int): Count of prompt/input tokens billed.
-            output_tokens (int): Count of completion/output tokens billed.
     """
     t0 = _time.monotonic()
-    messages = normalize_messages(body)
-    model = body.get("model") or "llama3.2:latest"
-    temperature = float(body.get("temperature", 0.7))
-    tier = task_tier(body)
+    payload_dict = body.model_dump()
+    messages = normalize_messages(payload_dict)
+    model = payload_dict.get("model") or "llama3.2:latest"
+    temperature = float(payload_dict.get("temperature", 0.7))
+    tier = task_tier(payload_dict)
     workspace_id = user.workspace_id or "default"
 
     # 1. Hot cache check
@@ -296,7 +257,7 @@ async def ai_inference(body: dict, user=Depends(get_current_user), db: AsyncSess
         except Exception:
             continue
 
-    override_body = {**body, "messages": messages}
+    override_body = {**payload_dict, "messages": messages}
     result, key_source, reason = await run_completion_for_tenant(
         override_body, workspace_id, byok_keys=byok_keys
     )
@@ -376,39 +337,23 @@ async def ai_inference(body: dict, user=Depends(get_current_user), db: AsyncSess
 
 @router.post("/chat")
 async def ai_chat(
-    body: dict,
+    body: AIChatRequest,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Handle a single chat turn using per-session Redis memory (max 20 messages, 24-hour TTL).
-    
-    Processes the incoming user messages, loads the session history, checks hot/warm caches for a full-context response, routes to a selected provider on cache miss, updates session memory and caches with the assistant reply, records an execution audit, and returns the response and metadata.
-    
-    Parameters:
-        body (dict): Request payload containing the user messages (as `messages` or equivalent), and optional keys: `session_id`, `model`, and `temperature`.
-    
-    Returns:
-        dict: Response payload including at least:
-            - `response_text` (str): Assistant reply text.
-            - `session_id` (str): Session identifier used.
-            - `provider` (str): Provider name used or inferred.
-            - `model` (str): Model identifier used.
-            - `tier` (str): Routing tier applied.
-            - `cache_hit` (str|None): `"hot"` for cache hit, `None` for miss.
-            - `memory` (dict): Memory metadata with `message_count`, `max` (20), and `ttl_hours` (24).
-            - `latency_ms` (int): Round-trip latency in milliseconds.
-            - On cache miss: additional fields such as `escalation_reason` (or null), `key_source`, `policy`, `audit_id`, `input_tokens`, `output_tokens`, and `cost_usd`.
     """
     t0 = _time.monotonic()
     workspace_id = user.workspace_id or "default"
-    session_id = body.get("session_id") or f"sess_{user.id}"
-    model = body.get("model") or "llama3.2:latest"
-    temperature = float(body.get("temperature", 0.7))
-    tier = task_tier(body)
+    payload_dict = body.model_dump()
+    session_id = payload_dict.get("session_id") or f"sess_{user.id}"
+    model = payload_dict.get("model") or "llama3.2:latest"
+    temperature = float(payload_dict.get("temperature", 0.7))
+    tier = task_tier(payload_dict)
 
     # New user message(s) from body
-    new_user_msgs = normalize_messages(body)
+    new_user_msgs = normalize_messages(payload_dict)
 
     # 1. Load existing conversation history
     history = await get_memory(workspace_id, session_id)
@@ -451,7 +396,7 @@ async def ai_chat(
         except Exception:
             continue
 
-    completion_body = {**body, "messages": full_context}
+    completion_body = {**payload_dict, "messages": full_context}
     result, key_source, reason = await run_completion_for_tenant(
         completion_body, workspace_id, byok_keys=byok_keys
     )

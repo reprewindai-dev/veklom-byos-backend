@@ -54,6 +54,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback", "/api/v1/vnp",
             "/api/v1/amphoteric/discover", "/api/v1/amphoteric/call",
             "/api/v1/onboarding", "/onboarding-dashboard", "/api/v1/banker/self-prove",
+            "/api/v1/duel",
             "/api/v1/beacon"
         )
         

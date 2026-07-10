@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+from datetime import datetime
+import uuid
+
+from sqlalchemy import DateTime, Float, Index, Integer, JSON, String, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from backend.core.database.database import Base
+
+
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+
+class AgentDuelSession(Base):
+    __tablename__ = "agent_duel_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    wallet_address: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
+    balance_usdc: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    network: Mapped[str] = mapped_column(String(32), nullable=False, default="base")
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_agent_duel_sessions_wallet_created", "wallet_address", "created_at"),
+    )
+
+
+class AgentDuelWager(Base):
+    __tablename__ = "agent_duel_wagers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    wallet_address: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    bet_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    wager_amount_usdc: Mapped[float] = mapped_column(Float, nullable=False)
+    payment_signature: Mapped[str] = mapped_column(String(4096), nullable=False)
+    signature_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    outcome: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    payout_multiplier: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    payout_usdc: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    settlement_tx_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_agent_duel_wagers_wallet_created", "wallet_address", "created_at"),
+        Index("ix_agent_duel_wagers_session_created", "session_id", "created_at"),
+    )
+

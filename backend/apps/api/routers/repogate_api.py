@@ -51,6 +51,7 @@ DEFAULT_RULES = [
 GITHUB_RE = re.compile(r"^https?://(?:www\.)?github\.com/([^/]+)/([^/?#]+)/?")
 
 from backend.core.security.auth import get_current_user
+from backend.core.security.encryption import decrypt_token
 
 @router.post("/scan")
 async def scan_repo(req: ScanRequest, user=Depends(get_current_user)):
@@ -59,11 +60,16 @@ async def scan_repo(req: ScanRequest, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Invalid GitHub URL")
     owner, name = m.group(1), m.group(2).removesuffix(".git")
 
-    if not getattr(user, "github_access_token", None):
+    encrypted_token = getattr(user, "github_access_token", None)
+    if not encrypted_token:
         raise HTTPException(status_code=403, detail="GitHub integration not configured for this user. Please link your GitHub account.")
 
+    token = decrypt_token(encrypted_token)
+    if not token:
+        raise HTTPException(status_code=403, detail="Failed to decrypt GitHub access token.")
+
     headers = {
-        "Authorization": f"Bearer {user.github_access_token}",
+        "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github.v3+json",
         "X-GitHub-Api-Version": "2022-11-28"
     }

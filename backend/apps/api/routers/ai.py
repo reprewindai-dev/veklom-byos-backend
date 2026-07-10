@@ -56,6 +56,13 @@ class AIInferenceRequest(BaseModel):
     max_tokens: Optional[int] = Field(2048, description="Maximum generation length")
     stream: Optional[bool] = Field(False, description="Whether to enable SSE stream")
 
+class AIChatRequest(BaseModel):
+    session_id: Optional[str] = Field(None, description="Persistent conversation session ID")
+    model: Optional[str] = Field("llama3.2:latest", description="Model identifier to use")
+    messages: List[ChatMessage] = Field(..., description="Normalized message turns list")
+    temperature: Optional[float] = Field(0.7, description="Sampling temperature")
+    max_tokens: Optional[int] = Field(2048, description="Maximum tokens to generate")
+
 router = APIRouter(
     prefix="/ai",
     tags=["AI"],

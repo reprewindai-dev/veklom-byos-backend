@@ -54,3 +54,43 @@ class AgentDuelWager(Base):
         Index("ix_agent_duel_wagers_session_created", "session_id", "created_at"),
     )
 
+
+class AgentDuelLobby(Base):
+    __tablename__ = "agent_duel_lobbies"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    host_wallet_address: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open", index=True)
+    max_players: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_agent_duel_lobbies_status_created", "status", "created_at"),
+        Index("ix_agent_duel_lobbies_host_created", "host_wallet_address", "created_at"),
+    )
+
+
+class AgentDuelLobbyPlayer(Base):
+    __tablename__ = "agent_duel_lobby_players"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    lobby_id: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    wallet_address: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="joined", index=True)
+    bet_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    wager_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    wager_amount_usdc: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    ejected_multiplier: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payout_usdc: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_agent_duel_lobby_players_lobby_wallet", "lobby_id", "wallet_address"),
+        Index("ix_agent_duel_lobby_players_lobby_status", "lobby_id", "status"),
+    )
+

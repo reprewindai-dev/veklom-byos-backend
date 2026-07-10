@@ -88,6 +88,10 @@ class WagerRequest(BaseModel):
         return _normalize_address(value)
 
 
+class WagerPrepareRequest(WagerRequest):
+    idempotency_key: str | None = Field(None, min_length=8, max_length=128)
+
+
 class OutcomeRequest(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=64)
     outcome: Literal["player", "banker", "tie"]
@@ -639,6 +643,8 @@ async def get_duel_proof(db: AsyncSession = Depends(get_db)):
             "session_create": "verified",
             "session_auth": "siwe",
             "wager_persist": "verified",
+            "wager_prepare": "verified",
+            "frontend_base_account_send": "verified",
             "outcome_persist": "verified",
             "multiplayer_lobbies": "verified",
             "wallet_balance": "base_rpc",
@@ -846,6 +852,66 @@ async def place_wager(
     }
 
 
+@router.post("/wager/prepare")
+async def prepare_wager_transaction(
+    body: WagerPrepareRequest,
+    duel_session_token: str | None = Header(default=None, alias="x-duel-session-token"),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await _verified_session_for_wallet(db, body.session_id, body.wallet_address, duel_session_token)
+    idempotency_key = body.idempotency_key or f"{body.session_id}:{body.wallet_address}:{body.bet_type}:{body.wager_amount_usdc}"
+    idempotency_hash = _signature_hash(f"agent-duel-frontend-send:{idempotency_key}")
+    existing = await db.scalar(select(AgentDuelWager).where(AgentDuelWager.signature_hash == idempotency_hash))
+    if existing:
+        return {
+            "success": True,
+            "source": "agent_duel_wagers",
+            "wager_id": existing.id,
+            "status": existing.status,
+            "idempotent": True,
+            "settlement": {
+                "network": "base",
+                "chain_id": BASE_CHAIN_ID,
+                "usdc_contract": BASE_USDC_CONTRACT,
+                "to": VEKLOM_TREASURY_ADDRESS,
+                "value_micro_usdc": int(round(existing.wager_amount_usdc * 1_000_000)),
+            },
+        }
+
+    wager = AgentDuelWager(
+        session_id=session.id,
+        wallet_address=body.wallet_address,
+        bet_type=body.bet_type,
+        wager_amount_usdc=round(body.wager_amount_usdc, 6),
+        payment_signature="frontend_base_account_send",
+        signature_hash=idempotency_hash,
+        status="pending_payment",
+        metadata_json={
+            "payment_mode": "frontend_base_account_send",
+            "idempotency_key_hash": idempotency_hash,
+            "chain_id": BASE_CHAIN_ID,
+            "usdc_contract": BASE_USDC_CONTRACT,
+            "treasury_address": VEKLOM_TREASURY_ADDRESS,
+        },
+    )
+    db.add(wager)
+    await db.commit()
+    await db.refresh(wager)
+    return {
+        "success": True,
+        "source": "agent_duel_wagers",
+        "wager_id": wager.id,
+        "status": wager.status,
+        "settlement": {
+            "network": "base",
+            "chain_id": BASE_CHAIN_ID,
+            "usdc_contract": BASE_USDC_CONTRACT,
+            "to": VEKLOM_TREASURY_ADDRESS,
+            "value_micro_usdc": int(round(wager.wager_amount_usdc * 1_000_000)),
+        },
+    }
+
+
 @router.post("/outcome")
 async def settle_outcome(
     body: OutcomeRequest,
@@ -871,7 +937,8 @@ async def settle_outcome(
         wager.payout_multiplier = multiplier
         wager.payout_usdc = round(payout, 6)
         wager.status = "settled"
-        wager.settlement_tx_hash = body.settlement_tx_hash
+        if body.settlement_tx_hash:
+            wager.settlement_tx_hash = body.settlement_tx_hash
         wager.settled_at = datetime.now(timezone.utc)
 
     await db.commit()
@@ -880,7 +947,7 @@ async def settle_outcome(
         "session_id": body.session_id,
         "settled_wagers": len(wagers),
         "outcome": body.outcome,
-        "settlement_state": "verified_onchain" if body.settlement_tx_hash else "needs_settlement_proof",
+        "settlement_state": "verified_onchain" if any(wager.settlement_tx_hash for wager in wagers) else "needs_settlement_proof",
     }
 
 
@@ -903,8 +970,8 @@ async def attach_wager_settlement_proof(
     metadata["settlement_proof"] = settlement_proof
     wager.metadata_json = metadata
     wager.settlement_tx_hash = body.settlement_tx_hash
-    wager.status = "settled" if wager.status in ("pending", "locked") else wager.status
-    wager.settled_at = datetime.now(timezone.utc)
+    if wager.status in ("pending_payment", "pending"):
+        wager.status = "locked"
     await db.commit()
     await db.refresh(wager)
     return {

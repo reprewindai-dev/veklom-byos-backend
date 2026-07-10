@@ -23,6 +23,7 @@ BASE_CHAIN_ID = 8453
 BASE_RPC_URL = os.getenv("BASE_RPC_URL", "https://mainnet.base.org")
 BASE_USDC_CONTRACT = os.getenv("BASE_USDC_CONTRACT", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
 VEKLOM_TREASURY_ADDRESS = os.getenv("VEKLOM_TREASURY_ADDRESS", "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970")
+ERC1271_MAGIC_VALUE = "1626ba7e"
 
 
 class SessionCreateRequest(BaseModel):
@@ -84,7 +85,38 @@ def _decode_payment_signature(payment_signature: str | None) -> dict[str, Any]:
     return payload["payload"]
 
 
-def _verify_eip712_payment_signature(payment_payload: dict[str, Any], wallet_address: str, amount_usdc: float) -> dict[str, Any]:
+def _strip_hex_prefix(value: str) -> str:
+    return value[2:] if value.startswith("0x") else value
+
+
+async def _verify_erc1271_signature(wallet_address: str, digest_hex: str, signature: str) -> bool:
+    address_word = _normalize_address(wallet_address).replace("0x", "").rjust(64, "0")
+    digest_word = _strip_hex_prefix(digest_hex).rjust(64, "0")
+    signature_hex = _strip_hex_prefix(signature)
+    if len(signature_hex) % 2 != 0:
+        signature_hex = f"0{signature_hex}"
+    signature_bytes_len = len(signature_hex) // 2
+    signature_offset = (64).to_bytes(32, "big").hex()
+    signature_length = signature_bytes_len.to_bytes(32, "big").hex()
+    padded_signature = signature_hex.ljust(((signature_bytes_len + 31) // 32) * 64, "0")
+    data = f"0x{ERC1271_MAGIC_VALUE}{digest_word}{signature_offset}{signature_length}{padded_signature}"
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_call",
+        "params": [{"to": f"0x{address_word[-40:]}", "data": data}, "latest"],
+    }
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        response = await client.post(BASE_RPC_URL, json=payload)
+    response.raise_for_status()
+    result = response.json()
+    if result.get("error"):
+        return False
+    returned = str(result.get("result", "")).lower().replace("0x", "")
+    return returned.startswith(ERC1271_MAGIC_VALUE)
+
+
+async def _verify_eip712_payment_signature(payment_payload: dict[str, Any], wallet_address: str, amount_usdc: float) -> dict[str, Any]:
     authorization = payment_payload.get("authorization")
     signature = payment_payload.get("signature")
     if not isinstance(authorization, dict) or not isinstance(signature, str):
@@ -146,15 +178,50 @@ def _verify_eip712_payment_signature(payment_payload: dict[str, Any], wallet_add
 
     try:
         from eth_account import Account
-        from eth_account.messages import encode_typed_data
+        from eth_account.messages import _hash_eip191_message, encode_typed_data
 
         signable = encode_typed_data(full_message=typed_data)
+        digest = _hash_eip191_message(signable)
+        digest_hex = f"0x{digest.hex()}"
         recovered = Account.recover_message(signable, signature=signature)
     except Exception as exc:
+        try:
+            from eth_account.messages import _hash_eip191_message, encode_typed_data
+
+            signable = encode_typed_data(full_message=typed_data)
+            digest = _hash_eip191_message(signable)
+            digest_hex = f"0x{digest.hex()}"
+        except Exception as digest_exc:
+            raise HTTPException(status_code=400, detail=f"Payment signature digest failed: {type(digest_exc).__name__}") from digest_exc
+        if await _verify_erc1271_signature(wallet_address, digest_hex, signature):
+            return {
+                "from": from_addr,
+                "to": to_addr,
+                "value_usdc": amount_usdc,
+                "valid_after": valid_after,
+                "valid_before": valid_before,
+                "nonce": str(authorization["nonce"]),
+                "signature_verified": True,
+                "signature_standard": "erc1271",
+                "digest": digest_hex,
+            }
         raise HTTPException(status_code=400, detail=f"Payment signature recovery failed: {type(exc).__name__}") from exc
 
     if _normalize_address(recovered) != wallet_address:
-        raise HTTPException(status_code=403, detail="Payment signature did not recover request wallet")
+        if await _verify_erc1271_signature(wallet_address, digest_hex, signature):
+            return {
+                "from": from_addr,
+                "to": to_addr,
+                "value_usdc": amount_usdc,
+                "valid_after": valid_after,
+                "valid_before": valid_before,
+                "nonce": str(authorization["nonce"]),
+                "signature_verified": True,
+                "signature_standard": "erc1271",
+                "digest": digest_hex,
+                "recovered_eoa": _normalize_address(recovered),
+            }
+        raise HTTPException(status_code=403, detail="Payment signature did not recover request wallet and ERC-1271 verification failed")
 
     return {
         "from": from_addr,
@@ -164,6 +231,8 @@ def _verify_eip712_payment_signature(payment_payload: dict[str, Any], wallet_add
         "valid_before": valid_before,
         "nonce": str(authorization["nonce"]),
         "signature_verified": True,
+        "signature_standard": "eoa",
+        "digest": digest_hex,
     }
 
 
@@ -296,7 +365,7 @@ async def place_wager(
         raise HTTPException(status_code=403, detail="Session wallet does not match wager wallet")
 
     payment_payload = _decode_payment_signature(payment_signature)
-    signature_proof = _verify_eip712_payment_signature(payment_payload, body.wallet_address, body.wager_amount_usdc)
+    signature_proof = await _verify_eip712_payment_signature(payment_payload, body.wallet_address, body.wager_amount_usdc)
     sig_hash = _signature_hash(payment_signature or "")
 
     existing = await db.scalar(select(AgentDuelWager).where(AgentDuelWager.signature_hash == sig_hash))

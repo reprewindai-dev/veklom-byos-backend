@@ -275,9 +275,9 @@ def _extract_embedded_github_value(blob: str, env_key: str) -> Optional[str]:
 
 def _resolve_github_oauth_values(request: Optional[Request] = None) -> dict:
     values = {
-        "client_id": (settings.GITHUB_CLIENT_ID or "").strip(),
-        "client_secret": (settings.GITHUB_CLIENT_SECRET or "").strip(),
-        "redirect_uri": (settings.GITHUB_REDIRECT_URI or "").strip(),
+        "client_id": (settings.GITHUB_CLIENT_ID or "").strip().strip("'\""),
+        "client_secret": (settings.GITHUB_CLIENT_SECRET or "").strip().strip("'\""),
+        "redirect_uri": (settings.GITHUB_REDIRECT_URI or "").strip().strip("'\""),
     }
 
     for field, aliases in _GITHUB_ENV_ALIASES.items():

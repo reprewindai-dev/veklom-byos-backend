@@ -6,7 +6,7 @@ from backend.core.database.database import Base
 from backend.db.models.user import _utcnow
 
 class Payment(Base):
-    __tablename__ = "payments"
+    __tablename__ = "banker_payments"
 
     id                  = Column(BigInteger, primary_key=True, autoincrement=True)
     payment_object_type = Column(String(64), nullable=False)
@@ -29,8 +29,8 @@ class Payment(Base):
     created_at          = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("payment_object_type", "payment_object_id", name="uq_payment_object"),
-        Index("ix_payments_from_status", "from_address", "status"),
+        UniqueConstraint("payment_object_type", "payment_object_id", name="uq_banker_payment_object"),
+        Index("ix_banker_payments_from_status", "from_address", "status"),
     )
 
     def to_dict(self) -> dict:

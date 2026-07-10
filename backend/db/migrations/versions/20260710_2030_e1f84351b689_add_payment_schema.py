@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.create_table(
-        'payments',
+        'banker_payments',
         sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column('payment_object_type', sa.String(length=64), nullable=False),
         sa.Column('payment_object_id', sa.BigInteger(), nullable=False),
@@ -36,14 +36,14 @@ def upgrade() -> None:
         sa.Column('status', sa.String(length=32), nullable=False, server_default='pending'),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('now()')),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('payment_object_type', 'payment_object_id', name='uq_payment_object')
+        sa.UniqueConstraint('payment_object_type', 'payment_object_id', name='uq_banker_payment_object')
     )
-    op.create_index('ix_payments_from_status', 'payments', ['from_address', 'status'], unique=False)
-    op.create_index(op.f('ix_payments_tx_hash'), 'payments', ['tx_hash'], unique=False)
+    op.create_index('ix_banker_payments_from_status', 'banker_payments', ['from_address', 'status'], unique=False)
+    op.create_index(op.f('ix_banker_payments_tx_hash'), 'banker_payments', ['tx_hash'], unique=False)
     
     op.drop_table('agent_wallet_ledger')
 
 def downgrade() -> None:
-    op.drop_index(op.f('ix_payments_tx_hash'), table_name='payments')
-    op.drop_index('ix_payments_from_status', table_name='payments')
-    op.drop_table('payments')
+    op.drop_index(op.f('ix_banker_payments_tx_hash'), table_name='banker_payments')
+    op.drop_index('ix_banker_payments_from_status', table_name='banker_payments')
+    op.drop_table('banker_payments')

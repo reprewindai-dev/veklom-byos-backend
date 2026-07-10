@@ -30,7 +30,7 @@ from backend.db.models.internal_operators import (
 from backend.db.models.telemetry import AgentCall
 from backend.db.models.run import VeklomRun
 from backend.db.models.task_intake import TaskIntake
-from backend.db.models.duel import AgentDuelLobby, AgentDuelLobbyPlayer, AgentDuelSession, AgentDuelWager
+from backend.db.models.duel import AgentDuelAuthNonce, AgentDuelLobby, AgentDuelLobbyPlayer, AgentDuelSession, AgentDuelWager
 
 from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake, SyntheticProbeLog, AgentPrivilege, NexusBenchmarkRun
 from backend.db.models.pricing import PricingTier, TierFeature, TierUpgrade
@@ -76,7 +76,7 @@ __all__ = [
     "AuditLog", "SecurityEvent", "ComplianceCheck", "KillSwitchState",
     "AgentCall",
     "VeklomRun", "TaskIntake",
-    "AgentDuelSession", "AgentDuelWager", "AgentDuelLobby", "AgentDuelLobbyPlayer",
+    "AgentDuelSession", "AgentDuelAuthNonce", "AgentDuelWager", "AgentDuelLobby", "AgentDuelLobbyPlayer",
     "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog", "AgentPrivilege", "NexusBenchmarkRun",
     "Pipeline", "PipelineRun", "Deployment",
     # UACP V3 institutional ownership

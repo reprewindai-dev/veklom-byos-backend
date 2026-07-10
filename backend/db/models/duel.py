@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import uuid
 
-from sqlalchemy import DateTime, Float, Index, Integer, JSON, String, func
+from sqlalchemy import DateTime, Float, Index, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.core.database.database import Base
@@ -27,6 +27,28 @@ class AgentDuelSession(Base):
 
     __table_args__ = (
         Index("ix_agent_duel_sessions_wallet_created", "wallet_address", "created_at"),
+    )
+
+
+class AgentDuelAuthNonce(Base):
+    __tablename__ = "agent_duel_auth_nonces"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    wallet_address: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    nonce_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    domain: Mapped[str] = mapped_column(String(128), nullable=False)
+    uri: Mapped[str] = mapped_column(String(256), nullable=False)
+    chain_id: Mapped[int] = mapped_column(Integer, nullable=False, default=8453)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="issued", index=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_agent_duel_auth_nonces_wallet_created", "wallet_address", "created_at"),
+        Index("ix_agent_duel_auth_nonces_status_expires", "status", "expires_at"),
     )
 
 

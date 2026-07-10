@@ -5,7 +5,8 @@ import secrets
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 import httpx
@@ -15,7 +16,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
-from backend.db.models.duel import AgentDuelLobby, AgentDuelLobbyPlayer, AgentDuelSession, AgentDuelWager
+from backend.db.models.duel import AgentDuelAuthNonce, AgentDuelLobby, AgentDuelLobbyPlayer, AgentDuelSession, AgentDuelWager
 
 router = APIRouter(prefix="/duel", tags=["Agent Duel"])
 
@@ -26,13 +27,52 @@ VEKLOM_TREASURY_ADDRESS = os.getenv("VEKLOM_TREASURY_ADDRESS", "0x3a74772e925b54
 ERC1271_MAGIC_VALUE = "1626ba7e"
 
 
-class SessionCreateRequest(BaseModel):
+class SessionNonceRequest(BaseModel):
     wallet_address: str = Field(..., min_length=42, max_length=42)
+    domain: str = Field("control.veklom.com", min_length=3, max_length=128)
+    uri: str = Field("https://control.veklom.com/agent-dual", min_length=8, max_length=256)
+    chain_id: int = Field(BASE_CHAIN_ID, ge=1, le=999999999)
 
     @field_validator("wallet_address")
     @classmethod
     def validate_wallet(cls, value: str) -> str:
         return _normalize_address(value)
+
+    @field_validator("domain")
+    @classmethod
+    def validate_domain(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not re.fullmatch(r"[a-z0-9.-]+(?::\d+)?", value):
+            raise ValueError("domain must be a valid host authority")
+        return value
+
+    @field_validator("uri")
+    @classmethod
+    def validate_uri(cls, value: str) -> str:
+        value = value.strip()
+        if not value.startswith(("https://", "http://localhost", "http://127.0.0.1")):
+            raise ValueError("uri must be https or local development http")
+        return value
+
+
+class SessionCreateRequest(BaseModel):
+    wallet_address: str = Field(..., min_length=42, max_length=42)
+    message: str = Field(..., min_length=120, max_length=2048)
+    signature: str = Field(..., min_length=66, max_length=4096)
+
+    @field_validator("wallet_address")
+    @classmethod
+    def validate_wallet(cls, value: str) -> str:
+        return _normalize_address(value)
+
+    @field_validator("signature")
+    @classmethod
+    def validate_signature(cls, value: str) -> str:
+        value = value.strip()
+        if not value.startswith("0x"):
+            raise ValueError("signature must be hex encoded")
+        int(value[2:4] or "0", 16)
+        return value
 
 
 class WagerRequest(BaseModel):
@@ -94,6 +134,84 @@ def _signature_hash(signature_payload: str) -> str:
 
 def _session_token_hash(session_token: str) -> str:
     return hashlib.sha256(session_token.encode("utf-8")).hexdigest()
+
+
+def _auth_nonce_hash(nonce: str) -> str:
+    return hashlib.sha256(f"agent-duel-siwe:{nonce}".encode("utf-8")).hexdigest()
+
+
+def _new_siwe_nonce() -> str:
+    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    return "".join(secrets.choice(alphabet) for _ in range(24))
+
+
+def _siwe_field(message: str, field: str) -> str | None:
+    match = re.search(rf"^{re.escape(field)}:\s*(.+)$", message, flags=re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
+def _parse_siwe_message(message: str) -> dict[str, Any]:
+    lines = [line.strip() for line in message.splitlines()]
+    first_line = lines[0] if lines else ""
+    address = next((line for line in lines[1:] if re.fullmatch(r"0x[a-fA-F0-9]{40}", line)), None)
+    nonce = _siwe_field(message, "Nonce")
+    chain_id = _siwe_field(message, "Chain ID")
+    uri = _siwe_field(message, "URI")
+    issued_at = _siwe_field(message, "Issued At")
+    expiration_time = _siwe_field(message, "Expiration Time")
+    if not first_line.endswith(" wants you to sign in with your Ethereum account:"):
+        raise HTTPException(status_code=400, detail="Invalid SIWE message domain line")
+    if not address or not nonce or not chain_id or not uri or not issued_at:
+        raise HTTPException(status_code=400, detail="SIWE message is missing required fields")
+    try:
+        chain_id_int = int(chain_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="SIWE chain id is invalid") from exc
+    return {
+        "domain": first_line.removesuffix(" wants you to sign in with your Ethereum account:"),
+        "address": _normalize_address(address),
+        "nonce": nonce,
+        "chain_id": chain_id_int,
+        "uri": uri,
+        "issued_at": issued_at,
+        "expiration_time": expiration_time,
+    }
+
+
+async def _verify_siwe_signature(message: str, signature: str, wallet_address: str) -> dict[str, Any]:
+    try:
+        from eth_account import Account
+        from eth_account.messages import _hash_eip191_message, encode_defunct
+
+        signable = encode_defunct(text=message)
+        digest = _hash_eip191_message(signable)
+        digest_hex = f"0x{digest.hex()}"
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"SIWE message digest failed: {type(exc).__name__}") from exc
+
+    normalized_wallet = _normalize_address(wallet_address)
+    try:
+        recovered = Account.recover_message(signable, signature=signature)
+        if _normalize_address(recovered) == normalized_wallet:
+            return {
+                "signature_verified": True,
+                "signature_standard": "eoa",
+                "digest": digest_hex,
+                "recovered_address": _normalize_address(recovered),
+            }
+    except Exception:
+        recovered = None
+
+    if await _verify_erc1271_signature(normalized_wallet, digest_hex, signature):
+        proof = {
+            "signature_verified": True,
+            "signature_standard": "erc1271",
+            "digest": digest_hex,
+        }
+        if recovered:
+            proof["recovered_eoa"] = _normalize_address(recovered)
+        return proof
+    raise HTTPException(status_code=403, detail="SIWE signature does not prove ownership of the requested wallet")
 
 
 def _decode_payment_signature(payment_signature: str | None) -> dict[str, Any]:
@@ -387,6 +505,10 @@ async def _verified_session_for_wallet(
 @router.get("/proof")
 async def get_duel_proof(db: AsyncSession = Depends(get_db)):
     session_count = await db.scalar(select(func.count()).select_from(AgentDuelSession))
+    auth_nonce_count = await db.scalar(select(func.count()).select_from(AgentDuelAuthNonce))
+    consumed_auth_nonce_count = await db.scalar(
+        select(func.count()).select_from(AgentDuelAuthNonce).where(AgentDuelAuthNonce.status == "consumed")
+    )
     wager_count = await db.scalar(select(func.count()).select_from(AgentDuelWager))
     lobby_count = await db.scalar(select(func.count()).select_from(AgentDuelLobby))
     lobby_player_count = await db.scalar(select(func.count()).select_from(AgentDuelLobbyPlayer))
@@ -403,6 +525,8 @@ async def get_duel_proof(db: AsyncSession = Depends(get_db)):
         "source": "postgres",
         "tables": {
             "agent_duel_sessions": int(session_count or 0),
+            "agent_duel_auth_nonces": int(auth_nonce_count or 0),
+            "consumed_agent_duel_auth_nonces": int(consumed_auth_nonce_count or 0),
             "agent_duel_wagers": int(wager_count or 0),
             "agent_duel_lobbies": int(lobby_count or 0),
             "agent_duel_lobby_players": int(lobby_player_count or 0),
@@ -411,6 +535,7 @@ async def get_duel_proof(db: AsyncSession = Depends(get_db)):
         },
         "capabilities": {
             "session_create": "verified",
+            "session_auth": "siwe",
             "wager_persist": "verified",
             "outcome_persist": "verified",
             "multiplayer_lobbies": "verified",
@@ -421,8 +546,78 @@ async def get_duel_proof(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.post("/session/nonce")
+async def create_duel_session_nonce(body: SessionNonceRequest, db: AsyncSession = Depends(get_db)):
+    if body.chain_id != BASE_CHAIN_ID:
+        raise HTTPException(status_code=400, detail="Agent Duel sessions are bound to Base Mainnet chain id 8453")
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=10)
+    nonce = _new_siwe_nonce()
+    issued_at_text = now.isoformat().replace("+00:00", "Z")
+    expires_at_text = expires_at.isoformat().replace("+00:00", "Z")
+    message = (
+        f"{body.domain} wants you to sign in with your Ethereum account:\n"
+        f"{body.wallet_address}\n\n"
+        "Sign in to Veklom Agent Duel on Base Mainnet.\n\n"
+        f"URI: {body.uri}\n"
+        "Version: 1\n"
+        f"Chain ID: {body.chain_id}\n"
+        f"Nonce: {nonce}\n"
+        f"Issued At: {issued_at_text}\n"
+        f"Expiration Time: {expires_at_text}"
+    )
+    auth_nonce = AgentDuelAuthNonce(
+        wallet_address=body.wallet_address,
+        nonce_hash=_auth_nonce_hash(nonce),
+        domain=body.domain,
+        uri=body.uri,
+        chain_id=body.chain_id,
+        message=message,
+        status="issued",
+        expires_at=expires_at,
+        metadata_json={"purpose": "agent_duel_session", "standard": "siwe", "version": "1"},
+    )
+    db.add(auth_nonce)
+    await db.commit()
+    return {
+        "success": True,
+        "wallet_address": body.wallet_address,
+        "message": message,
+        "nonce": nonce,
+        "expires_at": expires_at_text,
+        "chain_id": body.chain_id,
+        "standard": "siwe",
+    }
+
+
 @router.post("/session/create")
 async def create_duel_session(body: SessionCreateRequest, db: AsyncSession = Depends(get_db)):
+    parsed = _parse_siwe_message(body.message)
+    if parsed["address"] != body.wallet_address:
+        raise HTTPException(status_code=403, detail="SIWE message wallet does not match requested wallet")
+    if parsed["chain_id"] != BASE_CHAIN_ID:
+        raise HTTPException(status_code=400, detail="SIWE message is not bound to Base Mainnet")
+
+    nonce_hash = _auth_nonce_hash(parsed["nonce"])
+    auth_nonce = await db.scalar(select(AgentDuelAuthNonce).where(AgentDuelAuthNonce.nonce_hash == nonce_hash))
+    if not auth_nonce:
+        raise HTTPException(status_code=404, detail="SIWE nonce not found or expired")
+    if auth_nonce.status != "issued":
+        raise HTTPException(status_code=409, detail="SIWE nonce has already been consumed")
+    if auth_nonce.wallet_address != body.wallet_address:
+        raise HTTPException(status_code=403, detail="SIWE nonce wallet does not match requested wallet")
+    if auth_nonce.domain != parsed["domain"] or auth_nonce.uri != parsed["uri"] or auth_nonce.chain_id != parsed["chain_id"]:
+        raise HTTPException(status_code=400, detail="SIWE message does not match issued nonce scope")
+    if auth_nonce.message != body.message:
+        raise HTTPException(status_code=400, detail="SIWE message does not match issued backend challenge")
+    now = datetime.now(timezone.utc)
+    if auth_nonce.expires_at < now:
+        auth_nonce.status = "expired"
+        await db.commit()
+        raise HTTPException(status_code=410, detail="SIWE nonce expired")
+
+    signature_proof = await _verify_siwe_signature(body.message, body.signature, body.wallet_address)
     balance_usdc = 0.0
     balance_source = "base_rpc"
     try:
@@ -437,8 +632,20 @@ async def create_duel_session(body: SessionCreateRequest, db: AsyncSession = Dep
         metadata_json={
             "balance_source": balance_source,
             "session_token_hash": _session_token_hash(session_token),
+            "auth": {
+                "standard": "siwe",
+                "nonce_hash": auth_nonce.nonce_hash,
+                "domain": parsed["domain"],
+                "uri": parsed["uri"],
+                "chain_id": parsed["chain_id"],
+                "issued_at": parsed["issued_at"],
+                "signature_hash": _signature_hash(body.signature),
+                **signature_proof,
+            },
         },
     )
+    auth_nonce.status = "consumed"
+    auth_nonce.consumed_at = now
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -450,6 +657,40 @@ async def create_duel_session(body: SessionCreateRequest, db: AsyncSession = Dep
             "address": session.wallet_address,
             "balance_usdc": session.balance_usdc,
             "balance_source": balance_source,
+        },
+        "auth": {
+            "standard": "siwe",
+            "signature_standard": signature_proof["signature_standard"],
+            "domain": parsed["domain"],
+            "chain_id": parsed["chain_id"],
+        },
+    }
+
+
+@router.get("/player/{address}/profile")
+async def get_player_profile(address: str, db: AsyncSession = Depends(get_db)):
+    normalized = _normalize_address(address)
+    balance_usdc = 0.0
+    balance_source = "base_rpc"
+    try:
+        balance_usdc = await _base_usdc_balance(normalized)
+    except Exception as exc:
+        balance_source = f"base_rpc_unavailable:{type(exc).__name__}"
+    session_count = await db.scalar(
+        select(func.count()).select_from(AgentDuelSession).where(AgentDuelSession.wallet_address == normalized)
+    )
+    wager_count = await db.scalar(
+        select(func.count()).select_from(AgentDuelWager).where(AgentDuelWager.wallet_address == normalized)
+    )
+    return {
+        "success": True,
+        "source": "base_rpc",
+        "player": {
+            "address": normalized,
+            "balance_usdc": balance_usdc,
+            "balance_source": balance_source,
+            "session_count": int(session_count or 0),
+            "wager_count": int(wager_count or 0),
         },
     }
 

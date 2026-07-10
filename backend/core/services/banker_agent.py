@@ -600,23 +600,16 @@ class BankerAgentService:
                 address=Web3.to_checksum_address(USDC_CONTRACT),
                 abi=[_ERC20_TRANSFER_ABI, _ERC20_BALANCE_ABI],
             )
-            data = usdc_iface.encode_abi(
-                fn_name="transfer",
-                args=[
-                    Web3.to_checksum_address(treasury),
-                    amount_micro,
-                ]
-            )
-
-            tx = {
+            tx = usdc_iface.functions.transfer(
+                Web3.to_checksum_address(treasury),
+                amount_micro
+            ).build_transaction({
                 "chainId":  BASE_CHAIN_ID,
                 "nonce":    nonce,
-                "to":       Web3.to_checksum_address(USDC_CONTRACT),
-                "value":    0,          # No ETH value — this is a token transfer
-                "gas":      80_000,     # ~65k typical; 80k buffer
+                "value":    0,
+                "gas":      80_000,
                 "gasPrice": gas_price,
-                "data":     data,
-            }
+            })
 
             signed = acct.sign_transaction(tx)
             raw_tx_bytes = getattr(signed, "rawTransaction", getattr(signed, "raw_transaction", None))

@@ -1,20 +1,22 @@
 """
-Banker Agent Router — Admin-only autonomous payment management endpoints.
+Banker Agent Router — Operator-triggered payment ledger endpoints.
+
+Gold-Standard Architecture:
+  The backend is NOT the signer. The operator's Base Account wallet (connected
+  via @base-org/account in the control plane) is the signer.
 
 Routes:
-  GET  /api/v1/banker/status      — wallet address, USDC balance, daily spend, enabled state
-  GET  /api/v1/banker/ledger      — paginated spend history from agent_wallet_ledger
-  POST /api/v1/banker/pay         — manually trigger a one-shot payment (admin use)
-  POST /api/v1/banker/self-prove  — full end-to-end settlement proof (for Chet)
+  POST /api/v1/banker/pay/prepare  — Create idempotency-checked pending row
+  POST /api/v1/banker/pay/confirm  — Record tx_hash + settlement proof from frontend
+  GET  /api/v1/banker/ledger       — Paginated payment history
+  GET  /api/v1/banker/status       — Wallet config and treasury address
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
@@ -23,8 +25,7 @@ from backend.core.services.banker_agent import (
     BankerAgentService,
     BankerAgentError,
     BankerAgentConfigError,
-    BankerAgentInsufficientFundsError,
-    BankerAgentDailyLimitError,
+    BankerAgentDuplicatePaymentError,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,34 +38,28 @@ router = APIRouter(prefix="/banker", tags=["Banker Agent"])
 # ---------------------------------------------------------------------------
 
 class BankerStatusResponse(BaseModel):
-    enabled:            bool
+    treasury_address:   Optional[str]
     configured:         bool
-    ready:              bool
-    funded:             bool
-    min_payment_usdc:   float
-    blockers:           list[str]
-    agent_address:      Optional[str]
-    usdc_balance:       float
-    daily_spend:        dict
-    treasury_address:   str
     usdc_contract:      str
     network:            str
     chain_id:           int
 
 
-class ManualPayRequest(BaseModel):
-    to_address:  str   = Field(..., description="Recipient EVM address (0x...)")
-    amount_usdc: float = Field(..., gt=0, description="Amount in USDC (e.g. 0.10)")
-    purpose:     str   = Field("manual_payment", description="Short description for audit trail")
-    route:       str   = Field("/manual", description="Route label for ledger context")
+class PreparePaymentRequest(BaseModel):
+    payment_object_type: str  = Field(..., description="Identifier type for idempotency (e.g. 'invoice', 'settlement')")
+    payment_object_id:   int  = Field(..., description="Identifier ID for idempotency")
+    to_address:          str  = Field(..., description="Recipient EVM address (0x...)")
+    amount:              float = Field(..., gt=0, description="Amount to send")
+    asset:               str  = Field("USDC", description="Asset ticker (e.g. USDC)")
 
 
-class ManualPayResponse(BaseModel):
-    status:     str
-    tx_hash:    str
-    amount_usdc: float
-    to_address:  str
-    basescan_url: str
+class ConfirmPaymentRequest(BaseModel):
+    payment_object_type: str       = Field(..., description="Must match the prepare request")
+    payment_object_id:   int       = Field(..., description="Must match the prepare request")
+    tx_hash:             str       = Field(..., description="Transaction hash from Base Account wallet provider")
+    chain_id:            int       = Field(8453, description="Chain ID (default: Base Mainnet 8453)")
+    block_number:        Optional[int]  = Field(None, description="Block number from receipt")
+    gas_used:            Optional[int]  = Field(None, description="Gas used from receipt")
 
 
 # ---------------------------------------------------------------------------
@@ -74,60 +69,85 @@ class ManualPayResponse(BaseModel):
 @router.get("/status", response_model=BankerStatusResponse)
 async def banker_status():
     """
-    Returns the current state of the Banker Agent wallet:
-    address, USDC balance, daily spend, and enabled flag.
-    Does NOT require authentication — status is non-sensitive.
+    Returns Banker Agent configuration.
+    The treasury address is the Base Account that receives incoming x402 payments
+    and from which operator-triggered outgoing payments are sent.
     """
-    enabled       = BankerAgentService.is_enabled()
-    agent_address = BankerAgentService.get_agent_address()
-    daily_spend   = BankerAgentService.get_daily_spend()
-    min_payment_usdc = 0.10
-    blockers: list[str] = []
-
-    if not enabled:
-        blockers.append("BANKER_AGENT_ENABLED is not true")
-
-    if not settings.VEKLOM_TREASURY_ADDRESS or not settings.VEKLOM_TREASURY_ADDRESS.startswith("0x"):
-        blockers.append("VEKLOM_TREASURY_ADDRESS is not configured")
-
+    treasury_address = None
+    configured = False
     try:
-        BankerAgentService.validate_runtime_configuration()
+        treasury_address = BankerAgentService.get_treasury_address()
         configured = True
-    except BankerAgentConfigError as exc:
-        configured = False
-        blockers.append(str(exc))
-
-    usdc_balance = 0.0
-    if agent_address:
-        try:
-            usdc_balance = await BankerAgentService.get_usdc_balance_usdc()
-        except Exception as exc:
-            logger.warning(f"[BankerRouter] Could not fetch USDC balance: {exc}")
-            blockers.append(f"Could not fetch USDC balance: {exc}")
-    else:
-        blockers.append("VEKLOM_AGENT_ADDRESS is not configured and no key-derived address is available")
-
-    funded = usdc_balance >= min_payment_usdc
-    if not funded:
-        blockers.append(f"Agent wallet has {usdc_balance:.6f} USDC; {min_payment_usdc:.2f} USDC required for self-prove")
-
-    ready = enabled and configured and funded and len(blockers) == 0
+    except BankerAgentConfigError:
+        pass
 
     return BankerStatusResponse(
-        enabled          = enabled,
+        treasury_address = treasury_address,
         configured       = configured,
-        ready            = ready,
-        funded           = funded,
-        min_payment_usdc = min_payment_usdc,
-        blockers         = blockers,
-        agent_address    = agent_address,
-        usdc_balance     = usdc_balance,
-        daily_spend      = daily_spend,
-        treasury_address = settings.VEKLOM_TREASURY_ADDRESS,
-        usdc_contract    = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        usdc_contract    = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # Base Mainnet USDC
         network          = "base",
         chain_id         = 8453,
     )
+
+
+@router.post("/pay/prepare")
+async def banker_prepare_payment(
+    body: PreparePaymentRequest,
+    db:   AsyncSession = Depends(get_db),
+):
+    """
+    Step 1 of 2 in the payment flow.
+
+    Validates idempotency and creates a pending Payment row in the database.
+    Returns the payment record so the frontend can proceed to call the
+    Base Account wallet provider (wallet_sendCalls / eth_sendTransaction).
+    """
+    try:
+        payment = await BankerAgentService.prepare_payment(
+            db=db,
+            payment_object_type=body.payment_object_type,
+            payment_object_id=body.payment_object_id,
+            to_address=body.to_address,
+            amount=body.amount,
+            asset=body.asset,
+        )
+    except BankerAgentDuplicatePaymentError as exc:
+        raise HTTPException(status_code=409, detail=f"Duplicate payment: {exc}")
+    except BankerAgentConfigError as exc:
+        raise HTTPException(status_code=503, detail=f"Banker not configured: {exc}")
+    except BankerAgentError as exc:
+        raise HTTPException(status_code=500, detail=f"Payment preparation failed: {exc}")
+
+    return payment
+
+
+@router.post("/pay/confirm")
+async def banker_confirm_payment(
+    body: ConfirmPaymentRequest,
+    db:   AsyncSession = Depends(get_db),
+):
+    """
+    Step 2 of 2 in the payment flow.
+
+    Called by the frontend after the Base Account wallet provider confirms
+    the transaction. Records the tx_hash and settlement proof on the pending row.
+    """
+    try:
+        payment = await BankerAgentService.confirm_payment(
+            db=db,
+            payment_object_type=body.payment_object_type,
+            payment_object_id=body.payment_object_id,
+            tx_hash=body.tx_hash,
+            chain_id=body.chain_id,
+            block_number=body.block_number,
+            gas_used=body.gas_used,
+        )
+    except BankerAgentDuplicatePaymentError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except BankerAgentError as exc:
+        raise HTTPException(status_code=500, detail=f"Payment confirmation failed: {exc}")
+
+    return payment
 
 
 @router.get("/ledger")
@@ -138,115 +158,11 @@ async def banker_ledger(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns paginated spend history from the agent_wallet_ledger table.
-    Records are ordered newest-first.
+    Returns paginated payment history from the payments table, newest-first.
     """
-    from backend.db.models.agent_wallet import AgentWalletLedger
-
-    q = select(AgentWalletLedger).order_by(desc(AgentWalletLedger.created_at))
-    if status_filter:
-        q = q.where(AgentWalletLedger.status == status_filter)
-
-    count_q = select(func.count()).select_from(AgentWalletLedger)
-    if status_filter:
-        count_q = count_q.where(AgentWalletLedger.status == status_filter)
-
-    total   = (await db.execute(count_q)).scalar() or 0
-    offset  = (page - 1) * per_page
-    rows    = (await db.execute(q.offset(offset).limit(per_page))).scalars().all()
-
-    return {
-        "page":       page,
-        "per_page":   per_page,
-        "total":      total,
-        "total_pages": max(1, -(-total // per_page)),
-        "records":    [r.to_dict() for r in rows],
-    }
-
-
-@router.post("/pay", response_model=ManualPayResponse)
-async def banker_manual_pay(
-    body: ManualPayRequest,
-    db:   AsyncSession = Depends(get_db),
-):
-    """
-    Admin endpoint: manually trigger a one-shot USDC payment from the agent wallet.
-    Requires BANKER_AGENT_ENABLED=true.
-    """
-    try:
-        tx_hash = await BankerAgentService.pay_for_route(
-            db,
-            route       = body.route,
-            amount_usdc = body.amount_usdc,
-            to_address  = body.to_address,
-            purpose     = body.purpose,
-        )
-    except BankerAgentConfigError as exc:
-        raise HTTPException(status_code=503, detail=f"Banker Agent not configured: {exc}")
-    except BankerAgentInsufficientFundsError as exc:
-        raise HTTPException(status_code=402, detail=f"Insufficient funds: {exc}")
-    except BankerAgentDailyLimitError as exc:
-        raise HTTPException(status_code=429, detail=f"Daily limit exceeded: {exc}")
-    except BankerAgentError as exc:
-        raise HTTPException(status_code=500, detail=f"Payment failed: {exc}")
-
-    return ManualPayResponse(
-        status       = "confirmed",
-        tx_hash      = tx_hash,
-        amount_usdc  = body.amount_usdc,
-        to_address   = body.to_address,
-        basescan_url = f"https://basescan.org/tx/{tx_hash}",
+    return await BankerAgentService.get_ledger(
+        db=db,
+        page=page,
+        per_page=per_page,
+        status_filter=status_filter,
     )
-
-
-@router.post("/self-prove")
-async def banker_self_prove(db: AsyncSession = Depends(get_db)):
-    """
-    Full end-to-end settlement proof:
-    1. Pays /api/v1/x402/score with 0.10 real USDC on Base Mainnet
-    2. Calls the /score endpoint with the confirmed tx hash as X-PAYMENT proof
-    3. Returns the score JSON + receipt + tx hash
-
-    This generates the exact artefacts needed to prove live settlement to Chet/PayAPI.
-
-    Requires BANKER_AGENT_ENABLED=true and a funded wallet key in VEKLOM_AGENT_PRIVATE_KEY.
-    """
-    try:
-        result = await BankerAgentService.self_prove(db)
-    except BankerAgentConfigError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error":   "banker_not_configured",
-                "message": str(exc),
-                "fix":     "Set VEKLOM_AGENT_PRIVATE_KEY and BANKER_AGENT_ENABLED=true in Coolify env vars.",
-            }
-        )
-    except BankerAgentInsufficientFundsError as exc:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "error":   "insufficient_usdc",
-                "message": str(exc),
-                "fix":     "Fund the agent wallet with at least 0.10 USDC on Base Mainnet.",
-            }
-        )
-    except BankerAgentDailyLimitError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "error":   "daily_limit_exceeded",
-                "message": str(exc),
-                "fix":     "Increase BANKER_AGENT_DAILY_LIMIT_USDC or wait until UTC midnight.",
-            }
-        )
-    except BankerAgentError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error":   "payment_failed",
-                "message": str(exc),
-            }
-        )
-
-    return result

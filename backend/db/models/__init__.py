@@ -115,5 +115,8 @@ __all__ = [
     # MCPAPI v2 Quarantine
     "QuarantinedIntent",
     # Session Mesh Layer
-    "VeklomAgentSession", "VeklomSessionTransition", "VeklomMeshIncident", "VeklomLedgerEntry"
+    "VeklomAgentSession", "VeklomSessionTransition", "VeklomMeshIncident", "VeklomLedgerEntry",
+    # Banker Agent — idempotent payment ledger
+    "Payment",
 ]
+from backend.db.models.payment import Payment

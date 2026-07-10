@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Dict, Any, Optional
 
 import time as _time
@@ -57,6 +57,8 @@ class AIInferenceRequest(BaseModel):
     stream: Optional[bool] = Field(False, description="Whether to enable SSE stream")
 
 class AIChatRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     session_id: Optional[str] = Field(None, description="Persistent conversation session ID")
     model: Optional[str] = Field("llama3.2:latest", description="Model identifier to use")
     messages: List[ChatMessage] = Field(..., description="Normalized message turns list")

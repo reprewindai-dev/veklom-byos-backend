@@ -395,9 +395,10 @@ async def _verify_eip712_payment_signature(payment_payload: dict[str, Any], wall
     }
 
 
-async def _base_usdc_balance(address: str) -> float:
+async def _base_usdc_balance_proof(address: str) -> dict[str, Any]:
     selector = "70a08231"
-    encoded_address = address.lower().replace("0x", "").rjust(64, "0")
+    normalized = _normalize_address(address)
+    encoded_address = normalized.replace("0x", "").rjust(64, "0")
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -414,7 +415,22 @@ async def _base_usdc_balance(address: str) -> float:
     if data.get("error"):
         raise RuntimeError(data["error"].get("message", "Base RPC error"))
     raw = int(str(data.get("result", "0x0")), 16)
-    return round(raw / 1_000_000, 6)
+    return {
+        "address": normalized,
+        "amount_micro": raw,
+        "amount_usdc": round(raw / 1_000_000, 6),
+        "asset": "USDC",
+        "network": "base",
+        "chain_id": BASE_CHAIN_ID,
+        "usdc_contract": _normalize_address(BASE_USDC_CONTRACT),
+        "proof_source": "base_rpc_eth_call_balanceOf",
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def _base_usdc_balance(address: str) -> float:
+    proof = await _base_usdc_balance_proof(address)
+    return float(proof["amount_usdc"])
 
 
 async def _base_rpc(method: str, params: list[Any]) -> Any:
@@ -426,6 +442,17 @@ async def _base_rpc(method: str, params: list[Any]) -> Any:
     if data.get("error"):
         raise HTTPException(status_code=502, detail=f"Base RPC {method} error: {data['error'].get('message', 'unknown')}")
     return data.get("result")
+
+
+async def _base_block_height() -> dict[str, Any]:
+    block_hex = await _base_rpc("eth_blockNumber", [])
+    return {
+        "network": "base",
+        "chain_id": BASE_CHAIN_ID,
+        "block_height": int(str(block_hex or "0x0"), 16),
+        "proof_source": "base_rpc_eth_blockNumber",
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _topic_address(topic: str) -> str:
@@ -539,6 +566,89 @@ def _wager_to_history(row: AgentDuelWager) -> dict[str, Any]:
     }
 
 
+def _latest_settlement_from_wagers(rows: list[AgentDuelWager]) -> dict[str, Any] | None:
+    for row in rows:
+        metadata = row.metadata_json or {}
+        proof = metadata.get("settlement_proof") if isinstance(metadata, dict) else None
+        if row.settlement_tx_hash and isinstance(proof, dict):
+            history = _wager_to_history(row)
+            return {
+                "wager_id": row.id,
+                "session_id": row.session_id,
+                "wallet_address": row.wallet_address,
+                "tx_hash": row.settlement_tx_hash,
+                "basescan_url": proof.get("basescan_url"),
+                "block_height": proof.get("block_height"),
+                "gas": proof.get("gas"),
+                "gas_used": proof.get("gas_used"),
+                "gas_price_wei": proof.get("gas_price_wei"),
+                "effective_gas_price_wei": proof.get("effective_gas_price_wei"),
+                "call_data": proof.get("input"),
+                "function_selector": proof.get("function_selector"),
+                "transfer": proof.get("transfer"),
+                "settled_at": row.settled_at.isoformat() if row.settled_at else proof.get("verified_at"),
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "wager": history,
+                "proof_source": "agent_duel_wagers.settlement_proof",
+            }
+    return None
+
+
+async def _settlement_summary(db: AsyncSession) -> dict[str, Any]:
+    block_proof: dict[str, Any] | None = None
+    liquidity_proof: dict[str, Any] | None = None
+    rpc_errors: dict[str, str] = {}
+    try:
+        block_proof = await _base_block_height()
+    except Exception as exc:
+        rpc_errors["base_block_height"] = type(exc).__name__
+    try:
+        liquidity_proof = await _base_usdc_balance_proof(VEKLOM_TREASURY_ADDRESS)
+    except Exception as exc:
+        rpc_errors["pool_liquidity"] = type(exc).__name__
+
+    latest_result = await db.execute(
+        select(AgentDuelWager)
+        .where(AgentDuelWager.settlement_tx_hash.isnot(None))
+        .order_by(desc(AgentDuelWager.created_at))
+        .limit(25)
+    )
+    latest_settled_rows = list(latest_result.scalars().all())
+    latest_settlement = _latest_settlement_from_wagers(latest_settled_rows)
+    settled_count = await db.scalar(
+        select(func.count()).select_from(AgentDuelWager).where(AgentDuelWager.settlement_tx_hash.isnot(None))
+    )
+    total_value = await db.scalar(
+        select(func.coalesce(func.sum(AgentDuelWager.wager_amount_usdc), 0.0)).where(
+            AgentDuelWager.settlement_tx_hash.isnot(None)
+        )
+    )
+    summary = {
+        "success": True,
+        "source": "base_rpc_and_agent_duel_wagers",
+        "network": "base",
+        "chain_id": BASE_CHAIN_ID,
+        "treasury_address": _normalize_address(VEKLOM_TREASURY_ADDRESS),
+        "usdc_contract": _normalize_address(BASE_USDC_CONTRACT),
+        "base_block": block_proof,
+        "pool_liquidity": liquidity_proof,
+        "latest_settlement": latest_settlement,
+        "settlement_time": latest_settlement.get("settled_at") if latest_settlement else None,
+        "settled_wagers": int(settled_count or 0),
+        "settled_volume_usdc": round(float(total_value or 0.0), 6),
+        "proofs": {
+            "base_block_height": "verified" if block_proof else "needs_proof",
+            "pool_liquidity": "verified" if liquidity_proof else "needs_proof",
+            "settlement_history": "verified" if latest_settlement else "needs_proof",
+            "gas_telemetry": "verified" if latest_settlement and latest_settlement.get("gas_used") is not None else "needs_proof",
+            "call_data": "verified" if latest_settlement and latest_settlement.get("call_data") else "needs_proof",
+        },
+    }
+    if rpc_errors:
+        summary["rpc_errors"] = rpc_errors
+    return summary
+
+
 def _lobby_player_to_dict(player: AgentDuelLobbyPlayer) -> dict[str, Any]:
     return {
         "id": player.id,
@@ -626,6 +736,8 @@ async def get_duel_proof(db: AsyncSession = Depends(get_db)):
     )
     latest_result = await db.execute(select(AgentDuelWager).order_by(desc(AgentDuelWager.created_at)).limit(10))
     latest = latest_result.scalars().all()
+    settlement_summary = await _settlement_summary(db)
+    settlement_proofs = settlement_summary.get("proofs", {})
     return {
         "success": True,
         "source": "postgres",
@@ -650,9 +762,20 @@ async def get_duel_proof(db: AsyncSession = Depends(get_db)):
             "wallet_balance": "base_rpc",
             "settlement_proof_ingest": "verified",
             "settlement": "verified" if settled_count else "needs_proof",
+            "base_block_height": settlement_proofs.get("base_block_height", "needs_proof"),
+            "pool_liquidity": settlement_proofs.get("pool_liquidity", "needs_proof"),
+            "settlement_history": settlement_proofs.get("settlement_history", "needs_proof"),
+            "gas_telemetry": settlement_proofs.get("gas_telemetry", "needs_proof"),
+            "call_data": settlement_proofs.get("call_data", "needs_proof"),
         },
+        "settlement_summary": settlement_summary,
         "latest_wagers": [_wager_to_history(row) for row in latest],
     }
+
+
+@router.get("/settlement/summary")
+async def get_settlement_summary(db: AsyncSession = Depends(get_db)):
+    return await _settlement_summary(db)
 
 
 @router.post("/session/nonce")

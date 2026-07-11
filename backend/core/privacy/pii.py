@@ -8,6 +8,7 @@ No external dependencies — safe to import anywhere in the backend.
 """
 from __future__ import annotations
 
+import bisect
 import hashlib
 import re
 from typing import Dict, List
@@ -76,19 +77,33 @@ def find_entities(text: str) -> List[Dict]:
     """
     spans: List[Dict] = []
     occupied: List[tuple] = []
-
-    def overlaps(start: int, end: int) -> bool:
-        return any(not (end <= s or start >= e) for s, e in occupied)
+    starts: List[int] = []
 
     for pii_type, pattern in _DETECTORS:
         for m in pattern.finditer(text or ""):
             start, end = m.start(), m.end()
-            if overlaps(start, end):
+
+            # ⚡ Bolt Optimization: Replace O(n) overlap check with O(log n) binary search.
+            # `bisect` finds the insertion point, and we only need to check the adjacent
+            # intervals (left and right) for overlaps. This drops time complexity from O(n^2) to O(n log n).
+            is_overlapping = False
+            idx = bisect.bisect_right(starts, start)
+
+            if idx > 0 and occupied[idx-1][1] > start:
+                is_overlapping = True
+            elif idx < len(occupied) and occupied[idx][0] < end:
+                is_overlapping = True
+
+            if is_overlapping:
                 continue
+
             if pii_type == "credit_card" and not _luhn_ok(m.group()):
                 continue
+
             spans.append({"type": pii_type, "value": m.group(), "start": start, "end": end})
-            occupied.append((start, end))
+
+            starts.insert(idx, start)
+            occupied.insert(idx, (start, end))
 
     spans.sort(key=lambda s: s["start"])
     return spans

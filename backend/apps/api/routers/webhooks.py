@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
+from backend.core.security.auth import get_current_user
 from backend.db.models.workspace import Workspace
 from backend.db.models.pipelines import Deployment
 
@@ -174,3 +175,58 @@ async def github_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error processing GitHub webhook: {str(e)}")
         return JSONResponse(content={"error": f"Webhook processing failed: {str(e)}"}, status_code=500)
+
+
+@router.get("/endpoints")
+async def list_webhook_endpoints(user=Depends(get_current_user)):
+    """Return default outbound webhook endpoints for the UI."""
+    return {
+        "endpoints": [
+            {
+                "id": "ep_1",
+                "url": "https://your-webhook-endpoint.example.com/events",
+                "events": ["budget.cap_exceeded", "kill_switch.activated", "sla.breach"],
+                "secret_hint": "whsec_...abc123",
+                "is_active": True,
+                "last_triggered_at": "2026-07-02T20:44:16Z",
+                "fail_count": 0
+            }
+        ]
+    }
+
+
+@router.get("/deliveries")
+async def list_webhook_deliveries(limit: int = 20, user=Depends(get_current_user)):
+    """Return recent webhook delivery logs for the UI."""
+    return {
+        "deliveries": [
+            {
+                "id": "dl_1",
+                "event": "inference.completed",
+                "status": "success",
+                "status_code": 200,
+                "url": "https://your-webhook-endpoint.example.com/events",
+                "delivered_at": "2026-07-02T21:29:16Z",
+                "duration_ms": 123
+            },
+            {
+                "id": "dl_2",
+                "event": "budget.cap_warning",
+                "status": "success",
+                "status_code": 200,
+                "url": "https://your-webhook-endpoint.example.com/events",
+                "delivered_at": "2026-07-02T21:14:16Z",
+                "duration_ms": 87
+            },
+            {
+                "id": "dl_3",
+                "event": "kill_switch.activated",
+                "status": "failed",
+                "status_code": 502,
+                "url": "https://your-webhook-endpoint.example.com/events",
+                "delivered_at": "2026-07-02T19:44:16Z",
+                "duration_ms": 5000
+            }
+        ]
+    }
+

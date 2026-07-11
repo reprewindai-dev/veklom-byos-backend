@@ -1,0 +1,15 @@
+http:
+  routers:
+    capi:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`capi.veklom.com`)"
+      service: capi
+      tls:
+        certResolver: letsencrypt
+  services:
+    capi:
+      loadBalancer:
+        servers:
+          - url: "http://interlink-capi:8089"

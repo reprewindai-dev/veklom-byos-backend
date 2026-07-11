@@ -40,7 +40,11 @@ class PGLCertificate(Base):
     output_hash = Column(String(128), nullable=True)
     outcome_hash = Column(String(128), nullable=True)
     pre_certificate_id = Column(String(64), nullable=True, index=True)  # post -> pre link
-    status = Column(String(32), nullable=False, default="committed")
+    status = Column(String(32), nullable=False, default="OPEN")         # 'OPEN' | 'SUCCEEDED' | 'FAILED' | 'ROLLED_BACK' | 'ABANDONED'
+    signature = Column(String(256), nullable=True)                      # Cryptographic signature from the PGL authority
+    expires_at = Column(DateTime(timezone=True), nullable=True)         # Hard expiration window
+    scope = Column(String(64), nullable=True, index=True)               # e.g., 'wallet:spend', 'pipeline:exec', 'run:commit'
+    resolved_at = Column(DateTime(timezone=True), nullable=True)        # Closed or reconciled timestamp
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     
     pgl_identity = relationship("PGLIdentity")
@@ -83,3 +87,40 @@ class PGLIdentity(Base):
     rotated_at = Column(DateTime(timezone=True), nullable=True)
     metadata_json = Column("metadata", JSON, default=dict)
 
+
+class PGLAnchor(Base):
+    """Immutable audit records anchoring ledger head hashes externally."""
+
+    __tablename__ = "pgl_anchors"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workspace_id = Column(String(64), nullable=False, index=True)
+    ledger_head_hash = Column(String(128), nullable=False, index=True)
+    anchored_tx_hash = Column(String(256), nullable=False)
+    status = Column(String(32), nullable=False, default="anchored") # 'pending' | 'anchored'
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+class ExecutionIdentity(Base):
+    """Append-only record of minted execution identities."""
+
+    __tablename__ = "execution_identities"
+
+    id = Column(String(36), primary_key=True)
+    run_id = Column(String(36), ForeignKey("veklom_runs.run_id"), nullable=False, index=True)
+    workspace_id = Column(String(64), nullable=False, index=True)
+    pre_execution_certificate_id = Column(String(64), ForeignKey("pgl_certificates.certificate_id"), nullable=False, index=True)
+    
+    # Payload elements from the CAPPO Gold Blueprint
+    genome_hash = Column(String(128), nullable=True)
+    constitution_hash = Column(String(128), nullable=True)
+    plan_hash = Column(String(128), nullable=True)
+    seked_directive = Column(JSON, nullable=True)
+    scope = Column(String(64), nullable=True)
+    budget = Column(JSON, nullable=True)
+    delegation_depth = Column(Integer, nullable=True, default=0)
+    
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    hash = Column(String(128), nullable=False)
+    signature = Column(String(256), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)

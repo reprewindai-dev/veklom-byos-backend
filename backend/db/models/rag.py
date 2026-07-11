@@ -1,7 +1,12 @@
-from sqlalchemy import Column, String, DateTime, JSON, Float, Integer
+from sqlalchemy import Column, String, DateTime, JSON, Float, Integer, ARRAY
 from sqlalchemy.sql import func
-from pgvector.sqlalchemy import Vector
 from backend.core.database.database import Base
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+from pgvector.sqlalchemy import Vector
 
 class AgentMemoryStore(Base):
     """

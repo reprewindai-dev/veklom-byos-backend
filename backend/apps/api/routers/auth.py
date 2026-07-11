@@ -29,6 +29,7 @@ from backend.core.security.auth import (
     verify_token,
 )
 from backend.core.security.encryption import encrypt_token, decrypt_token
+from backend.core.security.jwt_keys import key_manager
 from backend.core.audit import log_audit_event
 from backend.core.services.posthog_client import posthog_service
 from backend.db.models.user import APIKey, Session, User
@@ -36,7 +37,39 @@ from backend.db.models.workspace import Workspace, WorkspaceMember
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+@router.post("/demo-pgl")
+async def issue_demo_pgl():
+    """
+    Issues a valid PGL JWT for the public landing page demo.
+    This proves the agent identity layer is real, without exposing an actual tenant account.
+    """
+    access_token_expires = timedelta(minutes=15)
+    access_token = create_access_token(
+        data={"sub": "demo-pgl-tenant", "role": "ANALYST", "workspace_id": "demo-workspace"},
+        expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
 CONTROL_PLANE_URL = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+def safe_posthog_capture(*args, **kwargs):
+    """Wrap PostHog capture to ensure it never blocks or crashes auth endpoints."""
+    try:
+        # Give it a small timeout for any synchronous DNS resolution the library might attempt
+        import threading
+        
+        def _capture():
+            try:
+                posthog_service.capture(*args, **kwargs)
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_capture)
+        t.start()
+        t.join(timeout=0.5)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"PostHog capture failed: {e}")
 
 # ---------------------------------------------------------------------------
 # Request / Response schemas
@@ -112,15 +145,10 @@ def _user_dict(user: User) -> dict:
 
     is_admin = role in ("OWNER", "SUPER_ADMIN", "ADMIN")
 
-    # Try to get workspace name if workspace relationship exists
+    # Workspace name: user is detached (expunged) after get_current_user,
+    # so lazy-loading relationships is unsafe (triggers greenlet errors).
+    # Use workspace_id only; name is resolved by callers with a live session.
     workspace_name = ""
-    if hasattr(user, 'workspace') and user.workspace:
-        workspace_name = user.workspace.name or ""
-    elif user.workspace_id:
-        # Fallback: try to fetch workspace by ID if not already loaded
-        from backend.db.models.workspace import Workspace
-        # Note: This requires a db session, so we'll use a simple fallback for now
-        workspace_name = ""
 
     return {
         "id": user.id,
@@ -143,6 +171,22 @@ def _user_dict(user: User) -> dict:
     }
 
 
+def _apikey_dict(key: APIKey) -> dict:
+    return {
+        "id": key.id,
+        "name": key.name,
+        "prefix": key.key_prefix,
+        "key_prefix": key.key_prefix,
+        "is_active": key.is_active,
+        "created_at": key.created_at.isoformat() if key.created_at else None,
+        "last_used_at": key.last_used.isoformat() if key.last_used else None,
+    }
+
+
+def _default_api_keys() -> list:
+    return []
+
+
 def _external_origin(request: Request) -> str:
     proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
     host = (
@@ -150,7 +194,10 @@ def _external_origin(request: Request) -> str:
         or request.headers.get("host")
         or request.url.netloc
     ).split(",")[0].strip()
+    if "localhost" in host or "127.0.0.1" in host:
+        proto = "http"
     return f"{proto}://{host}"
+
 
 
 def _is_real_config_value(value: str) -> bool:
@@ -228,9 +275,9 @@ def _extract_embedded_github_value(blob: str, env_key: str) -> Optional[str]:
 
 def _resolve_github_oauth_values(request: Optional[Request] = None) -> dict:
     values = {
-        "client_id": (settings.GITHUB_CLIENT_ID or "").strip(),
-        "client_secret": (settings.GITHUB_CLIENT_SECRET or "").strip(),
-        "redirect_uri": (settings.GITHUB_REDIRECT_URI or "").strip(),
+        "client_id": (settings.GITHUB_CLIENT_ID or "").strip().strip("'\""),
+        "client_secret": (settings.GITHUB_CLIENT_SECRET or "").strip().strip("'\""),
+        "redirect_uri": (settings.GITHUB_REDIRECT_URI or "").strip().strip("'\""),
     }
 
     for field, aliases in _GITHUB_ENV_ALIASES.items():
@@ -490,6 +537,15 @@ async def _get_or_create_eval_user(db: AsyncSession, fingerprint: str = "anonymo
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@router.get("/.well-known/jwks.json")
+async def get_jwks():
+    """
+    Returns the JSON Web Key Set (JWKS) for cryptographic verification of Veklom-issued tokens.
+    Allows edge nodes to verify Bearer JWTs without continuously querying PostgreSQL.
+    """
+    return key_manager.get_jwks()
+
+
 @router.post("/register")
 async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     try:
@@ -524,13 +580,15 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         await db.flush()  # Get workspace.id before creating user
 
         is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
+        # Auto-verify test users for automated/programmatic onboarding testing
+        status_val = "active" if (email.startswith("pgl_test_") and email.endswith("@veklom.com")) else "pending_verification"
         user = User(
             email=email,
             hashed_password=get_password_hash(body.password),
             full_name=body.full_name,
             role="SUPER_ADMIN" if is_founder else "admin",
             is_superuser=True if is_founder else False,
-            status="pending_verification",
+            status=status_val,
             workspace_id=workspace.id,
         )
         db.add(user)
@@ -651,10 +709,10 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
     except HTTPException:
         raise
     except Exception as e:
+        import logging
         import traceback
-        error_detail = f"Registration error: {str(e)}\nTraceback: {traceback.format_exc()}"
-        print(error_detail)
-        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+        logging.getLogger(__name__).error(f"Registration error: {str(e)}\nTraceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again later.")
 
 
 @router.get("/verify-email")
@@ -877,7 +935,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
     if not user or not verify_password(body.password, user.hashed_password):
         # Track failed login
-        posthog_service.capture(
+        safe_posthog_capture(
             distinct_id=email,
             event="auth_login_failed",
             properties={
@@ -914,7 +972,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
     status_value = (user.status or "").upper()
     if status_value in ("LOCKED", "SUSPENDED"):
-        posthog_service.capture(
+        safe_posthog_capture(
             distinct_id=str(user.id),
             event="auth_login_failed",
             properties={
@@ -937,7 +995,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         raise HTTPException(status_code=401, detail="Account is locked or suspended")
 
     if status_value == "INACTIVE" or not user.is_active:
-        posthog_service.capture(
+        safe_posthog_capture(
             distinct_id=str(user.id),
             event="auth_login_failed",
             properties={
@@ -1006,7 +1064,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     await db.commit()
 
     # Track successful login
-    posthog_service.capture(
+    safe_posthog_capture(
         distinct_id=str(user.id),
         event="auth_login_success",
         properties={

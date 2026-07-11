@@ -93,7 +93,7 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS=30
 
 ### GitHub OAuth (PRODUCTION - Already Configured)
 ```
-GITHUB_CLIENT_ID=Iv23liPqr3V9FPknhwIn
+GITHUB_CLIENT_ID=YOUR_GITHUB_CLIENT_ID
 GITHUB_CLIENT_SECRET=<NEW_SECRET>
 GITHUB_REDIRECT_URI=https://api.veklom.com/api/v1/auth/github/callback
 ```
@@ -112,10 +112,35 @@ GROQ_MODEL=llama-3.1-8b-instant
 HUGGINGFACE_API_KEY=hf_YOUR_HUGGINGFACE_KEY_HERE
 HUGGINGFACE_MODEL_CHAT=mistralai/Mistral-7B-Instruct-v0.1
 HUGGINGFACE_MODEL_EMBED=sentence-transformers/all-MiniLM-L6-v2
-GEMINI_API_KEY=AIzaSyDe9S8yvvP4KJr120HDDTQS6zJCHV6Xmms
-SERPAPI_KEY=7594ce167135bd30aced2ab27c0117de66b88c9ca9b7f83fc536e953d3bed559
-OLLAMA_BASE_URL=http://localhost:11434
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+SERPAPI_KEY=YOUR_SERPAPI_KEY
+# Same host as the app container:
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+# Separate Ollama server:
+# OLLAMA_BASE_URL=http://YOUR_OLLAMA_SERVER_PRIVATE_IP:11434
 OLLAMA_MODEL=qwen2.5:3b
+```
+
+**Important:** inside a Coolify/Docker container, `localhost` is the app
+container itself. Do not use `OLLAMA_BASE_URL=http://localhost:11434` unless
+Ollama is running in the same container, which is not the production topology.
+If Ollama runs on its own Hetzner server, use that server's private WireGuard,
+Tailscale, or firewall-restricted IP/hostname.
+
+For CAPPO governed execution, set the same target using either:
+
+```
+OLLAMA_BASE_URL=http://YOUR_OLLAMA_SERVER_PRIVATE_IP:11434
+```
+
+or the explicit OpenAI-compatible CAPPO setting:
+
+```
+LLM_PROVIDER_NAME=ollama
+LLM_BASE_URL=http://YOUR_OLLAMA_SERVER_PRIVATE_IP:11434/v1
+LLM_MODEL=qwen2.5:3b
+EXECUTOR_MODE=provider
 ```
 
 ### Stripe (Billing)
@@ -127,17 +152,17 @@ STRIPE_PUBLISHABLE_KEY=YOUR_STRIPE_PUBLISHABLE_KEY
 
 ### Email (Resend)
 ```
-RESEND_API_KEY=re_V1Qm6JZZ_G1NcfLUR37HFYLGPReReRe2G
-RESEND_WORKER_KEY=re_9xdffP21_D53H8knojxmF6R8h1iPGecu7
-RESEND_SMTP_KEY=re_N26pKTux_DjtRAqFsDNmYfcdgxssGUBC8
-RESEND_VERCEL_KEY=re_V1Qm6JZZ_G1NcfLUR37HFYLGPReReRe2G
+RESEND_API_KEY=YOUR_RESEND_API_KEY
+RESEND_WORKER_KEY=YOUR_RESEND_WORKER_KEY
+RESEND_SMTP_KEY=YOUR_RESEND_SMTP_KEY
+RESEND_VERCEL_KEY=YOUR_RESEND_VERCEL_KEY
 EMAIL_FROM=Veklom <hello@mail.veklom.com>
 RESEND_WEBHOOK_URL=https://api.veklom.com/api/v1/webhooks/resend
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=465
 SMTP_PORT_TLS=2465
 SMTP_USER=resend
-SMTP_PASSWORD=re_N26pKTux_DjtRAqFsDNmYfcdgxssGUBC8
+SMTP_PASSWORD=YOUR_RESEND_SMTP_KEY
 ```
 
 ### Storage (S3/MinIO)
@@ -158,7 +183,7 @@ PACKAGE_GUARD_ENABLED=true
 
 ### Observability (Sentry)
 ```
-SENTRY_DSN=https://2505126db197fef19910066e5a6008cf@o4511414679633920.ingest.us.sentry.io/4511417159319552
+SENTRY_DSN=YOUR_SENTRY_DSN
 SENTRY_ENVIRONMENT=production
 SENTRY_ORG=veklom-sovereign-ai-hub-p0
 SENTRY_PROJECT=veklom

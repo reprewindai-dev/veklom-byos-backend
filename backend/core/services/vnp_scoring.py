@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.db.models.vnp import VNPMonitoredAPI, VNPProbeMetric
+from backend.db.models.vnp import Api, ProbeEvent
 from backend.core.services.redis_cache import redis_cache
 
 
@@ -16,13 +16,13 @@ async def update_api_composite_score(session: AsyncSession, api_id: str) -> floa
     # Calculate avg latency and success rate
     stmt = (
         select(
-            func.avg(VNPProbeMetric.latency_ms).label("avg_latency"),
-            func.avg(func.cast(VNPProbeMetric.success, func.integer())).label("success_rate")
+            func.avg(ProbeEvent.total_ms).label("avg_latency"),
+            func.avg(func.cast(ProbeEvent.success, func.integer())).label("success_rate")
         )
         .where(
             and_(
-                VNPProbeMetric.api_id == api_id,
-                VNPProbeMetric.created_at >= lookback
+                ProbeEvent.api_id == api_id,
+                ProbeEvent.received_at >= lookback
             )
         )
     )
@@ -42,10 +42,16 @@ async def update_api_composite_score(session: AsyncSession, api_id: str) -> floa
     score = max(0.0, min(100.0, score))  # Clamp between 0 and 100
     
     # Update DB
-    api = await session.get(VNPMonitoredAPI, api_id)
+    api = await session.get(Api, api_id)
     if api:
-        api.current_composite_score = score
-        api.stability_rating = "Stable" if score > 90 else "Degraded" if score > 50 else "Unstable"
+        # Note: We assume these columns exist or we add them if needed.
+        # In the current Api model, stability_rating and current_composite_score are not defined.
+        # We will use metadata or just update Redis for now if they are missing.
+        if hasattr(api, 'current_composite_score'):
+            api.current_composite_score = score
+        if hasattr(api, 'stability_rating'):
+            api.stability_rating = "Stable" if score > 90 else "Degraded" if score > 50 else "Unstable"
+
         await session.commit()
         
         # Push to Redis Cache for <15ms beacon reads
@@ -67,3 +73,53 @@ async def get_cached_api_score(api_id: str) -> dict:
     if cached:
         return json.loads(cached)
     return {"score": 100.0, "rating": "Unknown", "updated_at": None}
+
+
+async def update_agent_governance_score(session: AsyncSession, agent_id: str) -> float:
+    """Calculate real-time trust score based on path conformance, safety violations and dominance."""
+    from backend.db.models.mission_lock import MissionLockAgentState
+    
+    stmt = select(MissionLockAgentState).where(MissionLockAgentState.agent_id == agent_id)
+    result = await session.execute(stmt)
+    state = result.scalar_one_or_none()
+    
+    if not state:
+        return 100.0  # Perfect baseline for new/unmonitored agents
+        
+    conformance = float(state.path_conformance or 0.0)
+    # If path_conformance is scaled 0.0 to 1.0, normalize it to 100%
+    if conformance <= 1.0:
+        conformance_percentage = conformance * 100.0
+    else:
+        conformance_percentage = conformance
+        
+    violations = int(state.safety_violations or 0)
+    
+    # Base trust starts at path conformance (100 points max)
+    trust_score = conformance_percentage
+    
+    # Direct safety penalties: -15 points per violation
+    trust_score -= (violations * 15.0)
+    
+    # Epsilon exploration penalty: minor penalty for too much random exploration if dominance is degraded
+    dominance = float(state.current_dominance or 0.85)
+    if dominance < 0.60:
+        trust_score -= (1.0 - dominance) * 10.0
+        
+    # Clamp score between 0.0 and 100.0
+    trust_score = max(0.0, min(100.0, trust_score))
+    
+    # Update cache
+    cache_key = f"vnp:agent:governance:{agent_id}"
+    cache_data = {
+        "agent_id": agent_id,
+        "trust_score": trust_score,
+        "conformance": conformance_percentage,
+        "violations": violations,
+        "dominance": dominance,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await redis_cache.set(cache_key, json.dumps(cache_data), ttl=300)
+    
+    return trust_score
+

@@ -8,7 +8,7 @@ from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user, require_workspace_access, check_workspace_access
 from backend.db.models.user import User
 from backend.db.models.authority import AuthorityRun, AuthorityDecision
-from backend.db.models.agent import AgentMemory
+from backend.db.models.agent_stack import AgentMemory
 
 import uuid
 

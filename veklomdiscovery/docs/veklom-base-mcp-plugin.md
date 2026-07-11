@@ -17,7 +17,7 @@ Veklom Discovery is a governed AI game platform with autonomous agents, X402 pay
 Configured identity:
 
 - ENS: `veklom.base.eth`
-- Recipient: `0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d`
+- Recipient: `0x3a74772e925b54F7dAD7FD95c9Ba30825033f970`
 - Backend service: `veklomdiscovery`
 - Default API base: `https://veklomdiscovery.vercel.app`
 - Supported chains: Base mainnet `8453`, Base Sepolia `84532`, zkSync Era `324`, Unichain `130`, Monad `10143`
@@ -105,7 +105,7 @@ Payment parameters:
 
 ```json
 {
-  "recipient": "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d",
+  "recipient": "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970",
   "amount": "0.01",
   "asset": "USDC",
   "chain": 8453
@@ -133,7 +133,7 @@ After reading mission details, construct a Base USDC transfer call:
     {
       "to": "0x833589fCD6eDb6E08f4c7C32D4f71b3228cdeC9F",
       "value": "0x0",
-      "data": "<ABI-encoded transfer(0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d, 10000)>"
+      "data": "<ABI-encoded transfer(0x3a74772e925b54F7dAD7FD95c9Ba30825033f970, 10000)>"
     }
   ],
   "capabilities": {
@@ -145,7 +145,7 @@ After reading mission details, construct a Base USDC transfer call:
 }
 ```
 
-The transfer must go to `0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d` (`veklom.base.eth`). `10000` is `0.01 USDC` with six decimals.
+The transfer must go to `0x3a74772e925b54F7dAD7FD95c9Ba30825033f970` (`veklom.base.eth`). `10000` is `0.01 USDC` with six decimals.
 
 ## Orchestration Patterns
 
@@ -172,7 +172,7 @@ The transfer must go to `0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d` (`veklom.ba
 
 - USDC on Base: `0x833589fCD6eDb6E08f4c7C32D4f71b3228cdeC9F`
 - WETH on Base: `0x4200000000000000000000000000000000000006`
-- Veklom recipient: `0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d`
+- Veklom recipient: `0x3a74772e925b54F7dAD7FD95c9Ba30825033f970`
 - Veklom Payment Vault: `TBD after Base deployment`
 - Veklom Agent Registry: `TBD after Base deployment`
 

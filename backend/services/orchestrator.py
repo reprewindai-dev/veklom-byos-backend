@@ -101,26 +101,140 @@ class RunOrchestrator:
             await self._update_state(run, VeklomRunStatus.GOVERNED)
             return await self._update_state(run, VeklomRunStatus.DENIED)
 
-    async def commit_run(self, run: VeklomRun, pgl_identity_data: dict) -> VeklomRun:
-        # If in HELD, we must go to APPROVED first, but caller should do that.
-        if run.status == VeklomRunStatus.HELD:
-             await self._update_state(run, VeklomRunStatus.APPROVED)
-             
-        # Call PGL to commit intent and get pre-execution certificate.
-        # Pass the orchestrator's session so the ledger persists for real
-        # (no anonymous execution). The client flushes; our _update_state commits.
-        from backend.services.pgl_client import PGLClient
-        pgl = PGLClient(self.db)
-        
-        pgl_result = await pgl.commit_intent(
-            workspace_id=run.workspace_id,
-            actor_id=run.actor_id,
-            genome_hash=pgl_identity_data.get("genome_hash", "default_genome"),
-            constitution_hash=pgl_identity_data.get("constitution_hash", "default_const"),
-            plan_hash=pgl_identity_data.get("plan_hash")
+    async def commit_run(self, run: VeklomRun, pgl_identity_data: dict | None = None) -> VeklomRun:
+        """
+        Commit a run to execution — this is where the PGL hard gate fires.
+
+        Every actor_id on a VeklomRun MUST have a verified gnomledger identity
+        before the run can transition to COMMITTED. If the actor has no
+        PGL identity, is quarantined, or the birth certificate chain is broken,
+        the run is DENIED — not just failed.
+
+        pgl_identity_data is kept for API compatibility but is IGNORED —
+        identity is always resolved from gnomledger, never trusted from the caller.
+        """
+        from backend.core.services.pgl_identity_gate import (
+            PGLIdentityGate,
+            PGLIdentityError,
+            AgentKind,
         )
-        run.pgl_identity = pgl_result
-        return await self._update_state(run, VeklomRunStatus.COMMITTED)
+
+        # If in HELD, go to APPROVED first
+        if run.status == VeklomRunStatus.HELD:
+            await self._update_state(run, VeklomRunStatus.APPROVED)
+
+        # ── PGL HARD GATE — resolve actor identity from gnomledger ───────────
+        # actor_id comes from the JWT (extracted by ZeroTrustMiddleware), never
+        # from the request body. We resolve through the birth certificate chain.
+        actor_id = run.actor_id or "unknown"
+        try:
+            pgl_ctx = await PGLIdentityGate.require(
+                db       = self.db,
+                actor_id = actor_id,
+                action   = "commit_run",
+                payload  = {
+                    "run_id":       str(run.id) if hasattr(run, "id") else "unknown",
+                    "workspace_id": run.workspace_id,
+                    "tenant_id":    run.tenant_id,
+                    "intent":       run.intent or {},
+                },
+                kind = AgentKind.SYSTEM
+                       if actor_id in ("orchestrator::veklom-runtime",)
+                       else AgentKind.REGISTERED,
+                scope = "run:commit",
+            )
+        except PGLIdentityError as exc:
+            # PGL gate blocked the run — hard deny, not fail
+            import logging
+            logging.getLogger(__name__).error(
+                f"[Orchestrator] PGL gate blocked commit for actor='{actor_id}': {exc}"
+            )
+            # Transition to DENIED state with the reason
+            if not run.evidence:
+                run.evidence = {}
+            run.evidence["pgl_denied"] = str(exc)
+            run.evidence["pgl_actor_id"] = actor_id
+            return await self._update_state(run, VeklomRunStatus.DENIED)
+        # ─────────────────────────────────────────────────────────────────────
+
+        # Store the PGL context in pgl_identity for attest_run / rollback_run
+        run.pgl_identity = {
+            "pre_execution_certificate_id": pgl_ctx.pre_execution_cert_id,
+            "pgl_identity_id":              pgl_ctx.pgl_identity_id,
+            "genome_hash":                  pgl_ctx.genome_hash,
+            "constitution_hash":            pgl_ctx.constitution_hash,
+            "intent_hash":                  pgl_ctx.intent_hash,
+            "birth_cert_id":               pgl_ctx.birth_cert_id,
+            "cleared_at":                   pgl_ctx.cleared_at.isoformat(),
+        }
+        
+        run = await self._update_state(run, VeklomRunStatus.COMMITTED)
+        
+        # MINT EXECUTION IDENTITY (CAPPO Blueprint)
+        run = await self.mint_execution_identity(run)
+        
+        return run
+
+    async def mint_execution_identity(self, run: VeklomRun) -> VeklomRun:
+        """
+        Mints the ExecutionIdentityV1 payload required for governed execution.
+        Must be called between COMMITTED and ROUTED.
+        """
+        import json
+        import hashlib
+        import uuid
+        from datetime import datetime, timedelta, timezone
+        
+        pgl_identity = run.pgl_identity or {}
+        seked_state = run.seked_state or {}
+        
+        # Assemble fields
+        execution_identity = {
+            "id": str(uuid.uuid4()),
+            "run_id": run.run_id,
+            "workspace_id": run.workspace_id,
+            "pre_execution_certificate_id": pgl_identity.get("pre_execution_certificate_id"),
+            "genome_hash": pgl_identity.get("genome_hash"),
+            "constitution_hash": pgl_identity.get("constitution_hash"),
+            "plan_hash": pgl_identity.get("plan_hash"),
+            "seked_directive": seked_state,
+            "scope": "run:commit",
+            "budget": run.budget or {},
+            "delegation_depth": 0,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Compute canonical hash
+        raw = json.dumps(execution_identity, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        computed_hash = hashlib.sha256(raw).hexdigest()
+        execution_identity["hash"] = computed_hash
+        execution_identity["signature"] = "mock_signature_from_configured_signing_key"
+        
+        # Store on run
+        run.execution_identity = execution_identity
+        
+        # Persist to execution_identities table
+        from backend.db.models.pgl import ExecutionIdentity
+        ei_record = ExecutionIdentity(
+            id=execution_identity["id"],
+            run_id=execution_identity["run_id"],
+            workspace_id=execution_identity["workspace_id"],
+            pre_execution_certificate_id=execution_identity["pre_execution_certificate_id"],
+            genome_hash=execution_identity["genome_hash"],
+            constitution_hash=execution_identity["constitution_hash"],
+            plan_hash=execution_identity["plan_hash"],
+            seked_directive=execution_identity["seked_directive"],
+            scope=execution_identity["scope"],
+            budget=execution_identity["budget"],
+            delegation_depth=execution_identity["delegation_depth"],
+            hash=execution_identity["hash"],
+            signature=execution_identity["signature"]
+        )
+        self.db.add(ei_record)
+        await self.db.commit()
+        
+        return run
 
     async def route_run(self, run: VeklomRun, route: dict) -> VeklomRun:
         run.route = route

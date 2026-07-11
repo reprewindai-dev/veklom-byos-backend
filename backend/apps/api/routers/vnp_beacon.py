@@ -14,13 +14,47 @@ from backend.db.models.vnp import (
 
 logger = logging.getLogger(__name__)
 
+CANONICAL_VNP_NODES = [
+    {"id": "vnp-us-east-1", "region": "us-east-1", "name": "validator-us-east-1", "x": 270, "y": 180},
+    {"id": "vnp-us-west-2", "region": "us-west-2", "name": "validator-us-west-2", "x": 120, "y": 190},
+    {"id": "vnp-eu-west-1", "region": "eu-west-1", "name": "validator-eu-west-1", "x": 380, "y": 150},
+    {"id": "vnp-ap-southeast-1", "region": "ap-southeast-1", "name": "validator-ap-southeast-1", "x": 505, "y": 285},
+    {"id": "vnp-ap-northeast-1", "region": "ap-northeast-1", "name": "validator-ap-northeast-1", "x": 535, "y": 170},
+]
+
+REGION_ALIASES = {
+    "us-east": "us-east-1",
+    "useast": "us-east-1",
+    "us-west": "us-west-2",
+    "uswest": "us-west-2",
+    "eu-west": "eu-west-1",
+    "euwest": "eu-west-1",
+    "ap-southeast": "ap-southeast-1",
+    "apsoutheast": "ap-southeast-1",
+    "ap-northeast": "ap-northeast-1",
+    "apnortheast": "ap-northeast-1",
+}
+
+
+def canonical_region(value: Optional[str]) -> Optional[str]:
+    raw = (value or "").strip().lower().replace("_", "-")
+    if not raw:
+        return None
+    if raw in REGION_ALIASES:
+        return REGION_ALIASES[raw]
+    for node in CANONICAL_VNP_NODES:
+        if node["region"] in raw:
+            return node["region"]
+    return raw
+
 router = APIRouter(
     prefix="/beacon",
     tags=["VNP Data Plane"],
     responses={404: {"description": "Not found"}},
 )
 
-from backend.core.ml.vnp_scoring import compute_vnp_score
+from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
+
 @router.get("/routes/resolve")
 async def resolve_route(
     customer_id: str,
@@ -33,97 +67,18 @@ async def resolve_route(
 ):
     """
     Resolve best current route for a customer request using real-time VNP Telemetry.
+    Uses VNPScoringEngine for <15ms resolution.
     """
-    # 1. Fetch Route Policy
-    policy_stmt = select(RoutePolicy).where(RoutePolicy.id == policy_id)
-    policy_res = await db.execute(policy_stmt)
-    policy = policy_res.scalar_one_or_none()
-    
-    if not policy:
-        raise HTTPException(status_code=404, detail="Route policy not found")
+    snapshot = await VNPScoringEngine.get_latest_beacon(region=requested_region)
 
-    # 2. Fetch all active APIs and their regions
-    # In production, this would join RegionalTelemetry and filter in SQL.
-    # We do a simplified version here.
-    api_stmt = select(Api).where(Api.status == ApiStatus.active)
-    apis_res = await db.execute(api_stmt)
-    apis = apis_res.scalars().all()
+    if not snapshot:
+        # Fallback to default if region-specific not found
+        snapshot = await VNPScoringEngine.get_latest_beacon(region="default")
 
-    candidates = []
-    
-    for api in apis:
-        # Check policy allowed_provider_ids
-        if policy.allowed_provider_ids and str(api.provider_id) not in policy.allowed_provider_ids:
-            continue
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="No active route recommendations found. VNP Engine may be starting.")
 
-        # Fetch telemetry for this API
-        tel_stmt = select(RegionalTelemetry).where(RegionalTelemetry.api_id == api.id).order_by(RegionalTelemetry.measured_at.desc()).limit(1)
-        tel_res = await db.execute(tel_stmt)
-        telemetry = tel_res.scalar_one_or_none()
-
-        if not telemetry:
-            continue
-            
-        # Enforce Policy constraints
-        if policy.max_p99_latency_ms and telemetry.p99_latency_ms > policy.max_p99_latency_ms:
-            continue
-        if policy.minimum_trust_score and telemetry.trust_score < policy.minimum_trust_score:
-            continue
-            
-        # We assume p50 is slightly lower than p99 for calculation purposes since DB only has p99 here for MVP.
-        # In full production we would fetch p50 and p99.
-        p50_latency = max(10, telemetry.p99_latency_ms - 20)
-        
-        score = compute_vnp_score(
-            p50_latency_ms=p50_latency,
-            p99_latency_ms=telemetry.p99_latency_ms,
-            availability_percent=float(telemetry.uptime_percent),
-            owasp_compliance_flag=True, # Assuming true for existing records
-            weights=policy.weights
-        )
-        
-        candidates.append({
-            "api_id": str(api.id),
-            "provider_id": str(api.provider_id),
-            "provider_region": telemetry.region_code,
-            "endpoint_url": api.base_url, # In reality, get from ApiRegion
-            "composite_score": round(score, 2),
-            "trust_grade": "AAA" if telemetry.trust_score > 90 else "A",
-            "estimated_p99_latency_ms": telemetry.p99_latency_ms,
-            "uptime_percent_rolling": float(telemetry.uptime_percent),
-            "decision_reasons": ["policy_match", "healthy"]
-        })
-
-    # Sort by composite score descending
-    candidates.sort(key=lambda x: x["composite_score"], reverse=True)
-    top_candidates = candidates[:max_candidates]
-    
-    # Assign ranks
-    for i, c in enumerate(top_candidates):
-        c["rank"] = i + 1
-
-    snapshot_id = str(uuid.uuid4())
-    generated_at = datetime.now(timezone.utc)
-    
-    # Create snapshot in DB
-    snapshot_record = RouteSnapshot(
-        id=snapshot_id,
-        customer_id=customer_id,
-        policy_id=policy_id,
-        requested_region=requested_region,
-        generated_at=generated_at,
-        ttl_seconds=3,
-        snapshot={"candidates": top_candidates}
-    )
-    db.add(snapshot_record)
-    await db.commit()
-
-    return {
-        "route_snapshot_id": snapshot_id,
-        "generated_at": generated_at.isoformat(),
-        "ttl_seconds": 3,
-        "candidates": top_candidates
-    }
+    return snapshot
 
 @router.get("/topology")
 async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
@@ -133,23 +88,33 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
     from backend.db.models.vnp import Validator
     from backend.db.models.ledger import SettlementLedger, SettlementStatus
     
-    # 1. Fetch active validators
+    # 1. Fetch active validators and project them into the canonical five-node frame.
     val_stmt = select(Validator).where(Validator.state == "active").limit(20)
     val_res = await db.execute(val_stmt)
     validators = val_res.scalars().all()
+    validators_by_region = {}
+    for validator in validators:
+        region_key = canonical_region(validator.operator_entity)
+        if region_key:
+            validators_by_region.setdefault(region_key, validator)
     
     nodes = []
-    for i, v in enumerate(validators):
+    active_node_count = 0
+    for canonical in CANONICAL_VNP_NODES:
+        v = validators_by_region.get(canonical["region"])
+        if v:
+            active_node_count += 1
         nodes.append({
-            "id": str(v.id),
-            "name": f"validator-{v.public_key[:8]}",
-            "region": v.operator_entity or "global",
-            "status": "ATTESTING",
-            "x": 100 + (i * 50) % 400,
-            "y": 100 + (i * 30) % 300,
-            "stakeUsd": float(v.stake_amount_minor or 0) / 1000000,
-            "cpuMs": 0.1,
-            "poolUtilization": 10,
+            "id": str(v.id) if v else canonical["id"],
+            "name": f"validator-{v.public_key[:8]}" if v else canonical["name"],
+            "region": canonical["region"],
+            "status": "ATTESTING" if v else "STANDBY",
+            "status_str": "Connected" if v else "Disconnected",
+            "x": canonical["x"],
+            "y": canonical["y"],
+            "stakeUsd": float(v.stake_amount_minor or 0) / 1000000 if v else 0,
+            "cpuMs": 0.1 if v else 0,
+            "poolUtilization": 10 if v else 0,
             "version": "vnp-v1.0.0",
             "tenantLock": "veklom"
         })
@@ -175,10 +140,10 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
         })
 
     eventsLog = []
-    if not nodes:
-        eventsLog.append("Awaiting PBFT consensus session establishment.")
+    if active_node_count < len(CANONICAL_VNP_NODES):
+        eventsLog.append(f"Five-node VNP frame loaded; {active_node_count}/5 validator regions connected.")
     else:
-        eventsLog.append(f"PBFT consensus session established globally with {len(nodes)} validators.")
+        eventsLog.append("Five-node VNP measurement frame connected across all canonical regions.")
 
     return {
         "status": "success",
@@ -187,6 +152,8 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
             "ledgerFeed": ledgerFeed,
             "eventsLog": eventsLog,
             "totalSettledUsd": round(total_settled_usd, 4),
+            "activeNodes": active_node_count,
+            "expectedNodes": len(CANONICAL_VNP_NODES),
             "isActiveStorm": False,
             "safetyGuardActive": True
         }

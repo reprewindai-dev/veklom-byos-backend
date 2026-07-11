@@ -115,3 +115,68 @@ class SettlementLedgerRepository:
             stmt = stmt.where(SettlementLedger.tenant_id == tenant_id)
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+
+async def write_identity_rag_fee(
+    db: AsyncSession,
+    tenant_id,
+    workspace_id,
+    requester_provider_id,
+    veklom_payee_id,
+    payment_proof_hash,
+    agent_lookup_key,
+    resolution_payload,
+    amount_minor,
+) -> SettlementLedger:
+    import uuid
+    # Use a safe idempotency key, e.g. based on payment proof hash or unique uuid
+    idempotency_key = f"identity_rag_{payment_proof_hash}" if payment_proof_hash else f"identity_rag_{uuid.uuid4()}"
+    
+    # Check if a row with this idempotency_key already exists to be idempotent
+    stmt = select(SettlementLedger).where(SettlementLedger.idempotency_key == idempotency_key)
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+    if existing:
+        return existing
+
+    row = SettlementLedger(
+        tenant_id=str(tenant_id),
+        provider=str(requester_provider_id),
+        fee_type="identity_rag_resolution",
+        amount=amount_minor,
+        currency="USDC",
+        status=SettlementStatus.PENDING,
+        idempotency_key=idempotency_key,
+        payment_proof_id=payment_proof_hash,
+        metadata_json={
+            "workspace_id": str(workspace_id) if workspace_id else None,
+            "veklom_payee_id": str(veklom_payee_id),
+            "agent_lookup_key": agent_lookup_key,
+            "resolution_payload": resolution_payload,
+        }
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def mark_settlement_released(
+    db: AsyncSession,
+    ledger_id,
+    metadata_patch: dict,
+) -> SettlementLedger:
+    row = await db.get(SettlementLedger, ledger_id)
+    if not row:
+        raise ValueError(f"SettlementLedger row not found: {ledger_id}")
+    
+    row.status = SettlementStatus.SETTLED
+    if row.metadata_json is None:
+        row.metadata_json = {}
+    else:
+        # Avoid mutating in-place if SQLAlchemy needs to detect changes
+        row.metadata_json = dict(row.metadata_json)
+    
+    # Update metadata with metadata_patch
+    row.metadata_json = {**row.metadata_json, **metadata_patch}
+    await db.flush()
+    return row

@@ -225,5 +225,5 @@ for _table in _RLS_TABLES:
             AS RESTRICTIVE
             FOR ALL
             USING (workspace_id = current_setting('app.current_tenant_id', true));
-        """)
+        """).execute_if(dialect='postgresql')
     )

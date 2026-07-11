@@ -8,6 +8,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
+from urllib.parse import urlsplit, urlunsplit
 import httpx
 import sqlite3
 import pandas as pd
@@ -135,30 +136,41 @@ class ToolExecutionService:
             headers = tool_data.get("headers", {})
             payload = tool_data.get("payload", {})
             timeout = tool_data.get("timeout", 30)
-            
+
+            if not isinstance(headers, dict):
+                headers = {}
+
+            try:
+                timeout = float(timeout)
+            except (TypeError, ValueError):
+                timeout = 30.0
+            timeout = max(1.0, min(timeout, 60.0))
+
+            safe_url = self._normalize_and_validate_api_url(url)
+
             # Security: Validate URL
-            if not self._is_safe_url(url):
+            if not safe_url or not self._is_safe_url(safe_url):
                 return {
                     "success": False,
                     "error": "Unsafe URL or blocked domain",
-                    "url": url
+                    "url": str(url)
                 }
             
             # Execute HTTP request
             async with httpx.AsyncClient(timeout=timeout) as client:
                 if method == "GET":
-                    response = await client.get(url, headers=headers)
+                    response = await client.get(safe_url, headers=headers)
                 elif method == "POST":
-                    response = await client.post(url, json=payload, headers=headers)
+                    response = await client.post(safe_url, json=payload, headers=headers)
                 elif method == "PUT":
-                    response = await client.put(url, json=payload, headers=headers)
+                    response = await client.put(safe_url, json=payload, headers=headers)
                 elif method == "DELETE":
-                    response = await client.delete(url, headers=headers)
+                    response = await client.delete(safe_url, headers=headers)
                 else:
                     return {
                         "success": False,
                         "error": f"Unsupported HTTP method: {method}",
-                        "url": url
+                        "url": safe_url
                     }
                 
                 # Parse response
@@ -172,7 +184,7 @@ class ToolExecutionService:
                     "status_code": response.status_code,
                     "response": response_data,
                     "headers": dict(response.headers),
-                    "url": url,
+                    "url": safe_url,
                     "method": method
                 }
                 
@@ -183,6 +195,54 @@ class ToolExecutionService:
                 "error": str(e),
                 "url": tool_data.get("url", "unknown")
             }
+
+    def _is_allowed_host(self, hostname: str) -> bool:
+        """Check if host is in explicit allowlist (exact host or subdomain)."""
+        host = (hostname or "").strip().lower().rstrip(".")
+        if not host:
+            return False
+        for allowed in self.allowed_domains:
+            allowed_host = (allowed or "").strip().lower().rstrip(".")
+            if host == allowed_host or host.endswith(f".{allowed_host}"):
+                return True
+        return False
+
+    def _normalize_and_validate_api_url(self, raw_url: Any) -> Optional[str]:
+        """Normalize URL and enforce strict SSRF-safe constraints."""
+        if not isinstance(raw_url, str):
+            return None
+
+        candidate = raw_url.strip()
+        if not candidate:
+            return None
+
+        try:
+            parsed = urlsplit(candidate)
+        except Exception:
+            return None
+
+        scheme = (parsed.scheme or "").lower()
+        if scheme not in {"http", "https"}:
+            return None
+
+        if not parsed.hostname:
+            return None
+
+        if parsed.username is not None or parsed.password is not None:
+            return None
+
+        if parsed.fragment:
+            return None
+
+        if not self._is_allowed_host(parsed.hostname):
+            return None
+
+        netloc = parsed.hostname.lower().rstrip(".")
+        if parsed.port is not None:
+            netloc = f"{netloc}:{parsed.port}"
+
+        normalized = urlunsplit((scheme, netloc, parsed.path or "/", parsed.query, ""))
+        return normalized
     
     async def _get_abp_process(self) -> asyncio.subprocess.Process:
         """Get or spawn the long-lived ABP MCP sidecar."""

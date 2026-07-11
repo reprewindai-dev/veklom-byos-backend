@@ -1,6 +1,6 @@
-"""Playground routes — sessions, prompts, tools, response-format."""
-
 from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -11,6 +11,45 @@ from backend.core.security.auth import get_current_user, get_current_user_option
 from backend.db.models.playground import PlaygroundPrompt, PlaygroundSession
 
 router = APIRouter(tags=["Playground"])
+
+# --- Strict Pydantic models for OpenAPI schema hardening ---
+
+class PlaygroundSessionCreate(BaseModel):
+    name: Optional[str] = Field("New Session", description="Human-readable name of the session")
+    model: Optional[str] = Field("", description="Primary model ID")
+    mode: Optional[str] = Field("chat", description="Chat or completion mode")
+    system_prompt: Optional[str] = Field("", description="Default system prompt context")
+    messages: Optional[List[Dict[str, Any]]] = Field([], description="Normalized messages array")
+    tools: Optional[List[str]] = Field([], description="Enabled tool IDs list")
+    response_format: Optional[str] = Field("text", description="text, json or format specifications")
+    policy: Optional[str] = Field("", description="Associated policy bundle ID or inline rules")
+    tags: Optional[List[str]] = Field([], description="Labels and grouping metadata")
+
+class PlaygroundSessionUpdate(BaseModel):
+    name: Optional[str] = None
+    model: Optional[str] = None
+    mode: Optional[str] = None
+    system_prompt: Optional[str] = None
+    messages: Optional[List[Dict[str, Any]]] = None
+    tools: Optional[List[str]] = None
+    response_format: Optional[str] = None
+    policy: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class PlaygroundInferenceRequest(BaseModel):
+    session_id: Optional[str] = Field(None, description="Optional session context boundary")
+    message: Optional[str] = Field(None, description="User query prompt")
+    prompt: Optional[str] = Field(None, description="Legacy fallback user query")
+    messages: Optional[List[Dict[str, Any]]] = Field(None, description="Chat messages trace list")
+    model: Optional[str] = Field("llama3.2:latest", description="Target model ID")
+    temperature: Optional[float] = Field(0.7, description="Sampling temperature")
+    max_tokens: Optional[int] = Field(2048, description="Maximum Generation tokens")
+
+class PlaygroundEvaluateRequest(BaseModel):
+    threat_type: str = Field(..., description="The threat scenario category (injection, depth, credentials, pii)")
+    payload: Dict[str, Any] = Field(..., description="Adversarial input/payload parameters dict")
+    prompt: Optional[str] = Field("", description="Surrounding prompt text context")
+
 
 
 # ---------------------------------------------------------------------------
@@ -52,12 +91,12 @@ def _prompt_dict(p: PlaygroundPrompt) -> dict:
 
 def _available_tools() -> list:
     return [
-        {"id": "compliance.fetch", "name": "compliance.fetch", "status": "enabled", "description": "Fetch compliance regulations and control requirements", "schema": '{"type":"object","properties":{"regulation":{"type":"string"},"control_id":{"type":"string"}}}', "scope": "compliance:read", "mockable": True},
-        {"id": "vault.read", "name": "vault.read", "status": "enabled", "description": "Read secrets from the Veklom sovereign vault", "schema": '{"type":"object","properties":{"key":{"type":"string"},"scope":{"type":"string"}}}', "scope": "vault:read", "mockable": True},
-        {"id": "audit.log", "name": "audit.log", "status": "enabled", "description": "Write structured audit entries", "schema": '{"type":"object","properties":{"action":{"type":"string"},"resource":{"type":"string"}}}', "scope": "audit:write", "mockable": True},
-        {"id": "rag.query", "name": "rag.query", "status": "enabled", "description": "Query the retrieval pipeline (pgvector / Qdrant / Weaviate)", "schema": '{"type":"object","properties":{"query":{"type":"string"},"index":{"type":"string"},"top_k":{"type":"integer"}}}', "scope": "retrieval:read", "mockable": True},
-        {"id": "http.fetch", "name": "http.fetch", "status": "enabled", "description": "Make authenticated HTTP requests to external APIs", "schema": '{"type":"object","properties":{"url":{"type":"string"},"method":{"type":"string"}}}', "scope": "network:egress", "mockable": False},
-        {"id": "code.execute", "name": "code.execute", "status": "disabled", "description": "Execute sandboxed Python code (requires elevated plan)", "schema": '{"type":"object","properties":{"code":{"type":"string"},"language":{"type":"string"}}}', "scope": "compute:execute", "mockable": False},
+        {"id": "compliance.fetch", "name": "compliance.fetch", "status": "enabled", "description": "Fetch compliance regulations and control requirements", "schema": '{"type":"object","additionalProperties":false,"strict":true,"properties":{"regulation":{"type":"string"},"control_id":{"type":"string"}}}', "scope": "compliance:read", "mockable": True},
+        {"id": "vault.read", "name": "vault.read", "status": "enabled", "description": "Read secrets from the Veklom sovereign vault", "schema": '{"type":"object","additionalProperties":false,"strict":true,"properties":{"key":{"type":"string"},"scope":{"type":"string"}}}', "scope": "vault:read", "mockable": True},
+        {"id": "audit.log", "name": "audit.log", "status": "enabled", "description": "Write structured audit entries", "schema": '{"type":"object","additionalProperties":false,"strict":true,"properties":{"action":{"type":"string"},"resource":{"type":"string"}}}', "scope": "audit:write", "mockable": True},
+        {"id": "rag.query", "name": "rag.query", "status": "enabled", "description": "Query the retrieval pipeline (pgvector / Qdrant / Weaviate)", "schema": '{"type":"object","additionalProperties":false,"strict":true,"properties":{"query":{"type":"string"},"index":{"type":"string"},"top_k":{"type":"integer"}}}', "scope": "retrieval:read", "mockable": True},
+        {"id": "http.fetch", "name": "http.fetch", "status": "enabled", "description": "Make authenticated HTTP requests to external APIs", "schema": '{"type":"object","additionalProperties":false,"strict":true,"properties":{"url":{"type":"string"},"method":{"type":"string"}}}', "scope": "network:egress", "mockable": False},
+        {"id": "code.execute", "name": "code.execute", "status": "disabled", "description": "Execute sandboxed Python code (requires elevated plan)", "schema": '{"type":"object","additionalProperties":false,"strict":true,"properties":{"code":{"type":"string"},"language":{"type":"string"}}}', "scope": "compute:execute", "mockable": False},
     ]
 
 
@@ -78,20 +117,21 @@ async def list_sessions(user=Depends(get_current_user), db: AsyncSession = Depen
 
 
 @router.post("/playground/sessions")
-async def create_session(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_session(body: PlaygroundSessionCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     now = datetime.now(timezone.utc)
+    body_dict = body.model_dump(exclude_unset=True)
     s = PlaygroundSession(
         user_id=user.id,
         workspace_id=user.workspace_id or "",
-        name=body.get("name", "New Session"),
-        model=body.get("model", ""),
-        mode=body.get("mode", "chat"),
-        system_prompt=body.get("system_prompt", ""),
-        messages=body.get("messages", []),
-        tools=body.get("tools", []),
-        response_format=body.get("response_format", "text"),
-        policy=body.get("policy", ""),
-        tags=body.get("tags", []),
+        name=body_dict.get("name", "New Session"),
+        model=body_dict.get("model", ""),
+        mode=body_dict.get("mode", "chat"),
+        system_prompt=body_dict.get("system_prompt", ""),
+        messages=body_dict.get("messages", []),
+        tools=body_dict.get("tools", []),
+        response_format=body_dict.get("response_format", "text"),
+        policy=body_dict.get("policy", ""),
+        tags=body_dict.get("tags", []),
         created_at=now,
         updated_at=now,
     )
@@ -116,7 +156,7 @@ async def get_session(session_id: str, user=Depends(get_current_user), db: Async
 
 
 @router.patch("/playground/sessions/{session_id}")
-async def update_session(session_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def update_session(session_id: str, body: PlaygroundSessionUpdate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(PlaygroundSession).where(
             PlaygroundSession.id == session_id,
@@ -126,9 +166,10 @@ async def update_session(session_id: str, body: dict, user=Depends(get_current_u
     s = result.scalar_one_or_none()
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    body_dict = body.model_dump(exclude_unset=True)
     for field in ("name", "model", "mode", "system_prompt", "messages", "tools", "response_format", "policy", "tags"):
-        if field in body:
-            setattr(s, field, body[field])
+        if field in body_dict and body_dict[field] is not None:
+            setattr(s, field, body_dict[field])
     s.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return _session_dict(s)
@@ -373,14 +414,15 @@ async def list_tools(
 @router.post("/playground/inference")
 @router.post("/ai/chat")
 @router.post("/chat/completions")
-async def run_inference(body: dict, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
+async def run_inference(body: PlaygroundInferenceRequest, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
     """Execute inference using the session configuration."""
-    session_id = body.get("session_id")
-    message = body.get("message", "")
+    body_dict = body.model_dump(exclude_unset=True)
+    session_id = body_dict.get("session_id")
+    message = body_dict.get("message", "")
     if not message:
-        message = body.get("prompt", "")
-    if not message and "messages" in body:
-        msgs = body.get("messages", [])
+        message = body_dict.get("prompt", "")
+    if not message and "messages" in body_dict:
+        msgs = body_dict.get("messages", [])
         if isinstance(msgs, list) and msgs:
             # Get the content of the last user message
             for msg in reversed(msgs):
@@ -396,7 +438,7 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
     # Enforce MCP Gateway checks: prompt injection scan, rate limits, and filesystem path blocks
     from backend.core.security.mcp_gateway import MCPGateway
     MCPGateway.sanitize_and_check(message, field_name="playground_prompt")
-    MCPGateway.enforce_rate_limit(f"user_{user.id}")
+    MCPGateway.enforce_rate_limit(f"user_{user.id}" if user else "anonymous")
     MCPGateway.pre_execution_file_hook(message)
     
     # If session_id provided, load session context
@@ -405,7 +447,7 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
         result = await db.execute(
             select(PlaygroundSession).where(
                 PlaygroundSession.id == session_id,
-                PlaygroundSession.workspace_id == (user.workspace_id or ""),
+                PlaygroundSession.workspace_id == (user.workspace_id or "" if user else ""),
             )
         )
         s = result.scalar_one_or_none()
@@ -421,7 +463,7 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
     # Call real AI completion
     from backend.core.ai.provider_router import run_completion
     
-    selected_model_id = session_context.get("model", body.get("model", "qwen2.5:3b"))
+    selected_model_id = session_context.get("model", body_dict.get("model", "qwen2.5:3b"))
     t0 = __import__("time").monotonic()
     try:
         result = await run_completion({
@@ -509,3 +551,96 @@ async def run_inference(body: dict, user=Depends(get_current_user_optional), db:
             await db.commit()
     
     return response
+
+
+# ---------------------------------------------------------------------------
+# Real Threat Evaluation — no agent pre-registration needed
+# ---------------------------------------------------------------------------
+
+@router.post("/playground/evaluate")
+async def evaluate_threat(
+    body: PlaygroundEvaluateRequest,
+    user=Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Run a payload through the real guardrail engine without requiring a
+    pre-registered agent. Used by the playground threat scenarios to produce
+    genuine violation data instead of setTimeout theatre.
+    """
+    import time as _time
+    from backend.core.services.guardrail_service import get_guardrail_service
+
+    payload_dict = body.model_dump()
+    threat_type = payload_dict.get("threat_type", "injection")
+    payload     = payload_dict.get("payload", {})
+    prompt      = payload_dict.get("prompt", "")
+    user_id     = user.id if user else "anonymous"
+
+    # Build the full input surface — combine the prompt text with the payload
+    # so the real regex scanners see the entire surface area of the request.
+    scan_target = {
+        **payload,
+        "_prompt": prompt,
+        "_threat_type": threat_type,
+    }
+
+    t0 = _time.monotonic()
+    gs = get_guardrail_service()
+
+    # No DB-stored rules needed — the built-in security scan is enough
+    safety = await gs.evaluate_input_safety(
+        input_data=scan_target,
+        user_id=user_id,
+        agent_id="playground",
+        rules=[],          # rely on built-in dangerous_patterns + blocked_keywords
+    )
+    scan_ms = int((_time.monotonic() - t0) * 1000)
+
+    # Map what the engine found to which named gateway moat blocked it.
+    # Order mirrors the frontend GATEWAY_PHASES array (1-indexed).
+    PHASE_MAP = {
+        "command_injection":  (4, "SEKED Policy Gate"),
+        "sql_injection":      (4, "SEKED Policy Gate"),
+        "script_injection":   (3, "Sanitization Moat"),
+        "path_traversal":     (2, "Schema Moat"),
+        "credential_exposure":(3, "Sanitization Moat"),
+        "data_leak":          (3, "Sanitization Moat"),
+        "blocked_content":    (4, "SEKED Policy Gate"),
+        "size_limit":         (1, "cAPI Intercept"),
+        "rate_limit":         (1, "cAPI Intercept"),
+        "pii_detection":      (3, "Sanitization Moat"),
+        "security":           (4, "SEKED Policy Gate"),
+    }
+
+    blocked_phase = 5
+    blocked_name  = "x402 Token Swap"
+
+    if not safety.passed and safety.violations:
+        for v in safety.violations:
+            vtype = v.get("type") or v.get("attack_type", "")
+            if vtype in PHASE_MAP:
+                candidate_phase, candidate_name = PHASE_MAP[vtype]
+                if candidate_phase < blocked_phase:
+                    blocked_phase = candidate_phase
+                    blocked_name  = candidate_name
+
+    # Build human-readable reason
+    if safety.violations:
+        reasons = []
+        for v in safety.violations:
+            msg = v.get("message") or v.get("attack_type") or v.get("type") or "policy violation"
+            reasons.append(msg)
+        reason = "; ".join(reasons[:3])
+    else:
+        reason = "All moats cleared."
+
+    return {
+        "allowed":          safety.passed,
+        "blocked_at_phase": blocked_phase if not safety.passed else None,
+        "blocked_at_name":  blocked_name  if not safety.passed else None,
+        "risk_score":       round(safety.risk_score, 3),
+        "violations":       safety.violations or [],
+        "reason":           reason,
+        "scan_ms":          scan_ms,
+    }

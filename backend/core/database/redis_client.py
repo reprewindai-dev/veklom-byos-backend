@@ -25,6 +25,28 @@ class InMemoryRedis:
     async def ping(self):
         return True
 
+    async def eval(self, script: str, numkeys: int, key: str, capacity: int, refill_rate: float, now: float):
+        # Fallback Python implementation of the token bucket rate limiter lua script
+        bucket = self._db.get(key)
+        if bucket is None:
+            tokens = float(capacity)
+            last_update = float(now)
+        else:
+            tokens = float(bucket.get("tokens", capacity))
+            last_update = float(bucket.get("last_update", now))
+            
+        delta_time = max(0.0, float(now) - last_update)
+        refilled_tokens = int(delta_time * float(refill_rate))
+        tokens = min(float(capacity), tokens + refilled_tokens)
+        
+        requested = 1
+        if tokens >= requested:
+            tokens = tokens - requested
+            self._db[key] = {"tokens": tokens, "last_update": now}
+            return [1, int(tokens)]
+        else:
+            return [0, int(tokens)]
+
 class SafeRedisClient:
     def __init__(self, redis_url: str):
         self.url = redis_url
@@ -78,6 +100,16 @@ class SafeRedisClient:
             logger.warning(f"Redis delete failed, falling back to in-memory: {e}")
             self.is_fallback = True
             return 1
+
+    async def eval(self, script: str, numkeys: int, *args):
+        if self.is_fallback or not self.real_redis:
+            return await self.fallback_db.eval(script, numkeys, *args)
+        try:
+            return await self.real_redis.eval(script, numkeys, *args)
+        except Exception as e:
+            logger.warning(f"Redis eval failed, falling back to in-memory: {e}")
+            self.is_fallback = True
+            return await self.fallback_db.eval(script, numkeys, *args)
 
     async def ping(self):
         if self.is_fallback or not self.real_redis:

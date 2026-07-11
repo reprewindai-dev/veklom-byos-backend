@@ -17,6 +17,7 @@ from backend.db.models.risk_profile import OrgRiskProfile
 @patch("backend.core.services.governance_engine.guardrail_service")
 async def test_run_governed_execution_success(mock_guard, mock_run):
     db = AsyncMock()
+    db.scalar = AsyncMock(side_effect=[100.0, 0.0])
     
     # 1. Setup mocks
     agent = Agent(id=1, status="registered")
@@ -86,6 +87,7 @@ async def test_run_governed_execution_success(mock_guard, mock_run):
 @patch("backend.core.services.governance_engine.guardrail_service")
 async def test_run_governed_execution_rewrite_once_then_success(mock_guard, mock_run):
     db = AsyncMock()
+    db.scalar = AsyncMock(side_effect=[100.0, 0.0])
     
     agent = Agent(id=1, status="registered")
     genome = GenomeVersion(
@@ -152,6 +154,7 @@ async def test_run_governed_execution_rewrite_once_then_success(mock_guard, mock
 @patch("backend.core.services.governance_engine.guardrail_service")
 async def test_run_governed_execution_block_on_double_failure(mock_guard, mock_run):
     db = AsyncMock()
+    db.scalar = AsyncMock(side_effect=[100.0, 0.0])
     
     agent = Agent(id=1, status="registered")
     genome = GenomeVersion(

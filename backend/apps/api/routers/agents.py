@@ -689,3 +689,185 @@ async def invoke_skill(
         status_code=501,
         detail=f"Skill {skill_id!r} is available but invocation dispatcher not yet implemented.",
     )
+
+
+# ---------------------------------------------------------------------------
+# Swarm Map Actions (Action Handoffs)
+# ---------------------------------------------------------------------------
+
+@router.post("/{agent_id}/isolate")
+async def isolate_agent(
+    agent_id: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Action Handoff: Isolate Agent
+    Transitions the agent into a quarantined/isolated state to prevent network or cluster access.
+    """
+    acct = await _account_for_user(user, db)
+    if not acct:
+        raise HTTPException(status_code=400, detail="No account row for user")
+
+    a = (await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id, Agent.account_id == acct.id
+        )
+    )).scalar_one_or_none()
+    
+    if not a:
+        a = (await db.execute(
+            select(Agent).where(
+                Agent.agent_id == agent_id, Agent.account_id == acct.id
+            )
+        )).scalar_one_or_none()
+
+    if not a:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    a.status = "Blocked"
+    db.add(a)
+
+    # Log action
+    import uuid
+    import hashlib
+    import json
+    
+    last = (await db.execute(
+        select(LedgerEvent)
+        .where(LedgerEvent.agent_id == a.id)
+        .order_by(LedgerEvent.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    prev = last.event_hash if last else None
+
+    event_id = str(uuid.uuid4())
+    payload = {"agent_id": a.agent_id, "action": "isolate", "prev": prev}
+    body_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    h = hashlib.sha256(body_bytes).hexdigest()
+
+    ev = LedgerEvent(
+        agent_id=a.id,
+        event_id=event_id,
+        event_type="agent.isolated",
+        actor=user.email,
+        summary=f"Agent {a.name} isolated from cluster.",
+        details=payload,
+        prev_event_hash=prev,
+        event_hash=h,
+    )
+    db.add(ev)
+    await db.commit()
+    await db.refresh(a)
+
+    return _serialize_agent(a)
+
+
+@router.post("/{agent_id}/pause")
+async def pause_agent(
+    agent_id: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Action Handoff: Pause / Inspect
+    Transitions the agent to an Idle state, clearing its active locks.
+    """
+    acct = await _account_for_user(user, db)
+    if not acct:
+        raise HTTPException(status_code=400, detail="No account row for user")
+
+    a = (await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id, Agent.account_id == acct.id
+        )
+    )).scalar_one_or_none()
+    
+    if not a:
+        a = (await db.execute(
+            select(Agent).where(
+                Agent.agent_id == agent_id, Agent.account_id == acct.id
+            )
+        )).scalar_one_or_none()
+
+    if not a:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    a.status = "Idle"
+    db.add(a)
+
+    # Log action
+    import uuid
+    import hashlib
+    import json
+    
+    last = (await db.execute(
+        select(LedgerEvent)
+        .where(LedgerEvent.agent_id == a.id)
+        .order_by(LedgerEvent.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    prev = last.event_hash if last else None
+
+    event_id = str(uuid.uuid4())
+    payload = {"agent_id": a.agent_id, "action": "pause", "prev": prev}
+    body_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    h = hashlib.sha256(body_bytes).hexdigest()
+
+    ev = LedgerEvent(
+        agent_id=a.id,
+        event_id=event_id,
+        event_type="agent.paused",
+        actor=user.email,
+        summary=f"Agent {a.name} paused for inspection.",
+        details=payload,
+        prev_event_hash=prev,
+        event_hash=h,
+    )
+    db.add(ev)
+    await db.commit()
+    await db.refresh(a)
+
+    return _serialize_agent(a)
+
+
+@router.get("/{agent_id}/trace")
+async def trace_agent(
+    agent_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Action Handoff: View Trace
+    Retrieves the recent execution trace of the agent.
+    """
+    acct = await _account_for_user(user, db)
+    if not acct:
+        raise HTTPException(status_code=400, detail="No account row for user")
+
+    a = (await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id, Agent.account_id == acct.id
+        )
+    )).scalar_one_or_none()
+    
+    if not a:
+        a = (await db.execute(
+            select(Agent).where(
+                Agent.agent_id == agent_id, Agent.account_id == acct.id
+            )
+        )).scalar_one_or_none()
+
+    if not a:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    rows = (await db.execute(
+        select(LedgerEvent)
+        .where(LedgerEvent.agent_id == a.id)
+        .order_by(LedgerEvent.created_at.desc())
+        .limit(limit)
+    )).scalars().all()
+    
+    return {
+        "items": [_serialize_ledger_event(e) for e in rows],
+        "source": "ledger_events",
+        "count": len(rows),
+    }

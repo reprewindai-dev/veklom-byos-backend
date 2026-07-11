@@ -136,8 +136,6 @@ async def _verify_payment_receipt(payment: Any, tx_hash: str, chain_id: int) -> 
     if not tx:
         raise BankerAgentProofError("Payment transaction metadata was not found on Base")
     tx_to = _normalize_address(str(tx.get("to", "")))
-    if tx_to != _normalize_address(BASE_USDC_CONTRACT):
-        raise BankerAgentProofError("Payment transaction is not addressed to the Base USDC contract")
 
     transfer_match: dict[str, Any] | None = None
     for log in receipt.get("logs") or []:

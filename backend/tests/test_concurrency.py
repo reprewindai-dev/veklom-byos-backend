@@ -34,7 +34,10 @@ async def init_db():
 
 @pytest.fixture(autouse=True)
 async def setup_database():
+    await engine.dispose()
     await init_db()
+    yield
+    await engine.dispose()
 
 
 @pytest.mark.anyio

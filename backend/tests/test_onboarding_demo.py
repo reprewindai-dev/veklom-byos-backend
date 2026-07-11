@@ -1,8 +1,6 @@
-import asyncio
+import httpx
+import pytest
 
-from fastapi.testclient import TestClient
-
-# Ensure models are imported so they register with Base.metadata.
 from backend.apps.api.main import app
 from backend.apps.api.routers import onboarding_demo
 from backend.core.database.database import Base, engine
@@ -11,11 +9,9 @@ from backend.db.models.pgl import PGLCertificate, PGLIdentity, PGLLedgerEvent
 from backend.db.models.user import User
 from backend.db.models.workspace import Workspace
 
-client = TestClient(app)
-
 
 # Run database initialization of specific tables for the CI PostgreSQL service.
-async def init_db_on_import():
+async def init_db():
     tables_to_create = [
         User.__table__,
         Workspace.__table__,
@@ -33,7 +29,18 @@ async def init_db_on_import():
         )
 
 
-asyncio.run(init_db_on_import())
+@pytest.fixture
+async def onboarding_client():
+    await engine.dispose()
+    await init_db()
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        yield client
+
+    await engine.dispose()
 
 
 def test_calculate_semantic_drift():
@@ -87,7 +94,8 @@ def test_epca_z3_unsat_low_biometrics():
     assert "UNSATISFIABLE" in message
 
 
-def test_api_onboarding_run_satisfiable():
+@pytest.mark.anyio
+async def test_api_onboarding_run_satisfiable(onboarding_client):
     """Test full onboarding pipeline API endpoint for SAT execution."""
     payload = {
         "name": "Acme Corp",
@@ -96,7 +104,7 @@ def test_api_onboarding_run_satisfiable():
         "identity_score": 0.98,
         "tier": "T2",
     }
-    response = client.post("/api/v1/onboarding/run", json=payload)
+    response = await onboarding_client.post("/api/v1/onboarding/run", json=payload)
 
     assert response.status_code == 200, f"Unexpected response: {response.text}"
     res_data = response.json()
@@ -107,7 +115,8 @@ def test_api_onboarding_run_satisfiable():
     assert "evidence_hash" in res_data
 
 
-def test_api_onboarding_run_unsat_veto():
+@pytest.mark.anyio
+async def test_api_onboarding_run_unsat_veto(onboarding_client):
     """Test full onboarding pipeline API endpoint triggers 403 HTTP Exception on UNSAT."""
     payload = {
         "name": "Underage Tech",
@@ -116,7 +125,7 @@ def test_api_onboarding_run_unsat_veto():
         "identity_score": 0.95,
         "tier": "T1",
     }
-    response = client.post("/api/v1/onboarding/run", json=payload)
+    response = await onboarding_client.post("/api/v1/onboarding/run", json=payload)
 
     assert response.status_code == 403, f"Unexpected response: {response.text}"
     assert "ePCA Algebraic Deadlock" in response.json()["detail"]

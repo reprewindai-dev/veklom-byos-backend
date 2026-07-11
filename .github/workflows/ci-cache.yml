@@ -9,6 +9,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+asyncpg://veklom:veklom_ci@localhost:5432/veklom_test
+      REDIS_ENABLED: "False"
+      ENVIRONMENT: test
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: veklom
+          POSTGRES_PASSWORD: veklom_ci
+          POSTGRES_DB: veklom_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4

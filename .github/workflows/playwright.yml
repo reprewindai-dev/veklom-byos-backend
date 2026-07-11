@@ -16,25 +16,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Health check — api.veklom.com
+      - name: Smoke live endpoints with retry
         run: |
-          HTTP=$(curl -sk https://api.veklom.com/health -o /dev/null -w '%{http_code}')
-          echo "api.veklom.com/health → $HTTP"
-          [ "$HTTP" = "200" ] || { echo "❌ Health check failed"; exit 1; }
+          check_status() {
+            local url="$1"
+            shift
 
-      - name: Smoke — unauthenticated 401 gate
-        run: |
-          HTTP=$(curl -sk https://api.veklom.com/api/v1/workspaces -o /dev/null -w '%{http_code}')
-          echo "Unauthenticated /api/v1/workspaces → $HTTP"
-          [ "$HTTP" = "401" ] || [ "$HTTP" = "403" ] || { echo "❌ Expected 401/403, got $HTTP"; exit 1; }
-          echo "✓ Zero-Trust gate is enforcing — unauthenticated requests blocked"
+            for attempt in 1 2 3; do
+              local http
+              http=$(curl -sk --connect-timeout 10 --max-time 20 -o /dev/null -w '%{http_code}' "$url" || true)
+              http="${http:-000}"
+              echo "$url returned $http (attempt $attempt/3)"
 
-      - name: Smoke — control plane reachable
-        run: |
-          HTTP=$(curl -sk https://control.veklom.com -o /dev/null -w '%{http_code}')
-          echo "control.veklom.com → $HTTP"
-          [ "$HTTP" = "200" ] || { echo "❌ Control plane unreachable"; exit 1; }
-          echo "✓ Control plane live"
+              for expected in "$@"; do
+                [ "$http" = "$expected" ] && return 0
+              done
+
+              [ "$attempt" = "3" ] || sleep $((attempt * 3))
+            done
+
+            echo "Unexpected status from $url; expected one of: $*"
+            return 1
+          }
+
+          check_status https://api.veklom.com/health 200
+          check_status https://api.veklom.com/api/v1/workspaces 401 403
+          check_status https://control.veklom.com 200
 
       - name: Report
         if: success()

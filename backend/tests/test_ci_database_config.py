@@ -1,6 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+DATABASE_MODULE_PATH = ROOT / "backend" / "core" / "database" / "database.py"
 WORKFLOW_PATHS = (
     ROOT / ".github" / "workflows" / "ci-cache.yml",
     ROOT / ".github" / "workflows" / "self-hosted-ci.yml",
@@ -20,6 +21,7 @@ def test_full_ci_workflows_provision_the_postgres_test_database():
         assert "POSTGRES_DB: veklom_test" in workflow
         assert CI_DATABASE_URL in workflow
         assert 'REDIS_ENABLED: "False"' in workflow
+        assert "APP_ENV: test" in workflow
 
 
 def test_postgres_integration_tests_do_not_override_the_ci_database_url():
@@ -27,3 +29,11 @@ def test_postgres_integration_tests_do_not_override_the_ci_database_url():
         assert "sqlite+aiosqlite:///:memory:" not in test_path.read_text(
             encoding="utf-8"
         )
+
+
+def test_test_environment_uses_a_loop_safe_database_pool():
+    database_module = DATABASE_MODULE_PATH.read_text(encoding="utf-8")
+
+    assert "from sqlalchemy.pool import NullPool" in database_module
+    assert 'if settings.APP_ENV == "test":' in database_module
+    assert 'engine_options["poolclass"] = NullPool' in database_module

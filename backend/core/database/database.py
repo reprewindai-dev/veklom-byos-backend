@@ -2,28 +2,37 @@
 
 from contextlib import asynccontextmanager
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from backend.core.config.settings import settings
 
 db_url = settings.DATABASE_URL
 if not db_url or not db_url.strip() or "sqlite" in db_url:
-    raise ValueError("A valid PostgreSQL DATABASE_URL is required. SQLite is not supported due to pgvector/JSONB requirements.")
+    raise ValueError(
+        "A valid PostgreSQL DATABASE_URL is required. SQLite is not supported due to pgvector/JSONB requirements."
+    )
 
 try:
-    engine = create_async_engine(
-        db_url,
-        echo=settings.DEBUG,
-        future=True,
-        pool_size=20,
-        max_overflow=15,
-        pool_timeout=30,
-        pool_pre_ping=True,
-        pool_recycle=1800,
-        connect_args={"timeout": 10, "command_timeout": 10},
-    )
+    engine_options = {
+        "echo": settings.DEBUG,
+        "future": True,
+        "connect_args": {"timeout": 10, "command_timeout": 10},
+    }
+    if settings.APP_ENV == "test":
+        # asyncpg connections are tied to their event loop; pytest creates several.
+        engine_options["poolclass"] = NullPool
+    else:
+        engine_options.update(
+            pool_size=20,
+            max_overflow=15,
+            pool_timeout=30,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+        )
+    engine = create_async_engine(db_url, **engine_options)
 except Exception as e:
     print(f"WARNING: Database engine creation failed: {e}")
     raise e
@@ -71,7 +80,11 @@ async def get_db_session():
 async def get_db_status():
     try:
         async with async_session() as session:
-            await session.execute("SELECT 1" if "sqlite" not in settings.DATABASE_URL else __import__("sqlalchemy").text("SELECT 1"))
+            await session.execute(
+                "SELECT 1"
+                if "sqlite" not in settings.DATABASE_URL
+                else __import__("sqlalchemy").text("SELECT 1")
+            )
         return {"status": "healthy"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}

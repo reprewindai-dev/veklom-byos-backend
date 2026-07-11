@@ -6,6 +6,8 @@ on:
 
 jobs:
   label:
+    # Fork pull requests receive a read-only GITHUB_TOKEN and cannot add labels.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     permissions:
       contents: read

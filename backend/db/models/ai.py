@@ -111,6 +111,21 @@ class RoutingDecision(Base):
     factors = Column(JSON, default=list)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
+class ProviderDecisionAuditLog(Base):
+    __tablename__ = "provider_decision_audit_logs"
+    id = Column(String(36), primary_key=True, default=_uuid)
+    workspace_id = Column(String(36), nullable=False, index=True)
+    requested_provider = Column(String(64), nullable=False)
+    selected_provider = Column(String(64), nullable=False)
+    selected_model = Column(String(128), nullable=False)
+    reason = Column(Text, nullable=False)
+    fallback_used = Column(Boolean, default=False)
+    rate_limit_state = Column(String(128), default="")
+    estimated_cost = Column(Float, default=0.0)
+    actual_cost = Column(Float, nullable=True)
+    proof_hash = Column(String(256), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
 class CostAllocation(Base):
     __tablename__ = "cost_allocations"
     id = Column(String(36), primary_key=True, default=_uuid)

@@ -420,13 +420,20 @@ class ClaimRequest(Base):
     __tablename__ = "vnp_claim_requests"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(String(200), nullable=False)
     api_id = Column(String(200), nullable=False, index=True)
     api_domain = Column(String(255), nullable=False)
+    provider_name = Column(String(255), nullable=False, default="Unknown Provider")
+    api_name = Column(String(255), nullable=False, default="Unknown API")
+    base_url = Column(String(500), nullable=False, default="https://api.unknown.com")
+    health_path = Column(String(255), nullable=False, default="/health")
     company_name = Column(String(255), nullable=False)
-    company_email = Column(String(255), nullable=False)
+    contact_email = Column(String(255), nullable=False)
+    pgl_provider_id = Column(String(200), nullable=True)
+    pgl_certificate_id = Column(String(200), nullable=True)
     dns_record = Column(String(255), nullable=False)
     dns_value = Column(String(255), nullable=False)
-    status = Column(String(50), nullable=False, default='pending')  # pending, verified, failed
+    status = Column(String(50), nullable=False, default='submitted')
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     verified_at = Column(DateTime(timezone=True))
     expires_at = Column(DateTime(timezone=True), nullable=False)

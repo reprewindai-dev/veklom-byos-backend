@@ -135,37 +135,67 @@ async def ingest_probe_metric(
 
 
 @router.get("/beacon")
-async def get_route_beacon(api_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+async def get_route_beacon(
+    api_id: Optional[str] = None, 
+    mode: Literal["governed", "advisory"] = "governed",
+    db: AsyncSession = Depends(get_db)
+):
     """
     Control Plane Route Beacon.
     Provides sub-15ms resolution on the healthiest APIs to route traffic to.
     """
     if api_id:
         score_data = await get_cached_api_score(api_id)
-        return {
-            "api_id": api_id,
-            "composite_score": score_data.get("score", 100.0),
-            "stability_rating": score_data.get("rating", "Unknown"),
-            "timestamp": score_data.get("updated_at")
-        }
+        if mode == "governed":
+            return {
+                "api_id": api_id,
+                "trust_score": score_data.get("score", 100.0),
+                "stability_rating": score_data.get("rating", "Unknown"),
+                "timestamp": score_data.get("updated_at"),
+                "capi_url": f"{settings.VEKLOM_API_BASE}/capi/execute",
+                "route_token": f"rt_{uuid.uuid4().hex}",
+                "settlement_required": True,
+                "proof_required": True
+            }
+        else:
+            return {
+                "api_id": api_id,
+                "composite_score": score_data.get("score", 100.0),
+                "stability_rating": score_data.get("rating", "Unknown"),
+                "timestamp": score_data.get("updated_at")
+            }
     
     # If no api_id provided, return all registered APIs
     stmt = select(Api)
     result = await db.execute(stmt)
     apis = result.scalars().all()
     
-    return {
-        "network_status": "operational",
-        "routes": [
-            {
+    routes = []
+    for api in apis:
+        if mode == "governed":
+            routes.append({
+                "api_id": getattr(api, "api_id", getattr(api, "id", None)),
+                "provider": getattr(api, "provider_name", getattr(api, "name", None)),
+                "capi_url": f"{settings.VEKLOM_API_BASE}/capi/execute",
+                "route_token": f"rt_{uuid.uuid4().hex}",
+                "trust_score": api.current_composite_score,
+                "stability": api.stability_rating,
+                "settlement_required": True,
+                "proof_required": True
+            })
+        else:
+            routes.append({
                 "api_id": getattr(api, "api_id", getattr(api, "id", None)),
                 "provider": getattr(api, "provider_name", getattr(api, "name", None)),
                 "endpoint": getattr(api, "endpoint_url", getattr(api, "base_url", None)),
                 "composite_score": api.current_composite_score,
                 "stability": api.stability_rating
-            }
-            for api in apis
-        ]
+            })
+    
+    return {
+        "network_status": "operational",
+        "mode": mode,
+        "routes": routes
     }
 
 

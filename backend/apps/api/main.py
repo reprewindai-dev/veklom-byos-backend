@@ -353,6 +353,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] db: vnp_apis migration warning: {type(e).__name__}: {e}")
 
+    # Idempotent column additions for vnp_claim_requests
+    vnp_claim_requests_columns = [
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS provider_name VARCHAR(255) DEFAULT 'Unknown Provider'",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS api_name VARCHAR(255) DEFAULT 'Unknown API'",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS base_url VARCHAR(500) DEFAULT 'https://api.unknown.com'",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS health_path VARCHAR(255) DEFAULT '/health'",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in vnp_claim_requests_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: vnp_claim_requests column migration completed")
+    except Exception as e:
+        print(f"[startup] db: vnp_claim_requests migration warning: {type(e).__name__}: {e}")
+
     # Idempotent column additions for PGL tables
     pgl_columns = [
         "ALTER TABLE pgl_certificates ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
@@ -2055,7 +2070,6 @@ app.include_router(identity_rag.router)
 app.include_router(copilot.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(discovery_api.router, prefix="/api/v1/discovery")
-app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
 app.include_router(pgl_adapter.router, prefix="/api/v1")
 app.include_router(pgl_onboarding.router, prefix="/api/v1")

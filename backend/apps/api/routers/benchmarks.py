@@ -386,7 +386,7 @@ async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
     honest "Needs proof" state instead of fabricated content.
     """
     from backend.db.models.vnp import (
-        Api, RegionalTelemetry, ProbeEvent, Incident, AuditLog,
+        Api, RegionalTelemetry, ProbeEvent, Incident, AuditLog, ClaimRequest
     )
     from sqlalchemy.orm import selectinload
 
@@ -466,6 +466,22 @@ async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
         )
     ).scalars().all()
 
+    claim_req = (
+        await db.execute(
+            select(ClaimRequest)
+            .filter(ClaimRequest.api_id == api.api_did)
+            .order_by(ClaimRequest.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    claim_status = claim_req.status if claim_req else "needs_proof"
+    if claim_status in ('submitted', 'dns_pending', 'ownership_verified', 'endpoint_verified'):
+        claim_status = 'baseline_probing' # fallback intermediate state
+        
+    route_status = "eligible" if signed_probe_count > 100 and claim_status == 'benchmark_ready' else claim_status
+    route_message = "Sufficient cryptographic evidence collected for CAPPO routing." if route_status == "eligible" else "Insufficient evidence or pending validation."
+
     return {
         "benchmark_details": {
             "name": api.name,
@@ -540,6 +556,10 @@ async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
             "latest_provenance_hash": telemetry.provenance_hash if telemetry else None,
             "on_chain_anchor": telemetry.on_chain_anchor if telemetry else None,
         },
+        "route_eligibility": {
+            "status": route_status,
+            "message": route_message
+        }
     }
 
 

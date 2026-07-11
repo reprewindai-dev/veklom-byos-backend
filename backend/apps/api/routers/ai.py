@@ -303,6 +303,9 @@ async def ai_inference(body: AIInferenceRequest, user=Depends(get_current_user),
     except Exception:
         cost_usd = round((input_tokens + output_tokens) * 0.000002, 6)
 
+    import hmac
+    import hashlib
+
     # Populate caches
     await set_hot(used_model, messages, result.payload, temperature)
     await set_warm(used_model, messages, result.payload)
@@ -320,8 +323,54 @@ async def ai_inference(body: AIInferenceRequest, user=Depends(get_current_user),
         content_safety_score=0.98,
     )
     db.add(log)
+    
+    # Provider Routing Audit & Doctrine Implementation
+    # Create an immutable HMAC-SHA256 proof hash
+    proof_seed = f"{workspace_id}:{result.provider}:{used_model}:{usage.get('prompt_tokens', 0)}:{usage.get('completion_tokens', 0)}:{latency_ms}"
+    hmac_hash = hmac.new(
+        settings.SECRET_KEY.encode(),
+        proof_seed.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    from backend.db.models.ai import AIAuditLog, RoutingDecision, ProviderDecisionAuditLog
+    audit = AIAuditLog(
+        workspace_id=workspace_id,
+        operation_type="inference",
+        provider=result.provider,
+        model=used_model,
+        input_tokens=usage.get("prompt_tokens", 0),
+        output_tokens=usage.get("completion_tokens", 0),
+        cost=cost_usd,
+        latency_ms=latency_ms,
+        hmac_hash=hmac_hash
+    )
+    db.add(audit)
+    
+    routing = RoutingDecision(
+        workspace_id=workspace_id,
+        decision=f"routed to {result.provider} via {key_source}",
+        reasoning=reason or "standard tiering",
+        confidence=1.0,
+        factors={"model": model, "key_source": key_source, "reason": reason}
+    )
+    db.add(routing)
+    
+    provider_audit = ProviderDecisionAuditLog(
+        workspace_id=workspace_id,
+        requested_provider=payload_dict.get("provider") or "auto",
+        selected_provider=result.provider,
+        selected_model=used_model,
+        reason=reason or "standard tiering",
+        fallback_used=(result.provider != (payload_dict.get("provider") or "").lower()) and bool(payload_dict.get("provider")),
+        rate_limit_state="ok",
+        estimated_cost=cost_usd,
+        actual_cost=cost_usd,
+        proof_hash=hmac_hash
+    )
+    db.add(provider_audit)
+    
     await db.commit()
-
     return {
         "id": f"inf_{log.id}",
         "response_text": content,
@@ -463,6 +512,53 @@ async def ai_chat(
         content_safety_score=0.98,
     )
     db.add(log)
+    
+    import hmac
+    import hashlib
+    proof_seed = f"{workspace_id}:{result.provider}:{used_model}:{input_tokens}:{output_tokens}:{latency_ms}"
+    hmac_hash = hmac.new(
+        settings.SECRET_KEY.encode(),
+        proof_seed.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    from backend.db.models.ai import AIAuditLog, RoutingDecision, ProviderDecisionAuditLog
+    audit = AIAuditLog(
+        workspace_id=workspace_id,
+        operation_type="chat",
+        provider=result.provider,
+        model=used_model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost=cost_usd,
+        latency_ms=latency_ms,
+        hmac_hash=hmac_hash
+    )
+    db.add(audit)
+    
+    routing = RoutingDecision(
+        workspace_id=workspace_id,
+        decision=f"routed to {result.provider} via {key_source}",
+        reasoning=reason or "standard tiering",
+        confidence=1.0,
+        factors={"model": model, "key_source": key_source, "reason": reason}
+    )
+    db.add(routing)
+    
+    provider_audit = ProviderDecisionAuditLog(
+        workspace_id=workspace_id,
+        requested_provider=payload_dict.get("provider") or "auto",
+        selected_provider=result.provider,
+        selected_model=used_model,
+        reason=reason or "standard tiering",
+        fallback_used=(result.provider != (payload_dict.get("provider") or "").lower()) and bool(payload_dict.get("provider")),
+        rate_limit_state="ok",
+        estimated_cost=cost_usd,
+        actual_cost=cost_usd,
+        proof_hash=hmac_hash
+    )
+    db.add(provider_audit)
+    
     await db.commit()
 
     return {

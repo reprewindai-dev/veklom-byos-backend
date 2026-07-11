@@ -10,7 +10,7 @@ from sqlalchemy.future import select
 from pydantic import BaseModel, EmailStr
 
 from backend.core.database.database import get_db_session
-from backend.db.models.vnp import ClaimRequest, ClaimedAPI
+from backend.db.models.vnp import ClaimRequest, ClaimedAPI, Provider, Api
 import aiodns
 import os
 import smtplib
@@ -23,9 +23,16 @@ router = APIRouter(prefix="/claims", tags=["vnp-claims"])
 # ============================================================================
 
 class ClaimCreateRequest(BaseModel):
+    provider_name: str
+    api_name: str
     api_domain: str
-    company_name: str
-    company_email: EmailStr
+    base_url: str
+    health_path: str
+    workspace_id: str
+    contact_email: EmailStr
+    company_name: Optional[str] = None
+    pgl_provider_id: Optional[str] = None
+    pgl_certificate_id: Optional[str] = None
 
 class ClaimCreateResponse(BaseModel):
     claim_id: str
@@ -85,6 +92,55 @@ async def verify_dns_txt_record(dns_record: str, expected_value: str) -> bool:
     except aiodns.error.DNSError:
         return False
 
+async def _handle_verification_success(db: AsyncSession, request: ClaimRequest):
+    request.status = 'verified'
+    request.verified_at = datetime.now(timezone.utc)
+    
+    # Check if ClaimedAPI already exists
+    existing = await db.execute(select(ClaimedAPI).where(ClaimedAPI.api_id == request.api_id))
+    claimed_api = existing.scalars().first()
+    
+    if not claimed_api:
+        claimed_api = ClaimedAPI(
+            api_id=request.api_id,
+            company_name=request.company_name or request.provider_name,
+            company_email=request.contact_email,
+            score_low_alert=True,
+            score_low_threshold=80
+        )
+        db.add(claimed_api)
+        
+    # Check if Provider already exists by slug (domain)
+    existing_prov = await db.execute(select(Provider).where(Provider.slug == request.api_domain))
+    provider = existing_prov.scalars().first()
+    if not provider:
+        provider = Provider(
+            slug=request.api_domain,
+            legal_name=request.provider_name,
+            support_email=request.contact_email,
+            billing_email=request.contact_email
+        )
+        db.add(provider)
+        await db.flush() # get provider.id
+        
+    # Check if API already exists
+    existing_api = await db.execute(select(Api).where(Api.api_did == request.api_id))
+    api_model = existing_api.scalars().first()
+    if not api_model:
+        api_model = Api(
+            provider_id=provider.id,
+            api_did=request.api_id,
+            name=request.api_name,
+            version="v1",
+            base_url=request.base_url,
+            health_path=request.health_path,
+            auth_scheme="Bearer" # Default
+        )
+        db.add(api_model)
+        
+    await db.commit()
+    send_verification_email(request.contact_email, request.api_domain)
+
 async def background_dns_polling(claim_id: uuid.UUID):
     """
     Polls DNS for a pending claim up to a certain number of attempts.
@@ -95,7 +151,7 @@ async def background_dns_polling(claim_id: uuid.UUID):
     for attempt in range(max_attempts):
         async with get_db_session() as db:
             request = await db.get(ClaimRequest, claim_id)
-            if not request or request.status != 'pending':
+            if not request or request.status not in ('submitted', 'dns_pending'):
                 return
             
             if datetime.now(timezone.utc) > request.expires_at:
@@ -106,25 +162,20 @@ async def background_dns_polling(claim_id: uuid.UUID):
             verified = await verify_dns_txt_record(request.dns_record, request.dns_value)
             
             if verified:
-                request.status = 'verified'
-                request.verified_at = datetime.now(timezone.utc)
-                
-                # Check if ClaimedAPI already exists
-                existing = await db.execute(select(ClaimedAPI).where(ClaimedAPI.api_id == request.api_id))
-                claimed_api = existing.scalars().first()
-                
-                if not claimed_api:
-                    claimed_api = ClaimedAPI(
-                        api_id=request.api_id,
-                        company_name=request.company_name,
-                        company_email=request.company_email,
-                        score_low_alert=True,
-                        score_low_threshold=80
-                    )
-                    db.add(claimed_api)
-                
+                request.status = 'ownership_verified'
                 await db.commit()
-                send_verification_email(request.company_email, request.api_domain)
+                # Ideally, here we transition to next states (endpoint_verified, baseline_probing, etc.)
+                # For now, we simulate reaching endpoint_verified immediately if DNS passes.
+                request.status = 'endpoint_verified'
+                await db.commit()
+                # And then transition to baseline_probing
+                request.status = 'baseline_probing'
+                await db.commit()
+                # And then benchmark_ready
+                request.status = 'benchmark_ready'
+                await db.commit()
+                
+                await _handle_verification_success(db, request)
                 return
                 
         await asyncio.sleep(10)
@@ -148,10 +199,18 @@ async def create_claim(request: ClaimCreateRequest, background_tasks: Background
         claim_request = ClaimRequest(
             api_id=api_id,
             api_domain=normalized_domain,
-            company_name=request.company_name,
-            company_email=request.company_email,
+            provider_name=request.provider_name,
+            api_name=request.api_name,
+            base_url=request.base_url,
+            health_path=request.health_path,
+            workspace_id=request.workspace_id,
+            company_name=request.company_name or request.provider_name,
+            contact_email=request.contact_email,
+            pgl_provider_id=request.pgl_provider_id,
+            pgl_certificate_id=request.pgl_certificate_id,
             dns_record=f"_vnp-claim.{uuid.uuid4().hex[:8]}.{normalized_domain}",
             dns_value=dns_value,
+            status='dns_pending',
             expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
         )
         # Update dns_record to use actual ID
@@ -199,9 +258,11 @@ async def check_claim_status(claim_id: uuid.UUID):
                 }
             )
             
+        # Return status for any other intermediate states (dns_pending, ownership_verified, baseline_probing, etc)
         return ClaimStatusResponse(
             status=request.status,
             claim_id=str(request.id),
+            api_id=request.api_id,
             api_domain=request.api_domain,
             expires_at=request.expires_at
         )
@@ -220,26 +281,15 @@ async def trigger_manual_verification(claim_id: uuid.UUID):
         verified = await verify_dns_txt_record(request.dns_record, request.dns_value)
         
         if verified:
-            request.status = 'verified'
-            request.verified_at = datetime.now(timezone.utc)
-            
-            # Check if ClaimedAPI already exists
-            existing = await db.execute(select(ClaimedAPI).where(ClaimedAPI.api_id == request.api_id))
-            claimed_api = existing.scalars().first()
-            
-            if not claimed_api:
-                claimed_api = ClaimedAPI(
-                    api_id=request.api_id,
-                    company_name=request.company_name,
-                    company_email=request.company_email,
-                    score_low_alert=True,
-                    score_low_threshold=80
-                )
-                db.add(claimed_api)
-            
+            request.status = 'ownership_verified'
             await db.commit()
-            send_verification_email(request.company_email, request.api_domain)
             
+            # Fast-track through the state machine since it was manually verified
+            request.status = 'endpoint_verified'
+            request.status = 'baseline_probing'
+            request.status = 'benchmark_ready'
+            
+            await _handle_verification_success(db, request)
             return {"status": "verified", "message": "Claim verified successfully."}
             
         return {

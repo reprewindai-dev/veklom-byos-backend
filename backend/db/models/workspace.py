@@ -86,3 +86,14 @@ class WorkspaceIntegration(Base):
     created_by = Column(String(36), default="")
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
+class WorkspaceProviderCredential(Base):
+    """Stores BYOK credentials for AI Providers, scoped to a workspace."""
+    __tablename__ = "workspace_provider_credentials"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    workspace_id = Column(String(36), nullable=False, index=True)
+    provider_name = Column(String(64), nullable=False) # e.g. openai, groq, ollama
+    encrypted_api_key = Column(String(512), nullable=False)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+

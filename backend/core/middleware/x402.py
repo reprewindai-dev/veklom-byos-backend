@@ -866,7 +866,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 from backend.db.models.user import User
                 from backend.db.models.workspace import Workspace
                 from backend.db.models.ai import ExecutionLog
-                from backend.db.models.billing import Subscription, BudgetRule
+                from backend.db.models.billing import Subscription, BudgetRule, WalletTransaction
                 from backend.db.models.security import KillSwitchState
 
                 async with get_db_session() as db:
@@ -973,19 +973,87 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                                     }
                                 )
                         
-                        # Process response
-                        response = await call_next(request)
-                        if response.status_code < 400:
-                            new_log = ExecutionLog(
-                                workspace_id=ws_id,
-                                user_id=user_id,
-                                model=route_cfg.get("name", "Governed Action"),
-                                provider="ollama:qwen2.5:3b",
-                                cost=route_cfg["price_usdc"],
-                                status="completed"
+                        # 3. Process the Reserve, Execute, and Deduct/Refund
+                        # Calculate current operating reserve balance from WalletTransactions
+                        topups = await db.scalar(
+                            select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+                            .where(
+                                WalletTransaction.workspace_id == ws_id,
+                                WalletTransaction.tx_type.in_(["topup", "activation", "credit"]),
                             )
-                            db.add(new_log)
+                        ) or 0.0
+                        debits = await db.scalar(
+                            select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+                            .where(
+                                WalletTransaction.workspace_id == ws_id,
+                                WalletTransaction.tx_type == "debit",
+                            )
+                        ) or 0.0
+                        balance = float(topups) - abs(float(debits))
+                        
+                        price_usdc = route_cfg["price_usdc"]
+                        
+                        # Only check balance if they aren't on a free/community plan with free runs remaining (handled above)
+                        if plan not in ("free", "community", "none", None) and balance < price_usdc:
+                            return _build_402_response(path, method, route_cfg, detail=f"Insufficient funds in operating reserve. Balance: {balance} USD.")
+
+                        # Atomic Reserve: Create the debit transaction BEFORE execution
+                        debit_txn = None
+                        if plan not in ("free", "community", "none", None):
+                            debit_txn = WalletTransaction(
+                                user_id=user_id,
+                                workspace_id=ws_id,
+                                amount=price_usdc,
+                                tx_type="debit",
+                                description=f"Reserved {price_usdc} USD for {route_cfg.get('name', 'API Call')} at {path}"
+                            )
+                            db.add(debit_txn)
                             await db.commit()
+
+                        try:
+                            # Process response
+                            response = await call_next(request)
+                            
+                            # If the request failed, refund the reservation
+                            if response.status_code >= 400:
+                                if debit_txn:
+                                    refund_txn = WalletTransaction(
+                                        user_id=user_id,
+                                        workspace_id=ws_id,
+                                        amount=price_usdc,
+                                        tx_type="credit",
+                                        description=f"Refunded {price_usdc} USD for failed {route_cfg.get('name', 'API Call')} at {path} (Status {response.status_code})"
+                                    )
+                                    db.add(refund_txn)
+                                    await db.commit()
+                            else:
+                                # Success - Log execution
+                                new_log = ExecutionLog(
+                                    workspace_id=ws_id,
+                                    user_id=user_id,
+                                    model=route_cfg.get("name", "Governed Action"),
+                                    provider="ollama:qwen2.5:3b",
+                                    cost=price_usdc,
+                                    status="completed"
+                                )
+                                db.add(new_log)
+                                if debit_txn:
+                                    # Update description to reflect settled charge
+                                    debit_txn.description = f"Charged {price_usdc} USD for {route_cfg.get('name', 'API Call')} at {path}"
+                                await db.commit()
+                        except Exception as e:
+                            # Refund on exception
+                            if debit_txn:
+                                refund_txn = WalletTransaction(
+                                    user_id=user_id,
+                                    workspace_id=ws_id,
+                                    amount=price_usdc,
+                                    tx_type="credit",
+                                    description=f"Refunded {price_usdc} USD for excepted {route_cfg.get('name', 'API Call')} at {path}: {str(e)}"
+                                )
+                                db.add(refund_txn)
+                                await db.commit()
+                            raise
                             
                         # Generate receipt
                         async with get_db_session() as db_receipt:

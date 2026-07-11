@@ -80,6 +80,59 @@ services:
     volumes:
       - ./gateway_logs:/app/logs
 
+  # CAPI Execution Node (Node 3)
+  capi:
+    build:
+      context: ..
+      dockerfile: Dockerfile.capi
+    environment:
+      - DATABASE_URL=postgresql://veklom:${POSTGRES_PASSWORD:-veklom_password}@postgres:5432/veklom_byos
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY:-your_secret_key_here}
+      - ENVIRONMENT=production
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.capi.rule=PathPrefix(`/capi`)"
+      - "traefik.http.routers.capi.entrypoints=websecure"
+      - "traefik.http.routers.capi.tls.certresolver=letsencrypt"
+      - "traefik.http.services.capi.loadbalancer.server.port=8002"
+
+  # Ledger Settlement Node (Node 2)
+  ledger:
+    build:
+      context: ..
+      dockerfile: Dockerfile.ledger
+    environment:
+      - DATABASE_URL=postgresql://veklom:${POSTGRES_PASSWORD:-veklom_password}@postgres:5432/veklom_byos
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY:-your_secret_key_here}
+      - ENVIRONMENT=production
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Note: Ledger is strictly internal. No Traefik public ingress.
+
   # Edge Gateway (Edge MCP)
   edge-gateway:
     build:
@@ -137,7 +190,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "80:8080"  # Traefik dashboard
+      - "8080:8080"  # Traefik dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./letsencrypt:/letsencrypt

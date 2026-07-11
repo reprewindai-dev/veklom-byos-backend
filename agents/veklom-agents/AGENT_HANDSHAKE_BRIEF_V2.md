@@ -11,7 +11,7 @@
 | **Live URL** | https://veklom.com |
 | **Workspace** | https://veklom.com/control-plane-next/dashboard/ |
 | **Server** | Hetzner VPS `5.78.135.11` |
-| **Backend port** | `8088` |
+| **Backend port** | `80` |
 | **Proxy** | Cloudflare → Traefik → Docker container |
 | **Container** | `n13gp1nhrcdp0hvazvbnlxru-213557155694` |
 | **Source dir** | `/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/` |
@@ -42,11 +42,11 @@ docker run -d \
   --network coolify \
   --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env \
   --restart unless-stopped \
-  -p 8088:8088 \
+  -p 80:80 \
   veklom-local:latest
 
 # Step 3: Verify
-curl -s http://localhost:8088/health
+curl -s http://localhost:80/health
 ```
 
 ## Backend Architecture

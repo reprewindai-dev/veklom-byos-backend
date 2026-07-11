@@ -203,7 +203,7 @@ show_status() {
     echo "  Governance Gateway: http://localhost:8080"
     echo "  Edge Gateway: http://localhost:8081"
     echo "  Frontend: http://localhost:3000"
-    echo "  Traefik Dashboard: http://localhost:8088"
+    echo "  Traefik Dashboard: http://localhost:80"
     echo "  Prometheus: http://localhost:9090"
     echo "  Grafana: http://localhost:3001"
     echo ""

@@ -72,6 +72,6 @@ Define Veklom as a sovereign operational runtime for enterprise multi-agent syst
 
 ## Deployment Notes
 
-The production runtime runs on port `8088` behind Coolify/Docker. Public HTTPS should terminate at the platform proxy and forward to the container's internal `8088` port. BYOS buyers can expose the same runtime through Cloudflare Tunnel without opening server firewall ports.
+The production runtime runs on port `80` behind Coolify/Docker. Public HTTPS should terminate at the platform proxy and forward to the container's internal `80` port. BYOS buyers can expose the same runtime through Cloudflare Tunnel without opening server firewall ports.
 
 The strategic product path is one undeniable sovereign flow: ingest an enterprise workload, normalize it, compile it, govern it, route it, execute it, bill it, and replay it with custody remaining inside buyer-controlled infrastructure.

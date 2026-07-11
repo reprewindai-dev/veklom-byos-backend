@@ -27,7 +27,7 @@ pip install -e "sdk/python[cli]"       # editable / dev mode
 ```bash
 export VEKLOM_API_KEY="your-bearer-token"
 # Optional: override for self-hosted
-export VEKLOM_BASE_URL="http://localhost:8088/api/v1"
+export VEKLOM_BASE_URL="http://localhost:80/api/v1"
 ```
 
 ---

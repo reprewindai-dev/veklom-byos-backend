@@ -38,14 +38,14 @@ fi
 
 echo "== waiting for health =="
 for i in $(seq 1 30); do
-  if curl -sf http://localhost:8088/health >/dev/null; then echo "healthy"; break; fi
+  if curl -sf http://localhost:80/health >/dev/null; then echo "healthy"; break; fi
   sleep 2
 done
 
 echo "== verify new routes =="
 echo "-- agent.json commerce block --"
-curl -s http://localhost:8088/.well-known/agent.json | grep -o '"commerce"' || echo "MISSING commerce block"
+curl -s http://localhost:80/.well-known/agent.json | grep -o '"commerce"' || echo "MISSING commerce block"
 echo "-- product_feed --"
-curl -s http://localhost:8088/api/v1/agentic_commerce/product_feed | head -c 300
+curl -s http://localhost:80/api/v1/agentic_commerce/product_feed | head -c 300
 echo
 echo "DONE"

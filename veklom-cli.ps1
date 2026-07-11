@@ -15,7 +15,7 @@ function veklom-help {
 
 function veklom-status {
     Write-Host '[Veklom OS] Checking Node Health...' -ForegroundColor Cyan
-    curl -sk http://localhost:8088/health
+    curl -sk http://localhost:80/health
     Write-Host '\n[Veklom OS] Status OK.' -ForegroundColor Green
 }
 

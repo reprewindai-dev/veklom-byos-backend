@@ -2,7 +2,7 @@ import httpx
 import asyncio
 
 async def test_workspace():
-    base_url = "http://localhost:8088/api/v1"
+    base_url = "http://localhost:80/api/v1"
     
     print("1. Registering new user and workspace...")
     # Register to get token and workspace ID

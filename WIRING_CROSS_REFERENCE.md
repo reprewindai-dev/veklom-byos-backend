@@ -417,7 +417,7 @@ All 13 wiring audit tasks have been completed. The implementation aligns with th
 **Production Status:**
 - Container: n13gp1nhrcdp0hvazvbnlxru-213557155694
 - Health: ✅ healthy
-- Port: 8088
+- Port: 80
 - URL: https://veklom.com
 
 **Next Steps (Not in Wiring Scope):**

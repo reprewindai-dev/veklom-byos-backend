@@ -37,7 +37,7 @@ fi
 
 echo "== waiting for health =="
 for i in $(seq 1 30); do
-  if curl -sf http://localhost:8088/health >/dev/null; then echo "HEALTHY"; break; fi
+  if curl -sf http://localhost:80/health >/dev/null; then echo "HEALTHY"; break; fi
   sleep 2
 done
 echo "DONE"

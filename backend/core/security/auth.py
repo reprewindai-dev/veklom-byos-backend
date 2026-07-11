@@ -107,6 +107,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+    db: AsyncSession = Depends(get_db)
 ):
     if getattr(request.state, "x402_paid", False):
         class MockAgentUser:
@@ -140,61 +141,64 @@ async def get_current_user(
 
     from backend.db.models.user import User
 
-    async with get_db_session() as db:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        if user is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-        status_value = (user.status or "").upper()
-        if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    status_value = (user.status or "").upper()
+    if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
 
-        if status_value == "PENDING_VERIFICATION":
-            allowed_paths = {
-                "/api/v1/auth/me",
-                "/api/v1/auth/resend-verification",
-                "/api/v1/auth/verify-email",
-                "/api/v1/auth/logout",
-                "/api/v1/workspace/onboarding/vertical",
-                "/api/v1/workspace/config",
-            }
-            if request.url.path not in allowed_paths:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
+    if user.workspace_id:
+        from backend.core.database.database import set_tenant_session
+        await set_tenant_session(db, user.workspace_id)
 
-        now_utc = datetime.utcnow()
-        needs_commit = False
+    if status_value == "PENDING_VERIFICATION":
+        allowed_paths = {
+            "/api/v1/auth/me",
+            "/api/v1/auth/resend-verification",
+            "/api/v1/auth/verify-email",
+            "/api/v1/auth/logout",
+            "/api/v1/workspace/onboarding/vertical",
+            "/api/v1/workspace/config",
+        }
+        if request.url.path not in allowed_paths:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
 
-        # Ensure naive datetime is compared, as user.last_activity is usually naive
-        last_activity = user.last_activity
-        if last_activity and last_activity.tzinfo is not None:
-            last_activity = last_activity.replace(tzinfo=None)
+    now_utc = datetime.utcnow()
+    needs_commit = False
 
-        # Throttle last_activity updates to max once per 5 minutes to reduce DB write contention
-        if not last_activity or (now_utc - last_activity).total_seconds() > 300:
-            user.last_activity = now_utc
+    # Ensure naive datetime is compared, as user.last_activity is usually naive
+    last_activity = user.last_activity
+    if last_activity and last_activity.tzinfo is not None:
+        last_activity = last_activity.replace(tzinfo=None)
+
+    # Throttle last_activity updates to max once per 5 minutes to reduce DB write contention
+    if not last_activity or (now_utc - last_activity).total_seconds() > 300:
+        user.last_activity = now_utc
+        needs_commit = True
+
+    # Omniscient Platform Admin override
+    if user.email == "reprewindai@gmail.com":
+        if user.role != "admin":
+            user.role = "admin"
+            needs_commit = True
+        if hasattr(user, "is_superuser") and not user.is_superuser:
+            user.is_superuser = True
             needs_commit = True
 
-        # Omniscient Platform Admin override
-        if user.email == "reprewindai@gmail.com":
-            if user.role != "admin":
-                user.role = "admin"
-                needs_commit = True
-            if hasattr(user, "is_superuser") and not user.is_superuser:
-                user.is_superuser = True
-                needs_commit = True
-
-        if needs_commit:
-            await db.commit()
-        # Expunge the user from this internal session before it closes.
-        # After commit(), SQLAlchemy expires all attributes; if any route accesses
-        # a relationship on the returned user, it would trigger a lazy-load inside
-        # a closed session (the greenlet "missing greenlet" error). Expunging makes
-        # the object detached — column values are preserved, relationships are not
-        # lazily fetched (raises DetachedInstanceError if accessed, but that's safe
-        # and catchable). Routes that need relationships should re-query via their
-        # own injected db session.
-        db.expunge(user)
-        return user
+    if needs_commit:
+        await db.commit()
+    # Expunge the user from this internal session before it closes.
+    # After commit(), SQLAlchemy expires all attributes; if any route accesses
+    # a relationship on the returned user, it would trigger a lazy-load inside
+    # a closed session (the greenlet "missing greenlet" error). Expunging makes
+    # the object detached — column values are preserved, relationships are not
+    # lazily fetched (raises DetachedInstanceError if accessed, but that's safe
+    # and catchable). Routes that need relationships should re-query via their
+    # own injected db session.
+    db.expunge(user)
+    return user
 
 
 
@@ -236,6 +240,7 @@ _GUEST_USER = _GuestUser()
 async def get_current_user_optional(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+    db: AsyncSession = Depends(get_db)
 ):
     """Like get_current_user but returns a guest user instead of raising 401.
 
@@ -274,25 +279,29 @@ async def get_current_user_optional(
 
     from backend.db.models.user import User
 
-    async with get_db_session() as db:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        if user is None:
-            return _GUEST_USER
-        status_value = (user.status or "").upper()
-        if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
-            return _GUEST_USER
-        now_utc = datetime.utcnow()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        return _GUEST_USER
+    status_value = (user.status or "").upper()
+    if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
+        return _GUEST_USER
 
-        # Ensure naive datetime is compared, as user.last_activity is usually naive
-        last_activity = user.last_activity
-        if last_activity and last_activity.tzinfo is not None:
-            last_activity = last_activity.replace(tzinfo=None)
+    if user.workspace_id:
+        from backend.core.database.database import set_tenant_session
+        await set_tenant_session(db, user.workspace_id)
 
-        if not last_activity or (now_utc - last_activity).total_seconds() > 300:
-            user.last_activity = now_utc
-            await db.commit()
-        return user
+    now_utc = datetime.utcnow()
+
+    # Ensure naive datetime is compared, as user.last_activity is usually naive
+    last_activity = user.last_activity
+    if last_activity and last_activity.tzinfo is not None:
+        last_activity = last_activity.replace(tzinfo=None)
+
+    if not last_activity or (now_utc - last_activity).total_seconds() > 300:
+        user.last_activity = now_utc
+        await db.commit()
+    return user
 
 
 async def get_current_user_or_api_key(
@@ -316,7 +325,10 @@ async def get_current_user_or_api_key(
             if verify_password(api_key_header, key.key_hash):
                 user_res = await db.execute(select(User).where(User.id == key.user_id))
                 user = user_res.scalar_one_or_none()
-                if user and user.status == "active":
+                if user is not None:
+                    if user.workspace_id:
+                        from backend.core.database.database import set_tenant_session
+                        await set_tenant_session(db, user.workspace_id)
                     now_utc = datetime.utcnow()
                     # Ensure naive datetime is compared, as user.last_activity is usually naive
                     last_activity = user.last_activity

@@ -11,12 +11,12 @@ services:
       dockerfile: Dockerfile
     container_name: veklom-api
     ports:
-      - "8088:8088"
+      - "80:80"
     env_file:
       - .env.production
     environment:
       - APP_ENV=production
-      - PORT=8088
+      - PORT=80
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     depends_on:
       - postgres
@@ -25,7 +25,7 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8088/health || exit 1"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:80/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

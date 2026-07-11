@@ -17,7 +17,7 @@ metadata:
 ## Repository
 - GitHub: reprewindai-dev/veklom-byos-backend
 - Server: root@5.78.135.11 (SSH key: ~/.ssh/veklom-deploy)
-- Backend: FastAPI at port 8088, entry: backend/apps/api/main.py
+- Backend: FastAPI at port 80, entry: backend/apps/api/main.py
 - 43 routers in backend/apps/api/routers/
 - Stack: Python/FastAPI + PostgreSQL + Redis + Docker + Coolify
 

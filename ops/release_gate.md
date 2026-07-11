@@ -127,9 +127,9 @@ docker run -d \
   --network coolify \
   --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env \
   --restart unless-stopped \
-  -p 8088:8088 \
+  -p 80:80 \
   veklom-local:latest
-curl -s http://localhost:8088/health
+curl -s http://localhost:80/health
 curl -sk -H "Host: veklom.com" https://localhost/health
 ```
 

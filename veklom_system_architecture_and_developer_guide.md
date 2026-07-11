@@ -32,9 +32,9 @@ Veklom uses Cloudflare as the primary edge proxy and WAF.
 ### 2.2 Backend Container (`n13gp1nhrcdp0hvazvbnlxru-213557155694`)
 - **Image:** `veklom-local:latest`
 - **Framework:** Python FastAPI
-- **Internal Port:** Mapped host-to-container as `8088:8088`. Traefik routes to `8088`.
+- **Internal Port:** Mapped host-to-container as `80:80`. Traefik routes to `80`.
 - **Environment:** Loads variables via `/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env` (DB URLs, Stripe Keys, PGL secrets).
-- **Container Internals:** Contains the `backend/` Python package. Runs `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8088`. Requires Postgres and Redis (which run in sibling containers on the `coolify` network).
+- **Container Internals:** Contains the `backend/` Python package. Runs `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 80`. Requires Postgres and Redis (which run in sibling containers on the `coolify` network).
 
 ### 2.3 Frontend Container (`tvxcsezs2ypd8tjuj6ic9gih-230135676493`)
 - **Image:** `veklom-control-plane:latest`
@@ -62,7 +62,7 @@ http:
   services:
     veklom-api:
       loadBalancer:
-        servers: [{ url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:8088" }]
+        servers: [{ url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:80" }]
     veklom-control:
       loadBalancer:
         servers: [{ url: "http://tvxcsezs2ypd8tjuj6ic9gih-230135676493:3002" }]

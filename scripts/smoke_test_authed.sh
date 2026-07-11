@@ -4,7 +4,7 @@
 
 set -e
 
-BASE="http://localhost:8088"
+BASE="http://localhost:80"
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" -d '{}' "$BASE/api/v1/auth/eval-session" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 if [ -z "$TOKEN" ]; then

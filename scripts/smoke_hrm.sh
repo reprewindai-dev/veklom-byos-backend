@@ -2,7 +2,7 @@
 # Smoke test for HRM + skill registry endpoints
 set -euo pipefail
 
-BASE=http://localhost:8088
+BASE=http://localhost:80
 
 echo "==> Minting token..."
 TOKEN=$(curl -s -X POST "$BASE/api/v1/auth/eval-session" \

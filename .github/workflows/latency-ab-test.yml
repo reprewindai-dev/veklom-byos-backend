@@ -35,17 +35,17 @@ jobs:
       - name: Start Local API Server
         run: |
           # Start app in background to run latency tests against
-          DATABASE_URL="sqlite+aiosqlite:///:memory:" REDIS_ENABLED="False" uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          DATABASE_URL="sqlite+aiosqlite:///:memory:" REDIS_ENABLED="False" uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 80 &
           # Wait for startup
           for i in {1..30}; do
-            curl -s http://127.0.0.1:8088/health && break
+            curl -s http://127.0.0.1:80/health && break
             sleep 1
           done
 
       - name: Run load test via Vegeta
         run: |
           echo "=== Starting Saturation Load Test (100 RPS) ==="
-          echo 'POST http://127.0.0.1:8088/api/v1/health' | vegeta attack -duration=10s -rate=100 | vegeta report -type=json > /tmp/vegeta_report.json
+          echo 'POST http://127.0.0.1:80/api/v1/health' | vegeta attack -duration=10s -rate=100 | vegeta report -type=json > /tmp/vegeta_report.json
           cat /tmp/vegeta_report.json | jq .
 
       - name: Assert Latency Gates

@@ -73,7 +73,7 @@ async def check_health(client: httpx.AsyncClient) -> bool:
             fail(f"Health returned {r.status_code}: {r.text[:200]}")
             return False
     except httpx.ConnectError:
-        fail(f"Cannot reach {BASE_URL} — Coolify port 8088 not forwarding or domain not resolving")
+        fail(f"Cannot reach {BASE_URL} — Coolify port 80 not forwarding or domain not resolving")
         return False
     except Exception as e:
         fail(f"Health check error: {e}")
@@ -208,7 +208,7 @@ async def run_handshake(email: str, password: str):
             failed += 1
             print()
             print(f"{RED}{BOLD}FATAL: Backend unreachable. Fix Coolify port forwarding first.{RESET}")
-            print(f"{YELLOW}  → Go to Coolify → your app → Network → set port 8088{RESET}")
+            print(f"{YELLOW}  → Go to Coolify → your app → Network → set port 80{RESET}")
             print()
             sys.exit(1)
 

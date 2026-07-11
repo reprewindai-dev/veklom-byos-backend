@@ -33,7 +33,7 @@ docker run -d \
   --network coolify \
   --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env \
   --restart unless-stopped \
-  -p 8088:8088 \
+  -p 80:80 \
   veklom-local:latest
 
 # Wait for container to start
@@ -42,7 +42,7 @@ sleep 5
 
 # Health check
 echo "Running health check..."
-curl -s http://localhost:8088/health
+curl -s http://localhost:80/health
 
 echo ""
 echo "Deployment complete!"

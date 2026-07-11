@@ -4,7 +4,7 @@ import multiprocessing
 import uvicorn
 
 async def _serve() -> None:
-    port = int(os.getenv("PORT", "8088"))
+    port = int(os.getenv("PORT", "80"))
     workers = int(os.getenv("MAX_WORKERS", multiprocessing.cpu_count() * 2 + 1))
 
     config = uvicorn.Config(

@@ -30,7 +30,7 @@ from backend.core.memory.conversation import ConversationMemory
 from agents.agent_ollama import ollama_chat, log
 
 # VNP Routing Ingest endpoint
-INGESTION_URL = "http://127.0.0.1:8088/api/v1/ingest/probe-events"
+INGESTION_URL = "http://127.0.0.1:80/api/v1/ingest/probe-events"
 
 # Target APIs to probe
 TARGET_APIS = [

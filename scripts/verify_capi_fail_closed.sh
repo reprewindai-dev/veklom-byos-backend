@@ -3,7 +3,7 @@
 # verify_capi_fail_closed.sh
 # Automated validation test suite for cAPI Fail-Closed Enforcement.
 
-API_URL=${1:-"http://localhost:8088"}
+API_URL=${1:-"http://localhost:80"}
 
 echo "--- 1. Testing Phase 1: Tampered Payload Signature Rejection ---"
 curl -s -X POST "$API_URL/api/v1/capi/execute" \

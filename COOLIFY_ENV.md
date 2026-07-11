@@ -4,11 +4,11 @@ This file lists all environment variables that must be configured in Coolify for
 
 ## CRITICAL: Port Configuration
 
-The application runs on port 8088 internally. Coolify MUST be configured to:
-1. Forward traffic from port 80 (HTTP) and 443 (HTTPS) to the container's port 8088
-2. Expose port 8088 in the container configuration
+The application runs on port 80 internally. Coolify MUST be configured to:
+1. Forward traffic from port 80 (HTTP) and 443 (HTTPS) to the container's port 80
+2. Expose port 80 in the container configuration
 
-**Current issue:** API routes are not accessible because Coolify is not forwarding traffic to port 8088.
+**Current issue:** API routes are not accessible because Coolify is not forwarding traffic to port 80.
 
 ## CRITICAL: Database and Redis Configuration
 
@@ -39,7 +39,7 @@ CELERY_RESULT_BACKEND=redis://:YOUR_REDIS_PASSWORD@YOUR_EXTERNAL_REDIS_HOST:6379
 APP_NAME=Veklom Sovereign AI Hub
 VERSION=1.0.0
 APP_ENV=production
-PORT=8088
+PORT=80
 DEBUG=false
 LOG_LEVEL=INFO
 LOG_FORMAT=json

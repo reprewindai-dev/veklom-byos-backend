@@ -9,7 +9,7 @@
 # called without a JWT.  Anything else (404/500/connection refused) is a real
 # failure.
 
-BASE="http://localhost:8088"
+BASE="http://localhost:80"
 
 passes=0
 fails=0

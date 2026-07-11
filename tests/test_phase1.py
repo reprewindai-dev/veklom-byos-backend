@@ -1,6 +1,6 @@
 import urllib.request, json
 
-BASE = "http://localhost:8088/api/v1"
+BASE = "http://localhost:80/api/v1"
 
 # Test 1: No auth
 req = urllib.request.Request(f"{BASE}/auth/me")

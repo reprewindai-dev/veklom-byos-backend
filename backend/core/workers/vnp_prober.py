@@ -14,7 +14,7 @@ REGION = "us-east-1"
 
 async def ping_api(session: aiohttp.ClientSession, api: Api) -> ProbeEvent:
     start_time = time.time()
-    url = api.base_url or "http://localhost:8088/health" # fallback to local health if None
+    url = api.base_url or "http://localhost:80/health" # fallback to local health if None
     
     # Simple timeout to prevent hanging probes
     timeout = aiohttp.ClientTimeout(total=5.0)

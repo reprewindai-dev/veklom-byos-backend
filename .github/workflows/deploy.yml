@@ -94,12 +94,12 @@ jobs:
             --network coolify \
             --env-file $ENVFILE \
             --restart unless-stopped \
-            -p 8088:8088 \
+            -p 80:80 \
             $IMAGE
 
           echo "--- Waiting for startup ---"
           sleep 8
-          curl -sf http://localhost:8088/health && echo "HOST OK" || (echo "HOST FAILED" && exit 1)
+          curl -sf http://localhost:80/health && echo "HOST OK" || (echo "HOST FAILED" && exit 1)
           echo "Deploy complete"
           ENDSSH
 

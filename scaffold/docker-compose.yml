@@ -4,7 +4,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8088:8088"
+      - "80:80"
     environment:
       - DATABASE_URL=sqlite:///./durable_state.db
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
@@ -21,7 +21,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8088
+      - NEXT_PUBLIC_API_URL=http://localhost:80
     depends_on:
       - backend
 

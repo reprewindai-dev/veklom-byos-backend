@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 
 from backend.core.config.settings import settings
 
@@ -44,6 +45,18 @@ async def get_db():
             raise
         finally:
             await session.close()
+
+
+async def set_tenant_session(db: AsyncSession, workspace_id: str) -> None:
+    """
+    Sets the current Postgres session variable for RLS enforcement.
+    Uses SELECT set_config(..., true) so it is local to the current transaction.
+    """
+    await db.execute(
+        text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+        {"workspace_id": str(workspace_id)},
+    )
+
 
 
 @asynccontextmanager

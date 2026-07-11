@@ -9,10 +9,10 @@
 Production:  https://veklom.com/api/v1
              (or https://app.veklom.com/api/v1)
 
-Local dev:   http://localhost:8088/api/v1
+Local dev:   http://localhost:80/api/v1
 ```
 
-The backend runs on **port 8088** internally. Coolify forwards 443 → 8088. Never hardcode `:8088` in production — always use the HTTPS domain. 
+The backend runs on **port 80** internally. Coolify forwards 443 → 80. Never hardcode `:80` in production — always use the HTTPS domain. 
 
 ***
 
@@ -126,7 +126,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=YOUR_STRIPE_PUBLISHABLE_KEY
 
 For local dev:
 ```env
-VITE_API_BASE_URL=http://localhost:8088/api/v1
+VITE_API_BASE_URL=http://localhost:80/api/v1
 VITE_APP_ENV=development
 ```
 
@@ -202,7 +202,7 @@ The backend applies UACP policy gates, routes to the correct provider, returns g
 | `401 Unauthorized` | Missing or expired JWT | Re-run auth login, use fresh `access_token` |
 | `500` on auth endpoints | DB connection failed | Verify `DATABASE_URL` in Coolify uses `5.78.135.11`, not `postgres:5432` |
 | CORS error in browser | Frontend domain not in `CORS_ORIGINS` | Add domain to Coolify env var, redeploy |
-| API routes 404 | Port 8088 not forwarded | Coolify must forward 80/443 → 8088 |
+| API routes 404 | Port 80 not forwarded | Coolify must forward 80/443 → 80 |
 | Empty AI responses | Provider key missing | Add `OPENAI_API_KEY` / `GEMINI_API_KEY` in Coolify env |
 
 ***

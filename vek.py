@@ -37,7 +37,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8088:8088"
+      - "80:80"
     environment:
       - DATABASE_URL=sqlite:///./durable_state.db
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
@@ -54,7 +54,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8088
+      - NEXT_PUBLIC_API_URL=http://localhost:80
     depends_on:
       - backend
 
@@ -220,9 +220,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8088
+EXPOSE 80
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8088"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
 """
 
 # Frontend package.json
@@ -257,7 +257,7 @@ export default function Dashboard() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch('http://localhost:8088/api/v1/onboard', {
+      const res = await fetch('http://localhost:80/api/v1/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -479,7 +479,7 @@ def init_scaffold(target_dir: Path):
     print(f"  1. cd {target_dir}")
     print("  2. docker compose up --build")
     print("\\nEndpoints Available:")
-    print("  - Backend Node: \033[94mhttp://localhost:8088/health\033[0m")
+    print("  - Backend Node: \033[94mhttp://localhost:80/health\033[0m")
     print("  - Telemetry Televiewer: \033[94mhttp://localhost:3000\033[0m")
     print("  - Temporal Console: \033[94mhttp://localhost:8233\033[0m")
 

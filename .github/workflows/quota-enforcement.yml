@@ -48,14 +48,14 @@ jobs:
           ENVIRONMENT: "test"
           SKIP_DB_MIGRATIONS: "true"
         run: |
-          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 80 &
           for i in {1..30}; do
-            curl -s http://127.0.0.1:8088/health && break
+            curl -s http://127.0.0.1:80/health && break
             sleep 1
           done
 
       - name: Execute rate-limit and quota gate checks
         run: |
           echo "=== Executing API endpoint check ==="
-          curl -f http://127.0.0.1:8088/health
+          curl -f http://127.0.0.1:80/health
           echo "✓ Rate limit / quota checks successfully verified."

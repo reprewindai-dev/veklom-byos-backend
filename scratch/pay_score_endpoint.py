@@ -7,7 +7,7 @@ from eth_account import Account
 
 # Constants
 RPC_URL = "https://sepolia.base.org"
-BASE_URL = "http://localhost:8088"
+BASE_URL = "http://localhost:80"
 TREASURY_WALLET = "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
 COST_USD = 0.01  # /score premium identity cost
 

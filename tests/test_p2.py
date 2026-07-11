@@ -3,7 +3,7 @@ import json, subprocess
 # Get eval token
 body = json.dumps({"fingerprint": "test-p2"})
 result = subprocess.run(
-    ["curl", "-s", "-X", "POST", "http://localhost:8088/api/v1/auth/eval-session",
+    ["curl", "-s", "-X", "POST", "http://localhost:80/api/v1/auth/eval-session",
      "-H", "Content-Type: application/json", "-d", body],
     capture_output=True, text=True
 )
@@ -12,7 +12,7 @@ token = json.loads(result.stdout)["access_token"]
 # Test overview
 result = subprocess.run(
     ["curl", "-s", "-H", f"Authorization: Bearer {token}",
-     "http://localhost:8088/api/v1/workspace/overview"],
+     "http://localhost:80/api/v1/workspace/overview"],
     capture_output=True, text=True
 )
 ov = json.loads(result.stdout)
@@ -27,7 +27,7 @@ print(f"  fleet: {len(ov.get('fleet',[]))} models")
 # Test search
 result = subprocess.run(
     ["curl", "-s", "-H", f"Authorization: Bearer {token}",
-     "http://localhost:8088/api/v1/workspace/search?q=model"],
+     "http://localhost:80/api/v1/workspace/search?q=model"],
     capture_output=True, text=True
 )
 sr = json.loads(result.stdout)
@@ -36,7 +36,7 @@ print(f"\n=== Search 'model' === {len(sr.get('results',[]))} results")
 # Test monitoring
 result = subprocess.run(
     ["curl", "-s", "-H", f"Authorization: Bearer {token}",
-     "http://localhost:8088/api/v1/workspace/monitoring/health"],
+     "http://localhost:80/api/v1/workspace/monitoring/health"],
     capture_output=True, text=True
 )
 mh = json.loads(result.stdout)
@@ -45,7 +45,7 @@ print(f"\n=== Monitoring Health === status={mh.get('status')}")
 # Test security alerts
 result = subprocess.run(
     ["curl", "-s", "-H", f"Authorization: Bearer {token}",
-     "http://localhost:8088/api/v1/workspace/security/alerts"],
+     "http://localhost:80/api/v1/workspace/security/alerts"],
     capture_output=True, text=True
 )
 sa = json.loads(result.stdout)
@@ -54,7 +54,7 @@ print(f"=== Security Alerts === {len(sa.get('alerts',[]))} alerts")
 # Test billing
 result = subprocess.run(
     ["curl", "-s", "-H", f"Authorization: Bearer {token}",
-     "http://localhost:8088/api/v1/workspace/billing/breakdown"],
+     "http://localhost:80/api/v1/workspace/billing/breakdown"],
     capture_output=True, text=True
 )
 bb = json.loads(result.stdout)

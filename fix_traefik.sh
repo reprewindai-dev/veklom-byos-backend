@@ -13,7 +13,7 @@ http:
     veklom:
       loadBalancer:
         servers:
-          - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:8088"
+          - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:80"
 EOF
 sleep 3
-curl -s http://localhost:8088/health
+curl -s http://localhost:80/health

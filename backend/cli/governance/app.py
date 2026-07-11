@@ -18,7 +18,7 @@ def main() -> int:
         p.add_argument("--model-family", default="default")
         p.add_argument("--db-url")
         p.add_argument("--redis-url")
-        p.add_argument("--base-url", default="http://localhost:8088")
+        p.add_argument("--base-url", default="http://localhost:80")
         p.add_argument("--dashboard-url", default="http://localhost:3000")
         p.add_argument("--format", default="table", choices=["table", "json"])
         p.add_argument("--fail-fast", action="store_true")
@@ -29,7 +29,7 @@ def main() -> int:
     resolve.add_argument("--public-key")
     resolve.add_argument("--requester-provider-id", required=True)
     resolve.add_argument("--payment-proof", required=True)
-    resolve.add_argument("--base-url", default="http://localhost:8088")
+    resolve.add_argument("--base-url", default="http://localhost:80")
     resolve.add_argument("--format", default="table", choices=["table", "json"])
 
     args = parser.parse_args()

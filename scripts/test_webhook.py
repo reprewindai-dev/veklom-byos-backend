@@ -7,7 +7,7 @@ import json
 import requests
 
 WEBHOOK_SECRET = "73d751b745aeb7c485f0b18f811314fcabb3c3aa06cb6226e25d974a5e7705d1"
-WEBHOOK_URL = "http://localhost:8088/api/v1/webhook/payment"
+WEBHOOK_URL = "http://localhost:80/api/v1/webhook/payment"
 
 def generate_signature(payload: str, secret: str) -> str:
     """Generate HMAC-SHA256 signature."""

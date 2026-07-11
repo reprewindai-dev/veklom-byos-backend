@@ -32,9 +32,9 @@ echo "RESTARTED"
 
 echo "== waiting for health =="
 for i in {1..20}; do
-  if curl -s http://localhost:8088/health | grep -q '"status":"healthy"'; then
+  if curl -s http://localhost:80/health | grep -q '"status":"healthy"'; then
     echo "HEALTH_OK after $i tries"
-    curl -s http://localhost:8088/health
+    curl -s http://localhost:80/health
     echo ""
     exit 0
   fi

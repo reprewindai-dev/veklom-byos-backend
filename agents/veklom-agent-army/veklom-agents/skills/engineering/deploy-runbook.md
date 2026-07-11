@@ -14,11 +14,11 @@ docker run -d \
   --network coolify \
   --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env \
   --restart unless-stopped \
-  -p 8088:8088 \
+  -p 80:80 \
   veklom-local:latest
 
 # Verify
-curl -s http://localhost:8088/health
+curl -s http://localhost:80/health
 ```
 
 ## If Site Shows "No Server Available"
@@ -36,7 +36,7 @@ http:
     veklom:
       loadBalancer:
         servers:
-          - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:8088"
+          - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:80"
 EOF
 sleep 3 && curl -sk -H "Host: veklom.com" https://localhost/health
 ```

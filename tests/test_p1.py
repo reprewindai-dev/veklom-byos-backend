@@ -5,7 +5,7 @@ with open("/tmp/eval-body.json", "w") as f:
     f.write(body)
 
 result = subprocess.run(
-    ["curl", "-s", "-X", "POST", "http://localhost:8088/api/v1/auth/eval-session",
+    ["curl", "-s", "-X", "POST", "http://localhost:80/api/v1/auth/eval-session",
      "-H", "Content-Type: application/json", "-d", "@/tmp/eval-body.json"],
     capture_output=True, text=True
 )
@@ -14,7 +14,7 @@ token = data["access_token"]
 print(f"Token: {token[:30]}... User: {data['user']['full_name']} Plan: {data['plan']}")
 
 result2 = subprocess.run(
-    ["curl", "-s", "-H", f"Authorization: Bearer {token}", "http://localhost:8088/api/v1/auth/me"],
+    ["curl", "-s", "-H", f"Authorization: Bearer {token}", "http://localhost:80/api/v1/auth/me"],
     capture_output=True, text=True
 )
 me = json.loads(result2.stdout)
@@ -23,7 +23,7 @@ for k, v in me["capabilities"].items():
     print(f"  {k}: {v}")
 
 result3 = subprocess.run(
-    ["curl", "-s", "-H", f"Authorization: Bearer {token}", "http://localhost:8088/api/v1/workspace/overview"],
+    ["curl", "-s", "-H", f"Authorization: Bearer {token}", "http://localhost:80/api/v1/workspace/overview"],
     capture_output=True, text=True
 )
 ov = json.loads(result3.stdout)

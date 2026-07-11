@@ -374,7 +374,7 @@ Total: 41   PASS: 41 (auth-gated 37)   FAIL: 0
 (not 404) when called without a JWT — proving the route is mounted and the
 auth middleware is enforced. Public routes (`operations/errors`,
 `subscriptions/plans`, `health`, `openapi.json`) returned 200. Run on the live
-container at `localhost:8088` directly.
+container at `localhost:80` directly.
 
 ---
 
@@ -454,7 +454,7 @@ Trace artefacts: `tests/playwright/trace-output/wiring_trace.json` and
 ## Phase-2 evidence — authenticated lifecycle smoke test
 
 **Captured:** same session via `scripts/smoke_test_authed.sh` against the
-live container at `localhost:8088` after minting a real JWT from
+live container at `localhost:80` after minting a real JWT from
 `POST /api/v1/auth/eval-session`.
 
 ```

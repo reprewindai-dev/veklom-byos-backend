@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import httpx
 
 
-BASE_URL = os.getenv("SMOKE_BASE_URL", "http://localhost:8088").rstrip("/")
+BASE_URL = os.getenv("SMOKE_BASE_URL", "http://localhost:80").rstrip("/")
 TIMEOUT = float(os.getenv("SMOKE_TIMEOUT_SECONDS", "15"))
 DEFAULT_API_HOST = (urlparse(BASE_URL).hostname or "").strip()
 API_HOST_HEADER = os.getenv("SMOKE_API_HOST", DEFAULT_API_HOST).strip()

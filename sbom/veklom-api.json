@@ -212,13 +212,13 @@
           },
           {
             "created": "2026-06-17T23:22:36.655275115Z",
-            "created_by": "EXPOSE [8088/tcp]",
+            "created_by": "EXPOSE [80/tcp]",
             "comment": "buildkit.dockerfile.v0",
             "empty_layer": true
           },
           {
             "created": "2026-06-17T23:22:36.655275115Z",
-            "created_by": "HEALTHCHECK &{[\"CMD-SHELL\" \"python -c \\\"import os,sys,urllib.request; p=os.getenv('PORT','8088'); u=f'http://127.0.0.1:{p}/health'; sys.exit(0 if urllib.request.urlopen(u, timeout=5).status==200 else 1)\\\"\"] \"30s\" \"10s\" \"10s\" \"0s\" '\\x03'}",
+            "created_by": "HEALTHCHECK &{[\"CMD-SHELL\" \"python -c \\\"import os,sys,urllib.request; p=os.getenv('PORT','80'); u=f'http://127.0.0.1:{p}/health'; sys.exit(0 if urllib.request.urlopen(u, timeout=5).status==200 else 1)\\\"\"] \"30s\" \"10s\" \"10s\" \"0s\" '\\x03'}",
             "comment": "buildkit.dockerfile.v0",
             "empty_layer": true
           },
@@ -258,7 +258,7 @@
           "Healthcheck": {
             "Test": [
               "CMD-SHELL",
-              "python -c \"import os,sys,urllib.request; p=os.getenv('PORT','8088'); u=f'http://127.0.0.1:{p}/health'; sys.exit(0 if urllib.request.urlopen(u, timeout=5).status==200 else 1)\""
+              "python -c \"import os,sys,urllib.request; p=os.getenv('PORT','80'); u=f'http://127.0.0.1:{p}/health'; sys.exit(0 if urllib.request.urlopen(u, timeout=5).status==200 else 1)\""
             ],
             "Interval": 30000000000,
             "Timeout": 10000000000,
@@ -282,7 +282,7 @@
           "User": "veklom",
           "WorkingDir": "/app",
           "ExposedPorts": {
-            "8088/tcp": {}
+            "80/tcp": {}
           },
           "ArgsEscaped": true
         }
@@ -13598,7 +13598,7 @@
           "diff_id": "sha256:63497317197433e6545529427175664a4506e6bfae01bf083f5a9659a6cef986",
           "file_digests": {
             "SHA1": "483a26554261f6c839703c0e1183f3ef33ff97f1",
-            "SHA256": "562042078c2752549f6d8a7c86dbc5dd708088a7be6d80672ec7b07100b72468"
+            "SHA256": "562042078c2752549f6d8a7c86dbc5dd7080a7be6d80672ec7b07100b72468"
           }
         }
       ]

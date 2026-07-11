@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Veklom BYOS AI"
     VERSION: str = "1.0.0"
     APP_ENV: str = "development"
-    PORT: int = 8088
+    PORT: int = 80
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: Union[str, List[str]] = "veklom.com,www.veklom.com,api.veklom.com,localhost,127.0.0.1,0.0.0.0,testserver"
     MAX_WORKERS: int = 4
     FRONTEND_URL: str = "http://localhost:3000"
-    API_URL: str = "http://localhost:8088"
-    API_BASE_URL: str = "http://localhost:8088"
+    API_URL: str = "http://localhost:80"
+    API_BASE_URL: str = "http://localhost:80"
     ADMIN_EMAIL: str = "founder@veklom.com"
     VEKLOM_API_BASE: str = "/api/v1"
     AI_CITIZENSHIP_SECRET: str = ""
@@ -238,7 +238,7 @@ class Settings(BaseSettings):
     UACPV4_TIMEOUT_MS: int = 15000
 
     # GnomLedger (Real PGL System)
-    GNOMLEDGER_URL: str = "http://localhost:8000"  # GnomLedger runs on port 8000
+    GNOMLEDGER_URL: str = "http://localhost:8090"  # GnomLedger runs on port 8090
     GNOMLEDGER_API_KEY: str = ""
 
     # Coinbase Developer Platform (CDP) / Paid Gateway

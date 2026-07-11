@@ -48,9 +48,9 @@ jobs:
           ENVIRONMENT: "test"
           SKIP_DB_MIGRATIONS: "true"
         run: |
-          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 80 &
           for i in {1..30}; do
-            curl -s http://127.0.0.1:8088/health && break
+            curl -s http://127.0.0.1:80/health && break
             sleep 1
           done
 
@@ -64,22 +64,22 @@ jobs:
           SKIP_DB_MIGRATIONS: "true"
         run: |
           echo "=== Step 1: Verify API Server Healthy ==="
-          curl -f http://127.0.0.1:8088/health
+          curl -f http://127.0.0.1:80/health
 
           echo "=== Step 2: Terminate Server (SIGTERM Crash simulation) ==="
           pkill -TERM -f uvicorn
           sleep 5
 
           echo "=== Step 3: Assert Failed Requests yield clean exceptions ==="
-          curl -s --connect-timeout 2 http://127.0.0.1:8088/health && { echo "❌ Server should be down!"; exit 1; } || echo "✓ Server down successfully."
+          curl -s --connect-timeout 2 http://127.0.0.1:80/health && { echo "❌ Server should be down!"; exit 1; } || echo "✓ Server down successfully."
 
           echo "=== Step 4: Restart Server & Confirm Auto-Recovery ==="
-          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8088 &
+          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 80 &
           for i in {1..30}; do
-            curl -s http://127.0.0.1:8088/health && break
+            curl -s http://127.0.0.1:80/health && break
             sleep 1
           done
 
           echo "=== Step 5: Final Health Check ==="
-          curl -f http://127.0.0.1:8088/health
+          curl -f http://127.0.0.1:80/health
           echo "✓ Blast-radius & Auto-Recovery SLO successfully satisfied."

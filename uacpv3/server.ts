@@ -9714,7 +9714,7 @@ async function executeRun(runId: string) {
     // GPC PIPELINE BUILDER INTEGRATION
     // Send the compiled artifact to the Veklom Backend so it is converted into a native Pipeline Graph
     try {
-      const backendUrl = process.env.UACP_BACKEND_BASE_URL || "http://localhost:8088";
+      const backendUrl = process.env.UACP_BACKEND_BASE_URL || "http://localhost:80";
       fetch(`${backendUrl}/api/v1/pipelines/import-uacp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

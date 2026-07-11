@@ -11,7 +11,7 @@ export default function Dashboard() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch('http://localhost:8088/api/v1/onboard', {
+      const res = await fetch('http://localhost:80/api/v1/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

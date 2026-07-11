@@ -47,7 +47,7 @@ async def check_api():
     """Check API health endpoint."""
     try:
         import httpx
-        api_url = os.getenv("API_URL", "http://localhost:8088")
+        api_url = os.getenv("API_URL", "http://localhost:80")
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{api_url}/health", timeout=5.0)
             if response.status_code == 200:

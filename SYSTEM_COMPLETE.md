@@ -181,7 +181,7 @@ cd deployment
 - **Governance Gateway**: http://localhost:8080
 - **Edge Gateway**: http://localhost:8081
 - **Frontend**: http://localhost:3000
-- **Traefik Dashboard**: http://localhost:8088
+- **Traefik Dashboard**: http://localhost:80
 - **Prometheus**: http://localhost:9090
 - **Grafana**: http://localhost:3001
 

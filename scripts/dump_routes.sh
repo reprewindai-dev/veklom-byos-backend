@@ -5,7 +5,7 @@ set -e
 OUT=/tmp/veklom_routes.txt
 JSON=/tmp/veklom_openapi.json
 
-curl -s http://localhost:8088/openapi.json > "$JSON"
+curl -s http://localhost:80/openapi.json > "$JSON"
 echo "Total bytes: $(wc -c < "$JSON")"
 
 python3 - <<'PYEOF' > "$OUT"

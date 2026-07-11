@@ -3,7 +3,7 @@ import sys
 import httpx
 import json
 
-BASE_URL = os.environ.get("VEKLOM_API_URL", "http://localhost:8088")
+BASE_URL = os.environ.get("VEKLOM_API_URL", "http://localhost:80")
 TREASURY = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
 
 def check_payment_required():

@@ -1,20 +1,19 @@
-import pytest
-from fastapi import HTTPException
-from unittest.mock import AsyncMock, MagicMock
-from datetime import datetime, timezone
-import uuid
 import json
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from backend.apps.api.routers.capi import (
-    governed_execution_intercept,
+    ExecutionIntent,
     evaluate_intent_governed,
-    ExecutionIntent
+    governed_execution_intercept,
+    router,
+    stream_run,
 )
-from backend.db.models.agent import Agent, AgentIdentity
+from backend.db.models.agent import AgentIdentity
 from backend.db.models.authority import AuthorityBundle, AuthorityRun
-from backend.db.models.billing import BudgetRule
-from backend.db.models.ai import ExecutionLog
-from backend.db.models.security import AuditLog
+
 
 @pytest.fixture
 def mock_db():
@@ -25,12 +24,14 @@ def mock_db():
     db.rollback = AsyncMock()
     return db
 
+
 @pytest.fixture
 def mock_user():
     user = MagicMock()
     user.workspace_id = "test-workspace"
     user.id = "test-user-id"
     return user
+
 
 @pytest.fixture
 def base_intent():
@@ -40,8 +41,9 @@ def base_intent():
         mission_id="mission-001",
         target_protocol="mcp",
         action="fs.read",
-        payload={"path": "/app/data.txt", "random": str(uuid.uuid4())}
+        payload={"path": "/app/data.txt", "random": str(uuid.uuid4())},
     )
+
 
 @pytest.mark.anyio
 async def test_capi_gate_unknown_agent(mock_db, base_intent):
@@ -49,56 +51,83 @@ async def test_capi_gate_unknown_agent(mock_db, base_intent):
         mock_val = MagicMock()
         mock_val.scalar_one_or_none.return_value = None
         return mock_val
+
     mock_db.execute = AsyncMock(side_effect=mock_execute)
-    
+
     is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
         base_intent, mock_db, "test-workspace"
     )
-    
+
     assert not is_approved
     assert reason == "AGENT_NOT_FOUND"
     assert failure_phase == 1
     assert phase_results["1"] == "FAILED: Agent identity not found in registry"
 
+
 @pytest.mark.anyio
 async def test_capi_gate_missing_sig(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
+    agent_id_mock = AgentIdentity(
+        id="agent-001",
+        tenant_id="test-workspace",
+        name="Test Agent",
+        created_by_pgl_id="user-01",
+        metadata_json={"trust_score": 90},
+    )
+
     async def mock_execute(query):
         mock_val = MagicMock()
         mock_val.scalar_one_or_none.return_value = agent_id_mock
         return mock_val
+
     mock_db.execute = AsyncMock(side_effect=mock_execute)
-    
+
     base_intent.pgl_id = ""
     is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
         base_intent, mock_db, "test-workspace"
     )
-    
+
     assert not is_approved
     assert reason == "MISSING_PGL_SIGNATURE"
     assert failure_phase == 1
 
+
 @pytest.mark.anyio
 async def test_capi_gate_bad_sig(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
+    agent_id_mock = AgentIdentity(
+        id="agent-001",
+        tenant_id="test-workspace",
+        name="Test Agent",
+        created_by_pgl_id="user-01",
+        metadata_json={"trust_score": 90},
+    )
+
     async def mock_execute(query):
         mock_val = MagicMock()
         mock_val.scalar_one_or_none.return_value = agent_id_mock
         return mock_val
+
     mock_db.execute = AsyncMock(side_effect=mock_execute)
-    
+
     base_intent.pgl_id = "badsig"
     is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
         base_intent, mock_db, "test-workspace"
     )
-    
+
     assert not is_approved
     assert reason == "CRYPTOGRAPHIC_SIGNATURE_INVALID"
     assert failure_phase == 1
 
+
 @pytest.mark.anyio
 async def test_capi_gate_system_veto_root(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
+    agent_id_mock = AgentIdentity(
+        id="agent-001",
+        tenant_id="test-workspace",
+        name="Test Agent",
+        created_by_pgl_id="user-01",
+        metadata_json={"trust_score": 90},
+    )
+
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
@@ -107,23 +136,40 @@ async def test_capi_gate_system_veto_root(mock_db, base_intent):
         else:
             mock_val.scalar_one_or_none.return_value = None
         return mock_val
+
     mock_db.execute = AsyncMock(side_effect=mock_execute)
-    
+
     base_intent.target_protocol = "syscall_execute"
-    base_intent.payload = {"command": "sudo rm -rf /", "random": str(__import__('uuid').uuid4())}
-    
+    base_intent.payload = {
+        "command": "sudo rm -rf /",
+        "random": str(__import__("uuid").uuid4()),
+    }
+
     is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
         base_intent, mock_db, "test-workspace"
     )
-    
+
     assert not is_approved
     assert reason == "SYSTEM_POLICY_VETO"
     assert failure_phase == 2
 
+
 @pytest.mark.anyio
 async def test_capi_gate_implicit_deny(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
-    bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"other_tool": "ALLOW"})
+    agent_id_mock = AgentIdentity(
+        id="agent-001",
+        tenant_id="test-workspace",
+        name="Test Agent",
+        created_by_pgl_id="user-01",
+        metadata_json={"trust_score": 90},
+    )
+    bundle_mock = AuthorityBundle(
+        id="bundle-1",
+        workspace_id="test-workspace",
+        creator_id="user-01",
+        tool_permissions={"other_tool": "ALLOW"},
+    )
+
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
@@ -134,20 +180,34 @@ async def test_capi_gate_implicit_deny(mock_db, base_intent):
         else:
             mock_val.scalar_one_or_none.return_value = None
         return mock_val
+
     mock_db.execute = AsyncMock(side_effect=mock_execute)
-    
+
     is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
         base_intent, mock_db, "test-workspace"
     )
-    
+
     assert not is_approved
     assert reason == "NO_EXPLICIT_ALLOW_RULE"
     assert failure_phase == 2
 
+
 @pytest.mark.anyio
 async def test_capi_gate_approval_escalation(mock_db, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
-    bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"db.drop_tables": "ALLOW"})
+    agent_id_mock = AgentIdentity(
+        id="agent-001",
+        tenant_id="test-workspace",
+        name="Test Agent",
+        created_by_pgl_id="user-01",
+        metadata_json={"trust_score": 90},
+    )
+    bundle_mock = AuthorityBundle(
+        id="bundle-1",
+        workspace_id="test-workspace",
+        creator_id="user-01",
+        tool_permissions={"db.drop_tables": "ALLOW"},
+    )
+
     async def mock_execute(query):
         mock_val = MagicMock()
         query_str = str(query).lower()
@@ -158,23 +218,42 @@ async def test_capi_gate_approval_escalation(mock_db, base_intent):
         else:
             mock_val.scalar_one_or_none.return_value = None
         return mock_val
+
     mock_db.execute = AsyncMock(side_effect=mock_execute)
-    
+
     base_intent.action = "db.drop_tables"
     is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
         base_intent, mock_db, "test-workspace"
     )
-    
+
     assert not is_approved
     assert reason == "PENDING_APPROVAL"
     assert failure_phase == 5
 
+
 @pytest.mark.anyio
-async def test_capi_execution_approved(mock_db, mock_user, base_intent):
-    agent_id_mock = AgentIdentity(id="agent-001", tenant_id="test-workspace", name="Test Agent", created_by_pgl_id="user-01", metadata_json={"trust_score": 90})
-    bundle_mock = AuthorityBundle(id="bundle-1", workspace_id="test-workspace", creator_id="user-01", tool_permissions={"mcp": "ALLOW"})
-    run_mock = AuthorityRun(id="run-1", authority_bundle_id="bundle-1", agent_id="agent-001", workspace_id="test-workspace", executor_id="test-user-id")
-    
+async def test_capi_execution_approved(mock_db, base_intent, monkeypatch):
+    agent_id_mock = AgentIdentity(
+        id="agent-001",
+        tenant_id="test-workspace",
+        name="Test Agent",
+        created_by_pgl_id="user-01",
+        metadata_json={"trust_score": 90},
+    )
+    bundle_mock = AuthorityBundle(
+        id="bundle-1",
+        workspace_id="test-workspace",
+        creator_id="user-01",
+        tool_permissions={"mcp": "ALLOW"},
+    )
+    run_mock = AuthorityRun(
+        id="run-1",
+        authority_bundle_id="bundle-1",
+        agent_id="agent-001",
+        workspace_id="test-workspace",
+        executor_id="test-user-id",
+    )
+
     # Ensure db async methods are awaitable
     mock_db.commit = AsyncMock()
     mock_db.refresh = AsyncMock()
@@ -195,34 +274,44 @@ async def test_capi_execution_approved(mock_db, mock_user, base_intent):
         else:
             mock_val.scalar_one_or_none.return_value = None
         return mock_val
+
     mock_db.execute = AsyncMock(side_effect=mock_execute)
-    
-    response = await governed_execution_intercept(
+
+    monkeypatch.setattr("backend.apps.api.routers.capi.redis_cache.enabled", False)
+    monkeypatch.setattr("backend.apps.api.routers.capi.redis_cache.client", None)
+    router.local_intent_cache = {}
+    principal = {"workspace_id": "test-workspace", "sub": "test-user-id"}
+    execution = await governed_execution_intercept(
         intent=base_intent,
         db=mock_db,
-        current_user=mock_user
+        principal=principal,
     )
-    
+    assert execution["run_id"]
+    assert execution["stream_token"]
+
+    response = await stream_run(
+        run_id=execution["run_id"],
+        db=mock_db,
+        principal=principal,
+    )
+
     receipt_data = None
     async for chunk in response.body_iterator:
         if isinstance(chunk, bytes):
             chunk_str = chunk.decode("utf-8")
         else:
             chunk_str = chunk
-        print("DEBUG_CHUNK:", chunk_str)
-            
+
         for line in chunk_str.split("\n"):
             line = line.strip()
             if line.startswith("data: "):
-                try:
-                    parsed = json.loads(line[6:])
-                    if parsed.get("type") == "receipt":
-                        receipt_data = parsed.get("data")
-                except Exception as e:
-                    print("DEBUG_JSON_ERR:", e)
-                    pass
-                    
-    assert receipt_data is not None, f"Receipt data was not found in the StreamingResponse stream"
-    assert receipt_data["verdict"] == "APPROVED_BY_cAPI"
-    assert receipt_data["status"] == "EXECUTED"
-    assert receipt_data["result"]["status"] == "success"
+                parsed = json.loads(line[6:])
+                if parsed.get("event") == "run.receipt":
+                    receipt_data = parsed.get("payload")
+
+    assert (
+        receipt_data is not None
+    ), "Receipt data was not found in the StreamingResponse stream"
+    assert receipt_data["settlement_status"] == "yielded"
+    assert receipt_data["receipt_id"].startswith("EV-")
+    assert receipt_data["amount_vnp"] > 0

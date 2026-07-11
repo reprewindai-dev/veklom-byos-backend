@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import hashlib
 import json
 import logging
+import os
 import uuid
 import asyncio
 from fastapi.responses import StreamingResponse
@@ -595,8 +596,7 @@ async def stream_run(
             pgl_ledger_url = os.getenv("PGL_LEDGER_URL")
             if pgl_ledger_url:
                 import httpx
-                import asyncio
-                
+
                 async def forward_to_ledger(url: str, payload: dict):
                     try:
                         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -618,7 +618,15 @@ async def stream_run(
             await db.rollback()
             sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)
             logger.error(f"[cAPI] Failed to save cAPI execution receipt: {diag_log}")
-            yield create_event(RunErrorEvent, RunErrorPayload(error_code="SYSTEM_ERROR", message=sanitized_resp, trace_hash=intent_hash, retryable=False))
+            yield create_event(
+                RunErrorEvent,
+                RunErrorPayload(
+                    error_code="SYSTEM_ERROR",
+                    message=sanitized_resp["message"],
+                    trace_hash=intent_hash,
+                    retryable=False,
+                ),
+            )
             yield create_event(RunDoneEvent, RunDonePayload(final_status="failed", total_events=sequence))
             return
             
@@ -677,7 +685,15 @@ async def stream_run(
             await db.rollback()
             sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)
             logger.error(f"[cAPI] Failed to persist real ExecLog: {diag_log}")
-            yield create_event(RunErrorEvent, RunErrorPayload(error_code="SYSTEM_ERROR", message=sanitized_resp, trace_hash=intent_hash, retryable=False))
+            yield create_event(
+                RunErrorEvent,
+                RunErrorPayload(
+                    error_code="SYSTEM_ERROR",
+                    message=sanitized_resp["message"],
+                    trace_hash=intent_hash,
+                    retryable=False,
+                ),
+            )
             yield create_event(RunDoneEvent, RunDonePayload(final_status="failed", total_events=sequence))
             return
             
@@ -789,4 +805,3 @@ async def resolve_quarantine(
         sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)
         logger.error(f"[cAPI] Failed to resolve quarantine {quarantine_id}: {diag_log}")
         raise HTTPException(status_code=500, detail=sanitized_resp)
-

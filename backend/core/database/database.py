@@ -80,11 +80,7 @@ async def get_db_session():
 async def get_db_status():
     try:
         async with async_session() as session:
-            await session.execute(
-                "SELECT 1"
-                if "sqlite" not in settings.DATABASE_URL
-                else __import__("sqlalchemy").text("SELECT 1")
-            )
+            await session.execute(text("SELECT 1"))
         return {"status": "healthy"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}

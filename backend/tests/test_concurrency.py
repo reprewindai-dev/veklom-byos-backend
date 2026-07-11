@@ -5,37 +5,15 @@ import pytest
 
 # Ensure models are imported so they register with Base.metadata.
 from backend.apps.api.main import app
-from backend.core.database.database import Base, engine
+from backend.core.database.database import engine
 from backend.core.security.jwt_keys import key_manager
-from backend.db.models.billing import WalletTransaction
-from backend.db.models.pgl import PGLCertificate, PGLIdentity, PGLLedgerEvent
-from backend.db.models.user import User
-from backend.db.models.workspace import Workspace
-
-
-# Run database initialization of specific tables for the CI PostgreSQL service.
-async def init_db():
-    tables_to_create = [
-        User.__table__,
-        Workspace.__table__,
-        PGLIdentity.__table__,
-        PGLCertificate.__table__,
-        PGLLedgerEvent.__table__,
-        WalletTransaction.__table__,
-    ]
-    async with engine.begin() as conn:
-        await conn.run_sync(
-            lambda sync_conn: Base.metadata.create_all(
-                bind=sync_conn,
-                tables=tables_to_create,
-            )
-        )
+from backend.tests.conftest import init_test_db
 
 
 @pytest.fixture(autouse=True)
 async def setup_database():
     await engine.dispose()
-    await init_db()
+    await init_test_db()
     yield
     await engine.dispose()
 

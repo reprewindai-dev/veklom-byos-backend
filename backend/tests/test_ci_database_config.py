@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DATABASE_MODULE_PATH = ROOT / "backend" / "core" / "database" / "database.py"
 WORKFLOW_PATHS = (
+    ROOT / ".github" / "workflows" / "ci.yml",
     ROOT / ".github" / "workflows" / "ci-cache.yml",
     ROOT / ".github" / "workflows" / "self-hosted-ci.yml",
 )
@@ -22,6 +23,7 @@ def test_full_ci_workflows_provision_the_postgres_test_database():
         assert CI_DATABASE_URL in workflow
         assert 'REDIS_ENABLED: "False"' in workflow
         assert "APP_ENV: test" in workflow
+        assert "runs-on: ubuntu-latest" in workflow
 
 
 def test_postgres_integration_tests_do_not_override_the_ci_database_url():

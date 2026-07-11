@@ -32,7 +32,9 @@ def validation_errors(payload: object, require_groq_fallback: bool) -> list[str]
     providers = payload.get("providers_configured")
     if not isinstance(providers, Sequence) or isinstance(providers, (str, bytes)):
         errors.append("providers_configured must be a non-empty list")
-    elif not any(isinstance(provider, str) and provider.strip() for provider in providers):
+    elif not any(
+        isinstance(provider, str) and provider.strip() for provider in providers
+    ):
         errors.append("providers_configured must include at least one provider")
 
     if require_groq_fallback and payload.get("groq_fallback_enabled") is not True:

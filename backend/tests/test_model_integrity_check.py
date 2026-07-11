@@ -3,7 +3,9 @@ import io
 import json
 from pathlib import Path
 
-SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "check_model_integrity.py"
+SCRIPT_PATH = (
+    Path(__file__).resolve().parents[2] / "scripts" / "check_model_integrity.py"
+)
 SPEC = importlib.util.spec_from_file_location("check_model_integrity", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 check_model_integrity = importlib.util.module_from_spec(SPEC)
@@ -50,7 +52,9 @@ def test_check_rejects_non_object_json_payload():
 
 
 def test_check_rejects_string_typed_providers():
-    exit_code, stdout, stderr = run_check(healthy_payload(providers_configured="ollama"))
+    exit_code, stdout, stderr = run_check(
+        healthy_payload(providers_configured="ollama")
+    )
 
     assert exit_code == 1
     assert stdout == ""
@@ -58,7 +62,9 @@ def test_check_rejects_string_typed_providers():
 
 
 def test_groq_requirement_is_enforced_when_enabled():
-    exit_code, stdout, stderr = run_check(healthy_payload(), "--require-groq-fallback", "true")
+    exit_code, stdout, stderr = run_check(
+        healthy_payload(), "--require-groq-fallback", "true"
+    )
 
     assert exit_code == 1
     assert stdout == ""
@@ -77,7 +83,9 @@ def test_check_rejects_unhealthy_or_unconfigured_llm_path():
 
 
 def test_check_rejects_invalid_groq_requirement_value():
-    exit_code, stdout, stderr = run_check(healthy_payload(), "--require-groq-fallback", "enabled")
+    exit_code, stdout, stderr = run_check(
+        healthy_payload(), "--require-groq-fallback", "enabled"
+    )
 
     assert exit_code == 2
     assert stdout == ""

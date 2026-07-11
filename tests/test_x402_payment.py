@@ -80,7 +80,8 @@ async def test_x402_comprehensive():
         assert challenge["x402_version"] == 2
         assert "challenge_id" in challenge
         assert "nonce" in challenge
-        assert challenge["amount"] == 0.025
+        assert challenge["amount"] == "0.025"
+        assert challenge["amount_usdc"] == "0.025"
         assert challenge["currency"] == "USDC"
         assert challenge["network"] == "base"
         assert challenge["route"] == "/api/v1/x402/protected-test"
@@ -92,6 +93,7 @@ async def test_x402_comprehensive():
         assert response.headers.get("X-Payment-Required") == "true"
         assert "X-Payment-Challenge-ID" in response.headers
         assert "X-Payment-Nonce" in response.headers
+        assert response.headers.get("X-Payment-Price-USDC") == "0.025"
 
         # CDP v2 Compliant Headers Assertion
         assert "payment-required" in response.headers
@@ -111,6 +113,16 @@ async def test_x402_comprehensive():
         assert accepts["maxTimeoutSeconds"] == 86400
         assert accepts["extra"]["name"] == "USD Coin"
         assert accepts["extra"]["version"] == "2"
+
+        score_response = client.post("/api/v1/x402/score", json={"subject": "payapi-market-settlement-test"})
+        assert score_response.status_code == 402
+        score_challenge = score_response.json()
+        assert score_challenge["amount"] == "0.10"
+        assert score_challenge["amount_usdc"] == "0.10"
+        assert score_response.headers["X-Payment-Price-USDC"] == "0.10"
+        score_v2_payload = json.loads(base64.b64decode(score_response.headers["payment-required"]).decode("utf-8"))
+        assert score_v2_payload["accepts"][0]["amount"] == "100000"
+        assert score_v2_payload["accepts"][0]["payTo"] == os.environ["VEKLOM_TREASURY_ADDRESS"]
 
         # C. PROOF VERIFICATION ASSERTIONS
         # Enable dev test proof mode for validation
@@ -267,7 +279,8 @@ async def test_payapi_dynamic_registration_and_parameterized_matching():
         assert response.status_code == 402
         challenge = response.json()
         assert challenge["error"] == "payment_required"
-        assert challenge["amount"] == 0.045
+        assert challenge["amount"] == "0.045"
+        assert challenge["amount_usdc"] == "0.045"
         assert challenge["currency"] == "USDC"
         assert challenge["route"] == "/api/v1/niche-test/item_abc123/process"
         
@@ -277,7 +290,8 @@ async def test_payapi_dynamic_registration_and_parameterized_matching():
         assert quarantine_resp.status_code == 402
         quarantine_challenge = quarantine_resp.json()
         assert quarantine_challenge["error"] == "payment_required"
-        assert quarantine_challenge["amount"] == 0.01
+        assert quarantine_challenge["amount"] == "0.01"
+        assert quarantine_challenge["amount_usdc"] == "0.01"
         assert quarantine_challenge["currency"] == "USDC"
         assert quarantine_challenge["route"] == "/api/v1/pgl/agent_xyz_99/quarantine"
         # 5. Verification of public /pricing and /api/v1/pricing
@@ -291,6 +305,8 @@ async def test_payapi_dynamic_registration_and_parameterized_matching():
         # Verify a specific route is present
         routes_paths = [r["path"] for r in pricing_data["routes"]]
         assert "/api/v1/mission-lock/agents/{agent_id}/state" in routes_paths
+        score_price_row = next(r for r in pricing_data["routes"] if r["path"] == "/api/v1/x402/score")
+        assert score_price_row["price"] == "0.10"
 
         # Verify /api/v1/pricing alias behaves identically
         pricing_v1_resp = client.get("/api/v1/pricing")

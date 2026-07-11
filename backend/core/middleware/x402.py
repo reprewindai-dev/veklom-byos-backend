@@ -19,6 +19,7 @@ import hmac
 import os
 import logging
 import re
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 import asyncio
@@ -189,6 +190,22 @@ _FREE_ROUTES_PREFIX = (
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"
 VEKLOM_USDC_ADDR  = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
+
+def _price_decimal(route_config: dict) -> Decimal:
+    return Decimal(str(route_config["price_usdc"]))
+
+def _price_usdc_string(route_config: dict) -> str:
+    normalized = _price_decimal(route_config).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    text = format(normalized, "f").rstrip("0").rstrip(".")
+    if "." not in text:
+        return f"{text}.00"
+    whole, fractional = text.split(".", 1)
+    if len(fractional) == 1:
+        return f"{whole}.{fractional}0"
+    return text
+
+def _price_micro_usdc(route_config: dict) -> int:
+    return int((_price_decimal(route_config) * Decimal("1000000")).to_integral_value(rounding=ROUND_HALF_UP))
 
 
 def is_valid_evm_address(addr: str) -> bool:
@@ -381,6 +398,8 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
     challenge_id = f"chal_{uuid.uuid4().hex[:16]}"
     nonce = f"nonce_{uuid.uuid4().hex[:16]}"
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=300)).isoformat()
+    price_usdc = _price_usdc_string(route_config)
+    amount_micro_usdc = _price_micro_usdc(route_config)
     
     # Construct standard CDP x402 v2 payment required payload object
     v2_payload_obj = {
@@ -393,7 +412,7 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
             {
                 "scheme": "exact",
                 "network": "eip155:8453",
-                "amount": str(int(route_config["price_usdc"] * 1_000_000)),
+                "amount": str(amount_micro_usdc),
                 "asset": VEKLOM_USDC_ADDR,
                 "payTo": get_treasury_address(),
                 "maxTimeoutSeconds": 86400,
@@ -412,7 +431,8 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
         "x402_version": 2,
         "challenge_id": challenge_id,
         "nonce": nonce,
-        "amount": route_config["price_usdc"],
+        "amount": price_usdc,
+        "amount_usdc": price_usdc,
         "currency": "USDC",
         "network": "base",
         "chain_id": 8453,
@@ -424,7 +444,8 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
         "payment_requirements": {
             "asset_contract": VEKLOM_USDC_ADDR,
             "destination": get_treasury_address(),
-            "minimum_amount_micro_usdc": int(route_config["price_usdc"] * 1_000_000)
+            "minimum_amount_micro_usdc": amount_micro_usdc,
+            "amount_usdc": price_usdc,
         },
         "replay_protection": {
             "nonce_required": True,
@@ -443,7 +464,7 @@ def _build_402_response(path: str, method: str, route_config: dict, detail: Opti
         "X-Payment-Required": "true",
         "X-Payment-Challenge-ID": challenge_id,
         "X-Payment-Nonce": nonce,
-        "X-Payment-Price-USDC": str(route_config["price_usdc"]),
+        "X-Payment-Price-USDC": price_usdc,
         "X-Payment-Network": "base",
         "X-Payment-Asset": VEKLOM_USDC_ADDR,
         "X-Payment-Address": get_treasury_address(),

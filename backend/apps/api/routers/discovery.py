@@ -58,6 +58,7 @@ VEKLOM_PRICING = {
 }
 import os
 import logging as _logging
+from decimal import Decimal, ROUND_HALF_UP
 
 _disc_log = _logging.getLogger(__name__)
 
@@ -66,6 +67,16 @@ VEKLOM_NETWORK     = "base"
 VEKLOM_BASE_URL    = "https://veklom.com"       # main site (workspace, landing, pricing)
 VEKLOM_API_BASE    = "https://api.veklom.com/api/v1"  # machine-facing API surface
 VEKLOM_AGENT_BASE  = "https://api.veklom.com"   # where .well-known, mcp/sse, openapi.json live
+
+def format_price_usdc(value) -> str:
+    normalized = Decimal(str(value)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    text = format(normalized, "f").rstrip("0").rstrip(".")
+    if "." not in text:
+        return f"{text}.00"
+    whole, fractional = text.split(".", 1)
+    if len(fractional) == 1:
+        return f"{whole}.{fractional}0"
+    return text
 
 def get_treasury_address() -> str:
     from backend.core.config.settings import settings
@@ -606,7 +617,7 @@ async def machine_pricing():
                 "path": path,
                 "method": method,
                 "unit": cfg.get("unit", "per_call").replace(" ", "_"),
-                "price": str(cfg["price_usdc"]),
+                "price": format_price_usdc(cfg["price_usdc"]),
                 "price_usdc": cfg["price_usdc"],
                 "name": cfg.get("name", ""),
                 "category": cfg["category"],

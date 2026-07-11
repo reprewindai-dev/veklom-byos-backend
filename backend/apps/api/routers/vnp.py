@@ -1,7 +1,7 @@
 """VNP Routing and Data Ingestion API."""
 
 import json
-from typing import List, Optional
+from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func

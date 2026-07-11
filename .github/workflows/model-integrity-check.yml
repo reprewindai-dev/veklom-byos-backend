@@ -11,15 +11,21 @@ permissions:
 
 jobs:
   model-check:
-    runs-on: ubuntu-latest
+    runs-on: [veklom-runner, self-hosted, linux]
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Verify public demo LLM path is healthy
+        env:
+          REQUIRE_GROQ_FALLBACK: ${{ vars.REQUIRE_GROQ_FALLBACK || 'false' }}
         run: |
           set -euo pipefail
-          HEALTH=$(curl -fsS --retry 3 --retry-delay 10 --retry-all-errors https://api.veklom.com/api/v1/demo/pipeline/health)
-          echo "$HEALTH"
-          echo "$HEALTH" | grep -q '"llm_ok":true'
-          echo "$HEALTH" | grep -q '"groq_fallback_enabled":true'
+          curl -fsS --retry 3 --retry-delay 10 --retry-all-errors \
+            https://api.veklom.com/api/v1/demo/pipeline/health \
+            | python3 scripts/check_model_integrity.py \
+              --require-groq-fallback "$REQUIRE_GROQ_FALLBACK"
 
       - name: Verify authenticated exec model responds
         env:

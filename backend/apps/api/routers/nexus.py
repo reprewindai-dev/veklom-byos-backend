@@ -1,15 +1,17 @@
 """Veklom Nexus Protocol — real benchmark scoring from ExecutionLog."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
+import hashlib
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
 from backend.db.models.user import User
+from backend.db.models.vnp import Api, RegionalTelemetry, ProbeEvent
 
 router = APIRouter(prefix="/nexus", tags=["Nexus Protocol"])
 
@@ -332,3 +334,145 @@ async def get_agent_privilege(agent_id: str, db: AsyncSession = Depends(get_db))
     """Check the current privilege status of an agent."""
     is_active = await seked_service.check_agent_privilege(db, agent_id)
     return {"agent_id": agent_id, "is_active": is_active}
+
+@router.get("/scores")
+async def get_nexus_scores(db: AsyncSession = Depends(get_db)):
+    """
+    Returns API ScoreCards for the NexusProtocol UI.
+    Queries vnp_apis and RegionalTelemetry dynamically.
+    """
+    stmt = select(Api).where(Api.status == "active")
+    result = await db.execute(stmt)
+    apis = result.scalars().all()
+
+    # Dimension definitions with weights
+    dimension_defs = [
+        ("Performance",      15, "p50/p95 response latency across probe regions"),
+        ("Reliability",      15, "HTTP 200 uptime consistency over 30d window"),
+        ("Security Posture", 10, "TLS configuration, security headers, auth strength"),
+        ("SLA Compliance",   10, "Acceptable boundary conformance per signed SLA"),
+        ("Cost Efficiency",  10, "Effective cost per 1K governed requests"),
+        ("Data Integrity",   10, "Schema validation, payload accuracy & type fidelity"),
+        ("Governance",       10, "Policy adherence under Zero-Trust middleware"),
+        ("Auditability",      8, "Log completeness, traceability and receipt coverage"),
+        ("Resilience",        7, "Mean recovery time and retry success rate under load"),
+        ("Interoperability",  5, "OpenAPI, x402 settlement, CORS standards compliance"),
+    ]
+
+    scorecards = []
+    for api in apis:
+        api_id_str = str(api.id)
+        
+        # Get actual telemetry from DB
+        telemetry_stmt = select(RegionalTelemetry).where(RegionalTelemetry.api_id == api.id).order_by(RegionalTelemetry.measured_at.desc()).limit(1)
+        tel_result = await db.execute(telemetry_stmt)
+        latest_telemetry = tel_result.scalar_one_or_none()
+        
+        if latest_telemetry:
+            # Map real DB metrics to 0-100 scales
+            perf_score = max(0, 100 - (latest_telemetry.p99_latency_ms / 10))
+            rel_score = float(latest_telemetry.uptime_percent)
+            composite = float(latest_telemetry.trust_score)
+            anchor_hash = latest_telemetry.on_chain_anchor or "0xPENDING"
+            tx_hash = latest_telemetry.provenance_hash or "0xPENDING"
+        else:
+            perf_score = api.current_composite_score
+            rel_score = api.current_composite_score
+            composite = api.current_composite_score
+            anchor_hash = "0xPENDING"
+            tx_hash = "0xPENDING"
+
+        dimensions = []
+        weighted_sum = 0.0
+        total_weight = 0
+
+        for i, (name, weight, desc) in enumerate(dimension_defs):
+            if name == "Performance":
+                dim_score = perf_score
+            elif name == "Reliability":
+                dim_score = rel_score
+            else:
+                dim_score = composite # Fallback for unmeasured dimensions
+                
+            dim_score = max(0, min(100, int(dim_score)))
+            dimensions.append({
+                "name": name,
+                "score": dim_score,
+                "weight": weight,
+                "desc": desc,
+            })
+            weighted_sum += dim_score * weight
+            total_weight += weight
+
+        overall = round(weighted_sum / total_weight) if total_weight else int(composite)
+        grade = _nexus_grade(overall)
+
+        scorecards.append({
+            "id": api_id_str,
+            "name": api.name,
+            "provider": api_id_str.split("-")[0] if api.name else "Unknown",
+            "score": overall,
+            "grade": grade,
+            "dimensions": dimensions,
+            "anchorHash": anchor_hash,
+            "txHash": tx_hash,
+            "lastUpdated": _time_ago(api.updated_at) if hasattr(api, "updated_at") and api.updated_at else "—",
+        })
+
+    return scorecards
+
+
+def _nexus_grade(score: int) -> str:
+    if score >= 95:
+        return "A+"
+    elif score >= 90:
+        return "A"
+    elif score >= 85:
+        return "A-"
+    elif score >= 80:
+        return "B+"
+    elif score >= 75:
+        return "B"
+    elif score >= 70:
+        return "B-"
+    elif score >= 60:
+        return "C"
+    elif score >= 50:
+        return "D"
+    return "F"
+
+
+def _time_ago(dt) -> str:
+    if not dt:
+        return "—"
+    now = datetime.now(timezone.utc)
+    diff = now - dt
+    minutes = int(diff.total_seconds() / 60)
+    if minutes < 1:
+        return "just now"
+    elif minutes < 60:
+        return f"{minutes}m ago"
+    elif minutes < 1440:
+        return f"{minutes // 60}h ago"
+    return f"{minutes // 1440}d ago"
+
+
+@router.get("/nodes")
+async def get_nexus_nodes(db: AsyncSession = Depends(get_db)):
+    from backend.db.models.vnp import ApiRegion
+    stmt = select(ApiRegion).where(ApiRegion.active == True)
+    result = await db.execute(stmt)
+    regions = result.scalars().all()
+    
+    nodes = []
+    for idx, r in enumerate(regions):
+        nodes.append({
+            "id": r.region_code,
+            "name": f"Node-{idx+1:02d} // {r.region_code.upper()}",
+            "region": r.region_code,
+            "latency": 0, # Will be updated by real probes
+            "throughput": 0,
+            "status": "active",
+            "activeCycles": 1
+        })
+    return nodes

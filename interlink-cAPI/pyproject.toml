@@ -1,0 +1,15 @@
+[project]
+name = "interlink-cAPI"
+version = "1.0.0"
+description = "Veklom Governed Connection Layer (cAPI)"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "httpx",
+    "pydantic",
+    "cryptography"
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

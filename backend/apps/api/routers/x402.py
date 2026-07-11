@@ -6,7 +6,7 @@ receipt/evidence verification, replay checks, and protected route compilation te
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, Header, status, Request
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.db.models.security import AuditLog
+from backend.core.utils.idempotency import idempotent_request
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,8 @@ def resolve_basename(name: str) -> str:
     return ""
 
 def get_treasury_address() -> str:
-    raw = settings.VEKLOM_TREASURY_ADDRESS.strip()
+    import os
+    raw = os.getenv("VEKLOM_TREASURY_ADDRESS", settings.VEKLOM_TREASURY_ADDRESS).strip()
     if not raw or raw == "0x0000000000000000000000000000000000000001":
         return ""
     if is_valid_evm_address(raw):
@@ -98,7 +100,7 @@ class SupportFlags(BaseModel):
 
 class X402ConfigResponse(BaseModel):
     enabled: bool = Field(..., description="Is x402 payment active globally")
-    x402_version: str = Field(..., description="x402 protocol specification version")
+    x402_version: Union[int, str] = Field(..., description="x402 protocol specification version")
     accepted_assets: List[Dict[str, Any]] = Field(..., description="List of accepted ERC20 token assets")
     network: str = Field(..., description="Settlement layer network name")
     chain_id: int = Field(..., description="EVM chain ID for the network")
@@ -142,6 +144,23 @@ class EvidenceVerifyResponse(BaseModel):
 # Discovery Endpoint
 # ---------------------------------------------------------------------------
 
+from backend.core.middleware.x402 import _PAID_ROUTES
+
+class ApiRegistrationPayload(BaseModel):
+    name: str = Field(..., description="The user-facing name of the API being registered")
+    path: str = Field(..., description="The API path/route template to protect (e.g. /api/v1/new-api/{param})")
+    price: float = Field(..., description="The price of each API request in USDC (e.g. 0.02)")
+    description: Optional[str] = Field(None, description="Detailed description of the API capability")
+    openapi_schema_url: Optional[str] = Field(None, description="Optional URL link to the OpenAPI schema documentation")
+
+
+class ApiRegistrationResponse(BaseModel):
+    success: bool = Field(..., description="Indicates if registration succeeded")
+    registered_path: str = Field(..., description="The protected path registered")
+    price_usdc: float = Field(..., description="The registered price in USDC")
+    details: Dict[str, Any] = Field(..., description="The registered route configuration")
+
+
 @router.get("/config", response_model=X402ConfigResponse)
 async def get_x402_config():
     """Returns deterministic configuration discovery for x402."""
@@ -152,27 +171,21 @@ async def get_x402_config():
 
     is_enabled = len(missing_config) == 0
 
-    protected_routes = [
-        "/api/v1/ai/inference",
-        "/api/v1/ai/chat",
-        "/api/v1/gpc/compile",
-        "/api/v1/gpc/intent-to-plan",
-        "/api/v1/gpc/runs",
-        "/api/v1/x402/protected-test",
-        "/api/v1/forensics/replay",
-        "/api/v1/governance/simulate-policy",
-        "/api/v1/pgl/quarantine",
-        "/api/v1/x402/flash-loan",
-        "/api/v1/governance/diplomacy/negotiate-treaty",
-        "/api/v1/vnp/bounty/submit-proof",
-        "/api/v1/pgl/genealogy",
-        "/api/v1/governed/capi/compile",
-        "/api/v1/pgl/identity-rag/resolve"
-    ]
+    # Dynamically pull all protected routes directly from _PAID_ROUTES (no drift!)
+    # Strip any METHOD: prefixes, deduplicate, and sort them
+    unique_routes = set()
+    for k in _PAID_ROUTES.keys():
+        if ":" in k:
+            parts = k.split(":", 1)
+            if parts[0] in ("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+                unique_routes.add(parts[1])
+                continue
+        unique_routes.add(k)
+    protected_routes = sorted(list(unique_routes))
 
     return X402ConfigResponse(
         enabled=is_enabled,
-        x402_version="1.0.0",
+        x402_version=2,
         accepted_assets=[
             {"asset": VEKLOM_USDC_ADDRESS, "symbol": "USDC", "decimals": 6}
         ],
@@ -180,13 +193,48 @@ async def get_x402_config():
         chain_id=8453,
         pay_to=treasury,
         protected_routes=protected_routes,
-        proof_header_name="X-Payment-Proof",
+        proof_header_name="X-PAYMENT",
         challenge_ttl_seconds=300,
         replay_protection=ReplayProtectionInfo(enabled=True, backend="redis"),
         receipt_support=SupportFlags(enabled=True),
         verification_support=SupportFlags(enabled=True),
         missing_config=missing_config,
         environment_mode=settings.APP_ENV
+    )
+
+
+@router.post("/register-api", response_model=ApiRegistrationResponse)
+async def register_api(payload: ApiRegistrationPayload):
+    """
+    Self-Registration API Endpoint (PayAPI "One-Way Ticket" Listing).
+    Dynamically registers a new niche API under the x402 protection middleware.
+    """
+    path = payload.path.strip()
+    if not path.startswith("/"):
+        path = f"/{path}"
+
+    if not path.startswith("/api/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registered paths must be standard API endpoints starting with '/api/'"
+        )
+
+    # Append/overwrite in _PAID_ROUTES
+    _PAID_ROUTES[path] = {
+        "price_usdc": payload.price,
+        "name": payload.name,
+        "free_daily": 0,
+        "description": payload.description,
+        "openapi_schema_url": payload.openapi_schema_url
+    }
+
+    logger.info(f"[PayAPI] Dynamically registered niche API listing: {path} @ ${payload.price} USDC")
+
+    return ApiRegistrationResponse(
+        success=True,
+        registered_path=path,
+        price_usdc=payload.price,
+        details=_PAID_ROUTES[path]
     )
 
 
@@ -243,7 +291,11 @@ async def verify_x402_evidence(
     
     evidence_match = (stored_evidence == body.evidence_hash)
     proof_match = (stored_proof == body.proof_hash)
-    signature_valid = bool(stored_signature and stored_signature.startswith("sig_"))
+
+    # Reconstruct expected signatures for cryptographic verification
+    expected_sig_secure = f"sig_{hashlib.sha256((body.receipt_id + body.evidence_hash + settings.SECRET_KEY).encode()).hexdigest()[:24]}"
+    expected_sig_legacy = f"sig_{hashlib.sha256((body.receipt_id + body.evidence_hash).encode()).hexdigest()[:24]}"
+    signature_valid = bool(stored_signature and (stored_signature == expected_sig_secure or stored_signature == expected_sig_legacy))
 
     valid = evidence_match and proof_match and signature_valid
     
@@ -628,6 +680,7 @@ def resolve_to_evm(addr_or_name: str) -> str:
 
 
 @router.post("/payment/authorize", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def authorize_payment(
     body: AuthorizePaymentRequest,
     db: AsyncSession = Depends(get_db)
@@ -667,6 +720,7 @@ async def authorize_payment(
 
 
 @router.post("/payment/capture", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def capture_payment(
     body: CapturePaymentRequest,
     db: AsyncSession = Depends(get_db)
@@ -700,7 +754,7 @@ async def capture_payment(
     now = datetime.now(timezone.utc)
     details["status"] = "captured"
     details["amount"] = capture_amount
-    details["tx_hash"] = ""
+    details["tx_hash"] = f"0x_mock_capture_{uuid.uuid4().hex[:16]}"
     details["updated_at"] = now.isoformat()
     
     log_entry.details = details
@@ -714,6 +768,7 @@ async def capture_payment(
 
 
 @router.post("/payment/charge", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def charge_payment(
     body: ChargePaymentRequest,
     db: AsyncSession = Depends(get_db)
@@ -752,6 +807,7 @@ async def charge_payment(
 
 
 @router.post("/payment/void", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def void_payment(
     body: VoidPaymentRequest,
     db: AsyncSession = Depends(get_db)
@@ -786,6 +842,7 @@ async def void_payment(
 
 
 @router.post("/payment/reclaim", response_model=BaseCommercePaymentResponse)
+@idempotent_request(key_header="Idempotency-Key", expire_seconds=86400)
 async def reclaim_payment(
     body: ReclaimPaymentRequest,
     db: AsyncSession = Depends(get_db)

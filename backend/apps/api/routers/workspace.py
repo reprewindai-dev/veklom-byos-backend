@@ -1879,11 +1879,19 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     if not repo:
         raise HTTPException(status_code=400, detail="No GitHub repository configured for this workspace.")
 
-    token = user.github_access_token
-    if not token:
+    encrypted_token = user.github_access_token
+    if not encrypted_token:
         raise HTTPException(
             status_code=400, 
             detail="No GitHub access token configured for this user. Please connect your GitHub account in integrations settings."
+        )
+
+    from backend.core.security.encryption import decrypt_token
+    token = decrypt_token(encrypted_token)
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to decrypt GitHub access token."
         )
 
     agent_files = []

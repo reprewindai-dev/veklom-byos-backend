@@ -23,8 +23,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "base-uri 'self';"
         )
         
-        # Strict Transport Security (only in production)
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # Strict Transport Security (only in production and never on localhost)
+        from backend.core.config.settings import settings
+        hostname = (request.url.hostname or "").lower()
+        if settings.APP_ENV == "production" and hostname not in ("localhost", "127.0.0.1", "0.0.0.0"):
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         
         # X-Frame-Options — SAMEORIGIN allows veklom.com to embed its own pages (terminal, irongrid etc.)
         # Skip for routes that are meant to be iframed within the landing page

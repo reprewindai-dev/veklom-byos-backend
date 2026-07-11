@@ -20,8 +20,10 @@ async def test_x402_preconf_features():
     # Save settings to restore
     original_mode = settings.X402_TEST_PROOF_MODE
     original_treasury = os.environ.get("VEKLOM_TREASURY_ADDRESS", "")
+    original_settings_treasury = settings.VEKLOM_TREASURY_ADDRESS
     
     settings.X402_TEST_PROOF_MODE = True
+    settings.VEKLOM_TREASURY_ADDRESS = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
     os.environ["VEKLOM_TREASURY_ADDRESS"] = "veklom.base.eth"
 
     # Initialize SQLite db schema for testing AuditLogs
@@ -148,6 +150,7 @@ async def test_x402_preconf_features():
 
     finally:
         settings.X402_TEST_PROOF_MODE = original_mode
+        settings.VEKLOM_TREASURY_ADDRESS = original_settings_treasury
         if original_treasury:
             os.environ["VEKLOM_TREASURY_ADDRESS"] = original_treasury
         else:

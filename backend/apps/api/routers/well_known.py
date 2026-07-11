@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user_optional
+from backend.core.security.jwt_keys import key_manager
 from backend.db.models.user import User
 import uuid
 import json
@@ -803,19 +804,7 @@ async def get_change_password_redirect():
 async def get_jwks():
     """JSON Web Key Set for JWT verification."""
     
-    # Mock JWKS - in real implementation, would return actual keys
-    jwks = {
-        "keys": [
-            {
-                "kty": "RSA",
-                "kid": "veklom-signing-key-1",
-                "use": "sig",
-                "alg": "RS256",
-                "n": "mock_modulus_here",
-                "e": "AQAB"
-            }
-        ]
-    }
+    jwks = key_manager.get_jwks()
     
     return JSONResponse(
         content=jwks,

@@ -14,9 +14,15 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         
+        public_paths = (
+            "/demo/pipeline/health",
+            "/api/v1/demo/pipeline/health",
+        )
+
         # Public bypass routes
         public_prefixes = (
             "/status", "/health", "/api/health", "/api/v1/auth/login", "/api/v1/auth/register",
+            "/api/terminal",
             "/api/v1/health", "/redoc",
             "/api/v1/auth/eval-session", "/api/v1/auth/providers",
             "/api/v1/auth/signup", "/api/v1/auth/signin", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password",
@@ -30,7 +36,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/uptime", "/legal", "/license", "/vendor-agreement", "/irongrid", "/api/v1/webhooks", "/api/v1/edge", "/.well-known",
             "/robots.txt", "/llms.txt", "/sitemap.xml", "/favicon",
             "/apple-touch-icon.png", "/og-image.png", "/twitter-card.png",
-            "/logo.png", "/icon.png", "/api/v1/ai/models", "/api/v1/pricing", "/api/v1/subscriptions/plans", "/status/data",
+            "/logo.png", "/icon.png", "/api/v1/ai/models", "/pricing", "/api/v1/pricing", "/api/v1/subscriptions/plans", "/status/data",
             "/api/v1/platform/pulse", "/api/v1/sdk/", "/api/v1/agent-use-cases",
             "/sdk/examples", "/mcp/", "/openapi.json", "/api/v1/openapi.json",
             "/v1/openapi.json", "/api/v1/sys/health", "/api/v1/sys/gpu",
@@ -45,11 +51,19 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/ai/complete", "/api/v1/playground/inference", "/api/v1/playground/sessions",
             "/api/v1/playground/tools", "/api/v1/playground/prompts",
             "/api/v1/agentic_commerce/product_feed", "/api/v1/agentic_commerce/feed.csv",
-            "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback", "/api/vnp",
-            "/api/v1/amphoteric/discover", "/api/v1/amphoteric/call"
+            "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback", "/api/v1/vnp",
+            "/api/v1/amphoteric/discover", "/api/v1/amphoteric/call",
+            "/api/v1/onboarding", "/onboarding-dashboard", "/api/v1/banker/self-prove",
+            "/api/v1/duel",
+            "/api/v1/beacon"
         )
         
-        if path == "/" or request.method == "OPTIONS" or any(path.startswith(prefix) for prefix in public_prefixes):
+        if (
+            path == "/"
+            or path in public_paths
+            or request.method == "OPTIONS"
+            or any(path.startswith(prefix) for prefix in public_prefixes)
+        ):
             return await call_next(request)
             
         auth_header = request.headers.get("Authorization")

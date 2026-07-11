@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from backend.apps.api.main import app
 import nacl.signing
 from nacl.encoding import HexEncoder
+import uuid
 from backend.db.models.vnp import Validator
 
 client = TestClient(app)
@@ -44,11 +45,11 @@ def test_vnp_ingestion_invalid_signature():
     signing_key = nacl.signing.SigningKey.generate()
     public_key_hex = signing_key.verify_key.encode(encoder=HexEncoder).decode('utf-8')
     
-    mock_validator = VNPValidator(
-        id="valid-val",
-        node_name="Node1",
+    mock_validator = Validator(
+        id=uuid.uuid4(),
+        name="Node1",
         public_key=public_key_hex,
-        is_active=True
+        status="active"
     )
     
     payload = {
@@ -77,11 +78,11 @@ def test_vnp_ingestion_valid_signature():
     signing_key = nacl.signing.SigningKey.generate()
     public_key_hex = signing_key.verify_key.encode(encoder=HexEncoder).decode('utf-8')
     
-    mock_validator = VNPValidator(
-        id="valid-val",
-        node_name="Node1",
+    mock_validator = Validator(
+        id=uuid.uuid4(),
+        name="Node1",
         public_key=public_key_hex,
-        is_active=True
+        status="active"
     )
     
     payload = {

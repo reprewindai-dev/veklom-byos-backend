@@ -1,6 +1,7 @@
-## 2024-05-24 - Database Indexes for Smart Router
-**Learning:** The smart router evaluates `ExecutionLog` data extensively using `workspace_id` and `provider` grouped together, but the database schema lacks a composite index for these columns. When running queries like `select provider, avg(cost), avg(latency_ms) ... where workspace_id = X group by provider`, a missing composite index slows down queries from milliseconds to half a second per 100 rows.
-**Action:** Adding a composite index `Index("ix_execution_logs_workspace_provider", "workspace_id", "provider")` drastically speeds up performance in local test (416ms to 12ms).
-## 2024-05-24 - Database Indexes for Created At
-**Learning:** We frequently query `ExecutionLog` filtering by `created_at` (especially in monitoring and analytics features), but no index existed for this column.
-**Action:** Added index `Index("ix_execution_logs_created_at", "created_at")` to `ExecutionLog` model to optimize the timestamp range queries.
+## 2025-02-24 - [Optimize PII Detection overlap]
+**Learning:** Checking for overlap using a generator expression inside an `any()` inside a loop leads to $O(N^2)$ worst-case time complexity, which causes performance bottlenecks for large documents processing lots of PII.
+**Action:** Use Python's `bisect` module for interval tracking and overlap detection. Maintaining an ordered list drops the search to $O(\log N)$, and then only checking adjacent overlaps provides near-linear processing time, preventing performance scaling issues for documents.
+
+## 2025-02-25 - [Throttle DB writes for last_activity in auth dependencies]
+**Learning:** The authentication dependencies (`get_current_user`, etc.) were unconditionally updating `user.last_activity` and calling `await db.commit()` on every API request. This meant that even read-only API calls were performing database writes, causing unnecessary load and write-lock contention.
+**Action:** Implemented a 5-minute throttling threshold for updating `user.last_activity` using naive `datetime.utcnow()`. Always check if such attributes actually need updating before issuing a commit in ubiquitous dependency functions.

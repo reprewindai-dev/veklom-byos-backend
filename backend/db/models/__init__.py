@@ -29,6 +29,8 @@ from backend.db.models.internal_operators import (
 )
 from backend.db.models.telemetry import AgentCall
 from backend.db.models.run import VeklomRun
+from backend.db.models.task_intake import TaskIntake
+from backend.db.models.duel import AgentDuelAuthNonce, AgentDuelLobby, AgentDuelLobbyPlayer, AgentDuelSession, AgentDuelWager
 
 from backend.db.models.benchmarks import BenchmarkAPI, StakingMarket, UserStake, SyntheticProbeLog, AgentPrivilege, NexusBenchmarkRun
 from backend.db.models.pricing import PricingTier, TierFeature, TierUpgrade
@@ -53,8 +55,19 @@ from backend.db.models.vnp import (
     AuditLog as VNPAuditLog
 )
 from backend.db.models.rag import AgentMemoryStore, DocumentChunk
+from backend.db.models.quarantine import QuarantinedIntent
+from backend.db.models.session_mesh import VeklomAgentSession, VeklomSessionTransition, VeklomMeshIncident, VeklomLedgerEntry
+from backend.db.models.mission_lock import (
+    MissionDNA, AgentMission, MissionLockAgentState, EpisodeTelemetry, TeamState,
+    CoordinationLog, RecoveryEvent, DNAAudit, AgentRuntimeState, AgentActionTrace,
+    IdempotencyKey, RecoverySnapshot, MetricsCache, TenantRole, AuthzLog
+)
 
 __all__ = [
+    # Mission Lock
+    "MissionDNA", "AgentMission", "MissionLockAgentState", "EpisodeTelemetry", "TeamState",
+    "CoordinationLog", "RecoveryEvent", "DNAAudit", "AgentRuntimeState", "AgentActionTrace",
+    "IdempotencyKey", "RecoverySnapshot", "MetricsCache", "TenantRole", "AuthzLog",
     # existing
     "User", "Session", "APIKey", "Asset",
     "Workspace", "WorkspaceMember", "ModelConfig", "WorkspaceIntegration", "WorkspacePlugin",
@@ -62,7 +75,8 @@ __all__ = [
     "WalletTransaction", "Subscription", "BudgetRule", "Invoice",
     "AuditLog", "SecurityEvent", "ComplianceCheck", "KillSwitchState",
     "AgentCall",
-    "VeklomRun",
+    "VeklomRun", "TaskIntake",
+    "AgentDuelSession", "AgentDuelAuthNonce", "AgentDuelWager", "AgentDuelLobby", "AgentDuelLobbyPlayer",
     "BenchmarkAPI", "StakingMarket", "UserStake", "SyntheticProbeLog", "AgentPrivilege", "NexusBenchmarkRun",
     "Pipeline", "PipelineRun", "Deployment",
     # UACP V3 institutional ownership
@@ -97,5 +111,12 @@ __all__ = [
     "UsageEvent", "PrepaidBalance", "SettlementEntry", "Validator", "Attestation",
     "Incident", "VNPAuditLog",
     # RAG & Memory
-    "AgentMemoryStore", "DocumentChunk"
+    "AgentMemoryStore", "DocumentChunk",
+    # MCPAPI v2 Quarantine
+    "QuarantinedIntent",
+    # Session Mesh Layer
+    "VeklomAgentSession", "VeklomSessionTransition", "VeklomMeshIncident", "VeklomLedgerEntry",
+    # Banker Agent — idempotent payment ledger
+    "Payment",
 ]
+from backend.db.models.payment import Payment

@@ -10,16 +10,21 @@ redis_client_mod.redis_client = mock_redis
 from backend.apps.api.main import app
 from backend.core.memory.conversation import ConversationMemory
 import json
+from backend.core.security.auth import get_current_user as original_get_current_user
 
 client = TestClient(app)
 
 @pytest.fixture
 def mock_auth():
-    # Mock authentication to return a test user with a workspace
-    with patch("backend.core.security.auth.get_current_user") as mock_user:
+    # Mock authentication to return a test user with a workspace and bypass ZeroTrustMiddleware
+    with patch("backend.core.security.auth.get_current_user") as mock_user, \
+         patch("backend.core.security.middlewares.verify_token") as mock_verify, \
+         patch("backend.core.security.auth.verify_token") as mock_verify_auth:
         user = AsyncMock()
         user.workspace_id = "test_workspace"
         mock_user.return_value = user
+        mock_verify.return_value = {"sub": "test_user_id"}
+        mock_verify_auth.return_value = {"sub": "test_user_id"}
         yield mock_user
 
 @pytest.mark.asyncio
@@ -41,19 +46,25 @@ async def test_conversation_memory_history():
 @pytest.mark.asyncio
 async def test_conversation_memory_add():
     """Test adding messages and triggering TTL / Trim logic"""
-    mock_redis.llen.return_value = 25  # Force a trim
-    
-    messages = [{"role": "user", "content": "Test"}]
-    await ConversationMemory.add_messages("workspace_1", "conv_1", messages)
-    
-    # Verify rpush was called
-    mock_redis.rpush.assert_called()
-    
-    # Verify trim was called because length (25) > max_msgs (20)
-    mock_redis.ltrim.assert_called_with("conv:workspace_1:conv_1", 5, -1)
-    
-    # Verify expire was called to reset TTL
-    mock_redis.expire.assert_called()
+    from backend.core.config.settings import settings
+    original_max = getattr(settings, "MEMORY_MAX_MESSAGES", 20)
+    settings.MEMORY_MAX_MESSAGES = 20
+    try:
+        mock_redis.llen.return_value = 25  # Force a trim
+        
+        messages = [{"role": "user", "content": "Test"}]
+        await ConversationMemory.add_messages("workspace_1", "conv_1", messages)
+        
+        # Verify rpush was called
+        mock_redis.rpush.assert_called()
+        
+        # Verify trim was called because length (25) > max_msgs (20)
+        mock_redis.ltrim.assert_called_with("conv:workspace_1:conv_1", 5, -1)
+        
+        # Verify expire was called to reset TTL
+        mock_redis.expire.assert_called()
+    finally:
+        settings.MEMORY_MAX_MESSAGES = original_max
 
 @pytest.mark.asyncio
 async def test_memory_api_get_stats(mock_auth):
@@ -62,12 +73,14 @@ async def test_memory_api_get_stats(mock_auth):
     mock_redis.ttl.return_value = 3600
     
     # Make request, bypassing actual auth with dependency overrides
-    from backend.core.security.auth import get_current_user
     async def mock_user():
         return type("User", (), {"workspace_id": "test_workspace"})()
-    app.dependency_overrides[get_current_user] = mock_user
+    app.dependency_overrides[original_get_current_user] = mock_user
     
-    response = client.get("/api/v1/memory/conversation/conv_test/stats")
+    response = client.get(
+        "/api/v1/memory/conversation/conv_test/stats",
+        headers={"Authorization": "Bearer test_token"}
+    )
     assert response.status_code == 200
     
     data = response.json()
@@ -77,3 +90,5 @@ async def test_memory_api_get_stats(mock_auth):
     assert data["status"] == "active"
     
     app.dependency_overrides.clear()
+
+

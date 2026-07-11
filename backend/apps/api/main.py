@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 
 import sentry_sdk
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -24,7 +24,9 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 from backend.core.security.middlewares import (
     ZeroTrustMiddleware,
@@ -34,11 +36,20 @@ from backend.core.security.middlewares import (
 )
 
 from backend.core.config.settings import settings
-from backend.core.database.database import Base, engine
+from backend.core.database.database import Base, engine, get_db
 from backend.core.plugins.manager import plugin_manager
 from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
 from backend.core.middleware.amphoteric import AmphotericSensingMiddleware
+from backend.core.middleware.ratelimit import RateLimitMiddleware
+
+# --- Production Startup Guards ---
+if settings.APP_ENV == "production" or os.getenv("ENVIRONMENT") == "production":
+    if settings.SECRET_KEY == "change-me-in-production":
+        raise RuntimeError("FATAL: SECRET_KEY is set to default in a production environment!")
+    if settings.ENCRYPTION_KEY == "change-me-in-production-aes-256":
+        raise RuntimeError("FATAL: ENCRYPTION_KEY is set to default in a production environment!")
+
 
 # Import model package to ensure tables are registered with Base.metadata.
 import backend.db.models  # noqa: F401
@@ -229,11 +240,13 @@ async def vnp_background_indexer():
                 print(f"[vnp-engine] Error in production indexer: {e}")
             await asyncio.sleep(interval)
 
+from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start VNP Stakes Engine background loop
-    vnp_task = asyncio.create_task(vnp_background_indexer())
-    
+    # Enforce security configurations
+    settings.validate_production()
+
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
 
@@ -242,6 +255,13 @@ async def lifespan(app: FastAPI):
     # tables registered (because of import order) or the connection pointed
     # at the wrong DB.  Now we always count what was registered and verify
     # at least the critical tables landed.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        print("[startup] db: Extension 'vector' created or already exists")
+    except Exception as ext_err:
+        print(f"[startup] db: Warning — Could not enable 'vector' extension: {ext_err}. Dynamic vector fallbacks will be used.")
+
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -318,6 +338,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] db: PipelineRun migration warning: {type(e).__name__}: {e}")
 
+    # Idempotent column additions for vnp_apis
+    vnp_api_columns = [
+        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS x402_ready BOOLEAN DEFAULT false",
+        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS pricing_model VARCHAR(50) DEFAULT 'metered'",
+        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS current_composite_score FLOAT DEFAULT 100.0",
+        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS stability_rating VARCHAR(50) DEFAULT 'Stable'",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in vnp_api_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: vnp_apis column migration completed")
+    except Exception as e:
+        print(f"[startup] db: vnp_apis migration warning: {type(e).__name__}: {e}")
+
+    # Idempotent column additions for PGL tables
+    pgl_columns = [
+        "ALTER TABLE pgl_certificates ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
+        "ALTER TABLE pgl_ledger_events ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
+        "ALTER TABLE birth_certificates ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
+        "ALTER TABLE genome_versions ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in pgl_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: PGL column migration completed")
+    except Exception as e:
+        print(f"[startup] db: PGL migration warning: {type(e).__name__}: {e}")
+
     # Seed first-class skills that should always be present in the registry.
     # Skills with is_available=False are catalogued but NOT invokable.
     # Add to this list when a new skill's spec is defined; flip is_available
@@ -330,7 +380,7 @@ async def lifespan(app: FastAPI):
             "version": "0.1",
             "description": (
                 "Finds high-demand, legally usable RAG dataset opportunities and "
-                "creates draft Veklom marketplace listings. Does NOT publish without "
+                "creates draft Veklom discovery listings. Does NOT publish without "
                 "explicit operator approval. Rule: if invoked without implementation, "
                 "returns SKILL_MISSING."
             ),
@@ -340,7 +390,7 @@ async def lifespan(app: FastAPI):
                 "The skill is catalogued per spec. "
                 "To implement: create a route that calls a real dataset-discovery "
                 "API, checks license suitability, and POSTs draft listings to "
-                "/api/v1/marketplace/listings with status=draft. "
+                "/api/v1/discovery/listings with status=draft. "
                 "Do not publish or upload datasets without license verification."
             ),
             "input_schema": {
@@ -384,6 +434,37 @@ async def lifespan(app: FastAPI):
         print(f"[startup] skills: seeded {len(_SEED_SKILLS)} first-class skills")
     except Exception as e:
         print(f"[startup] skills: seed warning: {type(e).__name__}: {e}")
+
+    # Seed initial Demo API for VNP Probing if none exist
+    try:
+        from backend.db.models.vnp import Api, ApiRegion
+        from backend.core.database.database import async_session
+        async with async_session() as seed_db:
+            existing_api = (await seed_db.execute(select(Api).limit(1))).scalar_one_or_none()
+            if not existing_api:
+                demo_api = Api(
+                    id="api_demo_veklom_1",
+                    provider_id="veklom",
+                    name="Veklom Sovereign API",
+                    endpoint_url="https://api.veklom.com",
+                    health_path="/health",
+                    pricing_model="metered",
+                    x402_ready=True,
+                    stability_rating="Stable",
+                    current_composite_score=99.9
+                )
+                seed_db.add(demo_api)
+                demo_region = ApiRegion(
+                    api_id=demo_api.id,
+                    region_code="global",
+                    endpoint_url="https://api.veklom.com",
+                    active=True
+                )
+                seed_db.add(demo_region)
+                await seed_db.commit()
+                print("[startup] vnp: seeded demo API (api.veklom.com) for edge probing")
+    except Exception as e:
+        print(f"[startup] vnp: seed warning: {type(e).__name__}: {e}")
 
     # Seed default budget caps for minimum live operator set.
     # These are conservative defaults — adjust per operator via the API.
@@ -434,7 +515,20 @@ async def lifespan(app: FastAPI):
         print(f"[startup] operator engine: WARNING — failed to start: {type(e).__name__}: {e}")
         traceback.print_exc()
 
+    # Start VNP background indexers and scoring engine
+    vnp_task = asyncio.create_task(vnp_background_indexer())
+    scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
+    
+    # Start the new physical edge probes
+    from backend.core.vnp.probes import run_vnp_probes
+    physical_probes_task = asyncio.create_task(run_vnp_probes())
+
+    from backend.apps.api.terminal_state import terminal_state_manager
+    terminal_state_task = asyncio.create_task(terminal_state_manager.state_loop())
+
     yield
+
+    terminal_state_manager.is_running = False
 
     # Graceful shutdown of plugins and operator workforce
     await plugin_manager.shutdown_all()
@@ -502,7 +596,7 @@ Drop-in replacement: `base_url=https://api.veklom.com/v1`
         {"name": "Evidence",    "description": "SHA-256 sealed audit evidence for every governed execution."},
         {"name": "Compliance",  "description": "Compliance reports for SOC2, HIPAA, GDPR, ISO 27001, EU AI Act, FedRAMP."},
         {"name": "Billing",     "description": "Operating reserve, wallet top-up, subscriptions, invoices, budget caps."},
-        {"name": "Marketplace", "description": "Sovereign AI model marketplace — acquire, configure, and deploy governed models."},
+        {"name": "discovery", "description": "Sovereign AI model discovery — acquire, configure, and deploy governed models."},
         {"name": "Monitoring",  "description": "Real-time observability, structured logs, alerts, and platform pulse."},
         {"name": "discovery",   "description": "Machine-readable discovery: .well-known, llms.txt, mcp/sse, pricing, SDK examples."},
         {"name": "Auth",        "description": "JWT authentication, GitHub OAuth, multi-tenant workspace registration."},
@@ -540,14 +634,7 @@ class X402DiscoverableMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(X402DiscoverableMiddleware)
 
-app.add_middleware(CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_origin_regex=_CORS_ORIGIN_REGEX,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AmphotericSensingMiddleware)
 app.add_middleware(ZeroTrustMiddleware)
 app.add_middleware(MetricsMiddleware)
@@ -615,10 +702,19 @@ app.add_middleware(X402PaymentMiddleware)
 
 
 # --- Exception handlers ---
+def _add_cors_headers(request: Request, response):
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, x-vnp-stake"
+    return response
+
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
     if request.url.path.startswith("/api/"):
-        return JSONResponse(status_code=404, content={"detail": "Not found"})
+        return _add_cors_headers(request, JSONResponse(status_code=404, content={"detail": "Not found"}))
     
     is_workspace = request.url.path.startswith("/workspace")
     is_github = request.url.path.startswith("/github")
@@ -631,10 +727,10 @@ async def not_found(request: Request, exc):
             subpath = f"{subpath}/"
         return RedirectResponse(url=f"https://control.veklom.com/{subpath}{query_str}", status_code=307)
     
-    if request.url.path in ("/login", "/signup"):
+    if request.url.path in ("/login", "/signup", "/governance", "/governance/"):
         from fastapi.responses import RedirectResponse
         query_str = f"?{request.url.query}" if request.url.query else ""
-        path_name = request.url.path.lstrip("/")
+        path_name = request.url.path.strip("/")
         return RedirectResponse(url=f"https://control.veklom.com/{path_name}/{query_str}", status_code=302)
 
     if is_github:
@@ -662,88 +758,56 @@ async def not_found(request: Request, exc):
                 "Expires": "0",
             },
         )
-    return await _serve_frontend(request)
+    
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com{request.url.path}{query_str}", status_code=302)
 
+
+from backend.core.security.sanitizer import InProcessErrorSanitizer
+global_error_sanitizer = InProcessErrorSanitizer()
 
 @app.exception_handler(500)
 async def internal_error(request: Request, exc):
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    try:
+        sanitized_resp, diag_log = global_error_sanitizer.sanitize_exception(exc)
+        import logging
+        logging.getLogger("backend.apps.api.main").error(f"[Global500] Unhandled exception occurred:\n{diag_log}")
+        return _add_cors_headers(request, JSONResponse(status_code=500, content=sanitized_resp))
+    except Exception as parse_err:
+        return _add_cors_headers(request, JSONResponse(
+            status_code=500, 
+            content={
+                "error": "CRITICAL_FALLBACK_FAILURE",
+                "message": "An unhandled exception occurred and the error sanitizer failed. This incident has been logged.",
+                "fallback_detail": str(parse_err)
+            }
+        ))
 
 
 # --- Import and register all routers ---
 from backend.apps.api.routers import (
-    agent_arena,
-    authority,
-    authority_runs,
-    benchmarks,
-    build_release,
-    capi,
-    cappo,
-    nexus,
-    pgl,
-    evidence,
-    evidence_pack,
-    pgl_adapter,
-    pgl_onboarding,
-    governed,
-    pricing,
-    referrals,
-    well_known,
-    mcp,
-    agent_memory,
-    conversation_memory,
-    agent_evaluation,
-    agent_guardrails,
-    admin,
-    agents,
-    genome,
-    agency,
-
-    ai,
-    auth,
-    evaluations,
-    billing,
-    command_center,
-    compliance,
-    copilot,
-    decision_frames,
+    duel,
+    bingo,
+    veklom_id,
     discovery,
-    exec_router,
-    gfr,
-    gpc,
-    health,
-    hrm,
-    # langchain_ops intentionally not imported - kept off the surface until real
-
-    monitoring,
-    payments,
-    pipelines,
-    providers,
-    repo_risk_gate,
-    routing,
-    runs,
-    runtime_jobs,
-    security,
-    seked,
-    smoke,
-    system,
-    team,
-    internal_uacp,
-    internal_operators,
-    plugins,
-    autonomous,
-    playground,
-    webhooks,
-    webhook,
-    runs,
-    smoke,
-    edge,
-    x402,
-    arena,
-    benchmarks,
-    workspace,
-    upload,
-    amphoteric,
+    discovery_api
+)
+from backend.apps.api.routers import (
+    agent_arena, agent_evaluation, agent_guardrails, agent_memory, agents, ai, amphoteric, auth, authority,
+    authority_runs, autonomous, billing, command_center, compliance,
+    copilot, diagnostics, discovery, docs, edge, edge_llm, evaluations,
+    evidence, fax, forensics, health, integrations, internal_uacp,
+    mcp, monitoring, onboarding_dashboard, onboarding_demo, payments,
+    pgl, pgl_adapter, pgl_onboarding, plugins, pricing, providers, rag,
+    referrals, repo_risk_gate, repogate_api, routing, runs, runtime_jobs,
+    runtime_telemetry, security, seked, smoke, system, team, upload, vnp,
+    vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2, vnp_onboarding, vnp_stream,
+    workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
+    benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
+    build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
+    genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges, tasks,
+    demo
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -758,7 +822,17 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(evaluations.router, prefix="/api/v1")
 app.include_router(smoke.router, prefix="/api/v1")
+app.include_router(repo_risk_gate.router, prefix="/api/v1")
+app.include_router(repogate_api.router, prefix="/api/v1")
+app.include_router(agents.router, prefix="/api/v1")
+app.include_router(hrm.router, prefix="/api/v1")
+app.include_router(terminal.router, prefix="/api/terminal")
 app.include_router(amphoteric.router, prefix="/api/v1")
+app.include_router(vnp_onboarding.router, prefix="/api/v1")
+app.include_router(vnp_stream.router, prefix="/api/v1")
+app.include_router(claims.router, prefix="/api/v1")
+app.include_router(badges.router, prefix="/api/v1")
+app.include_router(tasks.router, prefix="/api/v1/tasks")
 
 # System utilities
 app.include_router(system.router, prefix="/api/v1")
@@ -780,6 +854,7 @@ app.include_router(workspace.router, prefix="/api/v1")
 
 # AI execution
 app.include_router(ai.router, prefix="/api/v1")
+app.include_router(edge_llm.router, prefix="/api/v1")
 app.include_router(exec_router.router, prefix="/api")
 app.include_router(exec_router.router, prefix="")
 
@@ -803,7 +878,9 @@ app.include_router(autonomous.router, prefix="/api/v1")
 
 # Monitoring, metrics, insights, telemetry, platform pulse, suggestions
 app.include_router(monitoring.router, prefix="/api/v1")
-
+app.include_router(runtime_telemetry.router, prefix="/api/v1")
+app.include_router(locks.router, prefix="/api/v1")
+app.include_router(mission_lock.router, prefix="/api/v1")
 
 
 # Benchmarks
@@ -814,6 +891,11 @@ app.include_router(nexus.router, prefix="/api/v1")
 
 # Pipelines, deployments, routing, autonomous, edge/canary
 app.include_router(pipelines.router, prefix="/api/v1")
+app.include_router(health.router)
+app.include_router(duel.router, prefix="/api/v1")
+app.include_router(bingo.router, prefix="/api/v1")
+app.include_router(veklom_id.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(pipelines.router)
 app.include_router(routing.router, prefix="/api/v1")
 
@@ -828,6 +910,10 @@ app.include_router(edge.router, prefix="/api/v1")
 
 # x402 Payment & Verification Ingress
 app.include_router(x402.router, prefix="/api/v1")
+app.include_router(banker.router, prefix="/api/v1")
+
+# Demo (Interactive Tracing for Hostile Agent Interception)
+app.include_router(demo.router, prefix="/api/v1/demo")
 
 # UACP Service - dual-adapter architecture (HTTP service + library shim)
 app.include_router(uacp_http_router, prefix="/api/v1")
@@ -840,6 +926,11 @@ app.include_router(integrations.router, prefix="/api/v1")
 from backend.apps.api.routers import fax
 app.include_router(fax.router, prefix="/api/v1")
 
+# Forensics Flight Recorder (Black Box Replay)
+from backend.apps.api.routers import forensics
+app.include_router(forensics.router, prefix="/api/v1")
+
+
 # Admin, internal, search, upload, onboarding, referrals, support, export
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(admin_billing.router, prefix="/api/v1")
@@ -847,6 +938,8 @@ app.include_router(upload.router, prefix="/api/v1")
 
 # GPC (Governed Plan Compiler) + Decision Frames
 app.include_router(gpc.router, prefix="/api/v1")
+from backend.apps.gpc import gpc_routes
+app.include_router(gpc_routes.router)
 app.include_router(decision_frames.router, prefix="/api/v1")
 
 # GFR (Gradient Field Router) — Scientist & Special Agent load balancing skill
@@ -878,6 +971,10 @@ app.include_router(internal_uacp.autonomous_router, prefix="/api/v1")
 # Provider management — BYOK, routing rules, audit logs
 app.include_router(providers.router, prefix="/api/v1")
 
+# Dynamic MCP Proxy Gateway — OpenAPI dynamic tools & transparent proxying
+from backend.apps.api.routers import mcp_gateway
+app.include_router(mcp_gateway.router)
+
 # Team management — members, invitations, roles, SSO, MFA
 app.include_router(team.router, prefix="/api/v1")
 
@@ -895,11 +992,22 @@ app.include_router(arena.router)
 app.include_router(benchmarks.router, prefix="/api/v1")
 
 # VNP - Data Plane Ingestion and Route Beacon
-from backend.apps.api.routers import vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
+from backend.apps.api.routers import vnp, vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
+app.include_router(vnp_incidents.router, prefix="/api/v1")
+app.include_router(banker.router, prefix="/api/v1")
+app.include_router(wallet.router, prefix="/api/v1")
+app.include_router(duel.router, prefix="/api/v1")
+app.include_router(autonomous.router, prefix="/api/v1")
+app.include_router(vnp.router, prefix="/api")
+app.include_router(vnp.router, prefix="/api/v1")
 app.include_router(vnp_ingest.router, prefix="/api/v1")
 app.include_router(vnp_beacon.router, prefix="/api/v1")
 app.include_router(vnp_control.router, prefix="/api/v1")
 app.include_router(vnp_incidents.router, prefix="/api/v1")
+
+# VNP v2.0 - Unified Execution Core (Aligned with Interlink Prototype)
+from backend.apps.api.routers import vnp_v2
+app.include_router(vnp_v2.router, prefix="/api")
 
 
 # --- Frontend static files ---
@@ -924,8 +1032,9 @@ def _mount_static():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-    if TERMINAL_DIR.exists():
-        app.mount("/terminal", StaticFiles(directory=str(TERMINAL_DIR), html=True), name="terminal")
+    # Legacy static /terminal mount disabled to allow Next.js decoupled redirects
+    # if TERMINAL_DIR.exists():
+    #     app.mount("/terminal", StaticFiles(directory=str(TERMINAL_DIR), html=True), name="terminal")
     if WORKSPACE_NEXT_DIR.exists():
         app.mount("/workspace-next", StaticFiles(directory=str(WORKSPACE_NEXT_DIR), html=True), name="workspace-next")
     if SOVEREIGN_CONTROL_NODE_DIR.exists():
@@ -967,6 +1076,36 @@ async def redirect_workspace_root(request: Request):
     from fastapi.responses import RedirectResponse
     query_str = f"?{request.url.query}" if request.url.query else ""
     return RedirectResponse(url=f"https://control.veklom.com/dashboard/{query_str}", status_code=307)
+
+
+@app.get("/login")
+@app.get("/login/")
+@app.get("/workspace/login")
+@app.get("/workspace/login/")
+async def redirect_login(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com/login{query_str}", status_code=307)
+
+
+@app.get("/signup")
+@app.get("/signup/")
+@app.get("/workspace/signup")
+@app.get("/workspace/signup/")
+async def redirect_signup(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com/signup{query_str}", status_code=307)
+
+
+@app.get("/terminal")
+@app.get("/terminal/")
+@app.get("/terrrinal")
+@app.get("/terrrinal/")
+async def redirect_terminal_root(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com/terminal/{query_str}", status_code=307)
 
 
 @app.get("/control-plane-next/subscription/")
@@ -1295,13 +1434,22 @@ async def root(request: Request):
     host = request.headers.get("host", "")
     if "co2router.com" in host:
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/workspace#/marketplace/ls_co2router", status_code=301)
+        return RedirectResponse(url="/workspace#/discovery/ls_co2router", status_code=301)
     if "lockerphycer.veklom.com" in host:
         lockerphycer_index = FRONTEND_DIR / "lockerphycer" / "index.html"
         if lockerphycer_index.exists():
             return FileResponse(str(lockerphycer_index))
         return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
-    return await _serve_frontend(None)
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=_fallback_html(), status_code=200)
+
+@app.get("/workspace")
+@app.get("/login")
+@app.get("/signup")
+async def frontend_redirects(request: Request):
+    from fastapi.responses import RedirectResponse
+    path = request.url.path
+    return RedirectResponse(url=f"https://control.veklom.com{path}", status_code=302)
 
 
 @app.get("/legal/privacy")
@@ -1636,16 +1784,6 @@ async def status_page():
     return HTMLResponse(content="<html><body><h1>System Status: All Systems Operational</h1><p>Status page stub for testing.</p></body></html>")
 
 
-from fastapi.responses import RedirectResponse, FileResponse
-
-async def _serve_frontend(request: Request):
-    landing_index = LANDING_DIR / "index.html"
-    static_index = FRONTEND_DIR / "index.html"
-    if landing_index.exists():
-        return FileResponse(str(landing_index))
-    elif static_index.exists():
-        return FileResponse(str(static_index))
-    return HTMLResponse(content=_fallback_html(), status_code=200)
 # The /terminal path is now mounted directly as a static directory serving the built React app from agent-control-need-pgl
 
 
@@ -1663,11 +1801,11 @@ async def lockerphycer_assets(path: str):
     if lockerphycer_file.exists() and lockerphycer_file.is_file():
         return FileResponse(str(lockerphycer_file))
     return JSONResponse(status_code=404, content={"detail": "File not found"})
-@app.get("/marketplace")
-async def marketplace_info():
+@app.get("/discovery")
+async def discovery_info():
     return {
         "platform": "Veklom",
-        "description": "Marketplace products built for governed execution",
+        "description": "discovery products built for governed execution",
         "products": [
             {
                 "id": "py03-irongrid",
@@ -1679,26 +1817,26 @@ async def marketplace_info():
             {
                 "id": "lockerphycer",
                 "name": "Lockerphycer",
-                "type": "Marketplace Product",
-                "description": "A Veklom marketplace product for controlled, governed execution workflows.",
+                "type": "discovery Product",
+                "description": "A Veklom discovery product for controlled, governed execution workflows.",
                 "url": "https://lockerphycer-git-main-dksummers-projects.vercel.app/"
             }
         ]
     }
 
-@app.get("/marketplace/lockerphycer")
-async def marketplace_lockerphycer():
+@app.get("/discovery/lockerphycer")
+async def discovery_lockerphycer():
     return {
         "id": "lockerphycer",
         "name": "Lockerphycer",
-        "type": "Marketplace Product",
-        "description": "A Veklom marketplace product for controlled, governed execution workflows.",
+        "type": "discovery Product",
+        "description": "A Veklom discovery product for controlled, governed execution workflows.",
         "demo_url": "https://lockerphycer-git-main-dksummers-projects.vercel.app/",
         "status": "Available in Veklom ecosystem"
     }
 
-@app.get("/marketplace/py03-irongrid")
-async def marketplace_py03():
+@app.get("/discovery/py03-irongrid")
+async def discovery_py03():
     return {
         "id": "py03-irongrid",
         "name": "PY03 IronGrid API",
@@ -1802,11 +1940,13 @@ async def auto_editor_script():
 
 
 @app.get("/gpc")
-async def gpc_page():
-    index_path = GPC_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(str(index_path))
-    return HTMLResponse(content=_gpc_html(), status_code=200)
+@app.get("/gpc/")
+@app.get("/pipelines")
+@app.get("/pipelines/")
+async def redirect_gpc(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_str = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"https://control.veklom.com/gpc{query_str}", status_code=307)
 
 
 # Command Center config endpoint for frontend
@@ -1838,6 +1978,20 @@ def _fallback_html():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Veklom API</title>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-KCZM27WWX7"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('consent', 'default', {
+    'ad_storage': 'denied',
+    'ad_user_data': 'denied',
+    'ad_personalization': 'denied',
+    'analytics_storage': 'denied'
+  });
+  gtag('js', new Date());
+  gtag('config', 'G-KCZM27WWX7');
+</script>
 <style>
   body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
   .container { text-align: center; }
@@ -1861,6 +2015,20 @@ def _gpc_html():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GPC — Governed Plan Compiler | Veklom</title>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-KCZM27WWX7"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('consent', 'default', {
+    'ad_storage': 'denied',
+    'ad_user_data': 'denied',
+    'ad_personalization': 'denied',
+    'analytics_storage': 'denied'
+  });
+  gtag('js', new Date());
+  gtag('config', 'G-KCZM27WWX7');
+</script>
 <link rel="stylesheet" href="/static/css/brand.css">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1882,10 +2050,17 @@ app.include_router(authority.router, prefix="/api/v1")
 app.include_router(authority_runs.router, prefix="/api/v1")
 
 # PGL Adapter - Agent Management
+from backend.apps.api.routers import identity_rag
+app.include_router(identity_rag.router)
+app.include_router(copilot.router, prefix="/api/v1")
+app.include_router(workspace.router, prefix="/api/v1")
+app.include_router(discovery_api.router, prefix="/api/v1/discovery")
 app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
 app.include_router(pgl_adapter.router, prefix="/api/v1")
 app.include_router(pgl_onboarding.router, prefix="/api/v1")
+app.include_router(onboarding_demo.router, prefix="/api/v1")
+app.include_router(onboarding_dashboard.router)
 app.include_router(governed.router, prefix="/api/v1")
 
 # CAPPO - Internal Execution Authority
@@ -1915,4 +2090,17 @@ app.include_router(mcp.router, prefix="/api/v1")
 app.include_router(agent_memory.router, prefix="/api/v1")
 app.include_router(conversation_memory.router, prefix="/api/v1")
 
+# Generative Pipeline Compiler (GPC)
+# from backend.apps.gpc import routes as gpc_routes
+# app.include_router(gpc_routes.router, prefix="/api/v1")
+
 # Layer 5: Ev
+
+app.add_middleware(CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-VNP-Stake-Result", "X-VNP-Signature", "X-Veklom-Receipt-ID"]
+)

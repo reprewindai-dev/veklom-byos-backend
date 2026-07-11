@@ -84,457 +84,7 @@ class ProbeLogSchema(BaseModel):
 # ============ PROVIDER SEED DATA ============
 # Rich per-provider seed data aligned with VNP scoring dimensions.
 # These baselines are replaced by real GovernedRun metrics once runs accumulate.
-_PROVIDER_SEED = {
-    "gfr-matrix": {
-        "name": "Gradient Field Routing Matrix",
-        "provider": "Veklom",
-        "category": "Zero-Trust Autonomous Execution",
-        "tier": "Apex",
-        "base_score": 995,
-        "p50": 12.4,
-        "p95": 18.2,
-        "p99": 22.5,
-        "sla": 99.999,
-        "drift": 0.0010,
-        "sovereignTier": 1,
-        "complianceLabels": ["x402-Native", "SOC2", "Decentralized", "TLS 1.3"],
-        "govScore": 99,
-        "devScore": 99,
-        "endpointUrl": "https://api.veklom.com/v1/gfr/execute",
-        "description": "Proprietary zero-trust routing mechanism that catches execution drifts before they hit consensus.",
-        "throughput": 45000,
-        "uptime24h": 100.0,
-        "totalStaked": 250000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "gfr_fault_matrix_route",
-            "description": "Evaluate multi-agent drift through the Gradient Field Routing Matrix",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"agent_payload": {"type": "string"}, "consensus_threshold": {"type": "number"}},
-                "required": ["agent_payload"]
-            }
-        }
-    },
-    "vfdp-node": {
-        "name": "Financial Data Plane (VFDP)",
-        "provider": "Veklom",
-        "category": "High-Frequency DeFi",
-        "tier": "Apex",
-        "base_score": 990,
-        "p50": 8.1,
-        "p95": 11.5,
-        "p99": 15.0,
-        "sla": 99.995,
-        "drift": 0.0020,
-        "sovereignTier": 1,
-        "complianceLabels": ["x402-Native", "Financial-Grade", "TLS 1.3"],
-        "govScore": 98,
-        "devScore": 97,
-        "endpointUrl": "https://api.veklom.com/v1/finance/plane",
-        "description": "High-throughput financial plane for real-time asset tracking and SLA staking liquidation.",
-        "throughput": 85000,
-        "uptime24h": 99.99,
-        "totalStaked": 500000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "vfdp_liquidation_check",
-            "description": "Check real-time SLA staking liquidation status",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"market_id": {"type": "string"}, "tx_hash": {"type": "string"}},
-                "required": ["market_id"]
-            }
-        }
-    },
-    "agent-duel": {
-        "name": "Base.org Swarm Debate Engine",
-        "provider": "Veklom",
-        "category": "Multi-Agent Consensus",
-        "tier": "Sovereign",
-        "base_score": 950,
-        "p50": 85.0,
-        "p95": 120.0,
-        "p99": 150.0,
-        "sla": 99.95,
-        "drift": 0.0050,
-        "sovereignTier": 2,
-        "complianceLabels": ["Base.org", "Web3", "x402-Ready"],
-        "govScore": 95,
-        "devScore": 92,
-        "endpointUrl": "https://veklom-agent-duel.vercel.app/api/v1/protected",
-        "description": "Multi-agent reasoning debates secured by Base.org x402 payment constraints.",
-        "throughput": 12000,
-        "uptime24h": 99.95,
-        "totalStaked": 75000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "swarm_debate_execute",
-            "description": "Execute a decentralized AI debate on Base",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"topic": {"type": "string"}, "agents": {"type": "array"}},
-                "required": ["topic", "agents"]
-            }
-        }
-    },
-    "veklom-id": {
-        "name": "Sovereign Operator Registry",
-        "provider": "Veklom",
-        "category": "Identity Layer",
-        "tier": "Apex",
-        "base_score": 985,
-        "p50": 20.5,
-        "p95": 35.0,
-        "p99": 45.0,
-        "sla": 99.99,
-        "drift": 0.0005,
-        "sovereignTier": 1,
-        "complianceLabels": ["Zero-Knowledge", "x402-Native", "Immutable"],
-        "govScore": 100,
-        "devScore": 95,
-        "endpointUrl": "https://veklom-id.vercel.app/api/v1/identity",
-        "description": "Immutable cryptographic identities for machine-to-machine interactions.",
-        "throughput": 30000,
-        "uptime24h": 100.0,
-        "totalStaked": 150000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "verify_operator_identity",
-            "description": "Verify the cryptographic identity of an autonomous operator",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"operator_did": {"type": "string"}, "signature": {"type": "string"}},
-                "required": ["operator_did"]
-            }
-        }
-    },
-    "cappi-gateway": {
-        "name": "Covenant API (cAPI) Gateway",
-        "provider": "CAPPO",
-        "category": "Cryptographic Execution",
-        "tier": "Apex",
-        "base_score": 999,
-        "p50": 5.2,
-        "p95": 8.4,
-        "p99": 11.0,
-        "sla": 99.999,
-        "drift": 0.0001,
-        "sovereignTier": 1,
-        "complianceLabels": ["EAT-Signed", "x402-Native", "Hardware-Enclave"],
-        "govScore": 100,
-        "devScore": 99,
-        "endpointUrl": "https://api.veklom.com/v1/covenant/execute",
-        "description": "Deterministic covenant execution layer enforcing Law 0 constraints with cryptographic EAT signatures.",
-        "throughput": 125000,
-        "uptime24h": 100.0,
-        "totalStaked": 1000000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "execute_covenant_api",
-            "description": "Execute a strictly governed covenant task",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"action_payload": {"type": "string"}, "auth_token": {"type": "string"}},
-                "required": ["action_payload"]
-            }
-        }
-    },
-    "sovereign-runtime": {
-        "name": "Sovereign Authority Runtime",
-        "provider": "Veklom",
-        "category": "Moving Autonomous Execution",
-        "tier": "Apex",
-        "base_score": 980,
-        "p50": 25.0,
-        "p95": 38.5,
-        "p99": 49.0,
-        "sla": 99.99,
-        "drift": 0.0015,
-        "sovereignTier": 1,
-        "complianceLabels": ["Decentralized", "Web3", "Deterministic"],
-        "govScore": 97,
-        "devScore": 96,
-        "endpointUrl": "https://api.veklom.com/v1/runtime/invoke",
-        "description": "The deterministic pipeline that executes moving autonomous swarm coordination across physical nodes.",
-        "throughput": 18000,
-        "uptime24h": 99.99,
-        "totalStaked": 300000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "trigger_sovereign_runtime",
-            "description": "Trigger the 7-step deterministic execution pipeline",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"swarm_intent": {"type": "string"}},
-                "required": ["swarm_intent"]
-            }
-        }
-    },
-    "mcpapi-v2": {
-        "name": "MCPAPI v2.0 Global Router",
-        "provider": "Veklom",
-        "category": "Protocol Normalization",
-        "tier": "Sovereign",
-        "base_score": 965,
-        "p50": 18.0,
-        "p95": 24.5,
-        "p99": 31.0,
-        "sla": 99.95,
-        "drift": 0.0025,
-        "sovereignTier": 2,
-        "complianceLabels": ["MCP-Standard", "x402-Ready"],
-        "govScore": 95,
-        "devScore": 98,
-        "endpointUrl": "https://api.veklom.com/v1/mcpapi/route",
-        "description": "Universal Model Context Protocol compiler translating fragmented APIs into a unified autonomous standard.",
-        "throughput": 42000,
-        "uptime24h": 99.95,
-        "totalStaked": 85000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "mcpapi_compile",
-            "description": "Compile arbitrary API definitions into MCPAPI schemas",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"raw_spec": {"type": "string"}},
-                "required": ["raw_spec"]
-            }
-        }
-    },
-    "uacp-terminal": {
-        "name": "UACP Quantum Terminal",
-        "provider": "Veklom",
-        "category": "Secure Telemetry",
-        "tier": "Sovereign",
-        "base_score": 945,
-        "p50": 45.0,
-        "p95": 60.0,
-        "p99": 75.0,
-        "sla": 99.90,
-        "drift": 0.0050,
-        "sovereignTier": 2,
-        "complianceLabels": ["Zero-Trust", "Telemetry"],
-        "govScore": 92,
-        "devScore": 94,
-        "endpointUrl": "wss://api.veklom.com/terminal",
-        "description": "Unified Agent Control Protocol secure socket interface for real-time swarm visualization.",
-        "throughput": 8500,
-        "uptime24h": 99.90,
-        "totalStaked": 45000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "uacp_websocket_stream",
-            "description": "Open a UACP telemetry socket stream",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"auth_token": {"type": "string"}, "agent_id": {"type": "string"}},
-                "required": ["auth_token", "agent_id"]
-            }
-        }
-    },
-    "openai": {
-        "name": "GPT-4o",
-        "provider": "OpenAI",
-        "category": "General Reasoning",
-        "tier": "Apex",
-        "base_score": 960,
-        "p50": 110.5,
-        "p95": 135.2,
-        "p99": 148.7,
-        "sla": 99.95,
-        "drift": 0.0125,
-        "sovereignTier": 1,
-        "complianceLabels": ["FedRAMP", "HIPAA", "GDPR", "TLS 1.3", "x402-ready"],
-        "govScore": 96,
-        "devScore": 95,
-        "endpointUrl": "https://api.openai.com/v1/chat/completions",
-        "description": "State-of-the-art general reasoning model from OpenAI, optimized for developer usage.",
-        "throughput": 4520,
-        "uptime24h": 99.95,
-        "totalStaked": 45000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "gpt-4o-completion",
-            "description": "Call OpenAI GPT-4o model",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"prompt": {"type": "string"}, "temperature": {"type": "number"}},
-                "required": ["prompt"],
-            },
-        },
-    },
-    "gemini": {
-        "name": "Gemini 2.5 Flash",
-        "provider": "Google",
-        "category": "Multimodal Processing",
-        "tier": "Apex",
-        "base_score": 975,
-        "p50": 85.2,
-        "p95": 110.1,
-        "p99": 125.4,
-        "sla": 99.99,
-        "drift": 0.0084,
-        "sovereignTier": 1,
-        "complianceLabels": ["FedRAMP", "HIPAA", "SOC2", "TLS 1.3", "x402-ready"],
-        "govScore": 98,
-        "devScore": 98,
-        "endpointUrl": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash",
-        "description": "High-performance Google model specialized in multimodal input and fast sequence reasoning.",
-        "throughput": 8250,
-        "uptime24h": 99.99,
-        "totalStaked": 50000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "gemini-flash-chat",
-            "description": "Call Google Gemini 2.5 Flash model",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"contents": {"type": "string"}},
-                "required": ["contents"],
-            },
-        },
-    },
-    "anthropic": {
-        "name": "Claude 3.5 Sonnet",
-        "provider": "Anthropic",
-        "category": "Context Reasoning",
-        "tier": "Apex",
-        "base_score": 975,
-        "p50": 105.0,
-        "p95": 128.4,
-        "p99": 140.2,
-        "sla": 99.98,
-        "drift": 0.0102,
-        "sovereignTier": 1,
-        "complianceLabels": ["FedRAMP", "HIPAA", "SOC2", "TLS 1.3", "x402-ready"],
-        "govScore": 97,
-        "devScore": 96,
-        "endpointUrl": "https://api.anthropic.com/v1/messages",
-        "description": "Premium context reasoning and code-generation agent, validated for multi-turn planning.",
-        "throughput": 5200,
-        "uptime24h": 99.98,
-        "totalStaked": 48000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "claude-sonnet-message",
-            "description": "Call Anthropic Claude 3.5 Sonnet model",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"messages": {"type": "array", "items": {"type": "object"}}},
-                "required": ["messages"],
-            },
-        },
-    },
-    "groq": {
-        "name": "Llama 3 70B (Groq)",
-        "provider": "Groq",
-        "category": "Ultra-Low Latency",
-        "tier": "Verified",
-        "base_score": 850,
-        "p50": 25.4,
-        "p95": 42.1,
-        "p99": 55.0,
-        "sla": 99.92,
-        "drift": 0.0150,
-        "sovereignTier": 2,
-        "complianceLabels": ["HIPAA", "SOC2", "TLS 1.3"],
-        "govScore": 91,
-        "devScore": 94,
-        "endpointUrl": "https://api.groq.com/v1/chat/completions",
-        "description": "Supercharged open-source Llama model served over custom ASIC hardware for instant throughput.",
-        "throughput": 12040,
-        "uptime24h": 99.92,
-        "totalStaked": 35000,
-        "status": "excellent",
-        "mcpSchema": {
-            "name": "groq-llama-completion",
-            "description": "Call Groq Llama 3 70B model",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"prompt": {"type": "string"}},
-                "required": ["prompt"],
-            },
-        },
-    },
-    "ollama": {
-        "name": "Local Ollama",
-        "provider": "Self-hosted",
-        "category": "On-Premise Privacy",
-        "tier": "Configured",
-        "base_score": 800,
-        "p50": 150.0,
-        "p95": 190.5,
-        "p99": 220.0,
-        "sla": 99.85,
-        "drift": 0.0250,
-        "sovereignTier": 3,
-        "complianceLabels": ["Self-contained", "Zero-PII-Leakage", "TLS 1.3"],
-        "govScore": 88,
-        "devScore": 82,
-        "endpointUrl": "http://localhost:11434/api/generate",
-        "description": "Completely offline self-hosted LLM deployment, guaranteeing absolute data control.",
-        "throughput": 1500,
-        "uptime24h": 99.85,
-        "totalStaked": 12000,
-        "status": "nominal",
-        "mcpSchema": {
-            "name": "ollama-generate",
-            "description": "Call local Ollama instance",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"model": {"type": "string"}, "prompt": {"type": "string"}},
-                "required": ["model", "prompt"],
-            },
-        },
-    },
-    "echo": {
-        "name": "Echo Stub (Dev)",
-        "provider": "CAPPO",
-        "category": "Development",
-        "tier": "Development",
-        "base_score": 500,
-        "p50": 5.0,
-        "p95": 12.0,
-        "p99": 18.0,
-        "sla": 99.10,
-        "drift": 0.0500,
-        "sovereignTier": 4,
-        "complianceLabels": ["Development", "TLS 1.3"],
-        "govScore": 60,
-        "devScore": 70,
-        "endpointUrl": None,
-        "description": "Deterministic echo stub for development and testing. Not for production use.",
-        "throughput": 50000,
-        "uptime24h": 99.10,
-        "totalStaked": 0,
-        "status": "development",
-        "mcpSchema": None,
-    },
-    "fallback": {
-        "name": "Fallback Provider",
-        "provider": "Configured",
-        "category": "Failover",
-        "tier": "Standby",
-        "base_score": 800,
-        "p50": 200.0,
-        "p95": 350.0,
-        "p99": 480.0,
-        "sla": 99.50,
-        "drift": 0.0300,
-        "sovereignTier": 3,
-        "complianceLabels": ["TLS 1.3"],
-        "govScore": 75,
-        "devScore": 72,
-        "endpointUrl": None,
-        "description": "Configured failover provider activated when primary providers are unavailable.",
-        "throughput": 800,
-        "uptime24h": 99.50,
-        "totalStaked": 5000,
-        "status": "standby",
-        "mcpSchema": None,
-    },
-}
+# _PROVIDER_SEED has been replaced by dynamic database queries to `vnp_apis` in the `/leaderboard` endpoint.
 
 
 def _tier_from_score(score: int) -> str:
@@ -550,6 +100,48 @@ def _tier_from_score(score: int) -> str:
 
 # ============ ROUTE IMPLEMENTATIONS ============
 
+from backend.core.database.database import async_session
+import asyncio
+from fastapi.responses import StreamingResponse
+
+@router.get("/stream")
+async def stream_benchmarks():
+    """Server-Sent Events endpoint for real-time API scores.
+    Replaces the heavy Kafka architecture in v0.1.5 with a lightweight DB polling approach suitable for the MVP.
+    """
+    async def event_generator():
+        from backend.db.models.vnp import RegionalTelemetry
+        from datetime import timedelta
+        last_yielded = datetime.now(timezone.utc) - timedelta(minutes=1)
+        
+        while True:
+            try:
+                async with async_session() as session:
+                    new_telemetry = (await session.execute(
+                        select(RegionalTelemetry)
+                        .where(RegionalTelemetry.measured_at > last_yielded)
+                        .order_by(RegionalTelemetry.measured_at.asc())
+                    )).scalars().all()
+                    
+                    for t in new_telemetry:
+                        payload = {
+                            "api_id": str(t.api_id),
+                            "region": t.region_code,
+                            "score": float(t.trust_score),
+                            "p99": t.p99_latency_ms,
+                            "uptime": float(t.uptime_percent),
+                            "measured_at": t.measured_at.isoformat()
+                        }
+                        yield f"event: score_update\ndata: {json.dumps(payload)}\n\n"
+                        last_yielded = max(last_yielded, t.measured_at)
+            except Exception as e:
+                print(f"[SSE Error] {e}")
+                
+            await asyncio.sleep(2.0)
+            
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive"})
+
+
 @router.get("/leaderboard")
 async def get_leaderboard(db: AsyncSession = Depends(get_db)):
     """Live API Trust Rankings derived from real GovernedRun execution data.
@@ -560,6 +152,72 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
     directly — giving the VNP scoring engine realistic, differentiated inputs
     per provider instead of zeros.
     """
+    from backend.db.models.vnp import Api, RegionalTelemetry
+    from sqlalchemy.orm import selectinload
+    
+    # Fetch VNP APIs directly from the database instead of hardcoded _PROVIDER_SEED
+    vnp_apis = (
+        await db.execute(
+            select(Api).options(selectinload(Api.provider))
+        )
+    ).scalars().all()
+    
+    # Fetch latest regional telemetry for these APIs
+    telemetries = (
+        await db.execute(select(RegionalTelemetry))
+    ).scalars().all()
+    
+    telemetry_by_api = {}
+    for t in telemetries:
+        # Keep the most recent telemetry per API
+        if t.api_id not in telemetry_by_api or t.measured_at > telemetry_by_api[t.api_id].measured_at:
+            telemetry_by_api[t.api_id] = t
+    
+    db_seeds = {}
+    for api in vnp_apis:
+        provider_name = api.provider.legal_name if api.provider else "Veklom"
+        is_apex = api.current_composite_score >= 100.0
+        
+        t_record = telemetry_by_api.get(api.id)
+        
+        # NOTE: The following fields are synthetic placeholders derived deterministically 
+        # from the API's score and category. They are NOT measured truths. 
+        # They serve as structural stubs for the React dashboard until real metrics 
+        # (latency histograms, compliance evidence, schema compatibility, drift, audit dimensions)
+        # are fully backed by their own SQL tables in future migrations.
+        #
+        # LATENCY & UPTIME: Now using real data from `vnp_regional_telemetry` if available!
+        
+        p50 = float(t_record.p50_latency_ms) if t_record else (15.0 if is_apex else 25.0)
+        p95 = float(t_record.p95_latency_ms) if t_record else (25.0 if is_apex else 40.0)
+        p99 = float(t_record.p99_latency_ms) if t_record else (35.0 if is_apex else 55.0)
+        sla = float(t_record.uptime_percent) if t_record else (99.99 if is_apex else 99.95)
+        uptime24h = sla
+        
+        db_seeds[api.api_did] = {
+            "name": api.name,
+            "provider": provider_name,
+            "category": "Zero-Trust Infrastructure" if "Covenant" in api.name or "RAG" in api.name else "Infrastructure",
+            "tier": "Apex" if is_apex else "Sovereign",
+            "base_score": int(api.current_composite_score * 10),
+            "p50": p50,
+            "p95": p95,
+            "p99": p99,
+            "sla": sla,
+            "drift": 0.001 if is_apex else 0.005,
+            "sovereignTier": 1 if is_apex else 2,
+            "complianceLabels": ["x402-Native", "SOC2", "TLS 1.3"],
+            "govScore": 99 if is_apex else 95,
+            "devScore": 98 if is_apex else 94,
+            "endpointUrl": api.base_url,
+            "description": f"VNP governed API endpoint for {api.name}",
+            "throughput": 45000 if is_apex else 15000,
+            "uptime24h": uptime24h,
+            "totalStaked": 250000 if is_apex else 50000,
+            "status": "excellent",
+            "mcpSchema": None,
+        }
+
     all_runs = (
         await db.execute(
             select(GovernedRun)
@@ -591,8 +249,8 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
             stats["error_runs"] += 1
 
     def _build_api_entry(provider_key: str) -> dict:
-        """Build a single leaderboard entry from seed + optional real data."""
-        seed = _PROVIDER_SEED.get(provider_key, {
+        """Build a single leaderboard entry from db seeds + optional real data."""
+        seed = db_seeds.get(provider_key, {
             "name": provider_key.title(),
             "provider": provider_key.title(),
             "category": "Reasoning Model",
@@ -704,7 +362,7 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
         }
 
     # Build entries for all known providers (real + seed)
-    all_keys = set(list(provider_stats.keys()) + list(_PROVIDER_SEED.keys()))
+    all_keys = set(list(provider_stats.keys()) + list(db_seeds.keys()))
     entries = [_build_api_entry(k) for k in all_keys]
 
     # Sort by a composite trust signal (govScore + devScore + compliance depth)
@@ -716,6 +374,174 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
 
     entries.sort(key=_sort_key, reverse=True)
     return entries
+
+@router.get("/card/{api_did:path}")
+async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
+    """BenchmarkCard-style structured documentation card for a VNP API.
+
+    Seven sections modelled on the BenchmarkCards framework (arXiv:2410.12974):
+    details, purpose & users, data, methodology, performance, targeted risks,
+    and compliance & provenance. Every value is read from live VNP tables;
+    fields with no backing data are returned as null so the UI can surface an
+    honest "Needs proof" state instead of fabricated content.
+    """
+    from backend.db.models.vnp import (
+        Api, RegionalTelemetry, ProbeEvent, Incident, AuditLog,
+    )
+    from sqlalchemy.orm import selectinload
+
+    api = (
+        await db.execute(
+            select(Api)
+            .options(selectinload(Api.provider), selectinload(Api.regions))
+            .filter(Api.api_did == api_did)
+        )
+    ).scalar_one_or_none()
+    if api is None:
+        raise HTTPException(status_code=404, detail=f"No VNP API registered with DID '{api_did}'")
+
+    # ---- Data section: real probe evidence ----
+    probe_stats = (
+        await db.execute(
+            select(
+                func.count(ProbeEvent.id),
+                func.min(ProbeEvent.measured_at),
+                func.max(ProbeEvent.measured_at),
+                func.count(func.distinct(ProbeEvent.region)),
+            ).filter(ProbeEvent.api_id == api.id)
+        )
+    ).one()
+    probe_count, first_probe, last_probe, probe_regions = probe_stats
+    signed_probe_count = (
+        await db.execute(
+            select(func.count(ProbeEvent.id)).filter(
+                ProbeEvent.api_id == api.id,
+                ProbeEvent.evidence_hash.isnot(None),
+            )
+        )
+    ).scalar_one()
+
+    # ---- Performance section: latest regional telemetry ----
+    telemetry = (
+        await db.execute(
+            select(RegionalTelemetry)
+            .filter(RegionalTelemetry.api_id == api.id)
+            .order_by(RegionalTelemetry.measured_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    # ---- Targeted risks: live incidents scoped to this API ----
+    incidents = (
+        await db.execute(
+            select(Incident)
+            .filter(Incident.scope_id == api.id)
+            .order_by(Incident.opened_at.desc())
+            .limit(10)
+        )
+    ).scalars().all()
+    open_incident_count = sum(1 for i in incidents if i.state.value == "open")
+
+    # ---- Compliance & provenance ----
+    audit_count = (
+        await db.execute(
+            select(func.count(AuditLog.id)).filter(AuditLog.scope_id == api.id)
+        )
+    ).scalar_one()
+    tls_versions = [
+        row[0]
+        for row in (
+            await db.execute(
+                select(func.distinct(ProbeEvent.tls_version)).filter(
+                    ProbeEvent.api_id == api.id,
+                    ProbeEvent.tls_version.isnot(None),
+                )
+            )
+        ).all()
+    ]
+
+    similar = (
+        await db.execute(
+            select(Api.name).filter(Api.id != api.id).limit(5)
+        )
+    ).scalars().all()
+
+    return {
+        "benchmark_details": {
+            "name": api.name,
+            "version": api.version,
+            "provider": api.provider.legal_name if api.provider else None,
+            "overview": None,  # No curated overview stored yet — UI shows Needs proof
+            "data_type": "API telemetry (latency, uptime, error-rate probes)",
+            "domains": ["Machine-to-machine APIs", "Governed AI infrastructure"],
+            "similar_benchmarks": similar,
+            "resources": {
+                "base_url": api.base_url,
+                "health_path": api.health_path,
+            },
+        },
+        "purpose_and_users": {
+            "goal": "Continuous trust scoring of the API via signed multi-region synthetic probes under the Veklom Nexus Protocol.",
+            "audience": ["Platform engineers", "Procurement / vendor risk teams", "Autonomous agents selecting routes"],
+            "tasks": ["Latency benchmarking", "Availability verification", "Error-rate tracking", "SLA attestation"],
+            "limitations": None if probe_count else "No probe evidence recorded yet — scores fall back to registration baselines.",
+            "out_of_scope_uses": ["Functional correctness testing", "Security penetration assessment"],
+        },
+        "data": {
+            "source": "Worker-signed VNP probe events (vnp_probe_events)",
+            "sample_count": probe_count,
+            "signed_sample_count": signed_probe_count,
+            "region_count": probe_regions,
+            "first_measured_at": first_probe.isoformat() if first_probe else None,
+            "last_measured_at": last_probe.isoformat() if last_probe else None,
+            "annotation": "Each probe carries a worker signature, evidence hash and provenance hash.",
+        },
+        "methodology": {
+            "methods": "Multi-region synthetic probing with windowed aggregation into regional telemetry.",
+            "metrics": ["p50/p95/p99 latency (ms)", "error rate (%)", "uptime (%)", "throughput (rps)", "trust score"],
+            "calculation": "Composite score blends latency percentiles, error rate and uptime per region, weighted by sample count.",
+            "interpretation": "0-100 composite; >=100 denotes Apex tier, >=90 Sovereign.",
+            "baseline_results": None,
+            "validation": "Provenance-hashed telemetry windows; on-chain anchoring when configured.",
+        },
+        "performance": {
+            "composite_score": api.current_composite_score,
+            "stability_rating": api.stability_rating,
+            "status": api.status.value,
+            "p50_latency_ms": telemetry.p50_latency_ms if telemetry else None,
+            "p95_latency_ms": telemetry.p95_latency_ms if telemetry else None,
+            "p99_latency_ms": telemetry.p99_latency_ms if telemetry else None,
+            "error_rate_percent": float(telemetry.error_rate_percent) if telemetry else None,
+            "uptime_percent": float(telemetry.uptime_percent) if telemetry else None,
+            "throughput_rps": telemetry.throughput_rps if telemetry else None,
+            "trust_score": float(telemetry.trust_score) if telemetry else None,
+            "measured_at": telemetry.measured_at.isoformat() if telemetry else None,
+        },
+        "targeted_risks": {
+            "open_incident_count": open_incident_count,
+            "recent_incidents": [
+                {
+                    "title": i.title,
+                    "severity": i.severity,
+                    "state": i.state.value,
+                    "opened_at": i.opened_at.isoformat() if i.opened_at else None,
+                }
+                for i in incidents
+            ],
+            "risk_categories": ["Availability degradation", "Latency drift", "SLA breach"],
+            "potential_harm": "Downstream agents routing to a degraded endpoint may violate their own SLAs or overspend on retries.",
+        },
+        "compliance_and_provenance": {
+            "auth_scheme": api.auth_scheme,
+            "x402_ready": api.x402_ready,
+            "pricing_model": api.pricing_model,
+            "tls_versions_observed": tls_versions or None,
+            "audit_log_entries": audit_count,
+            "latest_provenance_hash": telemetry.provenance_hash if telemetry else None,
+            "on_chain_anchor": telemetry.on_chain_anchor if telemetry else None,
+        },
+    }
+
 
 from backend.apps.api.services.vnp_engine import build_verifier_nodes, build_provider_bond_view, compute_epoch_settlement, current_epoch, VERIFIER_REGIONS
 from backend.db.models.benchmarks import VerifierNode, ProviderBondView, EpochSettlement

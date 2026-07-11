@@ -41,6 +41,22 @@ def test_healthy_public_path_does_not_require_optional_groq_fallback():
     assert stderr == ""
 
 
+def test_check_rejects_non_object_json_payload():
+    exit_code, stdout, stderr = run_check(["ollama"])
+
+    assert exit_code == 1
+    assert stdout == ""
+    assert "health response must be a JSON object" in stderr
+
+
+def test_check_rejects_string_typed_providers():
+    exit_code, stdout, stderr = run_check(healthy_payload(providers_configured="ollama"))
+
+    assert exit_code == 1
+    assert stdout == ""
+    assert "providers_configured must be a non-empty list" in stderr
+
+
 def test_groq_requirement_is_enforced_when_enabled():
     exit_code, stdout, stderr = run_check(healthy_payload(), "--require-groq-fallback", "true")
 

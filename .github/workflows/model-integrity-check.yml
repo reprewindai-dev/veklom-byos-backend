@@ -11,9 +11,11 @@ permissions:
 
 jobs:
   model-check:
-    runs-on: ubuntu-latest
+    runs-on: [veklom-runner, self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Verify public demo LLM path is healthy
         env:

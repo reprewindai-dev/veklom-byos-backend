@@ -65,39 +65,55 @@ jobs:
 
       - name: Pull, Build, Migrate, and Swap on Server
         run: |
-          ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 "
-            set -e
-            APP=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru
-            cd \$APP
-            git pull origin main
-            docker build -t veklom-local:latest .
+          ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 << 'ENDSSH'
+          set -e
+          APP=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru
+          CONTAINER=n13gp1nhrcdp0hvazvbnlxru-213557155694
+          IMAGE=veklom-local:latest
+          ENVFILE=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env
 
-            echo '--- Running Alembic migrations ---'
-            docker run --rm \
-              --network coolify \
-              --env-file \$APP/.env \
-              veklom-local:latest \
-              python -m alembic -c backend/db/migrations/alembic.ini upgrade head
+          cd $APP
+          git pull origin main
 
-            echo '--- Swapping container ---'
-            docker stop n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
-            docker rm n13gp1nhrcdp0hvazvbnlxru-213557155694 || true
-            docker run -d \
-              --name n13gp1nhrcdp0hvazvbnlxru-213557155694 \
-              --network coolify \
-              --env-file \$APP/.env \
-              --restart unless-stopped \
-              -p 8088:8088 \
-              veklom-local:latest
-            echo 'Deployment complete: ${{ github.sha }}'
-          "
+          echo "--- Building image ---"
+          docker build -t $IMAGE .
+
+          echo "--- Running Alembic migrations ---"
+          docker run --rm \
+            --network coolify \
+            --env-file $ENVFILE \
+            $IMAGE \
+            python -m alembic -c backend/db/migrations/alembic.ini upgrade head
+
+          echo "--- Swapping container ---"
+          docker stop $CONTAINER  || true
+          docker rm   $CONTAINER  || true
+
+          docker run -d \
+            --name $CONTAINER \
+            --network coolify \
+            --env-file $ENVFILE \
+            --restart unless-stopped \
+            -p 8088:8088 \
+            $IMAGE
+
+          echo "--- Waiting for startup ---"
+          sleep 8
+          curl -sf http://localhost:8088/health && echo "HOST OK" || (echo "HOST FAILED" && exit 1)
+          echo "Deploy complete"
+          ENDSSH
 
       - name: Verify Production Health
         run: |
-          sleep 10
-          HTTP=$(curl -sk https://api.veklom.com/health -o /dev/null -w '%{http_code}')
-          if [ "$HTTP" != "200" ]; then
-            echo "HEALTH CHECK FAILED: api.veklom.com returned $HTTP"
-            exit 1
-          fi
-          echo "api.veklom.com healthy — deployment successful"
+          sleep 12
+          for i in 1 2 3; do
+            HTTP=$(curl -sk https://api.veklom.com/health -o /dev/null -w '%{http_code}')
+            if [ "$HTTP" = "200" ]; then
+              echo "api.veklom.com healthy (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: got $HTTP, retrying..."
+            sleep 10
+          done
+          echo "HEALTH CHECK FAILED after 3 attempts"
+          exit 1

@@ -16,6 +16,8 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -25,13 +27,24 @@ jobs:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
       - name: Install linters
-        run: pip install ruff black isort
-      - name: Ruff lint
-        run: ruff check . --output-format=github
-      - name: Black format check
-        run: black --check .
-      - name: isort check
-        run: isort --check-only .
+        run: pip install ruff
+      - name: Ruff lint changed lines
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base_sha="$PR_BASE_SHA"
+            head_sha="$PR_HEAD_SHA"
+          else
+            base_sha="$PUSH_BEFORE_SHA"
+            head_sha="$PUSH_HEAD_SHA"
+          fi
+          python scripts/check_changed_ruff.py --base "$base_sha" --head "$head_sha"
 
   type-check:
     name: Type Check

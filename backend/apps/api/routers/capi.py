@@ -4,7 +4,6 @@ from typing import Dict, Any, List, Optional, Tuple
 import hashlib
 import json
 import logging
-import os
 import uuid
 import asyncio
 from fastapi.responses import StreamingResponse
@@ -593,6 +592,8 @@ async def stream_run(
             await db.commit()
 
             # PHASE 7 EXTERNAL PGL LEDGER FORWARDING
+            import os
+
             pgl_ledger_url = os.getenv("PGL_LEDGER_URL")
             if pgl_ledger_url:
                 import httpx

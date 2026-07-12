@@ -50,10 +50,10 @@ jobs:
       - name: Start API Server
         run: |
           mkdir -p "$LOCAL_ARTIFACT_DIR"
-          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 80 > /tmp/veklom-api.log 2>&1 &
+          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8000 > /tmp/veklom-api.log 2>&1 &
           api_pid=$!
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:80/health; then
+            if curl -fsS http://127.0.0.1:8000/health; then
               exit 0
             fi
             if ! kill -0 "$api_pid" 2>/dev/null; then
@@ -68,20 +68,20 @@ jobs:
       - name: Simulate Service Crash & Recover SLO Assertion
         run: |
           echo "=== Step 1: Verify API Server Healthy ==="
-          curl -f http://127.0.0.1:80/health
+          curl -f http://127.0.0.1:8000/health
 
           echo "=== Step 2: Terminate Server (SIGTERM Crash simulation) ==="
           pkill -TERM -f uvicorn
           sleep 5
 
           echo "=== Step 3: Assert Failed Requests yield clean exceptions ==="
-          curl -s --connect-timeout 2 http://127.0.0.1:80/health && { echo "❌ Server should be down!"; exit 1; } || echo "✓ Server down successfully."
+          curl -s --connect-timeout 2 http://127.0.0.1:8000/health && { echo "❌ Server should be down!"; exit 1; } || echo "✓ Server down successfully."
 
           echo "=== Step 4: Restart Server & Confirm Auto-Recovery ==="
-          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 80 > /tmp/veklom-api-restart.log 2>&1 &
+          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 8000 > /tmp/veklom-api-restart.log 2>&1 &
           api_pid=$!
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:80/health; then
+            if curl -fsS http://127.0.0.1:8000/health; then
               break
             fi
             if ! kill -0 "$api_pid" 2>/dev/null; then
@@ -92,5 +92,5 @@ jobs:
           done
 
           echo "=== Step 5: Final Health Check ==="
-          curl -f http://127.0.0.1:80/health
+          curl -f http://127.0.0.1:8000/health
           echo "✓ Blast-radius & Auto-Recovery SLO successfully satisfied."

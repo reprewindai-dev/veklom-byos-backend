@@ -59,4 +59,5 @@ def test_local_api_workflows_use_writable_artifact_storage_and_fail_fast():
 
         assert CI_ARTIFACT_DIR in workflow
         assert "APP_ENV: test" in workflow
+        assert "--port 8000" in workflow
         assert 'kill -0 "$api_pid"' in workflow

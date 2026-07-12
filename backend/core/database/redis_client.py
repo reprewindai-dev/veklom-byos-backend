@@ -12,7 +12,9 @@ class InMemoryRedis:
     async def get(self, key: str):
         return self._db.get(key)
         
-    async def set(self, key: str, value: str, ex: int = None):
+    async def set(self, key: str, value: str, ex: int = None, nx: bool = False):
+        if nx and key in self._db:
+            return None
         self._db[key] = value
         return True
         
@@ -79,12 +81,12 @@ class SafeRedisClient:
             self.is_fallback = True
             return await self.fallback_db.get(key)
 
-    async def set(self, key: str, value: str, ex: int = None):
-        await self.fallback_db.set(key, value, ex)
+    async def set(self, key: str, value: str, ex: int = None, nx: bool = False):
+        await self.fallback_db.set(key, value, ex, nx)
         if self.is_fallback or not self.real_redis:
             return True
         try:
-            return await self.real_redis.set(key, value, ex=ex)
+            return await self.real_redis.set(key, value, ex=ex, nx=nx)
         except Exception as e:
             logger.warning(f"Redis set failed, falling back to in-memory: {e}")
             self.is_fallback = True

@@ -30,7 +30,7 @@ def upgrade() -> None:
         
         # Policy: Only allow access if workspace_id matches current_setting('app.workspace_id', true)
         # We also allow access if app.bypass_rls is 'on' for background tasks / super users.
-        policy_sql = f\"\"\"
+        policy_sql = f"""
         CREATE POLICY tenant_isolation_policy ON {table}
         AS PERMISSIVE FOR ALL
         USING (
@@ -41,7 +41,7 @@ def upgrade() -> None:
             current_setting('app.bypass_rls', true) = 'on'
             OR workspace_id::text = current_setting('app.workspace_id', true)
         );
-        \"\"\"
+        """
         op.execute(policy_sql)
 
 def downgrade() -> None:

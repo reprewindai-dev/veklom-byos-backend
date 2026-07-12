@@ -14,6 +14,8 @@ from backend.core.database.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models.pipelines import Pipeline
 from backend.core.ai.provider_router import run_completion
+from backend.ops.poltergeist_daemon import poltergeist_daemon
+from backend.core.services.poltergeist_registry import poltergeist_registry
 
 router = APIRouter(prefix="/gpc", tags=["GPC"])
 
@@ -274,3 +276,37 @@ async def gpc_stats(user=Depends(get_current_user_optional)):
             {"id": "UACP_PRESSURE", "title": "UACP Core Pressure", "value": load, "timestamp": datetime.now(timezone.utc).isoformat(), "category": "system"}
         ]
     }
+
+
+@router.post("/capability/submit")
+async def submit_capability_build(body: dict, user=Depends(get_current_user_optional)):
+    """
+    Submits a capability intent to the Poltergeist Deduplicating Build Queue.
+    This acts as the backend resolver for GraphQL subscriptions in the UI.
+    """
+    fingerprint = body.get("fingerprint")
+    if not fingerprint:
+        return {"error": "fingerprint is required"}
+        
+    required_revision = body.get("required_revision", 1)
+    workspace_id = user.workspace_id if user else "default"
+    
+    await poltergeist_daemon.submit_intent(
+        workspace_id=workspace_id,
+        fingerprint=fingerprint,
+        required_revision=required_revision,
+        manifest=body.get("manifest", {})
+    )
+    
+    return {"status": "queued", "fingerprint": fingerprint, "revision": required_revision}
+
+@router.get("/capability/{fingerprint}/status")
+async def get_capability_status(fingerprint: str):
+    """
+    Returns the real-time build status from the Poltergeist memory.
+    """
+    state = await poltergeist_registry.get_capability_state(fingerprint)
+    if not state:
+        return {"status": "unknown"}
+    return state
+

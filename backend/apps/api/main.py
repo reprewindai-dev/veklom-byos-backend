@@ -534,6 +534,10 @@ async def lifespan(app: FastAPI):
     vnp_task = asyncio.create_task(vnp_background_indexer())
     scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
     
+    # Start Poltergeist Daemon
+    from backend.ops.poltergeist_daemon import poltergeist_daemon
+    poltergeist_daemon.start()
+    
     # Start the new physical edge probes
     from backend.core.vnp.probes import run_vnp_probes
     physical_probes_task = asyncio.create_task(run_vnp_probes())
@@ -550,6 +554,12 @@ async def lifespan(app: FastAPI):
     try:
         from backend.ops.operator_engine import engine as operator_engine
         operator_engine.stop()
+    except Exception:
+        pass
+        
+    try:
+        from backend.ops.poltergeist_daemon import poltergeist_daemon
+        poltergeist_daemon.stop()
     except Exception:
         pass
 

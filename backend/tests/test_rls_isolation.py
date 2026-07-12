@@ -3,17 +3,18 @@ from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
-from backend.core.database.database import Base, engine
-from backend.db.models.ai import CostPrediction
-from backend.db.models.monitoring import SystemHealth
+from backend.core.config.settings import settings
+from backend.core.database.database import engine
 
 pytestmark = pytest.mark.asyncio
 
 RLS_TEST_ROLE = "ci_rls_test_app"
-TEST_TABLES = (CostPrediction.__table__, SystemHealth.__table__)
+RLS_TEST_PASSWORD = "ci-rls-test-password"
 
 
 async def _set_workspace(db_session: AsyncSession, workspace_id: str) -> None:
@@ -24,7 +25,7 @@ async def _set_workspace(db_session: AsyncSession, workspace_id: str) -> None:
 
 
 async def _seed_cost_predictions(*workspace_ids: str) -> None:
-    """Insert test data with the database owner before switching to the app role."""
+    """Insert test data with the database owner, outside the restricted app connection."""
     rows = [
         {"id": str(uuid.uuid4()), "workspace_id": workspace_id}
         for workspace_id in workspace_ids
@@ -43,15 +44,35 @@ async def _seed_cost_predictions(*workspace_ids: str) -> None:
 
 @pytest.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
-    """Prepare a minimal PostgreSQL schema and test through a non-superuser role."""
+    """Verify RLS through a new non-superuser connection, not SET ROLE."""
     async with engine.begin() as conn:
-        await conn.run_sync(
-            lambda sync_conn: Base.metadata.create_all(bind=sync_conn, tables=TEST_TABLES)
+        await conn.execute(text("DROP TABLE IF EXISTS cost_predictions"))
+        await conn.execute(text("DROP TABLE IF EXISTS system_health"))
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE cost_predictions (
+                    id VARCHAR(36) PRIMARY KEY,
+                    workspace_id VARCHAR(36) NOT NULL,
+                    predicted_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
         )
-        await conn.execute(text("TRUNCATE TABLE cost_predictions"))
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE system_health (
+                    id VARCHAR(36) PRIMARY KEY,
+                    component VARCHAR(128) NOT NULL,
+                    status VARCHAR(32) NOT NULL
+                )
+                """
+            )
+        )
         await conn.execute(text("ALTER TABLE cost_predictions ENABLE ROW LEVEL SECURITY"))
         await conn.execute(text("ALTER TABLE cost_predictions FORCE ROW LEVEL SECURITY"))
-        await conn.execute(text("DROP POLICY IF EXISTS tenant_isolation_cost_predictions ON cost_predictions"))
         await conn.execute(
             text(
                 """
@@ -66,7 +87,9 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                 f"""
                 DO $$
                 BEGIN
-                    CREATE ROLE {RLS_TEST_ROLE} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+                    CREATE ROLE {RLS_TEST_ROLE}
+                    LOGIN PASSWORD '{RLS_TEST_PASSWORD}'
+                    NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
                 EXCEPTION
                     WHEN duplicate_object THEN NULL;
                 END
@@ -74,18 +97,27 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                 """
             )
         )
+        await conn.execute(text(f"ALTER ROLE {RLS_TEST_ROLE} PASSWORD '{RLS_TEST_PASSWORD}'"))
         await conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {RLS_TEST_ROLE}"))
         await conn.execute(text(f"GRANT SELECT, INSERT ON cost_predictions TO {RLS_TEST_ROLE}"))
         await conn.execute(text(f"GRANT SELECT ON system_health TO {RLS_TEST_ROLE}"))
+        assert not await conn.scalar(
+            text("SELECT rolsuper FROM pg_roles WHERE rolname = :role_name"),
+            {"role_name": RLS_TEST_ROLE},
+        )
 
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with session_factory() as session:
-        await session.execute(text(f"SET ROLE {RLS_TEST_ROLE}"))
-        await session.commit()
-        assert await session.scalar(text("SELECT current_user")) == RLS_TEST_ROLE
-        yield session
-        await session.rollback()
-        await session.execute(text("RESET ROLE"))
+    app_database_url = make_url(settings.DATABASE_URL).set(
+        username=RLS_TEST_ROLE,
+        password=RLS_TEST_PASSWORD,
+    )
+    app_engine = create_async_engine(app_database_url, poolclass=NullPool)
+    session_factory = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            assert await session.scalar(text("SELECT current_user")) == RLS_TEST_ROLE
+            yield session
+    finally:
+        await app_engine.dispose()
 
 
 async def test_rls_tenant_isolation_reads(db_session: AsyncSession):
@@ -118,7 +150,6 @@ async def test_rls_tenant_isolation_writes(db_session: AsyncSession):
             {"id": str(uuid.uuid4()), "workspace_id": tenant_b},
         )
     await db_session.rollback()
-    assert await db_session.scalar(text("SELECT current_user")) == RLS_TEST_ROLE
 
     await _set_workspace(db_session, tenant_a)
     await db_session.execute(

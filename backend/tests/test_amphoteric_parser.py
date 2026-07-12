@@ -22,6 +22,8 @@ def test_extract_amphoteric_context_preserves_w3c_trace_if_present():
     assert trace.tracestate == headers["tracestate"]
 
 def test_extract_amphoteric_context_validates_spiffe_identity():
+    import os
+    os.environ["DEBUG_MOCK_SPIFFE"] = "true"
     headers = {
         "X-Spiffe-Id": "spiffe://veklom.io/ns/test/svc/backend",
         "X-Transport": "mcp"

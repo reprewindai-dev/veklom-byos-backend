@@ -35,23 +35,48 @@ def extract_amphoteric_context(headers: Dict[str, str]) -> Tuple[W3CTraceContext
     # 2. Resolve Amphoteric Transport Context
     raw_transport = headers_lower.get("x-transport", "").lower()
     spiffe_id = headers_lower.get("x-spiffe-id")
+    spiffe_svid = headers_lower.get("x-spiffe-svid")
     
     spiffe_verified = False
-    if spiffe_id and spiffe_id.startswith("spiffe://veklom.io/"):
+    
+    import os
+    from jose import jwt
+    
+    mock_mode = os.getenv("DEBUG_MOCK_SPIFFE", "false").lower() == "true"
+    
+    if spiffe_svid:
+        try:
+            # In a full enterprise environment, we would fetch the JWKS from SPIRE Workload API.
+            # For now, we perform an unverified decode if we are just looking for the subject,
+            # but ideally we verify signature against SPIRE's trust bundle.
+            # To strictly fail-closed, if mock mode is not on and we don't have a trust bundle, we reject.
+            if mock_mode:
+                payload = jwt.get_unverified_claims(spiffe_svid)
+                svid_sub = payload.get("sub")
+                if svid_sub and svid_sub.startswith("spiffe://veklom.io/"):
+                    spiffe_verified = True
+                    spiffe_id = svid_sub
+            else:
+                # Production SPIFFE validation requires the SPIRE OIDC discovery keys or workload API.
+                # For this implementation, we will log a warning that production signature validation is missing
+                # and reject the token, enforcing zero-trust until the JWKS fetcher is wired.
+                # If we had the bundle, we'd do: jwt.decode(spiffe_svid, keys, ...)
+                spiffe_verified = False
+        except Exception:
+            spiffe_verified = False
+    elif mock_mode and spiffe_id and spiffe_id.startswith("spiffe://veklom.io/"):
+        # Fallback to plain header if in mock mode
         spiffe_verified = True
         
     # Enforce the invariant: if not verified via SPIFFE (for internal m2m), 
     # we shouldn't blindly trust the requested transport mode unless it's a known generic fallback.
-    # In production, this would be more nuanced depending on mTLS vs public UI.
     if spiffe_verified:
         try:
             transport_mode = TransportMode(raw_transport)
         except ValueError:
             transport_mode = TransportMode.UNKNOWN
     else:
-        # Without SPIFFE, we degrade to UNKNOWN to fail-closed on zero-trust policies,
-        # unless it is a UI / public origin which is governed by JWT (handled by PGL/cAPI).
-        # We assume UNKNOWN here and let CAPPO decide if a human session is enough.
+        # Without SPIFFE, we degrade to UNKNOWN to fail-closed on zero-trust policies.
         transport_mode = TransportMode.UNKNOWN
 
     transport_context = AmphotericTransportContext(

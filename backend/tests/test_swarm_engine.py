@@ -21,14 +21,17 @@ async def test_swarm_orchestrator_parallel_execution():
     }
     
     # Mock the LLM completion
-    async def mock_run_completion(*args, **kwargs):
-        body = args[0]
+    async def mock_execute_governed_inference(*args, **kwargs):
+        db = args[0]
+        workspace_id = args[1]
+        user_id = args[2]
+        body = args[3]
         # Return a deterministic completion
         role = "worker" if "critic" not in str(body.get("messages")) else "critic"
         raw_res = {"choices": [{"message": {"content": f"I am a {role}"}}]}
-        return CompletionResult("ollama", raw_res), "default", ""
+        return CompletionResult("ollama", raw_res), "default", "", 100
         
-    with patch("backend.core.services.swarm_engine.run_completion_for_tenant", side_effect=mock_run_completion):
+    with patch("backend.core.services.swarm_engine.execute_governed_inference", side_effect=mock_execute_governed_inference):
         result = await orchestrator.dispatch_swarm(
             swarm_config, "Fix the billing engine", "workspace_test", byok_keys={}
         )

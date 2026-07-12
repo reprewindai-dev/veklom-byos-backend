@@ -38,6 +38,8 @@ from backend.contracts.sse_models import (
     RunDoneEvent, RunDonePayload
 )
 from backend.contracts.ledger_models import VnpBlock
+from backend.core.services.trust_connection_factory import TrustConnectionFactory
+from backend.core.schemas.trust.identity import ExecutionIdentity, IdentityKind
 
 def get_current_principal(
     security_scopes: SecurityScopes,
@@ -105,7 +107,10 @@ async def evaluate_intent_governed(
     intent: ExecutionIntent,
     db: AsyncSession,
     workspace_id: str,
-    q: asyncio.Queue = None
+    q: asyncio.Queue = None,
+    trace_context: dict = None,
+    transport_context: dict = None,
+    operator_id: str = "guest",
 ) -> Tuple[bool, str, int, dict]:
     """
     The deterministic 9-Phase gatekeeper. Checks the execution intent
@@ -181,6 +186,36 @@ async def evaluate_intent_governed(
             logger.warning(f"[cAPI] Failed to check replay nonce in Redis: {cache_err}")
 
     phase_results["1"] = "PASSED"
+
+    # --- TRUST FABRIC: Phase 2 (Connection Building) ---
+    execution_identity = ExecutionIdentity(
+        kind=IdentityKind.AGENT,
+        subject=intent.agent_id,
+        workspace_id=workspace_id,
+        operator_id=operator_id,
+        delegated_by=operator_id
+    )
+    
+    # Safely reconstruct contexts if they exist, otherwise fallback to factory defaults
+    trace_obj = W3CTraceContext(**trace_context) if trace_context else None
+    transport_obj = AmphotericTransportContext(**transport_context) if transport_context else None
+    
+    if trace_obj is None or transport_obj is None:
+        # Fallback if middleware wasn't active (e.g. tests)
+        from backend.core.amphoteric.parser import extract_amphoteric_context
+        trace_obj, transport_obj = extract_amphoteric_context({})
+    
+    # 2. Extract context via Phase 2 Trust Connection Factory
+    trust_connection, connection_context = TrustConnectionFactory.create_connection(
+        workspace_id=workspace_id,
+        operator_id=operator_id,
+        intent=f"{intent.target_protocol}:{intent.action}",
+        identity=execution_identity,
+        trace_context=trace_obj,
+        transport_context=transport_obj
+    )
+    phase_results["trust_fabric_context"] = connection_context.dict()
+    # --------------------------------------------------
 
     # Fetch active AuthorityBundle for this workspace
     stmt_bundle = select(AuthorityBundle).where(
@@ -389,6 +424,7 @@ async def evaluate_intent_governed(
 @router.post("/execute")
 async def governed_execution_intercept(
     intent: ExecutionIntent,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     principal = Security(get_current_principal, scopes=["capi:execute"])
 ):
@@ -397,12 +433,18 @@ async def governed_execution_intercept(
 
     run_id = str(uuid.uuid4())
     
+    # Extract contexts set by AmphotericMiddleware
+    trace_context = getattr(request.state, "trace", None)
+    transport_context = getattr(request.state, "transport", None)
+    
     # Store intent in redis for stream endpoint to pickup
     intent_cache_key = f"capi_intent:{run_id}"
     intent_data = {
         "intent": intent.dict(),
         "workspace_id": workspace_id,
-        "user_id": user_id
+        "user_id": user_id,
+        "trace_context": trace_context.dict() if trace_context else None,
+        "transport_context": transport_context.dict() if transport_context else None
     }
     if redis_cache.enabled and redis_cache.client:
         await redis_cache.client.set(intent_cache_key, json.dumps(intent_data), ex=300) # 5 min TTL
@@ -506,7 +548,12 @@ async def stream_run(
             await db.flush()
 
         # Phases
-        is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(intent, db, workspace_id)
+        trace_context = intent_data.get("trace_context")
+        transport_context = intent_data.get("transport_context")
+        operator_id = intent_data.get("user_id", "guest")
+        is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
+            intent, db, workspace_id, trace_context=trace_context, transport_context=transport_context, operator_id=operator_id
+        )
 
         stmt_bundle = select(AuthorityBundle).where(AuthorityBundle.workspace_id == workspace_id)
         res_bundle = await db.execute(stmt_bundle)

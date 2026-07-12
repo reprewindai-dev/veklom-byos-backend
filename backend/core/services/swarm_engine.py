@@ -3,7 +3,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.core.ai.provider_router import run_completion_for_tenant
+from backend.core.services.provider_routing_service import execute_governed_inference
 from backend.db.models.agent_stack import AgentSwarm
 from backend.core.memory.conversation import ConversationMemory
 
@@ -38,7 +38,9 @@ class SwarmOrchestrator:
         
         try:
             # We use the tenant-aware router to guarantee BYOK -> Ollama fallback logic
-            result, source, reason = await run_completion_for_tenant(body, workspace_id, byok_keys)
+            result, source, reason, latency_ms = await execute_governed_inference(
+                self.db, workspace_id, "swarm", body
+            )
             
             # Extract content from standardized CompletionResult
             response_text = result.payload.get("choices", [{}])[0].get("message", {}).get("content", "")

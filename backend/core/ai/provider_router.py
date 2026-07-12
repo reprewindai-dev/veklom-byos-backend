@@ -623,3 +623,89 @@ async def run_completion_for_tenant(
         status_code=503,
         detail={"error": "No provider succeeded", "tried": errors, "workspace": workspace_id}
     )
+
+
+async def stream_completion_for_tenant(
+    body: dict,
+    workspace_id: str,
+    byok_keys: Optional[dict] = None,
+) -> AsyncIterator[str]:
+    """Tenant-aware streaming completion."""
+    model_requested = (body.get("model") or "").lower()
+    provider_requested = (body.get("provider") or "").lower()
+    is_openai_req = ("gpt-4" in model_requested or "openai" in provider_requested)
+    openai_absent = not _configured_provider("openai")
+    
+    if is_openai_req and openai_absent:
+        logger.warning("OpenAI requested but API key not configured for tenant. Gracefully falling back to local/configured providers.")
+        body = {**body, "provider": "ollama", "model": settings.OLLAMA_MODEL}
+
+    order, reason = provider_order_for_tenant(body, workspace_id)
+    key_source = "owner" if is_founder_tenant(workspace_id) else "default"
+
+    for provider in order:
+        # Ollama logic
+        if provider == "ollama":
+            if not _configured_provider("ollama"):
+                continue
+            try:
+                async for line in _ollama_stream(body):
+                    yield line
+                return
+            except Exception:
+                continue
+
+        # Non-Ollama logic
+        if is_founder_tenant(workspace_id):
+            if not _configured_provider(provider):
+                continue
+            try:
+                if provider in {"openai", "groq", "huggingface"}:
+                    async for line in _openai_compatible_stream(provider, body):
+                        yield line
+                    return
+                if provider == "gemini":
+                    # Fallback to non-streaming for Gemini if we don't have a streaming gemini function
+                    payload = await _gemini_completion(body)
+                    content = _content_from_openai_response(payload)
+                    yield _sse_chunk(provider, _model_for(provider, body), content)
+                    yield "data: [DONE]\n\n"
+                    return
+            except Exception:
+                continue
+        else:
+            raw_key = (byok_keys or {}).get(provider)
+            if not raw_key:
+                if provider == "huggingface" and _is_configured(settings.HF_TOKEN):
+                    raw_key = settings.HF_TOKEN.strip()
+                else:
+                    continue
+            
+            try:
+                if provider in {"openai", "groq", "huggingface"}:
+                    # We need a custom stream function that takes the raw_key instead of using owner keys
+                    async for line in _openai_compatible_stream_with_key(provider, body, raw_key):
+                        yield line
+                    return
+            except Exception:
+                continue
+
+    yield f'data: {{"error":"No provider succeeded for workspace {workspace_id}."}}\n\n'
+    yield "data: [DONE]\n\n"
+
+
+async def _openai_compatible_stream_with_key(provider: str, body: dict, raw_key: str) -> AsyncIterator[str]:
+    url, _ = _openai_compatible_config(provider)
+    headers = {"Authorization": f"Bearer {raw_key}", "Content-Type": "application/json"}
+    payload = _openai_payload(body, provider, True)
+    async with httpx.AsyncClient(timeout=None) as client:
+        async with client.stream("POST", url, headers=headers, json=payload) as response:
+            if response.status_code >= 400:
+                text = await response.aread()
+                yield f"data: {json.dumps({'error': text.decode('utf-8', errors='replace')[:500]})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            async for line in response.aiter_lines():
+                if line:
+                    yield f"{line}\n\n"
+

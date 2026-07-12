@@ -40,7 +40,7 @@ from backend.core.database.database import Base, engine, get_db
 from backend.core.plugins.manager import plugin_manager
 from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
-from backend.core.middleware.amphoteric import AmphotericSensingMiddleware
+from backend.core.amphoteric.middleware import AmphotericMiddleware
 from backend.core.middleware.ratelimit import RateLimitMiddleware
 
 # --- Production Startup Guards ---
@@ -688,7 +688,7 @@ class X402DiscoverableMiddleware(BaseHTTPMiddleware):
 app.add_middleware(X402DiscoverableMiddleware)
 
 app.add_middleware(RateLimitMiddleware)
-app.add_middleware(AmphotericSensingMiddleware)
+app.add_middleware(AmphotericMiddleware)
 app.add_middleware(ZeroTrustMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(IntelligentRoutingMiddleware)

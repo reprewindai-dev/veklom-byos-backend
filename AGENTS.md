@@ -62,7 +62,6 @@ docker run -d \
   --network coolify \
   --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env \
   --restart unless-stopped \
-  -p 80:80 \
   veklom-local:latest
 ```
 

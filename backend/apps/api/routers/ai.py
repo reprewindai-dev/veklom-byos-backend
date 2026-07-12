@@ -12,12 +12,12 @@ from backend.core.ai.provider_router import (
     normalize_messages,
     provider_order,
     run_completion,
-    run_completion_for_tenant,
     smart_provider_order,
     task_tier,
     _content_from_openai_response,
     is_founder_tenant,
 )
+from backend.core.services.provider_routing_service import execute_governed_inference
 from backend.core.ai.cache import (
     get_hot, set_hot,
     get_warm, set_warm,
@@ -29,7 +29,7 @@ from backend.core.security.wallet_guard import token_deduction_guard
 from backend.core.security.entitlements import require_entitlement
 from backend.db.models.ai import ExecLog
 from backend.db.models.provider import ProviderKey
-from backend.core.security.key_encryption import decrypt_key
+
 
 # --- Strict Pydantic Models for OpenAPI Schema Hardening ---
 
@@ -252,25 +252,10 @@ async def ai_inference(body: AIInferenceRequest, user=Depends(get_current_user),
         }
 
     # 3. Cache miss — route to best provider for this tier
-    # Load BYOK keys for this workspace
-    keys_res = await db.execute(
-        select(ProviderKey).where(
-            ProviderKey.workspace_id == workspace_id,
-            ProviderKey.is_active == True,
-        )
-    )
-    byok_keys = {}
-    for k in keys_res.scalars().all():
-        try:
-            byok_keys[k.provider] = decrypt_key(k.key_encrypted)
-        except Exception:
-            continue
-
     override_body = {**payload_dict, "messages": messages}
-    result, key_source, reason = await run_completion_for_tenant(
-        override_body, workspace_id, byok_keys=byok_keys
+    result, key_source, reason, latency_ms = await execute_governed_inference(
+        db, workspace_id, user.id, override_body, exec_log_id=log.id
     )
-    latency_ms = int((_time.monotonic() - t0) * 1000)
     content = _content_from_openai_response(result.payload)
     used_model = result.payload.get("model", model)
     usage = result.payload.get("usage", {})
@@ -440,25 +425,10 @@ async def ai_chat(
         }
 
     # 4. Cache miss — run completion with full history context
-    # Load BYOK keys for this workspace
-    keys_res = await db.execute(
-        select(ProviderKey).where(
-            ProviderKey.workspace_id == workspace_id,
-            ProviderKey.is_active == True,
-        )
-    )
-    byok_keys = {}
-    for k in keys_res.scalars().all():
-        try:
-            byok_keys[k.provider] = decrypt_key(k.key_encrypted)
-        except Exception:
-            continue
-
     completion_body = {**payload_dict, "messages": full_context}
-    result, key_source, reason = await run_completion_for_tenant(
-        completion_body, workspace_id, byok_keys=byok_keys
+    result, key_source, reason, latency_ms = await execute_governed_inference(
+        db, workspace_id, user.id, completion_body, exec_log_id=f"sess_{session_id}"
     )
-    latency_ms = int((_time.monotonic() - t0) * 1000)
     content = _content_from_openai_response(result.payload)
     used_model = result.payload.get("model", model)
     usage = result.payload.get("usage", {})

@@ -10,7 +10,7 @@ Read completely before touching anything. Violations break the live site.
 - **Backend API:** `https://api.veklom.com`
 - **Control Plane (Standalone):** `https://control.veklom.com`
 - **Server:** Hetzner VPS `5.78.135.11`
-- **Internal port (Backend):** `8080`
+- **Internal port (Backend):** `8088`
 - **Proxy:** Coolify Reverse Proxy (Traefik)
 
 ---

@@ -7,6 +7,10 @@ WORKFLOW_PATHS = (
     ROOT / ".github" / "workflows" / "ci-cache.yml",
     ROOT / ".github" / "workflows" / "self-hosted-ci.yml",
 )
+LOCAL_API_WORKFLOW_PATHS = (
+    ROOT / ".github" / "workflows" / "quota-enforcement.yml",
+    ROOT / ".github" / "workflows" / "failure-drill.yml",
+)
 INTEGRATION_TEST_PATHS = (
     ROOT / "backend" / "tests" / "test_onboarding_demo.py",
     ROOT / "backend" / "tests" / "test_concurrency.py",
@@ -47,3 +51,12 @@ def test_local_artifact_storage_uses_an_explicit_ci_override():
     storage_module = ROOT / "backend" / "core" / "services" / "local_storage.py"
 
     assert 'os.environ.get("LOCAL_ARTIFACT_DIR", "/data/artifacts")' in storage_module.read_text(encoding="utf-8")
+
+
+def test_local_api_workflows_use_writable_artifact_storage_and_fail_fast():
+    for workflow_path in LOCAL_API_WORKFLOW_PATHS:
+        workflow = workflow_path.read_text(encoding="utf-8")
+
+        assert CI_ARTIFACT_DIR in workflow
+        assert "APP_ENV: test" in workflow
+        assert 'kill -0 "$api_pid"' in workflow

@@ -11,6 +11,14 @@ jobs:
   quota-enforcement:
     name: Quota Shaping & Rate-Limit Check
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "postgresql+asyncpg://veklom:veklom_ci@localhost:5432/veklom_test"
+      REDIS_ENABLED: "False"
+      REDIS_URL: "redis://localhost:6379"
+      SECRET_KEY: "ci-test-secret-key-not-real"
+      APP_ENV: test
+      SKIP_DB_MIGRATIONS: "true"
+      LOCAL_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts
 
     services:
       postgres:
@@ -40,19 +48,22 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Start API Server
-        env:
-          DATABASE_URL: "postgresql+asyncpg://veklom:veklom_ci@localhost:5432/veklom_test"
-          REDIS_ENABLED: "False"
-          REDIS_URL: "redis://localhost:6379"
-          SECRET_KEY: "ci-test-secret-key-not-real"
-          ENVIRONMENT: "test"
-          SKIP_DB_MIGRATIONS: "true"
         run: |
-          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 80 &
+          mkdir -p "$LOCAL_ARTIFACT_DIR"
+          uvicorn backend.apps.api.main:app --host 127.0.0.1 --port 80 > /tmp/veklom-api.log 2>&1 &
+          api_pid=$!
           for i in {1..30}; do
-            curl -s http://127.0.0.1:80/health && break
+            if curl -fsS http://127.0.0.1:80/health; then
+              exit 0
+            fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              cat /tmp/veklom-api.log
+              exit 1
+            fi
             sleep 1
           done
+          cat /tmp/veklom-api.log
+          exit 1
 
       - name: Execute rate-limit and quota gate checks
         run: |

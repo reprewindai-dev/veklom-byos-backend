@@ -27,6 +27,12 @@ class InMemoryRedis:
     async def ping(self):
         return True
 
+    async def publish(self, channel: str, message: str):
+        # In-memory pub/sub is not implemented for the fallback,
+        # but we mock it to prevent crashes in local dev without Redis.
+        logger.debug(f"InMemoryRedis mocked publish to {channel}: {message}")
+        return 1
+
     async def eval(self, script: str, numkeys: int, key: str, capacity: int, refill_rate: float, now: float):
         # Fallback Python implementation of the token bucket rate limiter lua script
         bucket = self._db.get(key)
@@ -121,6 +127,16 @@ class SafeRedisClient:
         except Exception as e:
             self.is_fallback = True
             return True
+
+    async def publish(self, channel: str, message: str):
+        if self.is_fallback or not self.real_redis:
+            return await self.fallback_db.publish(channel, message)
+        try:
+            return await self.real_redis.publish(channel, message)
+        except Exception as e:
+            logger.warning(f"Redis publish failed, falling back to in-memory: {e}")
+            self.is_fallback = True
+            return await self.fallback_db.publish(channel, message)
 
 # Initialize the Safe client
 redis_client = SafeRedisClient(settings.REDIS_URL)

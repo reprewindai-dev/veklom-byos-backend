@@ -114,6 +114,32 @@ from datetime import datetime, timezone, timedelta
 from backend.apps.api.services.vnp_engine import current_epoch, compute_deviation
 from backend.core.database.database import async_session
 from backend.db.models.vnp import Api, ApiRegion, ProbeEvent, ProbeResultState, RegionalTelemetry, SettlementEntry, LedgerEntryType, SettlementState
+import json
+from backend.core.database.redis_client import redis_client
+from backend.core.security.governance import RevocationManager
+
+async def pgl_revocation_listener():
+    """Listens for PGL identity revocations and aggressively invalidates the in-memory cache."""
+    try:
+        if redis_client and redis_client.real_redis:
+            pubsub = redis_client.real_redis.pubsub()
+            await pubsub.subscribe("veklom:pgl:revocations")
+            print("[startup] pgl: revocation listener subscribed to veklom:pgl:revocations")
+            
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    try:
+                        data = json.loads(message["data"])
+                        pgl_id = data.get("pgl_id")
+                        if pgl_id:
+                            RevocationManager._revoked_cache.add(pgl_id)
+                            print(f"[pgl] ingested revocation for {pgl_id}")
+                    except json.JSONDecodeError:
+                        print(f"[pgl] malformed revocation message: {message['data']}")
+        else:
+            print("[startup] pgl: real Redis not connected, skipping pub/sub revocation listener (fallback mode)")
+    except Exception as e:
+        print(f"[startup] pgl: revocation listener error: {e}")
 
 async def vnp_background_indexer():
     """Production-grade background task to compute VNP Stakes Engine updates and perform real probes."""
@@ -545,6 +571,8 @@ async def lifespan(app: FastAPI):
     from backend.apps.api.terminal_state import terminal_state_manager
     terminal_state_task = asyncio.create_task(terminal_state_manager.state_loop())
 
+    revocation_listener_task = asyncio.create_task(pgl_revocation_listener())
+
     yield
 
     terminal_state_manager.is_running = False
@@ -830,7 +858,7 @@ from backend.apps.api.routers import (
     vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2, vnp_onboarding, vnp_stream,
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
-    build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
+    build_release, langchain_ops, playground, arena, conversation_memory, cappo_edge, cappo_inside, locks, terminal,
     genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges, tasks,
     demo
 )
@@ -2088,7 +2116,8 @@ app.include_router(onboarding_dashboard.router)
 app.include_router(governed.router, prefix="/api/v1")
 
 # CAPPO - Internal Execution Authority
-app.include_router(cappo.router, prefix="/api/v1")
+app.include_router(cappo_edge.router, prefix="/api/v1")
+app.include_router(cappo_inside.router, prefix="/api/v1")
 
 # Evidence - Evidence Pack System
 app.include_router(evidence.router, prefix="/api/v1")

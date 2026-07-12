@@ -26,6 +26,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from backend.core.security.ed25519_keys import Ed25519KeyManager
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -286,10 +288,11 @@ async def create_operator_identity(
     }
 
     pgl_id   = str(uuid.uuid4())
+    _, pub_b64 = Ed25519KeyManager.generate_key_pair()
     identity = PGLIdentity(
         id=pgl_id,
         tenant_id=workspace_id,
-        primary_public_key=f"ed25519_placeholder_{operator_identity_id}",
+        primary_public_key=f"ed25519_{pub_b64}",
         key_type="ed25519",
         metadata_json=payload,
     )

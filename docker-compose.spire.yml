@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.8.2
+    container_name: veklom-spire-server
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    volumes:
+      - ./spire/server:/opt/spire/conf/server:ro
+      - spire-server-data:/opt/spire/data/server
+    ports:
+      - "8081:8081"
+    networks:
+      - spire-network
+
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent:1.8.2
+    container_name: veklom-spire-agent
+    pid: host
+    depends_on:
+      - spire-server
+    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    volumes:
+      - ./spire/agent:/opt/spire/conf/agent:ro
+      - spire-agent-data:/opt/spire/data/agent
+      - spire-sockets:/opt/spire/sockets
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - spire-network
+
+volumes:
+  spire-server-data:
+  spire-agent-data:
+  spire-sockets:
+
+networks:
+  spire-network:
+    name: coolify

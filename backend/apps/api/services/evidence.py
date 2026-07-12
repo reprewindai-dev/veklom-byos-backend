@@ -14,6 +14,7 @@ from backend.db.models.evidence import (
 from backend.db.models.authority import AuthorityRun, AuthorityDecision
 from backend.db.models.lineage import BirthCertificate
 from backend.db.models.ledger import LedgerEvent
+from backend.core.replay.ingestion import replay_ingestion, CloudEvent
 
 
 class EvidencePackBuilder:
@@ -73,6 +74,21 @@ class EvidencePackBuilder:
         self.db.add(evidence_pack)
         await self.db.commit()
         await self.db.refresh(evidence_pack)
+        
+        # Emit to the unified Replay ingestion contract
+        event = CloudEvent(
+            id=evidence_pack_id,
+            source="urn:veklom:evidence:builder",
+            type="veklom.evidence.pack.created",
+            data={
+                "authority_run_id": authority_run_id,
+                "workspace_id": workspace_id,
+                "agent_id": agent_id,
+                "artifacts_hash": hashes.get("artifacts_hash")
+            }
+        )
+        # We fire and forget to the ingestion pipeline (simulated async fail-open)
+        replay_ingestion.emit(event)
         
         return evidence_pack
     

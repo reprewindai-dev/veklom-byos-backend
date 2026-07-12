@@ -23,6 +23,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.security.ed25519_keys import Ed25519KeyManager
+
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user_optional
 from backend.core.security.jwt_keys import key_manager
@@ -165,10 +167,11 @@ async def run_onboarding_pipeline(
     if not pgl_identity_id:
         # Auto-create onboarding identity for sandbox integrity
         new_identity_id = str(uuid.uuid4())
+        _, pub_b64 = Ed25519KeyManager.generate_key_pair()
         new_identity = PGLIdentity(
             id=new_identity_id,
             tenant_id=workspace_id,
-            primary_public_key=f"placeholder_ed25519_{new_identity_id[:8]}",
+            primary_public_key=f"ed25519_{pub_b64}",
             key_type="ed25519",
             metadata_json={"identity_type": "agent", "status": "active"}
         )

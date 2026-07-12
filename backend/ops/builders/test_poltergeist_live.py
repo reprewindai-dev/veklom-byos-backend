@@ -10,8 +10,9 @@ from typing import Dict, Any
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("smoke_test")
 
-BASE_URL = "http://localhost:8000/api/v1/gpc"
-ARTIFACTS_DIR = "/data/artifacts"
+BASE_URL = os.getenv("VEKLOM_API_URL", "https://api.veklom.com/api/v1/gpc")
+# ARTIFACTS_DIR check is mainly for local, we skip it if we aren't local since we can't read the server's disk natively from this script.
+
 
 async def test_compile():
     pipeline_id = f"smoke_test_{uuid.uuid4().hex[:8]}"

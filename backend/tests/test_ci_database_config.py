@@ -12,7 +12,7 @@ INTEGRATION_TEST_PATHS = (
     ROOT / "backend" / "tests" / "test_concurrency.py",
 )
 CI_DATABASE_URL = "postgresql+asyncpg://veklom:veklom_ci@localhost:5432/veklom_test"
-CI_ARTIFACT_DIR = "${{ runner.temp }}/veklom-artifacts"
+CI_ARTIFACT_DIR = "${{ github.workspace }}/.ci-artifacts"
 
 
 def test_full_ci_workflows_provision_the_postgres_test_database():

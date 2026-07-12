@@ -1,7 +1,8 @@
-import os
-import aiofiles
 import logging
+import os
 from typing import Optional
+
+import aiofiles
 
 logger = logging.getLogger("local_storage")
 
@@ -10,10 +11,10 @@ class LocalArtifactStorage:
     Stores Poltergeist generated capabilities locally on the NVMe volume.
     Replaces R2 for 100% free, zero-setup storage aligned with the BYOS stack.
     """
-    def __init__(self, base_dir: str = "/data/artifacts"):
-        self.base_dir = base_dir
+    def __init__(self, base_dir: Optional[str] = None):
+        self.base_dir = base_dir or os.environ.get("LOCAL_ARTIFACT_DIR", "/data/artifacts")
         os.makedirs(self.base_dir, exist_ok=True)
-        
+
     async def upload_artifact(self, fingerprint: str, revision: int, data: bytes, filename: str) -> Optional[str]:
         """
         Saves the compiled capability artifact to local disk.
@@ -21,9 +22,9 @@ class LocalArtifactStorage:
         """
         artifact_dir = os.path.join(self.base_dir, fingerprint, str(revision))
         os.makedirs(artifact_dir, exist_ok=True)
-        
+
         file_path = os.path.join(artifact_dir, filename)
-        
+
         try:
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(data)
@@ -32,5 +33,5 @@ class LocalArtifactStorage:
         except Exception as e:
             logger.error(f"Failed to save artifact {filename} locally: {e}")
             return None
-            
+
 local_storage = LocalArtifactStorage()

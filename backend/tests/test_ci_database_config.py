@@ -12,6 +12,7 @@ INTEGRATION_TEST_PATHS = (
     ROOT / "backend" / "tests" / "test_concurrency.py",
 )
 CI_DATABASE_URL = "postgresql+asyncpg://veklom:veklom_ci@localhost:5432/veklom_test"
+CI_ARTIFACT_DIR = "${{ runner.temp }}/veklom-artifacts"
 
 
 def test_full_ci_workflows_provision_the_postgres_test_database():
@@ -23,6 +24,7 @@ def test_full_ci_workflows_provision_the_postgres_test_database():
         assert CI_DATABASE_URL in workflow
         assert 'REDIS_ENABLED: "False"' in workflow
         assert "APP_ENV: test" in workflow
+        assert CI_ARTIFACT_DIR in workflow
         assert "runs-on: ubuntu-latest" in workflow
 
 
@@ -39,3 +41,9 @@ def test_test_environment_uses_a_loop_safe_database_pool():
     assert "from sqlalchemy.pool import NullPool" in database_module
     assert 'if settings.APP_ENV == "test":' in database_module
     assert 'engine_options["poolclass"] = NullPool' in database_module
+
+
+def test_local_artifact_storage_uses_an_explicit_ci_override():
+    storage_module = ROOT / "backend" / "core" / "services" / "local_storage.py"
+
+    assert 'os.environ.get("LOCAL_ARTIFACT_DIR", "/data/artifacts")' in storage_module.read_text(encoding="utf-8")

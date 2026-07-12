@@ -67,6 +67,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://veklom:veklom_ci@localhost:5432/veklom_test
       REDIS_ENABLED: "False"
       APP_ENV: test
+      LOCAL_ARTIFACT_DIR: ${{ runner.temp }}/veklom-artifacts
 
     services:
       postgres:

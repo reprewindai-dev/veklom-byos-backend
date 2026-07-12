@@ -1493,6 +1493,17 @@ async def root(request: Request):
         if lockerphycer_index.exists():
             return FileResponse(str(lockerphycer_index))
         return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
+    if "status.veklom.com" in host:
+        from backend.apps.api.status_page import _status_html
+        from datetime import datetime, timezone
+        status_data = {
+            "status": "healthy",
+            "timestamp": datetime.now(timezone.utc).isoformat().split('.')[0] + "Z",
+            "version": "1.0.0"
+        }
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=_status_html(status_data), status_code=200)
+        
     from fastapi.responses import HTMLResponse
     return HTMLResponse(content=_fallback_html(), status_code=200)
 
@@ -2097,6 +2108,10 @@ body { background: #050505; color: #e0e0e0; font-family: system-ui, -apple-syste
 
 # Well-known manifests (no prefix)
 app.include_router(well_known.router)
+
+# Status Page (Mounted on root and /status)
+from backend.apps.api import status_page
+app.include_router(status_page.router)
 
 # Authority - Runtime Authority Pack
 app.include_router(authority.router, prefix="/api/v1")

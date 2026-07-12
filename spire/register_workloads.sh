@@ -10,11 +10,11 @@ docker exec veklom-spire-server bin/spire-server entry create \
     -node
 
 # 2. Register the FastAPI Backend workload
-# We attest it based on its container name or compose service label
+# We attest it based on its explicit Docker image label
 docker exec veklom-spire-server bin/spire-server entry create \
     -spiffeID spiffe://veklom.io/ns/backend/sa/api \
     -parentID spiffe://veklom.io/ns/infrastructure/sa/agent \
-    -selector docker:label:com.docker.compose.service:api
+    -selector docker:label:veklom.workload:backend-api
 
 # 3. Register the Celery Worker workload
 docker exec veklom-spire-server bin/spire-server entry create \

@@ -23,6 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
+LABEL veklom.workload="backend-api"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

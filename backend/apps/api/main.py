@@ -42,6 +42,7 @@ from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
 from backend.core.amphoteric.middleware import AmphotericMiddleware
 from backend.core.middleware.ratelimit import RateLimitMiddleware
+from backend.core.cappo.middleware import CappoPolicyMiddleware
 
 # --- Production Startup Guards ---
 if settings.APP_ENV == "production" or os.getenv("ENVIRONMENT") == "production":
@@ -689,6 +690,7 @@ app.add_middleware(X402DiscoverableMiddleware)
 
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AmphotericMiddleware)
+app.add_middleware(CappoPolicyMiddleware)
 app.add_middleware(ZeroTrustMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(IntelligentRoutingMiddleware)

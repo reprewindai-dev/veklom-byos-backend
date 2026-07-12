@@ -6,10 +6,12 @@ for GPC Pipeline capabilities.
 
 import asyncio
 import traceback
+import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy import select, update
-from loguru import logger
+
+logger = logging.getLogger("poltergeist_daemon")
 
 from backend.core.database.database import async_session
 from backend.db.models.poltergeist import CapabilityHauntState, CapabilityGhost

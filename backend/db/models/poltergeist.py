@@ -24,6 +24,7 @@ class CapabilityHauntState(Base):
     heartbeat = Column(Integer, default=0)
     queued_revision = Column(Integer, default=1)
     freshest_artifact_revision = Column(Integer, default=0)
+    manifest = Column(JSON, default=dict)
     
     # Store dynamic validation outcomes like RepoGate & PGL
     verification_results = Column(JSON, default=dict)

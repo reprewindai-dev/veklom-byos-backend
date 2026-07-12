@@ -10,13 +10,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger("poltergeist_daemon")
 
 from backend.core.database.database import async_session
 from backend.db.models.poltergeist import CapabilityHauntState, CapabilityGhost
 from backend.core.services.poltergeist_registry import poltergeist_registry
-from backend.core.services.r2_storage import r2_storage
+from backend.core.services.local_storage import local_storage
 
 
 class CompilerFreshnessGate:
@@ -72,6 +73,12 @@ class PoltergeistDaemon:
 
     async def submit_intent(self, workspace_id: str, fingerprint: str, required_revision: int, manifest: Dict[str, Any]):
         """Deduplicating Build Queue: merge overlapping intent requests."""
+        # Update hot memory first for immediate reads
+        await poltergeist_registry.set_capability_state(fingerprint, {
+            "status": "idle",
+            "queued_revision": required_revision
+        })
+        
         async with async_session() as db:
             haunt = (await db.execute(
                 select(CapabilityHauntState).where(CapabilityHauntState.fingerprint == fingerprint)
@@ -80,7 +87,7 @@ class PoltergeistDaemon:
             if haunt:
                 if required_revision > haunt.queued_revision:
                     haunt.queued_revision = required_revision
-                    # If it was idle/failed, or even fresh but now stale, push back to idle to trigger rebuild
+                    haunt.manifest = manifest
                     if haunt.status in ("failed", "fresh", "idle"):
                         haunt.status = "idle"
                     await db.commit()
@@ -91,17 +98,26 @@ class PoltergeistDaemon:
                     fingerprint=fingerprint,
                     status="idle",
                     queued_revision=required_revision,
-                    freshest_artifact_revision=0
+                    freshest_artifact_revision=0,
+                    manifest=manifest
                 )
                 db.add(new_haunt)
-                await db.commit()
-                logger.info(f"[poltergeist] Queued new intent for {fingerprint} (rev {required_revision})")
-                
-            # Update hot memory
-            await poltergeist_registry.set_capability_state(fingerprint, {
-                "status": "idle",
-                "queued_revision": required_revision
-            })
+                try:
+                    await db.commit()
+                    logger.info(f"[poltergeist] Queued new intent for {fingerprint} (rev {required_revision})")
+                except IntegrityError:
+                    await db.rollback()
+                    # A concurrent request created it first. Fetch and update.
+                    haunt = (await db.execute(
+                        select(CapabilityHauntState).where(CapabilityHauntState.fingerprint == fingerprint)
+                    )).scalar_one_or_none()
+                    if haunt and required_revision > haunt.queued_revision:
+                        haunt.queued_revision = required_revision
+                        haunt.manifest = manifest
+                        if haunt.status in ("failed", "fresh", "idle"):
+                            haunt.status = "idle"
+                        await db.commit()
+                        logger.info(f"[poltergeist] Concurrently updated intent for {fingerprint} to revision {required_revision}")
 
     async def _daemon_loop(self):
         """Polls for idle/pending capability builds."""
@@ -148,37 +164,49 @@ class PoltergeistDaemon:
                     })
                     
                     # Fire-and-forget the build task to the worker pool
-                    asyncio.create_task(self._simulate_agent_build(haunt.fingerprint, haunt.queued_revision, haunt.workspace_id))
+                    asyncio.create_task(self._execute_agent_build(haunt.fingerprint, haunt.queued_revision, haunt.workspace_id))
 
-    async def _simulate_agent_build(self, fingerprint: str, target_revision: int, workspace_id: str):
+    async def _execute_agent_build(self, fingerprint: str, target_revision: int, workspace_id: str):
         """
-        Phase 3: Autonomous Builder Hook
-        This simulates the agent generating, testing, and RepoGate scanning the capability.
+        Phase 2B: Real Autonomous Builder Hooks
+        Invokes the actual coordinator to generate, test, and scan the capability.
         """
+        from backend.ops.builders.coordinator import AutonomousBuilderCoordinator
+        
         logger.info(f"[poltergeist] Agent workforce engaged for {fingerprint} (rev {target_revision})")
         
-        # 1. Update status to building
+        # 1. Fetch dynamic manifest from DB and update status
+        manifest = {}
+        async with async_session() as db:
+            haunt = (await db.execute(
+                select(CapabilityHauntState).where(CapabilityHauntState.fingerprint == fingerprint)
+            )).scalar_one_or_none()
+            if haunt:
+                manifest = haunt.manifest or {}
+                
         await self._update_haunt_status(fingerprint, "building")
-        await asyncio.sleep(2) # Simulate LLM gen
         
-        # 2. Update status to testing
-        await self._update_haunt_status(fingerprint, "testing")
-        await asyncio.sleep(1) # Simulate test run
+        # Fallback to python transform if manifest is somehow missing
+        if not manifest:
+            manifest = {
+                "type": "python_transform",
+                "engine": "duckdb"
+            }
         
-        # 3. Verifying (RepoGate + PGL)
-        await self._update_haunt_status(fingerprint, "verifying")
-        await asyncio.sleep(1)
+        # 2. Execute Real Build
+        is_valid, verification_results, artifact_bytes = await AutonomousBuilderCoordinator.build_capability(
+            fingerprint, target_revision, manifest
+        )
         
-        verification_results = {
-            "repogate": "pass",
-            "pgl": "pass",
-            "unit_tests": "pass"
-        }
-        
-        # 4. Success -> Dump to R2 & Update Postgres
-        mock_wasm_body = b"\\x00asm...mock...body..."
-        artifact_ptr = await r2_storage.upload_artifact(
-            fingerprint, target_revision, mock_wasm_body, "runtime.wasm"
+        if not is_valid:
+            logger.error(f"[poltergeist] Build failed for {fingerprint}")
+            await self._update_haunt_status(fingerprint, "failed")
+            await poltergeist_registry.release_build_lock(fingerprint)
+            return
+            
+        # 3. Success -> Dump to NVMe & Update Postgres
+        artifact_ptr = await local_storage.upload_artifact(
+            fingerprint, target_revision, artifact_bytes, "capability.zip"
         )
         
         async with async_session() as db:

@@ -44,7 +44,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/workspace/overview/live", "/api/v1/integrations/pagerduty",
             "/api/v1/pgl/registry", "/api/v1/capi/execute",
             "/api/v1/receipts", "/api/v1/evidence/verify",
-            "/api/v1/ai/inference", "/api/v1/ai/chat", "/api/v1/gpc/compile",
+            "/api/v1/ai/inference", "/api/v1/ai/chat", "/api/v1/gpc/compile", "/api/v1/gpc/execute",
             "/api/v1/gpc/intent-to-plan", "/api/v1/gpc/runs", "/api/v1/pipelines/trigger",
             "/api/v1/runtime/jobs", "/api/v1/evidence/export", "/api/v1/compliance/report",
             "/api/v1/marketplace/acquire", "/api/v1/audit/verify", "/api/v1/webhook", "/api/v1/subscriptions/webhook", "/api/v1/x402",

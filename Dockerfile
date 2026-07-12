@@ -46,9 +46,9 @@ COPY agents/ ./agents/
 RUN mkdir -p /app/logs && chown -R veklom:veklom /app
 USER veklom
 
-EXPOSE 8088
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://127.0.0.1:8088/health || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1:8080/health || exit 1
 
-CMD ["uvicorn", "backend.apps.api.main:app", "--host", "0.0.0.0", "--port", "8088"]
+CMD ["uvicorn", "backend.apps.api.main:app", "--host", "0.0.0.0", "--port", "8080"]

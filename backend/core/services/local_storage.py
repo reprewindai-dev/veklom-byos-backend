@@ -10,7 +10,7 @@ class LocalArtifactStorage:
     Stores Poltergeist generated capabilities locally on the NVMe volume.
     Replaces R2 for 100% free, zero-setup storage aligned with the BYOS stack.
     """
-    def __init__(self, base_dir: str = "/data/artifacts"):
+    def __init__(self, base_dir: str = "/app/data/artifacts"):
         self.base_dir = base_dir
         os.makedirs(self.base_dir, exist_ok=True)
         

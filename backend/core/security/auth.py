@@ -1,8 +1,11 @@
 """JWT auth utilities."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt
+import redis
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -11,12 +14,26 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
-from backend.core.database.database import get_db, get_db_session
+from backend.core.database.database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security_scheme = HTTPBearer(auto_error=False)
 
-import bcrypt
+
+
+# Global synchronous Redis client for token verification (e.g., JTI checks)
+# Initialized here to avoid connection pool thrashing per-request.
+try:
+    _sync_redis_client = redis.Redis.from_url(
+        settings.REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=2,
+        socket_timeout=2
+    )
+except Exception as e:
+    logging.warning(f"Failed to initialize global sync Redis client in auth.py: {e}")
+    _sync_redis_client = None
+
 
 
 def get_password_hash(password: str) -> str:
@@ -47,9 +64,6 @@ def create_access_token(
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-import logging
-
-
 def verify_token(token: str, enforce_replay: bool = False) -> dict:
     try:
         # Decode without verifying aud initially to allow soft enforcement
@@ -74,10 +88,9 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
 
         # JTI replay checks (optional/configurable)
         jti = payload.get("jti")
-        if jti:
-            import redis
+        if jti and _sync_redis_client:
             try:
-                r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=2)
+                r = _sync_redis_client
                 replay_mode = str(getattr(settings, "JWT_REPLAY_ENFORCEMENT", "off")).lower()
                 replay_seen = bool(r.exists(f"jti_cache:{jti}"))
                 if replay_seen:

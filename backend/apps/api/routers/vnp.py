@@ -1,23 +1,21 @@
 """VNP Routing and Data Ingestion API."""
 
-import json
-from typing import List, Optional, Literal
-from fastapi import APIRouter, Depends, HTTPException, status, Header
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from pydantic import BaseModel
-import nacl.signing
-import nacl.exceptions
-from nacl.encoding import HexEncoder
-
 import uuid
 from datetime import datetime, timezone
+from typing import Literal, Optional
+
+import nacl.exceptions
+import nacl.signing
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from nacl.encoding import HexEncoder
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.core.config.settings import settings
 from backend.core.database.database import get_db
-from backend.db.models.vnp import (
-    Api, Validator, ProbeEvent, RegionalTelemetry,
-    SettlementEntry, LedgerEntryType, SettlementState, VnpMetric
-)
-from backend.core.services.vnp_scoring import update_api_composite_score, get_cached_api_score
+from backend.core.services.vnp_scoring import get_cached_api_score, update_api_composite_score
+from backend.db.models.vnp import Api, LedgerEntryType, ProbeEvent, SettlementEntry, Validator, VnpMetric
 
 router = APIRouter(prefix="/vnp", tags=["Veklom Network Protocol"])
 
@@ -102,7 +100,7 @@ async def ingest_probe_metric(
     # Construct the deterministic message string that the prober should have signed
     # Format: {api_id}:{validator_id}:{region}:{latency_ms}:{http_status_code}:{success}
     message = f"{payload.api_id}:{payload.validator_id}:{payload.region}:{payload.latency_ms}:{payload.http_status_code}:{int(payload.success)}".encode("utf-8")
-    
+
     try:
         verify_key = nacl.signing.VerifyKey(validator.public_key, encoder=HexEncoder)
         # Verify the signature
@@ -130,13 +128,13 @@ async def ingest_probe_metric(
     # In a fully scaled environment, this is pushed to Kafka/NATS.
     # For Phase 1, we compute it synchronously inline or as a background task.
     score = await update_api_composite_score(db, payload.api_id)
-    
+
     return {"status": "accepted", "new_score": score}
 
 
 @router.get("/beacon")
 async def get_route_beacon(
-    api_id: Optional[str] = None, 
+    api_id: Optional[str] = None,
     mode: Literal["governed", "advisory"] = "governed",
     db: AsyncSession = Depends(get_db)
 ):
@@ -164,12 +162,12 @@ async def get_route_beacon(
                 "stability_rating": score_data.get("rating", "Unknown"),
                 "timestamp": score_data.get("updated_at")
             }
-    
+
     # If no api_id provided, return all registered APIs
     stmt = select(Api)
     result = await db.execute(stmt)
     apis = result.scalars().all()
-    
+
     routes = []
     for api in apis:
         if mode == "governed":
@@ -191,7 +189,7 @@ async def get_route_beacon(
                 "composite_score": api.current_composite_score,
                 "stability": api.stability_rating
             })
-    
+
     return {
         "network_status": "operational",
         "mode": mode,
@@ -271,7 +269,7 @@ async def get_realtime_directory(db: AsyncSession = Depends(get_db)):
     stmt = select(VnpMetric).order_by(VnpMetric.measured_at.desc()).limit(100)
     result = await db.execute(stmt)
     metrics = result.scalars().all()
-    
+
     latest_metrics = {}
     for m in metrics:
         if m.api_name not in latest_metrics:
@@ -280,5 +278,5 @@ async def get_realtime_directory(db: AsyncSession = Depends(get_db)):
                 "is_up": m.is_up,
                 "measured_at": m.measured_at.isoformat()
             }
-            
+
     return {"status": "ok", "realtime_metrics": latest_metrics}

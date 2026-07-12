@@ -172,7 +172,7 @@ def test_vnp_beacon_single():
             "updated_at": "2024-01-01T00:00:00Z",
         }
 
-        response = client.get("/api/v1/vnp/beacon?api_id=test-api")
+        response = client.get("/api/v1/vnp/beacon?api_id=test-api&mode=advisory")
 
     assert response.status_code == 200
     assert response.json()["api_id"] == "test-api"

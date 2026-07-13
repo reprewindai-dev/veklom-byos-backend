@@ -53,10 +53,11 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
     active_apis = int(api_count_result.scalar_one() or 0)
 
     probe_count_result = await db.execute(select(func.count(ProbeEvent.id)))
-    total_probes = int(probe_count_result.scalar_one() or 0)
+    signed_probe_events = int(probe_count_result.scalar_one() or 0)
 
     physical_probe_count_result = await db.execute(select(func.count(VnpMetric.id)))
-    total_physical_probes = int(physical_probe_count_result.scalar_one() or 0)
+    realtime_physical_probes = int(physical_probe_count_result.scalar_one() or 0)
+    total_probes = signed_probe_events + realtime_physical_probes
 
     slash_result = await db.execute(
         select(func.coalesce(func.sum(SettlementEntry.amount_minor), 0))
@@ -79,7 +80,9 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
         "active_validators": active_validators,
         "active_apis": active_apis,
         "total_probes_recorded": total_probes,
-        "total_physical_probes_recorded": total_physical_probes,
+        "signed_probe_events": signed_probe_events,
+        "realtime_physical_probes": realtime_physical_probes,
+        "total_physical_probes_recorded": realtime_physical_probes,
         "total_slashed_minor": total_slashed_minor,
         "avg_composite_score": avg_composite_score,
         "settlement_entries": settlement_entries,

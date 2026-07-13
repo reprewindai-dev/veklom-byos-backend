@@ -30,7 +30,8 @@ jobs:
             veklom-backend-ci:${{ github.sha }} \
             bash -c "
               echo 'Running Alembic check...'
-              python -m alembic -c backend/db/migrations/alembic.ini history || echo 'Alembic skipped/failed'
+              cd backend/db/migrations && python -m alembic history || echo 'Alembic skipped/failed'
+              cd /app
               echo 'Running Pytest...'
               python -m pytest tests/ -v || echo 'Pytest skipped/failed (ensuring pipeline proceeds if tests missing)'
             "
@@ -97,8 +98,9 @@ jobs:
           docker run --rm \
             --network coolify \
             --env-file $ENVFILE \
+            -w /app/backend/db/migrations \
             $IMAGE \
-            python -m alembic -c backend/db/migrations/alembic.ini upgrade head
+            python -m alembic upgrade head
 
           echo "--- Swapping container ---"
           docker stop $CONTAINER  || true

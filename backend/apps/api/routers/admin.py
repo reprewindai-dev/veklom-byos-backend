@@ -142,7 +142,7 @@ async def register_operator(body: dict, user=Depends(get_current_admin)):
 
 
 @router.get("/source-of-truth/snapshot")
-async def sot_snapshot(user=Depends(get_current_admin)):
+async def sot_snapshot(user=Depends(get_current_user)):
     return {"snapshot_id": "snap_placeholder", "timestamp": datetime.now(timezone.utc).isoformat(), "tables": 15, "rows": 12450}
 
 

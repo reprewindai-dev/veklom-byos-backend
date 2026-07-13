@@ -251,3 +251,45 @@ class AgentTrustScoreEngine:
                 "SIS": social_score
             }
         }
+
+class RevocationManager:
+    """Manages push-based revocation of PGL identities using Redis Pub/Sub."""
+    
+    _revoked_cache: set = set()
+    
+    @classmethod
+    async def revoke_pgl_identity(cls, pgl_id: str, reason: str):
+        """
+        Revoke a PGL identity and broadcast it globally.
+        """
+        import json
+        from backend.core.database.redis_client import redis_client
+        
+        cls._revoked_cache.add(pgl_id)
+        
+        # Publish revocation event
+        event = json.dumps({"pgl_id": pgl_id, "reason": reason, "timestamp": time.time()})
+        await redis_client.publish("veklom:pgl:revocations", event)
+        
+        # Set read-optimized projection in Redis for edge-checks
+        await redis_client.set(f"veklom:pgl:revoked:{pgl_id}", reason, ex=86400 * 30) # 30 days
+        
+        logger.warning(f"PGL Identity {pgl_id} has been revoked globally. Reason: {reason}")
+        
+    @classmethod
+    async def is_revoked(cls, pgl_id: str) -> bool:
+        """
+        Check if a PGL identity is revoked (read-optimized projection).
+        First checks in-memory cache (zero-latency), then falls back to Redis projection.
+        """
+        if pgl_id in cls._revoked_cache:
+            return True
+            
+        from backend.core.database.redis_client import redis_client
+        result = await redis_client.get(f"veklom:pgl:revoked:{pgl_id}")
+        if result:
+            cls._revoked_cache.add(pgl_id)
+            return True
+            
+        return False
+

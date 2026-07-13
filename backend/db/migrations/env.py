@@ -8,9 +8,12 @@ from alembic import context
 import sys
 import os
 import asyncio
+from pathlib import Path
 
-# Add the backend directory to the path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]  # /app
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import the database models
 from backend.core.database.database import Base

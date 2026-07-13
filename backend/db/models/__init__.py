@@ -15,7 +15,6 @@ from backend.db.models.pgl import PGLCertificate, PGLLedgerEvent, PGLIdentity
 from backend.db.models.agency import AgentState, AgentMemoryEntry, Notification
 from backend.db.models.provider import ProviderKey, ProviderRoutingLog
 from backend.db.models.playground import PlaygroundSession, PlaygroundPrompt
-from backend.db.models.repo_risk_gate import RepoRiskGateRun, RepoRiskGateEvent
 from backend.db.models.decision_frame import DecisionFrame
 from backend.db.models.internal_operators import (
     InternalOperatorTask,
@@ -93,8 +92,6 @@ __all__ = [
     "ProviderKey", "ProviderRoutingLog",
     # playground
     "PlaygroundSession", "PlaygroundPrompt",
-    # repo risk gate (Playground tool)
-    "RepoRiskGateRun", "RepoRiskGateEvent",
     # decision frames — governed-execution proof objects
     "DecisionFrame",
     # internal operator committees

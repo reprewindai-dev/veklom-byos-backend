@@ -20,9 +20,11 @@ RUN pip install --upgrade pip setuptools wheel && \
 FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
+LABEL veklom.workload="backend-api"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -40,15 +42,14 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
-COPY irongrid/dist/ ./irongrid/dist/
 COPY agents/ ./agents/
 
 RUN mkdir -p /app/logs && chown -R veklom:veklom /app
 USER veklom
 
-EXPOSE 80
+EXPOSE 8088
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://127.0.0.1:80/health || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1:8088/health || exit 1
 
-CMD ["uvicorn", "backend.apps.api.main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["uvicorn", "backend.apps.api.main:app", "--host", "0.0.0.0", "--port", "8088"]

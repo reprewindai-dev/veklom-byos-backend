@@ -40,8 +40,9 @@ from backend.core.database.database import Base, engine, get_db
 from backend.core.plugins.manager import plugin_manager
 from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
-from backend.core.middleware.amphoteric import AmphotericSensingMiddleware
+from backend.core.amphoteric.middleware import AmphotericMiddleware
 from backend.core.middleware.ratelimit import RateLimitMiddleware
+from backend.core.cappo.middleware import CappoPolicyMiddleware
 
 # --- Production Startup Guards ---
 if settings.APP_ENV == "production" or os.getenv("ENVIRONMENT") == "production":
@@ -114,6 +115,32 @@ from datetime import datetime, timezone, timedelta
 from backend.apps.api.services.vnp_engine import current_epoch, compute_deviation
 from backend.core.database.database import async_session
 from backend.db.models.vnp import Api, ApiRegion, ProbeEvent, ProbeResultState, RegionalTelemetry, SettlementEntry, LedgerEntryType, SettlementState
+import json
+from backend.core.database.redis_client import redis_client
+from backend.core.security.governance import RevocationManager
+
+async def pgl_revocation_listener():
+    """Listens for PGL identity revocations and aggressively invalidates the in-memory cache."""
+    try:
+        if redis_client and redis_client.real_redis:
+            pubsub = redis_client.real_redis.pubsub()
+            await pubsub.subscribe("veklom:pgl:revocations")
+            print("[startup] pgl: revocation listener subscribed to veklom:pgl:revocations")
+            
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    try:
+                        data = json.loads(message["data"])
+                        pgl_id = data.get("pgl_id")
+                        if pgl_id:
+                            RevocationManager._revoked_cache.add(pgl_id)
+                            print(f"[pgl] ingested revocation for {pgl_id}")
+                    except json.JSONDecodeError:
+                        print(f"[pgl] malformed revocation message: {message['data']}")
+        else:
+            print("[startup] pgl: real Redis not connected, skipping pub/sub revocation listener (fallback mode)")
+    except Exception as e:
+        print(f"[startup] pgl: revocation listener error: {e}")
 
 async def vnp_background_indexer():
     """Production-grade background task to compute VNP Stakes Engine updates and perform real probes."""
@@ -268,7 +295,7 @@ async def lifespan(app: FastAPI):
             registered = sorted(Base.metadata.tables.keys())
             print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")
             from sqlalchemy import inspect
-            critical = ("users", "execution_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
+            critical = ("users", "execution_logs", "audit_logs", "workspaces", "agents")
             
             def get_present_tables(sync_conn):
                 return inspect(sync_conn).get_table_names()
@@ -545,6 +572,8 @@ async def lifespan(app: FastAPI):
     from backend.apps.api.terminal_state import terminal_state_manager
     terminal_state_task = asyncio.create_task(terminal_state_manager.state_loop())
 
+    revocation_listener_task = asyncio.create_task(pgl_revocation_listener())
+
     yield
 
     terminal_state_manager.is_running = False
@@ -660,7 +689,8 @@ class X402DiscoverableMiddleware(BaseHTTPMiddleware):
 app.add_middleware(X402DiscoverableMiddleware)
 
 app.add_middleware(RateLimitMiddleware)
-app.add_middleware(AmphotericSensingMiddleware)
+app.add_middleware(AmphotericMiddleware)
+app.add_middleware(CappoPolicyMiddleware)
 app.add_middleware(ZeroTrustMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(IntelligentRoutingMiddleware)
@@ -825,12 +855,12 @@ from backend.apps.api.routers import (
     evidence, fax, forensics, health, integrations, internal_uacp,
     mcp, monitoring, onboarding_dashboard, onboarding_demo, payments,
     pgl, pgl_adapter, pgl_onboarding, plugins, pricing, providers, rag,
-    referrals, repo_risk_gate, repogate_api, routing, runs, runtime_jobs,
+    referrals, repogate_api, routing, runs, runtime_jobs,
     runtime_telemetry, security, seked, smoke, system, team, upload, vnp,
     vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2, vnp_onboarding, vnp_stream,
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
-    build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
+    build_release, langchain_ops, playground, arena, conversation_memory, cappo_edge, cappo_inside, locks, terminal,
     genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges, tasks,
     demo
 )
@@ -847,7 +877,7 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(evaluations.router, prefix="/api/v1")
 app.include_router(smoke.router, prefix="/api/v1")
-app.include_router(repo_risk_gate.router, prefix="/api/v1")
+# repo_risk_gate excised
 app.include_router(repogate_api.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(hrm.router, prefix="/api/v1")
@@ -973,8 +1003,7 @@ app.include_router(gfr.router, prefix="/api/v1")
 # Command Center — /api/v1/command-center/* (aliases + new routes per WIRING_MATRIX)
 app.include_router(command_center.router, prefix="/api/v1")
 
-# Repo Risk Gate — Playground governed-review tool
-app.include_router(repo_risk_gate.router, prefix="/api/v1")
+# Repo Risk Gate — Excised to standalone gateway
 
 # Agent Workforce
 app.include_router(agents.router, prefix="/api/v1")
@@ -1465,6 +1494,17 @@ async def root(request: Request):
         if lockerphycer_index.exists():
             return FileResponse(str(lockerphycer_index))
         return JSONResponse(status_code=404, content={"detail": "Lockerphycer page not found"})
+    if "status.veklom.com" in host:
+        from backend.apps.api.status_page import _status_html
+        from datetime import datetime, timezone
+        status_data = {
+            "status": "healthy",
+            "timestamp": datetime.now(timezone.utc).isoformat().split('.')[0] + "Z",
+            "version": "1.0.0"
+        }
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=_status_html(status_data), status_code=200)
+        
     from fastapi.responses import HTMLResponse
     return HTMLResponse(content=_fallback_html(), status_code=200)
 
@@ -2070,6 +2110,10 @@ body { background: #050505; color: #e0e0e0; font-family: system-ui, -apple-syste
 # Well-known manifests (no prefix)
 app.include_router(well_known.router)
 
+# Status Page (Mounted on root and /status)
+from backend.apps.api import status_page
+app.include_router(status_page.router)
+
 # Authority - Runtime Authority Pack
 app.include_router(authority.router, prefix="/api/v1")
 app.include_router(authority_runs.router, prefix="/api/v1")
@@ -2088,7 +2132,8 @@ app.include_router(onboarding_dashboard.router)
 app.include_router(governed.router, prefix="/api/v1")
 
 # CAPPO - Internal Execution Authority
-app.include_router(cappo.router, prefix="/api/v1")
+app.include_router(cappo_edge.router, prefix="/api/v1")
+app.include_router(cappo_inside.router, prefix="/api/v1")
 
 # Evidence - Evidence Pack System
 app.include_router(evidence.router, prefix="/api/v1")

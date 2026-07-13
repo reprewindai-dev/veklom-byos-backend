@@ -226,7 +226,25 @@ class PGLIdentityGate:
         System agents are part of Veklom infrastructure — their identity
         is governed by code, not by user registration.
         """
+        import json
         from backend.db.models.pgl import PGLIdentity
+        from backend.core.database.redis_client import redis_client
+        
+        # Redis projection check
+        cached_identity_str = await redis_client.get(f"veklom:pgl:identity:{actor_id}")
+        if cached_identity_str:
+            try:
+                cached = json.loads(cached_identity_str)
+                identity = PGLIdentity(
+                    id=cached.get("id"),
+                    tenant_id=cached.get("tenant_id"),
+                    primary_public_key=cached.get("primary_public_key"),
+                    key_type=cached.get("key_type", "ed25519"),
+                    metadata_json=cached.get("metadata", {})
+                )
+                return identity
+            except Exception as e:
+                logger.warning(f"[PGLGate] Failed to parse cached system identity for {actor_id}: {e}")
 
         result = await db.execute(
             select(PGLIdentity).where(PGLIdentity.id == actor_id)
@@ -267,6 +285,25 @@ class PGLIdentityGate:
             db.add(identity)
             await db.flush()
             logger.info(f"[PGLGate] ✅ System agent identity seeded: {actor_id}")
+            
+        # Populate projection cache
+        try:
+            import json
+            from backend.core.database.redis_client import redis_client
+            cache_payload = {
+                "id": identity.id,
+                "tenant_id": identity.tenant_id,
+                "primary_public_key": identity.primary_public_key,
+                "key_type": identity.key_type,
+                "metadata": identity.metadata_json
+            }
+            await redis_client.set(
+                f"veklom:pgl:identity:{identity.id}", 
+                json.dumps(cache_payload),
+                ex=3600
+            )
+        except Exception as e:
+            logger.warning(f"[PGLGate] Failed to cache system identity for {identity.id}: {e}")
 
         return identity
 
@@ -280,9 +317,27 @@ class PGLIdentityGate:
         or trace via agents table → birth_certificates → pgl_identities.
         If the chain is broken, raise PGLIdentityNotFound.
         """
+        import json
         from backend.db.models.pgl import PGLIdentity
         from backend.db.models.lineage import BirthCertificate
         from backend.db.models.agent import Agent
+        from backend.core.database.redis_client import redis_client
+
+        # Redis projection check
+        cached_identity_str = await redis_client.get(f"veklom:pgl:identity:{actor_id}")
+        if cached_identity_str:
+            try:
+                cached = json.loads(cached_identity_str)
+                identity = PGLIdentity(
+                    id=cached.get("id"),
+                    tenant_id=cached.get("tenant_id"),
+                    primary_public_key=cached.get("primary_public_key"),
+                    key_type=cached.get("key_type", "ed25519"),
+                    metadata_json=cached.get("metadata", {})
+                )
+                return identity
+            except Exception as e:
+                logger.warning(f"[PGLGate] Failed to parse cached PGL identity for {actor_id}: {e}")
 
         # Try direct pgl_identity lookup first
         result = await db.execute(
@@ -290,6 +345,21 @@ class PGLIdentityGate:
         )
         identity = result.scalar_one_or_none()
         if identity:
+            try:
+                cache_payload = {
+                    "id": identity.id,
+                    "tenant_id": identity.tenant_id,
+                    "primary_public_key": identity.primary_public_key,
+                    "key_type": identity.key_type,
+                    "metadata": identity.metadata_json
+                }
+                await redis_client.set(
+                    f"veklom:pgl:identity:{identity.id}", 
+                    json.dumps(cache_payload),
+                    ex=3600
+                )
+            except Exception as e:
+                logger.warning(f"[PGLGate] Failed to cache PGL identity for {identity.id}: {e}")
             return identity
 
         # Try to find by agent_id in agents table, then follow birth cert
@@ -322,11 +392,38 @@ class PGLIdentityGate:
                 )
             )
 
-        # Follow PGL identity from birth cert
-        pgl_result = await db.execute(
+        # Follow birth certificate to identity
+        result = await db.execute(
             select(PGLIdentity).where(PGLIdentity.id == cert.pgl_identity_id)
         )
-        identity = pgl_result.scalar_one_or_none()
+        identity = result.scalar_one_or_none()
+        
+        if identity:
+            try:
+                import json
+                from backend.core.database.redis_client import redis_client
+                cache_payload = {
+                    "id": identity.id,
+                    "tenant_id": identity.tenant_id,
+                    "primary_public_key": identity.primary_public_key,
+                    "key_type": identity.key_type,
+                    "metadata": identity.metadata_json
+                }
+                await redis_client.set(
+                    f"veklom:pgl:identity:{identity.id}", 
+                    json.dumps(cache_payload),
+                    ex=3600
+                )
+                # We also want to map the actor_id directly to this identity
+                if actor_id != identity.id:
+                    await redis_client.set(
+                        f"veklom:pgl:identity:{actor_id}", 
+                        json.dumps(cache_payload),
+                        ex=3600
+                    )
+            except Exception as e:
+                logger.warning(f"[PGLGate] Failed to cache PGL identity for {identity.id} via agent {actor_id}: {e}")
+
 
         if identity is None:
             raise PGLIdentityNotFound(

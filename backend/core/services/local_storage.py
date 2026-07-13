@@ -12,7 +12,7 @@ class LocalArtifactStorage:
     Replaces R2 for 100% free, zero-setup storage aligned with the BYOS stack.
     """
     def __init__(self, base_dir: Optional[str] = None):
-        self.base_dir = base_dir or os.environ.get("LOCAL_ARTIFACT_DIR", "/data/artifacts")
+        self.base_dir = base_dir or os.environ.get("LOCAL_ARTIFACT_DIR", "/app/data/artifacts")
         os.makedirs(self.base_dir, exist_ok=True)
 
     async def upload_artifact(self, fingerprint: str, revision: int, data: bytes, filename: str) -> Optional[str]:

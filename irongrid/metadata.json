@@ -1,6 +1,0 @@
-{
-  "name": "FFI Gradient Pathfinding Simulator",
-  "description": "Interactive optimizer dashboard demonstrating FastAPI & Rust PyO3 8-neighbor gradient descent routing, continuous binary-pack audit logging, and 120-agent workforce queue concurrency.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

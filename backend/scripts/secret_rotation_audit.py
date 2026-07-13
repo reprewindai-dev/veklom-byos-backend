@@ -51,6 +51,7 @@ class AuditResult:
     secrets: list[SecretRecord]
     findings: list[Finding]
     db: DbAuditResult
+    organization_secrets_included: bool = False
 
     @property
     def failed(self) -> bool:
@@ -146,7 +147,12 @@ def fetch_paginated_secrets(url: str, token: str, scope: str) -> list[SecretReco
     return records
 
 
-def fetch_github_secret_records(repo: str, token: str, api_url: str) -> list[SecretRecord]:
+def fetch_github_secret_records(
+    repo: str,
+    token: str,
+    api_url: str,
+    include_organization_secrets: bool = False,
+) -> list[SecretRecord]:
     if "/" not in repo:
         raise ValueError("Repository must be in OWNER/REPO format.")
     if not token:
@@ -156,10 +162,9 @@ def fetch_github_secret_records(repo: str, token: str, api_url: str) -> list[Sec
         )
     owner, name = repo.split("/", 1)
     base = api_url.rstrip("/")
-    endpoints = [
-        (f"{base}/repos/{owner}/{name}/actions/secrets?per_page=100", "repository"),
-        (f"{base}/repos/{owner}/{name}/actions/organization-secrets?per_page=100", "organization"),
-    ]
+    endpoints = [(f"{base}/repos/{owner}/{name}/actions/secrets?per_page=100", "repository")]
+    if include_organization_secrets:
+        endpoints.append((f"{base}/repos/{owner}/{name}/actions/organization-secrets?per_page=100", "organization"))
     records: list[SecretRecord] = []
     for url, scope in endpoints:
         try:
@@ -233,7 +238,7 @@ def audit_secret_records(
             Finding(
                 "FAIL",
                 f"{name} was forced but not found",
-                "FORCE_ROTATE_SECRETS names must match a repository or organization Actions secret.",
+                "FORCE_ROTATE_SECRETS names must match an audited Actions secret.",
             )
         )
     return findings
@@ -351,6 +356,9 @@ def render_report(result: AuditResult, forced_names: set[str]) -> str:
         f"Status: {'FAIL' if result.failed else 'PASS'}",
         f"Generated at: {result.generated_at.isoformat()}",
         f"Policy: fail after {result.max_age_days} days, warn after {result.warn_age_days} days.",
+        "Coverage: repository and organization Actions secrets."
+        if result.organization_secrets_included
+        else "Coverage: repository Actions secrets only. Set --include-organization-secrets to audit organization secrets.",
         "",
         "## GitHub Actions Secrets",
         "",
@@ -398,6 +406,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-age-days", type=int, default=int(os.getenv("SECRET_ROTATION_MAX_AGE_DAYS", DEFAULT_MAX_AGE_DAYS)))
     parser.add_argument("--warn-age-days", type=int, default=int(os.getenv("SECRET_ROTATION_WARN_AGE_DAYS", DEFAULT_WARN_AGE_DAYS)))
     parser.add_argument("--force-rotate", default=os.getenv("FORCE_ROTATE_SECRETS", ""))
+    parser.add_argument(
+        "--include-organization-secrets",
+        action="store_true",
+        default=os.getenv("SECRET_ROTATION_INCLUDE_ORGANIZATION_SECRETS", "").lower() in {"1", "true", "yes", "on"},
+        help="Also audit organization Actions secrets available to this repository.",
+    )
     parser.add_argument("--now", default="")
     return parser
 
@@ -418,13 +432,15 @@ def run(args: argparse.Namespace, forced_names: set[str] | None = None) -> Audit
                 repo=args.repo,
                 token=os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN") or "",
                 api_url=args.github_api_url,
+                include_organization_secrets=args.include_organization_secrets,
             )
         findings.extend(audit_secret_records(records, forced_names, now, args.max_age_days, args.warn_age_days))
     except (GitHubApiError, ValueError) as exc:
         records = []
         message = exc.message if isinstance(exc, GitHubApiError) else str(exc)
         if isinstance(exc, GitHubApiError) and exc.status in (401, 403):
-            message += " Configure SECRET_ROTATION_GH_TOKEN with repository Secrets read permission or classic repo scope."
+            permission = "repository and organization Secrets read permissions" if args.include_organization_secrets else "repository Secrets read permission"
+            message += f" Configure SECRET_ROTATION_GH_TOKEN with {permission} or classic repo scope."
         findings.append(Finding("FAIL", "GitHub Actions secret metadata audit failed", message))
 
     db_result = audit_database_api_keys(
@@ -440,6 +456,7 @@ def run(args: argparse.Namespace, forced_names: set[str] | None = None) -> Audit
         secrets=records,
         findings=findings,
         db=db_result,
+        organization_secrets_included=args.include_organization_secrets,
     )
 
 

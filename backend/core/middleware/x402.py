@@ -19,7 +19,7 @@ import hmac
 import os
 import logging
 import re
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 import asyncio
@@ -195,7 +195,7 @@ def _price_decimal(route_config: dict) -> Decimal:
     return Decimal(str(route_config["price_usdc"]))
 
 def _price_usdc_string(route_config: dict) -> str:
-    normalized = _price_decimal(route_config).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    normalized = _price_decimal(route_config).quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
     text = format(normalized, "f").rstrip("0").rstrip(".")
     if "." not in text:
         return f"{text}.00"
@@ -205,7 +205,7 @@ def _price_usdc_string(route_config: dict) -> str:
     return text
 
 def _price_micro_usdc(route_config: dict) -> int:
-    return int((_price_decimal(route_config) * Decimal("1000000")).to_integral_value(rounding=ROUND_HALF_UP))
+    return int((_price_decimal(route_config) * Decimal("1000000")).to_integral_value(rounding=ROUND_DOWN))
 
 
 def is_valid_evm_address(addr: str) -> bool:
@@ -838,7 +838,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                     response.headers["X-VNP-Stake-Result"] = stake_result
                     
                     try:
-                        amt_minor = int(float(vnp_stake) * 1_000_000)
+                        amt_minor = int((Decimal(str(vnp_stake)) * Decimal("1000000")).to_integral_value(rounding=ROUND_DOWN))
                         # Release ASC settlement via real service
                         from backend.core.database.database import async_session
                         async with async_session() as db:
@@ -989,7 +989,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                                 WalletTransaction.tx_type == "debit",
                             )
                         ) or 0.0
-                        balance = float(topups) - abs(float(debits))
+                        balance = float(Decimal(str(topups)) - abs(Decimal(str(debits))))
                         
                         price_usdc = route_cfg["price_usdc"]
                         

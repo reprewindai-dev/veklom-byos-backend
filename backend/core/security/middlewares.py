@@ -55,7 +55,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/amphoteric/discover", "/api/v1/amphoteric/call",
             "/api/v1/onboarding", "/onboarding-dashboard", "/api/v1/banker/self-prove",
             "/api/v1/duel",
-            "/api/v1/beacon"
+            "/api/v1/beacon", "/api/v1/auth/.well-known"
         )
         
         if (

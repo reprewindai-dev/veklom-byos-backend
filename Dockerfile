@@ -20,7 +20,8 @@ RUN pip install --upgrade pip setuptools wheel && \
 FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
 LABEL veklom.workload="backend-api"
@@ -41,7 +42,6 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
-COPY irongrid/dist/ ./irongrid/dist/
 COPY agents/ ./agents/
 
 RUN mkdir -p /app/logs && chown -R veklom:veklom /app

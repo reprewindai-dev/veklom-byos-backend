@@ -24,11 +24,16 @@ def upgrade() -> None:
     ]
 
     from sqlalchemy.engine import reflection
+    from sqlalchemy.exc import NoSuchTableError
     bind = op.get_bind()
     inspector = reflection.Inspector.from_engine(bind)
 
     for table in tenant_tables:
-        columns = [c['name'] for c in inspector.get_columns(table)]
+        try:
+            columns = [c['name'] for c in inspector.get_columns(table)]
+        except NoSuchTableError:
+            continue
+            
         if 'workspace_id' not in columns:
             continue
             

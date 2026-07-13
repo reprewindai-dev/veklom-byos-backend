@@ -128,3 +128,43 @@ async def scan_repo(req: ScanRequest, user=Depends(get_current_user)):
             "findings": findings,
             "risk_level": top_risk
         }
+
+class SealRequest(BaseModel):
+    run_id: str
+    agent_id: str
+    repo_url: str
+    risk_level: str
+    decision: str
+    decision_note: str | None = None
+    ledger_hash: str
+    timestamp: str
+
+from backend.db.models.vnp import AuditLog, TenantType
+from backend.core.database.database import async_session
+
+@router.post("/seal")
+async def seal_repogate_run(req: SealRequest):
+    """
+    Receives completed runs and decisions from the Poltergeist Repo Gate (M2M fixer)
+    and permanently stores the ledger hash proof as an AuditLog on the BYOS backend.
+    """
+    async with async_session() as session:
+        log_entry = AuditLog(
+            actor_type=TenantType.operator,
+            action="repogate.ledger.seal",
+            scope_type="repogate_run",
+            log_metadata={
+                "run_id": req.run_id,
+                "agent_id": req.agent_id,
+                "repo_url": req.repo_url,
+                "risk_level": req.risk_level,
+                "decision": req.decision,
+                "decision_note": req.decision_note,
+                "ledger_hash": req.ledger_hash,
+                "timestamp": req.timestamp
+            }
+        )
+        session.add(log_entry)
+        await session.commit()
+
+    return {"status": "sealed", "ledger_hash": req.ledger_hash}

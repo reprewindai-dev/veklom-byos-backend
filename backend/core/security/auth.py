@@ -67,7 +67,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
 
         if aud != expected_aud:
             msg = f"Invalid or missing audience in token: expected {expected_aud}, got {aud}"
-            if enforcement_mode == "strict" or settings.APP_ENV == "production":
+            if enforcement_mode == "strict":
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token audience")
             else:
                 logging.warning(f"[JWT_AUD_WARN] {msg}")

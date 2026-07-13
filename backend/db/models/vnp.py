@@ -348,6 +348,80 @@ class Validator(TimestampMixin, Base):
     state = Column(Enum(ValidatorState, name="validator_state_enum", create_type=False), default=ValidatorState.active)
 
 
+class VnpNode(Base):
+    __tablename__ = "vnp_nodes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    physical_location = Column(String(255), nullable=False)
+    region_code = Column(String(50), nullable=False, unique=True)
+    macro_region = Column(String(50), nullable=False)
+    jurisdiction = Column(String(100), nullable=False)
+    gdpr_zone = Column(Boolean, nullable=False, default=False)
+    software_version = Column(String(50))
+    last_seen_at = Column(DateTime(timezone=True))
+    health_state = Column(String(50), nullable=False, default="unknown")
+    registration_status = Column(String(50), nullable=False, default="registered")
+    revocation_state = Column(String(50))
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class VnpNodeKey(Base):
+    __tablename__ = "vnp_node_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    node_id = Column(UUID(as_uuid=True), ForeignKey("vnp_nodes.id", ondelete="CASCADE"), nullable=False)
+    key_id = Column(String(100), unique=True, nullable=False)
+    public_key = Column(String, nullable=False)
+    active = Column(Boolean, nullable=False, default=True)
+    revoked_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class VnpNodeHeartbeat(Base):
+    __tablename__ = "vnp_node_heartbeats"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    node_id = Column(UUID(as_uuid=True), ForeignKey("vnp_nodes.id", ondelete="CASCADE"), nullable=False)
+    timestamp = Column(DateTime(timezone=True), nullable=False)
+    software_version = Column(String(50), nullable=False)
+    signature_key_id = Column(String(100), nullable=False)
+    signature = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class VnpObservation(Base):
+    __tablename__ = "vnp_observations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    observation_id = Column(String(100), unique=True, nullable=False)
+    node_id = Column(UUID(as_uuid=True), ForeignKey("vnp_nodes.id"), nullable=False)
+    region = Column(String(50), nullable=False)
+    physical_location = Column(String(255), nullable=False)
+    target_id = Column(String(200), nullable=False)
+    measurement_profile = Column(String(100), nullable=False)
+    measurement_version = Column(String(50), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=False)
+    dns_ms = Column(Integer)
+    tcp_ms = Column(Integer)
+    tls_ms = Column(Integer)
+    ttfb_ms = Column(Integer)
+    total_ms = Column(Integer)
+    http_status = Column(Integer)
+    response_fingerprint = Column(String)
+    error_code = Column(String)
+    sequence = Column(Integer, nullable=False)
+    previous_observation_hash = Column(String)
+    signature_key_id = Column(String(100), nullable=False)
+    signature = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_observations_target_region_time", "target_id", "region", "started_at"),
+    )
+
+
 class Attestation(Base):
     __tablename__ = "vnp_attestations"
 

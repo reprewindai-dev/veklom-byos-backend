@@ -5,31 +5,36 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from backend.core.database.database import get_db
 from backend.db.models.vnp import (
-    Api, ApiRegion, RoutePolicy, RegionalTelemetry, RouteSnapshot, ApiStatus
+    Api, ApiRegion, RoutePolicy, RegionalTelemetry, RouteSnapshot, ApiStatus, ValidatorState
 )
 
 logger = logging.getLogger(__name__)
 
 CANONICAL_VNP_NODES = [
-    {"id": "vnp-us-east-1", "region": "us-east-1", "name": "validator-us-east-1", "x": 270, "y": 180},
-    {"id": "vnp-us-west-2", "region": "us-west-2", "name": "validator-us-west-2", "x": 120, "y": 190},
-    {"id": "vnp-eu-west-1", "region": "eu-west-1", "name": "validator-eu-west-1", "x": 380, "y": 150},
-    {"id": "vnp-ap-southeast-1", "region": "ap-southeast-1", "name": "validator-ap-southeast-1", "x": 505, "y": 285},
-    {"id": "vnp-ap-northeast-1", "region": "ap-northeast-1", "name": "validator-ap-northeast-1", "x": 535, "y": 170},
+    {"id": "vnp-us-east-1-ash", "region": "us-east-1-ash", "name": "Ashburn Node", "x": 270, "y": 180},
+    {"id": "vnp-us-west-1-hil", "region": "us-west-1-hil", "name": "Hillsboro Node", "x": 120, "y": 190},
+    {"id": "vnp-eu-central-1-nur", "region": "eu-central-1-nur", "name": "Nuremberg Node", "x": 380, "y": 150},
+    {"id": "vnp-eu-central-1-fal", "region": "eu-central-1-fal", "name": "Falkenstein Node", "x": 430, "y": 165},
+    {"id": "vnp-ap-southeast-1-sin", "region": "ap-southeast-1-sin", "name": "Singapore Node", "x": 505, "y": 285},
 ]
 
 REGION_ALIASES = {
     "us-east": "us-east-1",
+    "us-east-1-ash": "us-east-1-ash",
     "useast": "us-east-1",
     "us-west": "us-west-2",
+    "us-west-1-hil": "us-west-1-hil",
     "uswest": "us-west-2",
     "eu-west": "eu-west-1",
     "euwest": "eu-west-1",
+    "eu-central-1-nur": "eu-central-1-nur",
+    "eu-central-1-fal": "eu-central-1-fal",
     "ap-southeast": "ap-southeast-1",
+    "ap-southeast-1-sin": "ap-southeast-1-sin",
     "apsoutheast": "ap-southeast-1",
     "ap-northeast": "ap-northeast-1",
     "apnortheast": "ap-northeast-1",
@@ -46,6 +51,51 @@ def canonical_region(value: Optional[str]) -> Optional[str]:
         if node["region"] in raw:
             return node["region"]
     return raw
+
+
+def canonical_region_from_node(value: Optional[str]) -> Optional[str]:
+    raw = (value or "").strip().lower().replace("_", "-")
+    if not raw:
+        return None
+    for node in CANONICAL_VNP_NODES:
+        if node["region"] == raw:
+            return node["region"]
+    return canonical_region(raw)
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def seconds_since(value: Optional[datetime]) -> Optional[int]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return max(0, int((utc_now() - value).total_seconds()))
+
+
+def node_status(
+    *,
+    registration_status: Optional[str],
+    revocation_state: Optional[str],
+    active_key_count: int,
+    latest_heartbeat: Optional[datetime],
+    observation_count: int,
+    freshness_seconds: int = 300,
+) -> tuple[str, str]:
+    if revocation_state:
+        return "STANDBY", "Disconnected"
+    if registration_status != "registered" or active_key_count == 0:
+        return "STANDBY", "Config Incomplete"
+    age = seconds_since(latest_heartbeat)
+    if age is None:
+        return "STANDBY", "Config Incomplete"
+    if age > freshness_seconds:
+        return "STANDBY", "Disconnected"
+    if observation_count == 0:
+        return "STANDBY", "Partially Implemented"
+    return "ATTESTING", "Connected"
 
 router = APIRouter(
     prefix="/beacon",
@@ -85,39 +135,147 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
     """
     Returns the real-time VNP PBFT Swarm Topology for the Control Plane UI.
     """
-    from backend.db.models.vnp import Validator
+    from backend.db.models.vnp import Validator, VnpNode, VnpNodeHeartbeat, VnpNodeKey, VnpObservation
     from backend.db.models.ledger import SettlementLedger, SettlementStatus
     
-    # 1. Fetch active validators and project them into the canonical five-node frame.
-    val_stmt = select(Validator).where(Validator.state == "active").limit(20)
-    val_res = await db.execute(val_stmt)
-    validators = val_res.scalars().all()
-    validators_by_region = {}
-    for validator in validators:
-        region_key = canonical_region(validator.operator_entity)
-        if region_key:
-            validators_by_region.setdefault(region_key, validator)
-    
+    # 1. Fetch the physical node registry first. Validators are a legacy
+    # settlement concept; VNP node liveness requires registered nodes, active
+    # keys, fresh signed heartbeats, and at least one accepted observation.
+    node_stmt = select(VnpNode).order_by(VnpNode.created_at.asc()).limit(20)
+    node_res = await db.execute(node_stmt)
+    registry_nodes = node_res.scalars().all()
+
     nodes = []
     active_node_count = 0
-    for canonical in CANONICAL_VNP_NODES:
-        v = validators_by_region.get(canonical["region"])
-        if v:
-            active_node_count += 1
-        nodes.append({
-            "id": str(v.id) if v else canonical["id"],
-            "name": f"validator-{v.public_key[:8]}" if v else canonical["name"],
-            "region": canonical["region"],
-            "status": "ATTESTING" if v else "STANDBY",
-            "status_str": "Connected" if v else "Disconnected",
-            "x": canonical["x"],
-            "y": canonical["y"],
-            "stakeUsd": float(v.stake_amount_minor or 0) / 1000000 if v else 0,
-            "cpuMs": 0.1 if v else 0,
-            "poolUtilization": 10 if v else 0,
-            "version": "vnp-v1.0.0",
-            "tenantLock": "veklom"
-        })
+    registered_node_count = 0
+    config_incomplete_count = 0
+
+    if registry_nodes:
+        nodes_by_region = {
+            canonical_region_from_node(node.region_code): node
+            for node in registry_nodes
+            if canonical_region_from_node(node.region_code)
+        }
+
+        for canonical in CANONICAL_VNP_NODES:
+            node = nodes_by_region.get(canonical["region"])
+            if node:
+                registered_node_count += 1
+                key_count = (
+                    await db.execute(
+                        select(func.count(VnpNodeKey.id)).where(
+                            VnpNodeKey.node_id == node.id,
+                            VnpNodeKey.active.is_(True),
+                            VnpNodeKey.revoked_at.is_(None),
+                        )
+                    )
+                ).scalar_one()
+                latest_heartbeat = (
+                    await db.execute(
+                        select(func.max(VnpNodeHeartbeat.timestamp)).where(
+                            VnpNodeHeartbeat.node_id == node.id,
+                        )
+                    )
+                ).scalar_one()
+                observation_count = (
+                    await db.execute(
+                        select(func.count(VnpObservation.id)).where(
+                            VnpObservation.node_id == node.id,
+                        )
+                    )
+                ).scalar_one()
+                latest_observation = (
+                    await db.execute(
+                        select(func.max(VnpObservation.completed_at)).where(
+                            VnpObservation.node_id == node.id,
+                        )
+                    )
+                ).scalar_one()
+                status, status_str = node_status(
+                    registration_status=node.registration_status,
+                    revocation_state=node.revocation_state,
+                    active_key_count=int(key_count),
+                    latest_heartbeat=latest_heartbeat,
+                    observation_count=int(observation_count),
+                )
+                if status_str == "Connected":
+                    active_node_count += 1
+                if status_str == "Config Incomplete":
+                    config_incomplete_count += 1
+                nodes.append({
+                    "id": str(node.id),
+                    "name": node.name,
+                    "region": node.region_code,
+                    "physicalLocation": node.physical_location,
+                    "macroRegion": node.macro_region,
+                    "jurisdiction": node.jurisdiction,
+                    "gdprZone": bool(node.gdpr_zone),
+                    "status": status,
+                    "status_str": status_str,
+                    "x": canonical["x"],
+                    "y": canonical["y"],
+                    "stakeUsd": 0,
+                    "cpuMs": 0.1 if status_str == "Connected" else 0,
+                    "poolUtilization": 10 if status_str == "Connected" else 0,
+                    "version": node.software_version or "Config Incomplete",
+                    "tenantLock": "veklom",
+                    "registrationStatus": node.registration_status,
+                    "activeKeyCount": int(key_count),
+                    "heartbeatFreshnessSeconds": seconds_since(latest_heartbeat),
+                    "lastHeartbeat": latest_heartbeat.isoformat() if latest_heartbeat else None,
+                    "observationCount": int(observation_count),
+                    "lastObservation": latest_observation.isoformat() if latest_observation else None,
+                })
+            else:
+                config_incomplete_count += 1
+                nodes.append({
+                    "id": canonical["id"],
+                    "name": canonical["name"],
+                    "region": canonical["region"],
+                    "status": "STANDBY",
+                    "status_str": "Config Incomplete",
+                    "x": canonical["x"],
+                    "y": canonical["y"],
+                    "stakeUsd": 0,
+                    "cpuMs": 0,
+                    "poolUtilization": 0,
+                    "version": "Config Incomplete",
+                    "tenantLock": "veklom",
+                    "registrationStatus": "missing",
+                    "activeKeyCount": 0,
+                    "heartbeatFreshnessSeconds": None,
+                    "lastHeartbeat": None,
+                    "observationCount": 0,
+                    "lastObservation": None,
+                })
+    else:
+        val_stmt = select(Validator).where(Validator.state == ValidatorState.active).limit(20)
+        val_res = await db.execute(val_stmt)
+        validators = val_res.scalars().all()
+        validators_by_region = {}
+        for validator in validators:
+            region_key = canonical_region(validator.operator_entity)
+            if region_key:
+                validators_by_region.setdefault(region_key, validator)
+
+        for canonical in CANONICAL_VNP_NODES:
+            v = validators_by_region.get(canonical["region"])
+            if v:
+                active_node_count += 1
+            nodes.append({
+                "id": str(v.id) if v else canonical["id"],
+                "name": f"validator-{v.public_key[:8]}" if v else canonical["name"],
+                "region": canonical["region"],
+                "status": "ATTESTING" if v else "STANDBY",
+                "status_str": "Connected" if v else "Disconnected",
+                "x": canonical["x"],
+                "y": canonical["y"],
+                "stakeUsd": float(v.stake_amount_minor or 0) / 1000000 if v else 0,
+                "cpuMs": 0.1 if v else 0,
+                "poolUtilization": 10 if v else 0,
+                "version": "vnp-v1.0.0",
+                "tenantLock": "veklom",
+            })
 
     # 2. Fetch recent real ledger settlements
     ledger_stmt = select(SettlementLedger).where(SettlementLedger.status == SettlementStatus.SETTLED).order_by(SettlementLedger.created_at.desc()).limit(15)
@@ -140,7 +298,12 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
         })
 
     eventsLog = []
-    if active_node_count < len(CANONICAL_VNP_NODES):
+    if registry_nodes:
+        eventsLog.append(
+            f"Five-node VNP registry loaded; {registered_node_count}/5 nodes registered, "
+            f"{active_node_count}/5 connected, {config_incomplete_count}/5 config incomplete."
+        )
+    elif active_node_count < len(CANONICAL_VNP_NODES):
         eventsLog.append(f"Five-node VNP frame loaded; {active_node_count}/5 validator regions connected.")
     else:
         eventsLog.append("Five-node VNP measurement frame connected across all canonical regions.")
@@ -154,6 +317,8 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
             "totalSettledUsd": round(total_settled_usd, 4),
             "activeNodes": active_node_count,
             "expectedNodes": len(CANONICAL_VNP_NODES),
+            "registeredNodes": registered_node_count,
+            "configIncompleteNodes": config_incomplete_count,
             "isActiveStorm": False,
             "safetyGuardActive": True
         }

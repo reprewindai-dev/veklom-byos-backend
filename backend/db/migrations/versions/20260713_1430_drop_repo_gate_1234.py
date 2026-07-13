@@ -16,13 +16,13 @@ branch_labels = None
 depends_on = None
 
 def upgrade() -> None:
-    # Drop repo risk gate tables
-    op.drop_index('ix_repo_risk_gate_events_run_id', table_name='repo_risk_gate_events')
-    op.drop_table('repo_risk_gate_events')
+    # Drop repo risk gate tables safely
+    op.execute('DROP INDEX IF EXISTS ix_repo_risk_gate_events_run_id;')
+    op.execute('DROP TABLE IF EXISTS repo_risk_gate_events CASCADE;')
     
-    op.drop_index('ix_repo_risk_gate_runs_id', table_name='repo_risk_gate_runs')
-    op.drop_index('ix_repo_risk_gate_runs_workspace_id', table_name='repo_risk_gate_runs')
-    op.drop_table('repo_risk_gate_runs')
+    op.execute('DROP INDEX IF EXISTS ix_repo_risk_gate_runs_id;')
+    op.execute('DROP INDEX IF EXISTS ix_repo_risk_gate_runs_workspace_id;')
+    op.execute('DROP TABLE IF EXISTS repo_risk_gate_runs CASCADE;')
 
 def downgrade() -> None:
     pass

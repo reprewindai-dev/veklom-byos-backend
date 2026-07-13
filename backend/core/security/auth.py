@@ -63,7 +63,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
         # Audience Enforcement
         aud = payload.get("aud")
         expected_aud = getattr(settings, "JWT_EXPECTED_AUDIENCE", "veklom-api")
-        enforcement_mode = getattr(settings, "JWT_AUD_ENFORCEMENT", "warn")
+        enforcement_mode = getattr(settings, "JWT_AUD_ENFORCEMENT", "strict")
 
         if aud != expected_aud:
             msg = f"Invalid or missing audience in token: expected {expected_aud}, got {aud}"

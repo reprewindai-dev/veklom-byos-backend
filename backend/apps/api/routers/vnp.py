@@ -230,11 +230,18 @@ async def vnp_metrics(db: AsyncSession = Depends(get_db)):
     )
     total_slashed_minor = int(slash_result.scalar_one())
 
-    # Recent probe success rate (last 1000 probes)
+    # Signed probe events plus the live physical probe table used by the
+    # public VNP directory/status surfaces.
     probe_result = await db.execute(
         select(func.count(ProbeEvent.id))
     )
-    total_probes = probe_result.scalar_one()
+    signed_probe_events = int(probe_result.scalar_one())
+
+    realtime_probe_result = await db.execute(
+        select(func.count(VnpMetric.id))
+    )
+    realtime_physical_probes = int(realtime_probe_result.scalar_one())
+    total_probes = signed_probe_events + realtime_physical_probes
 
     # Average composite score across all active APIs
     avg_score_result = await db.execute(
@@ -249,6 +256,8 @@ async def vnp_metrics(db: AsyncSession = Depends(get_db)):
         "active_validators": active_validators,
         "active_apis": active_apis,
         "total_probes_recorded": total_probes,
+        "signed_probe_events": signed_probe_events,
+        "realtime_physical_probes": realtime_physical_probes,
         "total_slashed_minor": total_slashed_minor,
         "avg_composite_score": avg_composite_score,
         "yield_rate_annual_pct": 4.2,

@@ -142,20 +142,81 @@ class SecretRotationAuditTests(unittest.TestCase):
         self.assertNotIn("super-secret", report)
         self.assertNotIn(database_url, report)
 
-    def test_user_repos_can_skip_missing_organization_secrets_endpoint(self):
+    def test_default_audit_only_requests_repository_secrets(self):
         calls = []
 
         def fake_fetch(url, token, scope):
             calls.append(scope)
-            if scope == "organization":
-                raise audit.GitHubApiError(422, "Validation Failed")
             return [audit.SecretRecord("REPO_SECRET", audit.parse_datetime("2026-07-01T00:00:00Z"), scope)]
 
         with patch.object(audit, "fetch_paginated_secrets", side_effect=fake_fetch):
             records = audit.fetch_github_secret_records("owner/repo", "token", "https://api.github.com")
 
-        self.assertEqual(["repository", "organization"], calls)
+        self.assertEqual(["repository"], calls)
         self.assertEqual(["REPO_SECRET"], [record.name for record in records])
+
+    def test_organization_audit_is_explicit_and_requires_its_own_permission(self):
+        calls = []
+
+        def fake_fetch(url, token, scope):
+            calls.append(scope)
+            if scope == "organization":
+                raise audit.GitHubApiError(403, "Resource not accessible by integration")
+            return [audit.SecretRecord("REPO_SECRET", audit.parse_datetime("2026-07-01T00:00:00Z"), scope)]
+
+        with patch.object(audit, "fetch_paginated_secrets", side_effect=fake_fetch):
+            with self.assertRaisesRegex(audit.GitHubApiError, "Resource not accessible"):
+                audit.fetch_github_secret_records(
+                    "owner/repo",
+                    "token",
+                    "https://api.github.com",
+                    include_organization_secrets=True,
+                )
+
+        self.assertEqual(["repository", "organization"], calls)
+
+    def test_organization_permission_error_explains_the_required_scope(self):
+        parser = audit.build_parser()
+        args = parser.parse_args(
+            [
+                "--repo",
+                "owner/repo",
+                "--skip-db",
+                "--include-organization-secrets",
+                "--now",
+                "2026-07-05T00:00:00Z",
+            ]
+        )
+
+        with patch.dict(os.environ, {"GH_TOKEN": "test-token"}, clear=True):
+            with patch.object(
+                audit,
+                "fetch_github_secret_records",
+                side_effect=audit.GitHubApiError(403, "Resource not accessible by integration"),
+            ):
+                result = audit.run(args)
+
+        report = audit.render_report(result, set())
+        self.assertTrue(result.failed)
+        self.assertIn("repository and organization Secrets read permissions", report)
+
+    def test_organization_audit_can_be_enabled_from_environment(self):
+        with patch.dict(os.environ, {"SECRET_ROTATION_INCLUDE_ORGANIZATION_SECRETS": "true"}, clear=True):
+            args = audit.build_parser().parse_args([])
+
+        self.assertTrue(args.include_organization_secrets)
+
+    def test_report_discloses_repository_only_coverage(self):
+        result = audit.AuditResult(
+            generated_at=audit.parse_datetime("2026-07-05T00:00:00Z"),
+            max_age_days=90,
+            warn_age_days=75,
+            secrets=[],
+            findings=[],
+            db=audit.DbAuditResult("skipped: --skip-db"),
+        )
+
+        self.assertIn("Coverage: repository Actions secrets only", audit.render_report(result, set()))
 
 
 if __name__ == "__main__":

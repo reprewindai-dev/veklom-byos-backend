@@ -20,6 +20,21 @@ jobs:
         run: |
           docker build -t veklom-backend-ci:${{ github.sha }} .
 
+      - name: Verify Single Alembic Head
+        run: |
+          HEAD_COUNT=$(docker run --rm \
+            -e PYTHONPATH=/app \
+            -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
+            -e REDIS_URL="redis://localhost:6379" \
+            -e SECRET_KEY="ci-test-secret-key-not-real" \
+            -e ENVIRONMENT="test" \
+            veklom-backend-ci:${{ github.sha }} \
+            python -m alembic -c backend/db/migrations/alembic.ini heads | grep "(head)" | wc -l)
+          if [ "$HEAD_COUNT" -ne 1 ]; then
+            echo "ERROR: Multiple Alembic heads detected ($HEAD_COUNT). Merge migrations before merging this PR."
+            exit 1
+          fi
+
       - name: Run Pytest & Alembic Verification
         run: |
           docker run --rm \

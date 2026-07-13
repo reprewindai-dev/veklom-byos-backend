@@ -295,7 +295,7 @@ async def lifespan(app: FastAPI):
             registered = sorted(Base.metadata.tables.keys())
             print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")
             from sqlalchemy import inspect
-            critical = ("users", "execution_logs", "audit_logs", "workspaces", "repo_risk_gate_runs", "agents")
+            critical = ("users", "execution_logs", "audit_logs", "workspaces", "agents")
             
             def get_present_tables(sync_conn):
                 return inspect(sync_conn).get_table_names()
@@ -855,7 +855,7 @@ from backend.apps.api.routers import (
     evidence, fax, forensics, health, integrations, internal_uacp,
     mcp, monitoring, onboarding_dashboard, onboarding_demo, payments,
     pgl, pgl_adapter, pgl_onboarding, plugins, pricing, providers, rag,
-    referrals, repo_risk_gate, repogate_api, routing, runs, runtime_jobs,
+    referrals, repogate_api, routing, runs, runtime_jobs,
     runtime_telemetry, security, seked, smoke, system, team, upload, vnp,
     vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2, vnp_onboarding, vnp_stream,
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
@@ -877,7 +877,7 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(evaluations.router, prefix="/api/v1")
 app.include_router(smoke.router, prefix="/api/v1")
-app.include_router(repo_risk_gate.router, prefix="/api/v1")
+# repo_risk_gate excised
 app.include_router(repogate_api.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(hrm.router, prefix="/api/v1")
@@ -1003,8 +1003,7 @@ app.include_router(gfr.router, prefix="/api/v1")
 # Command Center — /api/v1/command-center/* (aliases + new routes per WIRING_MATRIX)
 app.include_router(command_center.router, prefix="/api/v1")
 
-# Repo Risk Gate — Playground governed-review tool
-app.include_router(repo_risk_gate.router, prefix="/api/v1")
+# Repo Risk Gate — Excised to standalone gateway
 
 # Agent Workforce
 app.include_router(agents.router, prefix="/api/v1")

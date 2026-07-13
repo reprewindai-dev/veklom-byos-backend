@@ -872,11 +872,6 @@ async def _execute_pipeline_node(step: dict, context: dict) -> dict:
         context.setdefault("policy", {}).update(output)
         result = {"kind": node_type.replace("-", "_"), **output}
 
-    elif node_type == "repo-risk-gate":
-        output = await _repo_risk_gate_node(config, context)
-        context.setdefault("policy", {}).update({"repo_risk": output})
-        result = {"kind": "repo_risk_gate", **output}
-
     elif node_type == "human-approval":
         output = _human_approval_node(config, context)
         context.setdefault("policy", {}).update({"approval": output})
@@ -1629,55 +1624,6 @@ def _financial_gate_node(node_type: str, config: dict, context: dict) -> dict:
     return {"allowed": True, "gate": "budget", "projected_spend_usd": projected, "monthly_cap_usd": cap_float}
 
 
-async def _repo_risk_gate_node(config: dict, context: dict) -> dict:
-    repo_url = str(config.get("repo_url") or config.get("repoUrl") or context.get("repo_url") or "").strip()
-    if not repo_url:
-        raise ValueError("missing_config: Repo Risk Gate requires repo_url")
-    parsed = urlparse(repo_url)
-    if parsed.hostname not in {"github.com", "www.github.com"}:
-        raise ValueError("missing_config: Repo Risk Gate currently supports GitHub repo URLs")
-    parts = [part for part in parsed.path.strip("/").split("/") if part]
-    if len(parts) < 2:
-        raise ValueError("missing_config: Repo Risk Gate requires a GitHub owner/repo URL")
-    owner = parts[0]
-    repo = parts[1].replace(".git", "")
-    api_url = f"https://api.github.com/repos/{owner}/{repo}"
-    headers = {"Accept": "application/vnd.github+json"}
-    token = str(config.get("github_token") or "").strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False, headers=headers) as client:
-        response = await client.get(api_url)
-    response.raise_for_status()
-    data = response.json()
-    risk_score = 0
-    reasons = []
-    if data.get("archived"):
-        risk_score += 50
-        reasons.append("archived_repository")
-    if data.get("disabled"):
-        risk_score += 50
-        reasons.append("disabled_repository")
-    if data.get("open_issues_count", 0) > 100:
-        risk_score += 15
-        reasons.append("high_open_issues")
-    pushed_at = data.get("pushed_at") or ""
-    if not pushed_at:
-        risk_score += 10
-        reasons.append("missing_push_timestamp")
-    threshold = int(config.get("max_risk_score") or config.get("maxRiskScore") or 70)
-    if risk_score > threshold:
-        raise ValueError(f"policy_blocked: Repo Risk Gate score {risk_score} exceeds {threshold}")
-    return {
-        "allowed": True,
-        "repo": f"{owner}/{repo}",
-        "risk_score": risk_score,
-        "threshold": threshold,
-        "reasons": reasons or ["no_blocking_repo_risk"],
-        "default_branch": data.get("default_branch"),
-        "pushed_at": pushed_at,
-    }
-
 
 def _human_approval_node(config: dict, context: dict) -> dict:
     approval_id = str(config.get("approval_id") or config.get("approvalId") or "").strip()
@@ -2121,7 +2067,7 @@ def _adapter_name_for_node(node_type: str) -> str:
         "evidence-receipt": "evidence_receipt",
         "pgl-register": "pgl_register",
         "pgl-lineage-anchor": "pgl_lineage_anchor",
-        "repo-risk-gate": "repo_risk_gate",
+
         "cost-gate": "cost_gate",
         "budget-gate": "budget_gate",
         "human-approval": "human_approval",

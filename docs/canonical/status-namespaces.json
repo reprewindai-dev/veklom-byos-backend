@@ -1,0 +1,18 @@
+{
+  "version": "2026-07-13",
+  "source": "Veklom Canonical Architecture Implementation Program",
+  "namespaces": {
+    "readiness_status": ["unknown", "configuring", "ready", "degraded", "blocked"],
+    "connection_state": ["draft", "negotiating", "active", "suspended", "revoked", "archived"],
+    "execution_state": ["not_requested", "requested", "authorized", "running", "completed", "failed", "quarantined"],
+    "policy_decision": ["not_evaluated", "allow", "deny", "challenge", "escalate"],
+    "measurement_state": ["not_measured", "registered", "probing", "fresh", "stale", "invalid"],
+    "settlement_stage": ["not_applicable", "priced", "pending_payment", "settled", "failed", "disputed"],
+    "verification_result": ["not_verified", "valid", "invalid", "expired", "insufficient_evidence"]
+  },
+  "rules": [
+    "Do not use generic Live or Connected labels as canonical state.",
+    "Do not collapse CAPPO, cAPI, VNP, PGL, VABP, or x402 states into one status.",
+    "Frontend surfaces must consume backend manifests instead of hardcoding topology or authority labels."
+  ]
+}

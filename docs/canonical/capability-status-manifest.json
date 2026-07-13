@@ -1,0 +1,39 @@
+{
+  "version": "2026-07-13",
+  "repository": "reprewindai-dev/veklom-byos-backend",
+  "authority_role": "persistent_aggregate_and_data_plane",
+  "owns": [
+    "tenant_workspace_data",
+    "trust_connection_aggregate",
+    "connection_state_transitions",
+    "capability_lane_assignments",
+    "rls_read_data_plane",
+    "bounded_deterministic_writes",
+    "connection_outbox"
+  ],
+  "does_not_own": [
+    "final_consequential_execution_authority",
+    "physical_measurement_truth",
+    "benchmark_certification",
+    "settlement_finality"
+  ],
+  "status_namespaces": [
+    "readiness_status",
+    "connection_state",
+    "execution_state",
+    "policy_decision",
+    "measurement_state",
+    "settlement_stage",
+    "verification_result"
+  ],
+  "capability_lanes": {
+    "lane_1": "RLS-backed read operations through persisted contracts.",
+    "lane_2": "Bounded deterministic writes with outbox evidence.",
+    "lane_3": "Consequential execution routed through Interlink to CAPPO before side effects."
+  },
+  "deployment": {
+    "provider": "Hetzner",
+    "orchestrator": "Coolify",
+    "allowed_nodes": ["us-ashburn", "us-hillsboro", "de-nuremberg", "de-falkenstein", "sg-singapore"]
+  }
+}

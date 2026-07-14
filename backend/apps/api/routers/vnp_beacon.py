@@ -157,6 +157,7 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
     active_node_count = 0
     registered_node_count = 0
     config_incomplete_count = 0
+    partially_implemented_count = 0
 
     if registry_nodes:
         nodes_by_region = {
@@ -210,6 +211,8 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
                     active_node_count += 1
                 if status_str == "Config Incomplete":
                     config_incomplete_count += 1
+                if status_str == "Partially Implemented":
+                    partially_implemented_count += 1
                 nodes.append({
                     "id": str(node.id),
                     "name": node.name,
@@ -309,7 +312,8 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
     if registry_nodes:
         eventsLog.append(
             f"Five-node VNP registry loaded; {registered_node_count}/5 nodes registered, "
-            f"{active_node_count}/5 connected, {config_incomplete_count}/5 config incomplete."
+            f"{active_node_count}/5 connected, {partially_implemented_count}/5 partially implemented, "
+            f"{config_incomplete_count}/5 config incomplete."
         )
     elif active_node_count < len(CANONICAL_VNP_NODES):
         eventsLog.append(f"Five-node VNP frame loaded; {active_node_count}/5 validator regions connected.")
@@ -326,6 +330,7 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
             "activeNodes": active_node_count,
             "expectedNodes": len(CANONICAL_VNP_NODES),
             "registeredNodes": registered_node_count,
+            "partiallyImplementedNodes": partially_implemented_count,
             "configIncompleteNodes": config_incomplete_count,
             "isActiveStorm": False,
             "safetyGuardActive": True

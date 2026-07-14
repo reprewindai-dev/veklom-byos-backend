@@ -662,9 +662,30 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
     if tx_receipt.get("blockNumber") and rpc_url_used:
         try:
             tx_block = int(tx_receipt["blockNumber"], 16) if isinstance(tx_receipt["blockNumber"], str) else int(tx_receipt["blockNumber"])
-            # Fetch latest block from same RPC
-            latest_block = 0
-            async with httpx.AsyncClient(timeout=2.0) as block_client:
+            
+            # Fetch the block to check its timestamp for transaction freshness
+            async with httpx.AsyncClient(timeout=3.0) as block_client:
+                # 1. Fetch block data for timestamp
+                block_payload = {
+                    "jsonrpc": "2.0",
+                    "method": "eth_getBlockByNumber",
+                    "params": [hex(tx_block), False],
+                    "id": 3
+                }
+                block_res = await block_client.post(rpc_url_used, json=block_payload)
+                if block_res.status_code == 200:
+                    block_data = block_res.json().get("result")
+                    if block_data and "timestamp" in block_data:
+                        block_time = int(block_data["timestamp"], 16) if isinstance(block_data["timestamp"], str) else int(block_data["timestamp"])
+                        import time
+                        now_time = int(time.time())
+                        # Enforce 15-minute maximum age (900 seconds)
+                        if abs(now_time - block_time) > 900:
+                            logger.warning(f"[x402] Transaction is too old: block_time={block_time}, now={now_time}")
+                            request.state.x402_error = "invalid_transaction"
+                            return False
+
+                # 2. Fetch latest block for confirmation count
                 rpc_payload = {
                     "jsonrpc": "2.0",
                     "method": "eth_blockNumber",
@@ -672,14 +693,16 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
                     "id": 2
                 }
                 res = await block_client.post(rpc_url_used, json=rpc_payload)
+                latest_block = 0
                 if res.status_code == 200:
                     data = res.json()
                     if "result" in data:
                         latest_block = int(data["result"], 16) if isinstance(data["result"], str) else int(data["result"])
+                        
             if latest_block >= tx_block:
                 confirmations = latest_block - tx_block
         except Exception as block_err:
-            logger.warning(f"[x402] Failed to calculate confirmations: {block_err}")
+            logger.warning(f"[x402] Failed to verify block age or confirmations: {block_err}")
             confirmations = 0
             
     if confirmations < required_confirmations:
@@ -1105,6 +1128,39 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 receipt = await create_and_persist_receipt(
                     request, path, method, route_cfg["price_usdc"], tx_hash, db
                 )
+            
+            # Record real settlement mapping in PostgreSQL
+            try:
+                from backend.db.models.ledger import SettlementLedger, SettlementStatus
+                import uuid
+                
+                subject_id = "default"
+                if method in ("POST", "PUT", "PATCH"):
+                    body_bytes = await request.body()
+                    if body_bytes:
+                        body_json = json.loads(body_bytes.decode("utf-8"))
+                        subject_id = body_json.get("tenant_id") or body_json.get("provider_slug") or body_json.get("subject") or "default"
+                
+                async with get_db_session() as db:
+                    is_real_tx = tx_hash.startswith("0x") and len(tx_hash) == 66
+                    is_test_proof = getattr(request.state, "test_proof_mode", False)
+                    if is_real_tx or is_test_proof:
+                        ledger_entry = SettlementLedger(
+                            id=uuid.uuid4(),
+                            tenant_id=subject_id,
+                            provider="veklom-gateway",
+                            fee_type="x402_payment",
+                            amount=int(route_cfg["price_usdc"] * 1000000),
+                            currency="USDC",
+                            status=SettlementStatus.SETTLED,
+                            idempotency_key=f"pay_{tx_hash}",
+                            settlement_tx_hash=tx_hash
+                        )
+                        db.add(ledger_entry)
+                        await db.commit()
+                        logger.info(f"[x402] Settlement Ledger recorded successfully for tenant '{subject_id}'")
+            except Exception as db_err:
+                logger.error(f"[x402] Failed to write SettlementLedger entry: {db_err}")
             
             response.headers["X-Veklom-Receipt-ID"] = receipt["receipt_id"]
             response.headers["X-Veklom-Request-ID"] = receipt["request_id"]

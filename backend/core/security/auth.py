@@ -109,6 +109,11 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
 
         return payload
     except JWTError as exc:
+        try:
+            unverified = jwt.get_unverified_claims(token)
+            logging.error(f"[JWT_VERIFY_FAILED] unverified_claims={unverified} error={exc}")
+        except Exception as ue:
+            logging.error(f"[JWT_VERIFY_FAILED] token={token[:30]}... error={exc} ue={ue}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",

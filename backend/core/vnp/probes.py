@@ -30,7 +30,7 @@ VNP_EDGE_NODES = [
         "macro_region": "North America",
         "jurisdiction": "US",
         "gdpr_zone": False,
-        "url": "http://10.0.0.5:8002/probe/ping",
+        "url": "http://87.99.154.166:8002/probe/ping",
     },
     {
         "name": "Hillsboro Node",
@@ -48,7 +48,7 @@ VNP_EDGE_NODES = [
         "macro_region": "Europe",
         "jurisdiction": "DE",
         "gdpr_zone": True,
-        "url": "http://10.0.0.4:8002/probe/ping",
+        "url": "http://91.98.78.218:8002/probe/ping",
     },
     {
         "name": "Falkenstein Node",
@@ -57,7 +57,7 @@ VNP_EDGE_NODES = [
         "macro_region": "Europe",
         "jurisdiction": "DE",
         "gdpr_zone": True,
-        "url": "http://10.0.0.2:8002/probe/ping",
+        "url": "http://167.233.202.195:8002/probe/ping",
     },
     {
         "name": "Singapore Node",
@@ -66,7 +66,7 @@ VNP_EDGE_NODES = [
         "macro_region": "Asia Pacific",
         "jurisdiction": "SG",
         "gdpr_zone": False,
-        "url": "http://10.0.0.3:8002/probe/ping",
+        "url": "http://5.223.90.12:8002/probe/ping",
     },
 ]
 

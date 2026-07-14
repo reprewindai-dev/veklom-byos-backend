@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Veklom BYOS Backend — Sovereign AI Hub"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.115.0",
+    "fastapi>=0.139.0,<0.140.0",
     "uvicorn[standard]>=0.34.0",
     "astor>=0.8.1",
     "instructor>=1.0.0",

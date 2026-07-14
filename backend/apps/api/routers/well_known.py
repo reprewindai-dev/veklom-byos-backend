@@ -332,7 +332,7 @@ async def get_veklom_manifest(
         "version": "1.0.0",
         "description": "Sovereign AI control plane with PGL, SEKED, CAPPO, and x402 integration",
         "homepage": "https://veklom.com",
-        "documentation": "https://docs.veklom.com",
+        "documentation": "https://veklom.com/vnp/docs",
         
         # API endpoints
         "api": {

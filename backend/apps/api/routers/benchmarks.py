@@ -107,7 +107,8 @@ from fastapi.responses import StreamingResponse
 @router.get("/stream")
 async def stream_benchmarks():
     """Server-Sent Events endpoint for real-time API scores.
-    Replaces the heavy Kafka architecture in v0.1.5 with a lightweight DB polling approach suitable for the MVP.
+    Uses the VNP Methodology v1.0 telemetry path with lightweight DB polling
+    for production score updates.
     """
     async def event_generator():
         from backend.db.models.vnp import RegionalTelemetry

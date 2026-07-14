@@ -3,7 +3,7 @@
   "description": "Sovereign AI runtime your company can trust and control. Install on your own servers in ~30 minutes, connect 160+ systems, and govern agents with policy, audit, and shut-off switches.",
   "short_description": "Sovereign AI runtime with policy governance and audit trails",
   "url": "https://veklom.com",
-  "documentation": "https://docs.veklom.com",
+  "documentation": "https://veklom.com/vnp/docs",
   "logo": "https://veklom.com/assets/logo.png",
   "install_command": "curl -fsSL https://get.veklom.com/install.sh | bash && veklom up --connect",
   "category": "DevOps",

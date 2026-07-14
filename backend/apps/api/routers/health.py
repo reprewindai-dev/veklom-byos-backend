@@ -11,6 +11,24 @@ router = APIRouter(tags=["Health"])
 
 @router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
+    """Shallow health check for SLA-gated E2E monitors."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": settings.VERSION,
+        "service": settings.APP_NAME,
+    }
+
+
+@router.api_route("/_ping", methods=["GET", "HEAD"])
+async def ping_check():
+    """Alias for shallow health check."""
+    return await health_check()
+
+
+@router.api_route("/healthz", methods=["GET", "HEAD"])
+async def deep_health_check():
+    """Deep health check hitting core dependencies like DB and Redis."""
     import traceback
     try:
         # Check DB
@@ -35,7 +53,6 @@ async def health_check():
         import logging
         logging.getLogger(__name__).error(f"Health check failed: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=503, detail="Service Unavailable: core dependencies unreachable")
-
 
 
 @router.api_route("/api/v1/health", methods=["GET", "HEAD"])

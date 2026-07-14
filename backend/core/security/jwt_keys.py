@@ -29,13 +29,27 @@ class RSAKeyManager:
         self._initialized = True
 
     def rotate_key(self) -> str:
-        """Generate a new RSA key pair and set it as the current active signing key."""
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
-        public_key = private_key.public_key()
-        kid = f"veklom-sig-{uuid.uuid4().hex[:12]}"
+        """Generate a new RSA key pair or load from persistent environment variable."""
+        import os
+        b64_key = os.environ.get("JWT_RSA_PRIVATE_KEY_B64")
+        
+        if b64_key and len(self.keys) == 0:
+            # Load persistent key from environment
+            from cryptography.hazmat.primitives import serialization
+            import base64
+            private_bytes = base64.b64decode(b64_key)
+            private_key = serialization.load_pem_private_key(private_bytes, password=None)
+            public_key = private_key.public_key()
+            # Generate deterministic kid based on key to prevent rotation mismatch
+            kid = f"veklom-sig-persistent"
+        else:
+            # Ephemeral fallback
+            private_key = rsa.generate_private_key(
+                public_exponent=65537,
+                key_size=2048
+            )
+            public_key = private_key.public_key()
+            kid = f"veklom-sig-{uuid.uuid4().hex[:12]}"
         
         self.keys[kid] = {
             "private_key": private_key,

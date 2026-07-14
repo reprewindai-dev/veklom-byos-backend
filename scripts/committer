@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# scripts/committer — Safe git commit wrapper for Veklom Backend
+# Modelled on reprewindai-dev/poltergeist/scripts/committer
+#
+# Usage: ./runner scripts/committer "commit message" "file1" ["file2" ...]
+#        ./runner scripts/committer --force "commit message" "file1"
+#
+# This is the ONLY approved way to commit in this repo.
+# It runs the full "green gate" before every commit:
+#   1. Alembic single-head guard
+#   2. No AGENTS.md anti-patterns in staged files
+#   3. No accidental frontend files in backend
+#
+# Agents: NEVER use raw `git commit`. Always go through this script.
+
+set -euo pipefail
+set -f  # Disable glob expansion
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() {
+  printf 'Usage: %s [--force] "commit message" "file" ["file" ...]\n' "$(basename "$0")" >&2
+  printf '\nExamples:\n' >&2
+  printf '  ./runner scripts/committer "feat: add Repogate health endpoint" "backend/apps/api/routers/repogate_api.py"\n' >&2
+  printf '  ./runner scripts/committer "fix: stamp alembic head" "backend/db/migrations/versions/xxxx.py" "backend/db/migrations/alembic.ini"\n' >&2
+  exit 2
+}
+
+if [ "$#" -lt 2 ]; then
+  usage
+fi
+
+force_mode=false
+if [ "${1:-}" = "--force" ]; then
+  force_mode=true
+  shift
+fi
+
+if [ "$#" -lt 2 ]; then
+  usage
+fi
+
+commit_message="$1"; shift
+
+if [[ "$commit_message" != *[![:space:]]* ]]; then
+  printf "${RED}Error:${NC} commit message must not be empty\n" >&2
+  exit 1
+fi
+
+if [ -e "$commit_message" ]; then
+  printf "${RED}Error:${NC} first argument looks like a file path (\"%s\"); provide commit message first\n" "$commit_message" >&2
+  exit 1
+fi
+
+files=("$@")
+
+# ── Gate 1: Alembic single-head check ────────────────────────────────────────
+echo -e "\n${BLUE}[committer]${NC} Running Alembic head check..."
+
+if command -v python3 &>/dev/null; then
+  HEAD_COUNT=$(python3 -m alembic \
+    -c "$ROOT_DIR/backend/db/migrations/alembic.ini" \
+    heads 2>/dev/null | grep -c "(head)" || true)
+
+  if [ "$HEAD_COUNT" -gt 1 ]; then
+    echo -e "${RED}[committer] BLOCKED — Multiple Alembic heads detected (${HEAD_COUNT}).${NC}"
+    echo -e "${YELLOW}Fix: merge your migration branches into one head before committing.${NC}"
+    echo -e "Run: python3 -m alembic -c backend/db/migrations/alembic.ini heads"
+    exit 1
+  elif [ "$HEAD_COUNT" -eq 0 ]; then
+    echo -e "${YELLOW}[committer] WARNING — No Alembic heads found. Is the migrations dir empty?${NC}"
+  else
+    echo -e "${GREEN}[committer] Alembic head OK (1 head)${NC}"
+  fi
+else
+  echo -e "${YELLOW}[committer] python3 not found — skipping Alembic check${NC}"
+fi
+
+# ── Gate 2: AGENTS.md anti-pattern scan on staged files ──────────────────────
+echo -e "${BLUE}[committer]${NC} Scanning staged files for AGENTS.md violations..."
+
+VIOLATIONS=""
+
+for file in "${files[@]}"; do
+  if [ ! -f "$ROOT_DIR/$file" ]; then
+    continue
+  fi
+
+  # Anti-pattern: hardcoded Stripe redirect
+  if grep -q 'res\.redirect.*stripe\.com\|redirect.*stripe\.com' "$ROOT_DIR/$file" 2>/dev/null; then
+    VIOLATIONS="${VIOLATIONS}\n  ❌ ${file}: Hardcoded Stripe redirect. Use _build_402_response(\"insufficient_funds\")"
+  fi
+
+  # Anti-pattern: client-supplied tenant_id
+  if grep -q 'req\.body\.tenant_id\|request\.body.*tenant_id' "$ROOT_DIR/$file" 2>/dev/null; then
+    VIOLATIONS="${VIOLATIONS}\n  ❌ ${file}: Client-supplied tenant_id. Extract workspace_id from signed JWT via PGL."
+  fi
+
+  # Anti-pattern: frontend files in backend
+  if echo "$file" | grep -q 'frontend/sovereign-control-node\|_next/\|\.tsx$\|\.jsx$'; then
+    VIOLATIONS="${VIOLATIONS}\n  🚨 ${file}: Next.js frontend file in backend repo — AGENTS.md rule #4 VIOLATION"
+  fi
+done
+
+if [ -n "$VIOLATIONS" ]; then
+  echo -e "${RED}[committer] BLOCKED — AGENTS.md violations found:${NC}"
+  echo -e "$VIOLATIONS"
+  if [ "$force_mode" = true ]; then
+    echo -e "${YELLOW}[committer] --force override active. Proceeding anyway...${NC}"
+  else
+    echo -e "${YELLOW}Fix violations before committing, or use --force to override.${NC}"
+    exit 1
+  fi
+else
+  echo -e "${GREEN}[committer] No AGENTS.md violations.${NC}"
+fi
+
+# ── Gate 3: Stage and commit ──────────────────────────────────────────────────
+echo -e "${BLUE}[committer]${NC} Staging files..."
+
+for file in "${files[@]}"; do
+  if [ -f "$ROOT_DIR/$file" ] || git -C "$ROOT_DIR" ls-files --error-unmatch "$file" &>/dev/null; then
+    git -C "$ROOT_DIR" add "$file"
+    echo -e "  ${GREEN}+${NC} $file"
+  else
+    echo -e "  ${YELLOW}~${NC} $file (not found, skipping)"
+  fi
+done
+
+echo -e "${BLUE}[committer]${NC} Committing: \"${commit_message}\""
+
+STDERR_LOG=$(mktemp)
+
+if git -C "$ROOT_DIR" commit -m "$commit_message" 2>"$STDERR_LOG"; then
+  SHA=$(git -C "$ROOT_DIR" rev-parse --short HEAD)
+  echo -e "${GREEN}[committer] Committed ${SHA} — \"${commit_message}\"${NC}"
+  rm -f "$STDERR_LOG"
+  exit 0
+else
+  STDERR_CONTENT=$(cat "$STDERR_LOG")
+  rm -f "$STDERR_LOG"
+
+  # Nothing to commit is OK
+  if echo "$STDERR_CONTENT" | grep -q "nothing to commit\|nothing added to commit"; then
+    echo -e "${YELLOW}[committer] Nothing to commit. Working tree is clean.${NC}"
+    exit 0
+  fi
+
+  echo -e "${RED}[committer] git commit failed:${NC}"
+  echo "$STDERR_CONTENT"
+  exit 1
+fi

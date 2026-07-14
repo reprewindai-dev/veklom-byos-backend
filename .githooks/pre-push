@@ -1,0 +1,89 @@
+#!/bin/bash
+# .githooks/pre-push — Veklom Backend
+# Based on reprewindai-dev/poltergeist/.githooks/pre-push
+#
+# This is the LAST LINE OF DEFENSE before code hits GitHub → Coolify → production.
+# Blocks a push if:
+#   1. Alembic has multiple heads (would cause 503 on deploy)
+#   2. Large files are in the new commits being pushed
+#   3. A migration file was added without a corresponding single head
+#
+# Install: git config core.hooksPath .githooks
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FAIL=false
+
+echo -e "\n${BLUE}[pre-push]${NC} Running Veklom push guards..."
+
+# ── Guard 1: Alembic single-head check ───────────────────────────────────────
+echo -e "${BLUE}[pre-push]${NC} Checking Alembic heads..."
+
+if command -v python3 &>/dev/null; then
+  HEAD_OUTPUT=$(python3 -m alembic \
+    -c "$ROOT_DIR/backend/db/migrations/alembic.ini" \
+    heads 2>/dev/null || echo "ALEMBIC_ERROR")
+
+  if echo "$HEAD_OUTPUT" | grep -q "ALEMBIC_ERROR"; then
+    echo -e "${YELLOW}[pre-push] WARNING — Could not run alembic. Skipping head check.${NC}"
+  else
+    HEAD_COUNT=$(echo "$HEAD_OUTPUT" | grep -c "(head)" || true)
+    if [ "$HEAD_COUNT" -gt 1 ]; then
+      echo -e "${RED}[pre-push] BLOCKED — ${HEAD_COUNT} Alembic heads detected.${NC}"
+      echo -e "Heads found:"
+      echo "$HEAD_OUTPUT" | grep "(head)" | sed 's/^/  /'
+      echo -e "${YELLOW}This push would cause a 503 on production deploy.${NC}"
+      echo -e "${YELLOW}Merge your migrations into one head before pushing.${NC}\n"
+      FAIL=true
+    else
+      echo -e "${GREEN}[pre-push] Alembic OK — single head confirmed.${NC}"
+    fi
+  fi
+else
+  echo -e "${YELLOW}[pre-push] python3 not in PATH — skipping Alembic head check.${NC}"
+fi
+
+# ── Guard 2: Large file check on new commits ──────────────────────────────────
+SIZE_LIMIT=$((5 * 1024 * 1024))
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    range="$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  large_files=""
+  while IFS= read -r object; do
+    [ -z "$object" ] && continue
+    size=$(git cat-file -s "$object" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$SIZE_LIMIT" ]; then
+      fname=$(git log --all --find-object="$object" --pretty=format: --name-only 2>/dev/null | head -1)
+      readable=$(echo "scale=2; $size/1048576" | bc 2>/dev/null || echo "${size} bytes")
+      large_files="${large_files}\n  ${fname:-unknown} (${readable} MB)"
+    fi
+  done < <(git rev-list "$range" | xargs git ls-tree -r --long 2>/dev/null | awk '{print $3}')
+
+  if [ -n "$large_files" ]; then
+    echo -e "${RED}[pre-push] BLOCKED — Large files in commits being pushed:${NC}"
+    echo -e "$large_files"
+    FAIL=true
+  fi
+done
+
+# ── Result ────────────────────────────────────────────────────────────────────
+if [ "$FAIL" = true ]; then
+  echo -e "\n${RED}[pre-push] Push BLOCKED. Fix the issues above before pushing.${NC}"
+  echo -e "${YELLOW}If this is an emergency override, use: git push --no-verify${NC}\n"
+  exit 1
+fi
+
+echo -e "${GREEN}[pre-push] All guards passed. Push proceeding.${NC}\n"
+exit 0

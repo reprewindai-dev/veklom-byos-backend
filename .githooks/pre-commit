@@ -1,0 +1,79 @@
+#!/bin/bash
+# .githooks/pre-commit — Veklom Backend
+# Based on reprewindai-dev/poltergeist/.githooks/pre-commit
+#
+# Blocks: large files (>5MB), .env files, compiled artifacts
+# Install: git config core.hooksPath .githooks
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+SIZE_LIMIT=$((5 * 1024 * 1024))  # 5MB
+if [ -n "${GIT_LARGE_FILE_LIMIT:-}" ]; then
+  SIZE_LIMIT=$(( GIT_LARGE_FILE_LIMIT * 1024 * 1024 ))
+fi
+
+human_readable() {
+  local bytes=$1
+  if [ "$bytes" -ge 1073741824 ]; then
+    echo "$(echo "scale=2; $bytes/1073741824" | bc) GB"
+  elif [ "$bytes" -ge 1048576 ]; then
+    echo "$(echo "scale=2; $bytes/1048576" | bc) MB"
+  elif [ "$bytes" -ge 1024 ]; then
+    echo "$(echo "scale=2; $bytes/1024" | bc) KB"
+  else
+    echo "$bytes bytes"
+  fi
+}
+
+large_files=""
+blocked_files=""
+
+while IFS= read -r -d '' file; do
+  [ -f "$file" ] || continue
+
+  # Block large files
+  size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo 0)
+  if [ "$size" -gt "$SIZE_LIMIT" ]; then
+    readable=$(human_readable "$size")
+    large_files="${large_files}\n  ${file} (${readable})"
+  fi
+
+  # Block .env files with real secrets
+  if [[ "$file" == *.env ]] || [[ "$file" == .env ]]; then
+    if grep -q 'SECRET_KEY=\|DATABASE_URL=\|STRIPE_SECRET' "$file" 2>/dev/null; then
+      blocked_files="${blocked_files}\n  ${file} (contains secrets)"
+    fi
+  fi
+
+  # Block compiled Python bytecode
+  if [[ "$file" == *.pyc ]] || [[ "$file" == */__pycache__/* ]]; then
+    blocked_files="${blocked_files}\n  ${file} (compiled bytecode)"
+  fi
+
+done < <(git diff --cached --name-only -z)
+
+FAIL=false
+
+if [ -n "$large_files" ]; then
+  echo -e "\n${RED}[pre-commit] BLOCKED — Large files detected (limit: $(human_readable $SIZE_LIMIT)):${NC}"
+  echo -e "$large_files"
+  echo -e "${YELLOW}Use git lfs or remove these files from staging.${NC}\n"
+  FAIL=true
+fi
+
+if [ -n "$blocked_files" ]; then
+  echo -e "\n${RED}[pre-commit] BLOCKED — Dangerous files detected:${NC}"
+  echo -e "$blocked_files"
+  echo -e "${YELLOW}Never commit .env files or compiled artifacts.${NC}\n"
+  FAIL=true
+fi
+
+if [ "$FAIL" = true ]; then
+  exit 1
+fi
+
+echo -e "${GREEN}[pre-commit] All checks passed.${NC}"
+exit 0

@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# ./runner — Guardrail shim for Veklom Backend
+# Modelled on reprewindai-dev/poltergeist/runner
+#
+# All agents and scripts MUST run commands through this shim.
+# Enforces: correct venv, PYTHONPATH, env validation, and logs every
+# execution so Poltergeist InfrastructureSentinel can trace failures.
+#
+# Usage: ./runner <command> [args...]
+#   e.g. ./runner python -m uvicorn backend.apps.api.main:app
+#        ./runner python -m alembic upgrade head
+#        ./runner scripts/committer "feat: add X" "backend/apps/api/main.py"
+#
+# When behavior changes, record via:
+#   ./runner scripts/committer "docs: update AGENTS for runner" "AGENTS.md"
+# so fellow agents stay in sync.
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="/tmp/veklom-runner"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/runner-$(date +%Y%m%d).log"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log() {
+  local level="$1"; shift
+  local msg="$*"
+  local ts
+  ts="$(date +%H:%M:%S)"
+  echo -e "${ts} [${level}] ${msg}" | tee -a "$LOG_FILE"
+}
+
+# ── Environment setup ─────────────────────────────────────────────────────────
+
+# Activate venv if present and not already active
+if [ -f "$ROOT_DIR/.venv/bin/activate" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.venv/bin/activate"
+  log INFO "Activated .venv"
+fi
+
+# Ensure PYTHONPATH includes project root
+export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
+
+# Load .env if not in CI (CI injects secrets itself)
+if [ -z "${CI:-}" ] && [ -f "$ROOT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
+# ── Validate critical env vars are present ────────────────────────────────────
+check_env() {
+  local missing=()
+  for var in DATABASE_URL SECRET_KEY; do
+    if [ -z "${!var:-}" ]; then
+      missing+=("$var")
+    fi
+  done
+  if [ ${#missing[@]} -gt 0 ]; then
+    log "${RED}ERROR${NC}" "Missing required env vars: ${missing[*]}"
+    log "${YELLOW}HINT${NC}" "Copy .env.example → .env and fill in values"
+    exit 1
+  fi
+}
+
+# ── Wrapper detection (mirrors poltergeist/runner pattern) ────────────────────
+is_wrapper_command() {
+  case "$1" in
+    sudo|env|command|nohup) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_primary_command() {
+  local cmd="$1"
+  while is_wrapper_command "$cmd" && [ $# -gt 1 ]; do
+    shift; cmd="$1"
+  done
+  echo "$cmd"
+}
+
+# ── Guard: block dangerous direct patterns ────────────────────────────────────
+guard_command() {
+  local primary
+  primary="$(resolve_primary_command "$@")"
+
+  # Block raw git commit/push — must go through scripts/committer
+  if [ "$primary" = "git" ] && { [ "${2:-}" = "push" ] || [ "${2:-}" = "commit" ]; }; then
+    log "${RED}BLOCKED${NC}" "Direct 'git $2' is not allowed. Use ./runner scripts/committer instead."
+    log "${YELLOW}REASON${NC}" "scripts/committer enforces the Alembic head check before every commit."
+    exit 1
+  fi
+}
+
+# ── Run ───────────────────────────────────────────────────────────────────────
+if [ $# -eq 0 ]; then
+  echo -e "${BLUE}Veklom Runner${NC} — wrap commands through this shim."
+  echo ""
+  echo "Usage: ./runner <command> [args...]"
+  echo ""
+  echo "Examples:"
+  echo "  ./runner python -m uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8088"
+  echo "  ./runner python -m alembic -c backend/db/migrations/alembic.ini upgrade head"
+  echo "  ./runner scripts/committer \"feat: add repogate health\" \"backend/apps/api/routers/repogate_api.py\""
+  echo "  ./runner python -m pytest tests/ -v"
+  exit 0
+fi
+
+check_env
+guard_command "$@"
+
+log INFO "Running: $*"
+START=$(date +%s%N)
+
+"$@"
+EXIT_CODE=$?
+
+END=$(date +%s%N)
+ELAPSED=$(( (END - START) / 1000000 ))
+
+if [ $EXIT_CODE -eq 0 ]; then
+  log "${GREEN}OK${NC}" "Exited 0 in ${ELAPSED}ms — $*"
+else
+  log "${RED}FAIL${NC}" "Exited ${EXIT_CODE} in ${ELAPSED}ms — $*"
+fi
+
+exit $EXIT_CODE

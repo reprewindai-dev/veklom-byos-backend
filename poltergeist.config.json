@@ -1,0 +1,70 @@
+{
+  "version": "1.0",
+  "projectType": "python",
+  "poltergeistRepo": "https://github.com/reprewindai-dev/poltergeist",
+  "targets": [
+    {
+      "name": "veklom-backend",
+      "type": "server",
+      "enabled": true,
+      "buildCommand": "docker build -t veklom-local:latest .",
+      "watchPaths": [
+        "backend/**/*.py",
+        "backend/db/migrations/versions/*.py",
+        "Dockerfile",
+        "requirements.txt"
+      ],
+      "outputPath": "veklom-local:latest",
+      "postBuild": [
+        "docker stop n13gp1nhrcdp0hvazvbnlxru-213557155694 || true",
+        "docker rm n13gp1nhrcdp0hvazvbnlxru-213557155694 || true",
+        "docker run -d --name n13gp1nhrcdp0hvazvbnlxru-213557155694 --network coolify --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env --restart unless-stopped veklom-local:latest"
+      ],
+      "statusScripts": [
+        "curl -sf http://localhost/health | python3 -c \"import sys,json; d=json.load(sys.stdin); print('API:', d.get('status','?'))\" || echo 'API: DOWN'"
+      ]
+    },
+    {
+      "name": "alembic-guard",
+      "type": "script",
+      "enabled": true,
+      "buildCommand": "python3 -c \"import subprocess,sys; r=subprocess.run(['python','-m','alembic','-c','backend/db/migrations/alembic.ini','heads'],capture_output=True,text=True); heads=[l for l in r.stdout.splitlines() if '(head)' in l]; count=len(heads); print(f'Alembic heads: {count}'); sys.exit(0 if count==1 else 1)\"",
+      "watchPaths": [
+        "backend/db/migrations/versions/*.py"
+      ],
+      "outputPath": null,
+      "statusScripts": [
+        "python3 -m alembic -c backend/db/migrations/alembic.ini current 2>&1 | tail -1"
+      ]
+    },
+    {
+      "name": "poltergeist-daemon",
+      "type": "background-service",
+      "enabled": true,
+      "buildCommand": "echo 'Poltergeist InfrastructureSentinel is managed by the Python daemon. No build needed.'",
+      "watchPaths": [
+        "backend/ops/poltergeist_daemon.py",
+        "backend/ops/builders/**/*.py"
+      ],
+      "outputPath": null,
+      "statusScripts": [
+        "curl -sf http://localhost/api/v1/gpc/status 2>/dev/null | python3 -c \"import sys,json; d=json.load(sys.stdin); print('GPC Queue:', d.get('queue_depth',0), 'pending')\" || echo 'GPC: not reachable'"
+      ]
+    },
+    {
+      "name": "repogate",
+      "type": "server",
+      "enabled": true,
+      "buildCommand": "echo 'Repogate runs as a router inside veklom-backend. Validate its routes are healthy.'",
+      "watchPaths": [
+        "backend/apps/api/routers/repogate_api.py",
+        "backend/core/services/repogate*.py"
+      ],
+      "outputPath": null,
+      "postBuild": [],
+      "statusScripts": [
+        "curl -sf http://localhost/api/v1/repogate/status 2>/dev/null | python3 -c \"import sys,json; d=json.load(sys.stdin); print('Repogate:', d.get('status','?'))\" || echo 'Repogate: not reachable'"
+      ]
+    }
+  ]
+}

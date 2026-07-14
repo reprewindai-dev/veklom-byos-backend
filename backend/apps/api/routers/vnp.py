@@ -71,11 +71,9 @@ async def get_vnp_methodology() -> dict:
             },
         },
         "stale_public_copy_removed": [
-            "10D",
-            "10-D",
-            "10-dimensional",
-            "10 immutable vectors",
-            "LOCKED SPECIFICATION v0.1.5",
+            "legacy dimension-count shorthand",
+            "legacy immutable-vector framing",
+            "legacy locked-spec framing",
         ],
     }
 

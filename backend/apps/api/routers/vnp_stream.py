@@ -41,8 +41,7 @@ manager = VNPConnectionManager()
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    Real-time WebSocket feed for VNP scoring metrics.
-    Satisfies the ws://api.vnp.io:8080 requirement from v0.1.5 delivery.
+    Real-time WebSocket feed for VNP scoring metrics under VNP Methodology v1.0.
     """
     await manager.connect(websocket)
     try:

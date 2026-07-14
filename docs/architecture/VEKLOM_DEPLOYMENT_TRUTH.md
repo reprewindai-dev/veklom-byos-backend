@@ -18,12 +18,12 @@
 
 | Component | Status | Production Deploy Target | Note |
 |-----------|--------|---------------------------|------|
-| **Control Plane Frontend** | Deployed | Vercel / Coolify (`control.veklom.com`) | Decoupled Next.js interface. |
+| **Control Plane Frontend** | Deployed | Coolify (`control.veklom.com`) | Decoupled Next.js interface. |
 | **BYOS Backend** | Deployed | Coolify (`api.veklom.com`) | FastAPI backend. Duplicate repo-gate excised. |
-| **VNP (Veklom Node Probes)** | Partially Implemented | Standalone Hetzner Edge Nodes | Standalone probes are active but physical registry/heartbeats not fully wired. |
+| **VNP (Veklom Node Probes)** | Connected | Five Hetzner edge nodes + BYOS registry (`api.veklom.com`) | Each physical node runs `vnp-edge-probe:v1.1`, owns a node-side Ed25519 key, and reports signed heartbeats plus signed edge measurements into the canonical registry. |
 | **CAPPO Backend** | Deployed | Coolify (`cappo.veklom.com`) | cAPI policy engine. |
 | **Repo Risk Gate** | Demo | Render / Coolify | Only in Demo Mode running Node `server.ts`. Rust/PGL governance gateway not wired. |
-| **PGL (Settlement Ledger)** | Config Incomplete | Coolify (`pgl.veklom.com`) | Service exists but settlement wiring to CAPPO/VNP lacks final keys. |
+| **PGL (Settlement Ledger)** | Connected | Coolify (`pgl.veklom.com`) | Service exists and VNP/PGL audit surfaces are wired through BYOS; settlement anchoring remains evidence-backed by available ledger entries. |
 
 ## 3. Containment Result
 

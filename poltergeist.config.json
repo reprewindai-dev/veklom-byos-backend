@@ -65,6 +65,19 @@
       "statusScripts": [
         "curl -sf http://localhost/api/v1/repogate/status 2>/dev/null | python3 -c \"import sys,json; d=json.load(sys.stdin); print('Repogate:', d.get('status','?'))\" || echo 'Repogate: not reachable'"
       ]
+    },
+    {
+      "name": "gpc-pipeline",
+      "type": "script",
+      "enabled": true,
+      "buildCommand": "python3 -m pytest backend/tests/test_gpc_*.py",
+      "watchPaths": [
+        "backend/gpc/**/*.py",
+        "backend/apps/gpc/**/*.py",
+        "backend/tests/test_gpc_*.py"
+      ],
+      "outputPath": null,
+      "statusScripts": []
     }
   ]
 }

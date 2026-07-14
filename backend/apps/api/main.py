@@ -878,9 +878,11 @@ from backend.apps.api.routers import (
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
+from backend.apps.gpc.routes import router as gpc_router
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
 app.include_router(discovery.router)
+app.include_router(gpc_router)
 
 # Health & status (no prefix)
 app.include_router(health.router)

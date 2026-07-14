@@ -1,3 +1,4 @@
+from .gpc import GpcPipelineAudit
 from backend.db.models.user import User, Session, APIKey
 from backend.db.models.asset import Asset
 from backend.db.models.workspace import Workspace, WorkspaceMember, ModelConfig, WorkspaceIntegration
@@ -118,5 +119,6 @@ __all__ = [
     "CapabilityHauntState", "CapabilityGhost",
     # Banker Agent — idempotent payment ledger
     "Payment",
+    "GpcPipelineAudit",
 ]
 from backend.db.models.payment import Payment

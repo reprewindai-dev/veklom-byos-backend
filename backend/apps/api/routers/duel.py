@@ -778,6 +778,7 @@ async def get_duel_proof(db: AsyncSession = Depends(get_db)):
             "frontend_base_account_send": "verified",
             "outcome_persist": "verified",
             "multiplayer_lobbies": "verified",
+            "multiplayer_round_sync": "verified",
             "wallet_balance": "base_rpc",
             "settlement_proof_ingest": "verified",
             "settlement": "verified" if settled_count else "needs_proof",

@@ -15,29 +15,35 @@ from backend.db.models.vnp import (
 logger = logging.getLogger(__name__)
 
 CANONICAL_VNP_NODES = [
-    {"id": "vnp-us-east-1-ash", "region": "us-east-1-ash", "name": "Ashburn Node", "x": 270, "y": 180},
-    {"id": "vnp-us-west-1-hil", "region": "us-west-1-hil", "name": "Hillsboro Node", "x": 120, "y": 190},
-    {"id": "vnp-eu-central-1-nur", "region": "eu-central-1-nur", "name": "Nuremberg Node", "x": 380, "y": 150},
-    {"id": "vnp-eu-central-1-fal", "region": "eu-central-1-fal", "name": "Falkenstein Node", "x": 430, "y": 165},
-    {"id": "vnp-ap-southeast-1-sin", "region": "ap-southeast-1-sin", "name": "Singapore Node", "x": 505, "y": 285},
+    {"id": "vnp-us-ashburn", "region": "us-ashburn", "name": "Ashburn Node", "x": 270, "y": 180},
+    {"id": "vnp-us-hillsboro", "region": "us-hillsboro", "name": "Hillsboro Node", "x": 120, "y": 190},
+    {"id": "vnp-de-nuremberg", "region": "de-nuremberg", "name": "Nuremberg Node", "x": 380, "y": 150},
+    {"id": "vnp-de-falkenstein", "region": "de-falkenstein", "name": "Falkenstein Node", "x": 430, "y": 165},
+    {"id": "vnp-sg-singapore", "region": "sg-singapore", "name": "Singapore Node", "x": 505, "y": 285},
 ]
 
 REGION_ALIASES = {
-    "us-east": "us-east-1",
-    "us-east-1-ash": "us-east-1-ash",
-    "useast": "us-east-1",
-    "us-west": "us-west-2",
-    "us-west-1-hil": "us-west-1-hil",
-    "uswest": "us-west-2",
-    "eu-west": "eu-west-1",
-    "euwest": "eu-west-1",
-    "eu-central-1-nur": "eu-central-1-nur",
-    "eu-central-1-fal": "eu-central-1-fal",
-    "ap-southeast": "ap-southeast-1",
-    "ap-southeast-1-sin": "ap-southeast-1-sin",
-    "apsoutheast": "ap-southeast-1",
-    "ap-northeast": "ap-northeast-1",
-    "apnortheast": "ap-northeast-1",
+    "us-east": "us-ashburn",
+    "us-east-1": "us-ashburn",
+    "us-east-1-ash": "us-ashburn",
+    "useast": "us-ashburn",
+    "ashburn": "us-ashburn",
+    "us-west": "us-hillsboro",
+    "us-west-1": "us-hillsboro",
+    "us-west-1-hil": "us-hillsboro",
+    "uswest": "us-hillsboro",
+    "hillsboro": "us-hillsboro",
+    "eu-north": "de-nuremberg",
+    "eu-central-1-nur": "de-nuremberg",
+    "nuremberg": "de-nuremberg",
+    "eu-central": "de-falkenstein",
+    "eu-central-1-fal": "de-falkenstein",
+    "falkenstein": "de-falkenstein",
+    "ap-southeast": "sg-singapore",
+    "ap-southeast-1": "sg-singapore",
+    "ap-southeast-1-sin": "sg-singapore",
+    "apsoutheast": "sg-singapore",
+    "singapore": "sg-singapore",
 }
 
 
@@ -86,7 +92,7 @@ def node_status(
 ) -> tuple[str, str]:
     if revocation_state:
         return "STANDBY", "Disconnected"
-    if registration_status != "registered" or active_key_count == 0:
+    if registration_status != "registered":
         return "STANDBY", "Config Incomplete"
     age = seconds_since(latest_heartbeat)
     if age is None:
@@ -94,6 +100,8 @@ def node_status(
     if age > freshness_seconds:
         return "STANDBY", "Disconnected"
     if observation_count == 0:
+        return "STANDBY", "Partially Implemented"
+    if active_key_count == 0:
         return "STANDBY", "Partially Implemented"
     return "ATTESTING", "Connected"
 
@@ -205,7 +213,7 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
                 nodes.append({
                     "id": str(node.id),
                     "name": node.name,
-                    "region": node.region_code,
+                    "region": canonical["region"],
                     "physicalLocation": node.physical_location,
                     "macroRegion": node.macro_region,
                     "jurisdiction": node.jurisdiction,

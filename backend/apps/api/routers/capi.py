@@ -590,30 +590,6 @@ async def stream_run(
 
         try:
             await db.commit()
-
-            # PHASE 7 EXTERNAL PGL LEDGER FORWARDING
-            pgl_ledger_url = os.getenv("PGL_LEDGER_URL")
-            if pgl_ledger_url:
-                import httpx
-                import asyncio
-                
-                async def forward_to_ledger(url: str, payload: dict):
-                    try:
-                        async with httpx.AsyncClient(timeout=5.0) as client:
-                            await client.post(f"{url}/api/v1/ledger/events", json=payload)
-                    except Exception as e:
-                        logger.error(f"[cAPI] Failed to forward evidence to PGL Ledger: {e}")
-                
-                ledger_payload = {
-                    "evidence_chain_id": evidence_chain_id,
-                    "agent_id": intent.agent_id,
-                    "hash_chain": ep_hash_chain,
-                    "prev_hash": prev_ep_hash,
-                    "artifacts": evidence_pack.artifacts,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-                asyncio.create_task(forward_to_ledger(pgl_ledger_url, ledger_payload))
-                
         except Exception as e:
             await db.rollback()
             sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)

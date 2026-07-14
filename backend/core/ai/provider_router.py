@@ -27,7 +27,7 @@ if OLLAMA_ONLY:
     logger.info("[COST GUARD] OLLAMA_ONLY=true — all completions forced to local Ollama. Paid providers DISABLED.")
 
 
-OPENAI_CHAT_COMPLETIONS_URL = _os.environ.get("OPENAI_CHAT_COMPLETIONS_URL", "http://new-api-jv2pt97j6vgxcbfrbteue2k1:3000/v1/chat/completions")
+OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
 
 
 @dataclass

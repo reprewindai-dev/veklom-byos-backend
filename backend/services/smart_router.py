@@ -23,10 +23,10 @@ fabricated telemetry.
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -168,34 +168,16 @@ def _saw_score(n: ModelCandidate, req_scores: dict[str, int], weights: dict[str,
 async def _refine_with_observations(db: AsyncSession, workspace_id: str, fleet: list[ModelCandidate]) -> None:
     """Override priors with this workspace's observed avg cost/latency per provider."""
     try:
-        import json
-
-        from backend.core.services.redis_cache import redis_cache
         from backend.db.models.ai import ExecutionLog
-
-        cache_key = f"routing_metrics:{workspace_id}"
-        cached_data = await redis_cache.get(cache_key)
-
-        if cached_data:
-            try:
-                by_provider = json.loads(cached_data)
-            except Exception:
-                by_provider = None
-        else:
-            by_provider = None
-
-        if by_provider is None:
-            rows = (await db.execute(
-                select(
-                    ExecutionLog.provider,
-                    func.avg(ExecutionLog.cost),
-                    func.avg(ExecutionLog.latency_ms),
-                    func.count(),
-                ).where(ExecutionLog.workspace_id == workspace_id).group_by(ExecutionLog.provider)
-            )).all()
-            by_provider = {p: (float(c or 0), float(l or 0), int(n or 0)) for p, c, l, n in rows}
-            await redis_cache.set(cache_key, json.dumps(by_provider), ttl=300)
-
+        rows = (await db.execute(
+            select(
+                ExecutionLog.provider,
+                func.avg(ExecutionLog.cost),
+                func.avg(ExecutionLog.latency_ms),
+                func.count(),
+            ).where(ExecutionLog.workspace_id == workspace_id).group_by(ExecutionLog.provider)
+        )).all()
+        by_provider = {p: (float(c or 0), float(l or 0), int(n or 0)) for p, c, l, n in rows}
         for cand in fleet:
             obs = by_provider.get(cand.provider)
             if obs and obs[2] >= 10:   # only trust with >=10 samples

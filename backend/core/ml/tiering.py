@@ -1,7 +1,7 @@
+import os
+from typing import Dict, Any, List
 from dataclasses import dataclass
-from typing import List
-
-from backend.core.ml.tier_types import DataTier
+from backend.db.models.ai import DataTier
 
 @dataclass(frozen=True)
 class TieringDecision:

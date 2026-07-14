@@ -36,7 +36,6 @@ class VeklomRun(Base):
     seked_state = Column(JSONB, nullable=True)
     v4_decision = Column(JSONB, nullable=True)
     pgl_identity = Column(JSONB, nullable=True)
-    execution_identity = Column(JSONB, nullable=True)
     route = Column(JSONB, nullable=True)
     tools = Column(JSONB, nullable=True)
     agents = Column(JSONB, nullable=True)

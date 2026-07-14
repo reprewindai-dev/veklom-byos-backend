@@ -94,7 +94,7 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "check_backend_health",
             "description": "Ping the Veklom backend and return health status.",
-            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": [], "additionalProperties": False, "strict": True},
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -104,8 +104,6 @@ TOOL_SCHEMAS = [
             "description": "Submit a governed workflow task to the Veklom backend.",
             "parameters": {
                 "type": "object",
-                "additionalProperties": False,
-                "strict": True,
                 "properties": {
                     "transaction_id": {"type": "string"},
                     "tenant_id": {"type": "string"},
@@ -122,7 +120,7 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "list_vendors",
             "description": "List registered vendors from the Veklom marketplace.",
-            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": [], "additionalProperties": False, "strict": True},
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
 ]

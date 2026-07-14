@@ -435,37 +435,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] skills: seed warning: {type(e).__name__}: {e}")
 
-    # Seed initial Demo API for VNP Probing if none exist
-    try:
-        from backend.db.models.vnp import Api, ApiRegion
-        from backend.core.database.database import async_session
-        async with async_session() as seed_db:
-            existing_api = (await seed_db.execute(select(Api).limit(1))).scalar_one_or_none()
-            if not existing_api:
-                demo_api = Api(
-                    id="api_demo_veklom_1",
-                    provider_id="veklom",
-                    name="Veklom Sovereign API",
-                    endpoint_url="https://api.veklom.com",
-                    health_path="/health",
-                    pricing_model="metered",
-                    x402_ready=True,
-                    stability_rating="Stable",
-                    current_composite_score=99.9
-                )
-                seed_db.add(demo_api)
-                demo_region = ApiRegion(
-                    api_id=demo_api.id,
-                    region_code="global",
-                    endpoint_url="https://api.veklom.com",
-                    active=True
-                )
-                seed_db.add(demo_region)
-                await seed_db.commit()
-                print("[startup] vnp: seeded demo API (api.veklom.com) for edge probing")
-    except Exception as e:
-        print(f"[startup] vnp: seed warning: {type(e).__name__}: {e}")
-
     # Seed default budget caps for minimum live operator set.
     # These are conservative defaults — adjust per operator via the API.
     _OPERATOR_BUDGETS = [
@@ -798,12 +767,11 @@ from backend.apps.api.routers import (
     pgl, pgl_adapter, pgl_onboarding, plugins, pricing, providers, rag,
     referrals, repo_risk_gate, repogate_api, routing, runs, runtime_jobs,
     runtime_telemetry, security, seked, smoke, system, team, upload, vnp,
-    vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2, vnp_onboarding, vnp_stream,
+    vnp_beacon, vnp_control, vnp_incidents, vnp_ingest, vnp_v2,
     workspace, x402, gpc, decision_frames, exec_router, internal_operators, hrm,
     benchmarks, nexus, pipelines, webhooks, webhook, gfr, admin, admin_billing, agency,
     build_release, langchain_ops, playground, arena, conversation_memory, cappo, locks, terminal,
-    genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges, tasks,
-    demo
+    genome, well_known, capi, governed, evidence_pack, mission_lock, banker, wallet, duel, claims, badges
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
@@ -824,11 +792,8 @@ app.include_router(agents.router, prefix="/api/v1")
 app.include_router(hrm.router, prefix="/api/v1")
 app.include_router(terminal.router, prefix="/api/terminal")
 app.include_router(amphoteric.router, prefix="/api/v1")
-app.include_router(vnp_onboarding.router, prefix="/api/v1")
-app.include_router(vnp_stream.router, prefix="/api/v1")
 app.include_router(claims.router, prefix="/api/v1")
 app.include_router(badges.router, prefix="/api/v1")
-app.include_router(tasks.router, prefix="/api/v1/tasks")
 
 # System utilities
 app.include_router(system.router, prefix="/api/v1")
@@ -908,9 +873,6 @@ app.include_router(edge.router, prefix="/api/v1")
 app.include_router(x402.router, prefix="/api/v1")
 app.include_router(banker.router, prefix="/api/v1")
 
-# Demo (Interactive Tracing for Hostile Agent Interception)
-app.include_router(demo.router, prefix="/api/v1/demo")
-
 # UACP Service - dual-adapter architecture (HTTP service + library shim)
 app.include_router(uacp_http_router, prefix="/api/v1")
 
@@ -966,10 +928,6 @@ app.include_router(internal_uacp.autonomous_router, prefix="/api/v1")
 
 # Provider management — BYOK, routing rules, audit logs
 app.include_router(providers.router, prefix="/api/v1")
-
-# Dynamic MCP Proxy Gateway — OpenAPI dynamic tools & transparent proxying
-from backend.apps.api.routers import mcp_gateway
-app.include_router(mcp_gateway.router)
 
 # Team management — members, invitations, roles, SSO, MFA
 app.include_router(team.router, prefix="/api/v1")
@@ -1936,13 +1894,11 @@ async def auto_editor_script():
 
 
 @app.get("/gpc")
-@app.get("/gpc/")
-@app.get("/pipelines")
-@app.get("/pipelines/")
-async def redirect_gpc(request: Request):
-    from fastapi.responses import RedirectResponse
-    query_str = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"https://control.veklom.com/gpc{query_str}", status_code=307)
+async def gpc_page():
+    index_path = GPC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return HTMLResponse(content=_gpc_html(), status_code=200)
 
 
 # Command Center config endpoint for frontend
@@ -2057,10 +2013,6 @@ app.include_router(mcp.router, prefix="/api/v1")
 # Layer 3: Memory and Context
 app.include_router(agent_memory.router, prefix="/api/v1")
 app.include_router(conversation_memory.router, prefix="/api/v1")
-
-# Generative Pipeline Compiler (GPC)
-from backend.apps.gpc import routes as gpc_routes
-app.include_router(gpc_routes.router, prefix="/api/v1")
 
 # Layer 5: Ev
 

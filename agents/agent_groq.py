@@ -18,9 +18,10 @@ Env vars:
     VEKLOM_API_KEY  JWT from /auth/login
 """
 
-import os
-import json
 import asyncio
+import json
+import os
+
 import httpx
 
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY",  "")
@@ -65,7 +66,7 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "check_backend_health",
             "description": "Ping the Veklom backend and return health status.",
-            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": [], "additionalProperties": False, "strict": True},
+            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": []},
         },
     },
     {
@@ -93,7 +94,7 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "list_vendors",
             "description": "List registered vendors from the Veklom marketplace.",
-            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": [], "additionalProperties": False, "strict": True},
+            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": []},
         },
     },
 ]

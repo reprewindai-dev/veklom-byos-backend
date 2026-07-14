@@ -16,9 +16,10 @@ Env vars:
     VEKLOM_API_KEY      JWT from /auth/login
 """
 
-import os
-import json
 import asyncio
+import json
+import os
+
 import httpx
 from openai import AsyncOpenAI
 
@@ -70,7 +71,7 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "check_backend_health",
             "description": "Ping the Veklom backend and return health status.",
-            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": [], "additionalProperties": False, "strict": True},
+            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": []},
         },
     },
     {
@@ -98,7 +99,7 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "list_vendors",
             "description": "List registered vendors from the Veklom marketplace.",
-            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": [], "additionalProperties": False, "strict": True},
+            "parameters": {"type": "object", "additionalProperties": False, "strict": True, "properties": {}, "required": []},
         },
     },
 ]
@@ -121,14 +122,14 @@ async def run_agent(goal: str) -> str:
 
     for iteration in range(1, MAX_ITERATIONS + 1):
         print(f"\n[GEMINI AGENT] — Iteration {iteration} — THINKING...")
-        
+
         response = await client.chat.completions.create(
             model=GEMINI_MODEL,
             messages=messages,
             tools=TOOL_SCHEMAS,
             tool_choice="auto"
         )
-        
+
         msg = response.choices[0].message
         messages.append(msg.model_dump(exclude_unset=True))
 

@@ -112,14 +112,6 @@ async def ingest_probe_events(
     now = datetime.now(timezone.utc)
 
     for event in batch.events:
-        latency = float(event.measurement.total_ms)
-        
-        # 0. Anti-Gaming: 3σ Outlier Detection & Speed of Light check
-        if latency < 2.0:
-            raise HTTPException(status_code=403, detail="Anti-Gaming Reject: Latency violates speed of light.")
-        if latency > 10000.0:
-            raise HTTPException(status_code=403, detail="Anti-Gaming Reject: Latency exceeds 3σ outlier threshold.")
-
         # 1. Reject events > 10 mins in future
         if event.occurred_at > now + timedelta(minutes=10):
             rejected += 1
@@ -160,10 +152,6 @@ async def ingest_probe_events(
                 latency_ms=float(event.measurement.total_ms),
                 status_code=event.measurement.status_code,
                 error_reason=event.measurement.error_class,
-                http_version="HTTP/2", # Injected from strict schema update
-                tls_version="TLSv1.3",
-                cryptography_anchor=f"hash_{event.signature.sig[:8]}",
-                provenance_hash=f"prov_{event.event_id}",
                 measured_at=event.occurred_at,
                 evidence_hash=None, # To be added if needed
                 created_at=now

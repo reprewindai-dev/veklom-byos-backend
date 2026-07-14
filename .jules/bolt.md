@@ -1,6 +1,3 @@
 ## 2025-02-24 - [Optimize PII Detection overlap]
 **Learning:** Checking for overlap using a generator expression inside an `any()` inside a loop leads to $O(N^2)$ worst-case time complexity, which causes performance bottlenecks for large documents processing lots of PII.
 **Action:** Use Python's `bisect` module for interval tracking and overlap detection. Maintaining an ordered list drops the search to $O(\log N)$, and then only checking adjacent overlaps provides near-linear processing time, preventing performance scaling issues for documents.
-## 2023-10-25 - [Optimize AI Routing Decision Metrics]
-**Learning:** During MCDM router execution (every API request), the `_refine_with_observations` aggregates `ExecutionLog` data using `group_by` on the database to update the quality/latency priors of the model fleet. Running a linear scan `O(N)` heavy aggregation operation synchronously on every request degrades request routing latency severely at scale.
-**Action:** Use the global application Redis caching utility (`backend.core.services.redis_cache`) to wrap workspace-scoped provider metrics queries, caching the serialized dictionary for 300 seconds to decouple operational metrics extraction from routing decision path latency.

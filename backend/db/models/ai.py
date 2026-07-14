@@ -3,14 +3,20 @@
 import uuid
 from datetime import datetime, timezone
 
+import enum
 from sqlalchemy import Column, DateTime, Float, Integer, String, Text, JSON, Boolean, ForeignKey, Enum as SQLEnum, UniqueConstraint
 
 from backend.core.database.database import Base
-from backend.core.ml.tier_types import DataTier
 from backend.db.models.user import _utcnow, _uuid
 
 from sqlalchemy import Index
 from sqlalchemy.ext.hybrid import hybrid_property
+
+class DataTier(str, enum.Enum):
+    bronze = "bronze"
+    silver = "silver"
+    gold = "gold"
+    unrated = "unrated"
 
 class ExecutionLog(Base):
     """every /v1/exec call: tenant, model, provider, tokens, latency"""

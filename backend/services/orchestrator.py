@@ -167,74 +167,7 @@ class RunOrchestrator:
             "birth_cert_id":               pgl_ctx.birth_cert_id,
             "cleared_at":                   pgl_ctx.cleared_at.isoformat(),
         }
-        
-        run = await self._update_state(run, VeklomRunStatus.COMMITTED)
-        
-        # MINT EXECUTION IDENTITY (CAPPO Blueprint)
-        run = await self.mint_execution_identity(run)
-        
-        return run
-
-    async def mint_execution_identity(self, run: VeklomRun) -> VeklomRun:
-        """
-        Mints the ExecutionIdentityV1 payload required for governed execution.
-        Must be called between COMMITTED and ROUTED.
-        """
-        import json
-        import hashlib
-        import uuid
-        from datetime import datetime, timedelta, timezone
-        
-        pgl_identity = run.pgl_identity or {}
-        seked_state = run.seked_state or {}
-        
-        # Assemble fields
-        execution_identity = {
-            "id": str(uuid.uuid4()),
-            "run_id": run.run_id,
-            "workspace_id": run.workspace_id,
-            "pre_execution_certificate_id": pgl_identity.get("pre_execution_certificate_id"),
-            "genome_hash": pgl_identity.get("genome_hash"),
-            "constitution_hash": pgl_identity.get("constitution_hash"),
-            "plan_hash": pgl_identity.get("plan_hash"),
-            "seked_directive": seked_state,
-            "scope": "run:commit",
-            "budget": run.budget or {},
-            "delegation_depth": 0,
-            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        # Compute canonical hash
-        raw = json.dumps(execution_identity, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-        computed_hash = hashlib.sha256(raw).hexdigest()
-        execution_identity["hash"] = computed_hash
-        execution_identity["signature"] = "mock_signature_from_configured_signing_key"
-        
-        # Store on run
-        run.execution_identity = execution_identity
-        
-        # Persist to execution_identities table
-        from backend.db.models.pgl import ExecutionIdentity
-        ei_record = ExecutionIdentity(
-            id=execution_identity["id"],
-            run_id=execution_identity["run_id"],
-            workspace_id=execution_identity["workspace_id"],
-            pre_execution_certificate_id=execution_identity["pre_execution_certificate_id"],
-            genome_hash=execution_identity["genome_hash"],
-            constitution_hash=execution_identity["constitution_hash"],
-            plan_hash=execution_identity["plan_hash"],
-            seked_directive=execution_identity["seked_directive"],
-            scope=execution_identity["scope"],
-            budget=execution_identity["budget"],
-            delegation_depth=execution_identity["delegation_depth"],
-            hash=execution_identity["hash"],
-            signature=execution_identity["signature"]
-        )
-        self.db.add(ei_record)
-        await self.db.commit()
-        
-        return run
+        return await self._update_state(run, VeklomRunStatus.COMMITTED)
 
     async def route_run(self, run: VeklomRun, route: dict) -> VeklomRun:
         run.route = route

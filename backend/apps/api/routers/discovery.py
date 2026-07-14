@@ -545,22 +545,6 @@ async def mcp_sse(request: Request):
             "endpoint": f"{VEKLOM_API_BASE}/kill-switch/activate",
         },
     ]
-    # Load custom registered MCP tools from Manifest Store
-    from backend.core.ai.tool_manifest_store import ToolManifestStore
-    try:
-        manifests = await ToolManifestStore.get_all_manifests()
-        for tool_name, m in manifests.items():
-            custom_tool = {
-                "name": m["tool_name"],
-                "description": m["description"],
-                "inputSchema": m["input_schema"],
-                "method": "POST",
-                "endpoint": f"{VEKLOM_API_BASE}/mcp/tools/{tool_name}:invoke",
-                "price_usdc": 0.010
-            }
-            tools.append(custom_tool)
-    except Exception as e:
-        _disc_log.error(f"Failed to integrate custom MCP tools: {e}")
 
     async def event_stream():
         yield f"data: {json.dumps({'type': 'server_info', 'name': 'Veklom MCP', 'version': '1.0', 'protocol': 'mcp/1.0'})}\n\n"

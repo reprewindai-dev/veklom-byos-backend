@@ -14,11 +14,6 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         
-        public_paths = (
-            "/demo/pipeline/health",
-            "/api/v1/demo/pipeline/health",
-        )
-
         # Public bypass routes
         public_prefixes = (
             "/status", "/health", "/api/health", "/api/v1/auth/login", "/api/v1/auth/register",
@@ -53,16 +48,10 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             "/api/v1/agentic_commerce/product_feed", "/api/v1/agentic_commerce/feed.csv",
             "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback", "/api/v1/vnp",
             "/api/v1/amphoteric/discover", "/api/v1/amphoteric/call",
-            "/api/v1/onboarding", "/onboarding-dashboard", "/api/v1/banker/self-prove",
-            "/api/v1/beacon"
+            "/api/v1/onboarding", "/onboarding-dashboard", "/api/v1/banker/self-prove"
         )
         
-        if (
-            path == "/"
-            or path in public_paths
-            or request.method == "OPTIONS"
-            or any(path.startswith(prefix) for prefix in public_prefixes)
-        ):
+        if path == "/" or request.method == "OPTIONS" or any(path.startswith(prefix) for prefix in public_prefixes):
             return await call_next(request)
             
         auth_header = request.headers.get("Authorization")

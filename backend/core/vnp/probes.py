@@ -5,10 +5,10 @@ import logging
 import os
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from backend.core.database.database import async_session
 from backend.core.security.vnp_security import VNPEventVerifier, VNPSecurityError
@@ -71,6 +71,9 @@ VNP_EDGE_NODES = [
 ]
 
 EDGE_SOFTWARE_VERSION = "vnp-edge-probe:v1.1"
+VNP_PROBE_INTERVAL_SECONDS = 10
+VNP_PROBE_CYCLE_TIMEOUT_SECONDS = 30
+VNP_METRIC_RETENTION_DAYS = 7
 
 
 def configured_edge_nodes() -> list[dict]:
@@ -306,46 +309,74 @@ async def run_vnp_probes() -> None:
     logger.info("[VNP Probe Swarm] Initialized physical edge probes.")
     print("[VNP Probe Swarm] Initialized physical edge probes.", flush=True)
 
+    interval = float(os.getenv("VNP_PROBE_INTERVAL_SECONDS", str(VNP_PROBE_INTERVAL_SECONDS)))
+    cycle_timeout = float(
+        os.getenv("VNP_PROBE_CYCLE_TIMEOUT_SECONDS", str(VNP_PROBE_CYCLE_TIMEOUT_SECONDS))
+    )
+    retention_days = int(
+        os.getenv("VNP_METRIC_RETENTION_DAYS", str(VNP_METRIC_RETENTION_DAYS))
+    )
+
+    async def run_cycle(client: httpx.AsyncClient) -> None:
+        tasks = [ping_target(client, target) for target in VNP_TARGETS]
+        edge_secret = os.getenv("VNP_HUB_SECRET_KEY") or os.getenv("HUB_SECRET_KEY")
+        edge_tasks = []
+        if edge_secret:
+            edge_tasks = [
+                ping_edge_node(client, edge, edge_secret)
+                for edge in configured_edge_nodes()
+            ]
+        else:
+            logger.warning(
+                "[VNP Probe Swarm] edge heartbeat polling skipped; "
+                "VNP_HUB_SECRET_KEY is not configured"
+            )
+
+        results = await asyncio.gather(*tasks)
+        edge_results = await asyncio.gather(*edge_tasks) if edge_tasks else []
+
+        now = datetime.now(timezone.utc)
+        async with async_session() as db:
+            for api_name, latency_ms, is_up in results:
+                db.add(
+                    VnpMetric(
+                        api_name=api_name,
+                        latency_ms=latency_ms,
+                        is_up=is_up,
+                        measured_at=now,
+                    )
+                )
+            cutoff = now - timedelta(days=retention_days)
+            await db.execute(delete(VnpMetric).where(VnpMetric.measured_at < cutoff))
+            await db.commit()
+        if edge_secret:
+            await upsert_edge_observations(edge_results, edge_secret)
+
+        summary = ", ".join(
+            f"{api_name}={latency_ms}ms/{'up' if is_up else 'down'}"
+            for api_name, latency_ms, is_up in results
+        )
+        if edge_results:
+            edge_summary = ", ".join(
+                f"{r['edge']['region_code']}={r['total_ms']}ms/{'up' if r['is_up'] else 'down'}"
+                for r in edge_results
+            )
+            summary = f"{summary}; edges: {edge_summary}"
+        logger.info("[VNP Probe Swarm] recorded physical probes: %s", summary)
+        print(f"[VNP Probe Swarm] recorded physical probes: {summary}", flush=True)
+
     async with httpx.AsyncClient() as client:
         while True:
             try:
-                tasks = [ping_target(client, target) for target in VNP_TARGETS]
-                edge_secret = os.getenv("VNP_HUB_SECRET_KEY") or os.getenv("HUB_SECRET_KEY")
-                edge_tasks = []
-                if edge_secret:
-                    edge_tasks = [ping_edge_node(client, edge, edge_secret) for edge in configured_edge_nodes()]
-                else:
-                    logger.warning("[VNP Probe Swarm] edge heartbeat polling skipped; VNP_HUB_SECRET_KEY is not configured")
-
-                results = await asyncio.gather(*tasks)
-                edge_results = await asyncio.gather(*edge_tasks) if edge_tasks else []
-
-                async with async_session() as db:
-                    for api_name, latency_ms, is_up in results:
-                        db.add(
-                            VnpMetric(
-                                api_name=api_name,
-                                latency_ms=latency_ms,
-                                is_up=is_up,
-                                measured_at=datetime.now(timezone.utc),
-                            )
-                        )
-                    await db.commit()
-                await upsert_edge_observations(edge_results, edge_secret) if edge_secret else None
-                summary = ", ".join(
-                    f"{api_name}={latency_ms}ms/{'up' if is_up else 'down'}"
-                    for api_name, latency_ms, is_up in results
+                await asyncio.wait_for(run_cycle(client), timeout=cycle_timeout)
+                await asyncio.sleep(interval)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[VNP Probe Swarm] probe cycle timed out after %.1fs",
+                    cycle_timeout,
                 )
-                if edge_results:
-                    edge_summary = ", ".join(
-                        f"{r['edge']['region_code']}={r['total_ms']}ms/{'up' if r['is_up'] else 'down'}"
-                        for r in edge_results
-                    )
-                    summary = f"{summary}; edges: {edge_summary}"
-                logger.info("[VNP Probe Swarm] recorded physical probes: %s", summary)
-                print(f"[VNP Probe Swarm] recorded physical probes: {summary}", flush=True)
+                await asyncio.sleep(min(interval * 2, 60))
             except Exception as exc:
-                logger.exception("[VNP Probe Swarm] probe cycle failed: %s", exc)
+                logger.warning("[VNP Probe Swarm] probe cycle failed: %s", exc)
                 print(f"[VNP Probe Swarm] probe cycle failed: {type(exc).__name__}: {exc}", flush=True)
-
-            await asyncio.sleep(10)
+                await asyncio.sleep(min(interval * 2, 60))

@@ -4,6 +4,7 @@ Source of truth: Veklom backend routes + API_SURFACE.md.
 All routes wired for the REALFRONTEND built frontend.
 """
 
+import logging
 import os
 import socket
 from contextlib import asynccontextmanager
@@ -119,6 +120,12 @@ import json
 from backend.core.database.redis_client import redis_client
 from backend.core.security.governance import RevocationManager
 
+logger = logging.getLogger(__name__)
+
+
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "true").strip().lower() == "true"
+
 async def pgl_revocation_listener():
     """Listens for PGL identity revocations and aggressively invalidates the in-memory cache."""
     try:
@@ -147,125 +154,119 @@ async def vnp_background_indexer():
     # Run every 5 minutes
     interval = 300
 
+    cycle_timeout = float(os.getenv("VNP_BACKGROUND_INDEXER_TIMEOUT_SECONDS", "30"))
     async with httpx.AsyncClient() as client:
         while True:
             try:
-                ep = current_epoch()
-                print(f"[vnp-engine] Running production indexer for epoch {ep}")
-                
-                async with async_session() as db:
-                    # 1. Fetch real API endpoints to probe
-                    result = await db.execute(
-                        select(Api, ApiRegion)
-                        .join(ApiRegion, Api.id == ApiRegion.api_id)
-                        .where(ApiRegion.active == True)
-                    )
-                    rows = result.all()
-                    
-                    for api, region in rows:
-                        target_url = f"{region.endpoint_url.rstrip('/')}{api.health_path}"
-                        start_time = time.time()
-
-                        probe_id = str(uuid.uuid4())
-                        success = False
-                        status_code = None
-                        result_state = ProbeResultState.transport_error
-                        total_ms = 0
-
-                        try:
-                            # 2. Fire real synthetic probe
-                            resp = await client.get(target_url, timeout=10.0)
-                            total_ms = int((time.time() - start_time) * 1000)
-                            status_code = resp.status_code
-                            success = (200 <= status_code < 300)
-                            result_state = ProbeResultState.success if success else ProbeResultState.http_error
-                        except httpx.TimeoutException:
-                            result_state = ProbeResultState.timeout
-                        except Exception:
-                            result_state = ProbeResultState.transport_error
-
-                        # 3. Store real probe event
-                        new_event = ProbeEvent(
-                            event_id=f"prb_{probe_id[:12]}",
-                            worker_id="cappo-node-primary",
-                            worker_region="us-east-1",
-                            runtime="amphoteric-v1",
-                            api_id=api.id,
-                            api_region_code=region.region_code,
-                            endpoint_url=target_url,
-                            occurred_at=datetime.now(timezone.utc),
-                            total_ms=total_ms or int((time.time() - start_time) * 1000),
-                            status_code=status_code,
-                            result_state=result_state,
-                            success=success,
-                            signature_alg="ed25519",
-                            signature_key_id="cappo-node-1",
-                            signature_value="local-node-signed"
-                        )
-                        db.add(new_event)
-
-                        # 4. Periodically update Regional Telemetry & Perform Settlement
-                        # In a real production system, this might happen at epoch boundaries.
-                        # For this autonomous agent run, we trigger an immediate aggregation.
-                        if success:
-                            # Aggregate recent probes for this API/region
-                            lookback = datetime.now(timezone.utc) - timedelta(hours=1)
-                            stats_res = await db.execute(
-                                select(
-                                    func.avg(ProbeEvent.total_ms).label("avg_lat"),
-                                    func.percentile_cont(0.95).within_group(ProbeEvent.total_ms).label("p95_lat"),
-                                    func.count(ProbeEvent.id).label("cnt")
-                                )
-                                .where(ProbeEvent.api_id == api.id)
-                                .where(ProbeEvent.api_region_code == region.region_code)
-                                .where(ProbeEvent.occurred_at >= lookback)
-                            )
-                            stats = stats_res.fetchone()
-
-                            if stats and stats.cnt >= 5: # Min samples for telemetry update
-                                p95 = float(stats.p95_lat)
-
-                                # Use engine logic to compute deviation
-                                # Mocking target_p95 and sigma for now based on nominals
-                                target_p95 = 200.0
-                                sigma = 30.0
-                                dev = compute_deviation(target_p95, p95, sigma)
-
-                                telemetry = RegionalTelemetry(
-                                    api_id=api.id,
-                                    region_code=region.region_code,
-                                    window_start=lookback,
-                                    window_end=datetime.now(timezone.utc),
-                                    sample_count=stats.cnt,
-                                    success_count=stats.cnt, # Approximation
-                                    p50_latency_ms=int(stats.avg_lat),
-                                    p95_latency_ms=int(p95),
-                                    p99_latency_ms=int(p95 * 1.1),
-                                    error_rate_percent=0.0,
-                                    uptime_percent=100.0,
-                                    trust_score=95.0, # Baseline
-                                )
-                                db.add(telemetry)
-
-                                # 5. Settlement & Slashing logic
-                                if dev["penalty_usdc"] > 0:
-                                    print(f"[vnp-engine] Slashing detected for {api.name}: {dev['penalty_usdc']} USDC")
-                                    # Record settlement entry
-                                    settlement = SettlementEntry(
-                                        provider_id=api.provider_id,
-                                        entry_type=LedgerEntryType.slash,
-                                        amount_minor=int(dev["penalty_usdc"] * 1e6),
-                                        currency="USD",
-                                        state=SettlementState.pending,
-                                        reference_code=f"slash-{ep}-{probe_id[:8]}"
-                                    )
-                                    db.add(settlement)
-
-                    await db.commit()
-                
-            except Exception as e:
-                print(f"[vnp-engine] Error in production indexer: {e}")
+                await asyncio.wait_for(
+                    _run_vnp_background_indexer_cycle(client),
+                    timeout=cycle_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("[vnp-engine] indexer cycle timed out after %.1fs", cycle_timeout)
+            except Exception as exc:
+                logger.warning("[vnp-engine] indexer cycle failed: %s", exc)
             await asyncio.sleep(interval)
+
+async def _run_vnp_background_indexer_cycle(client: httpx.AsyncClient):
+    ep = current_epoch()
+    print(f"[vnp-engine] Running production indexer for epoch {ep}")
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(Api, ApiRegion)
+            .join(ApiRegion, Api.id == ApiRegion.api_id)
+            .where(ApiRegion.active == True)
+        )
+        rows = result.all()
+
+        for api, region in rows:
+            target_url = f"{region.endpoint_url.rstrip('/')}{api.health_path}"
+            start_time = time.time()
+            probe_id = str(uuid.uuid4())
+            success = False
+            status_code = None
+            result_state = ProbeResultState.transport_error
+            total_ms = 0
+
+            try:
+                resp = await client.get(target_url, timeout=10.0)
+                total_ms = int((time.time() - start_time) * 1000)
+                status_code = resp.status_code
+                success = 200 <= status_code < 300
+                result_state = ProbeResultState.success if success else ProbeResultState.http_error
+            except httpx.TimeoutException:
+                result_state = ProbeResultState.timeout
+            except Exception:
+                result_state = ProbeResultState.transport_error
+
+            db.add(
+                ProbeEvent(
+                    event_id=f"prb_{probe_id[:12]}",
+                    worker_id="cappo-node-primary",
+                    worker_region="us-east-1",
+                    runtime="amphoteric-v1",
+                    api_id=api.id,
+                    api_region_code=region.region_code,
+                    endpoint_url=target_url,
+                    occurred_at=datetime.now(timezone.utc),
+                    total_ms=total_ms or int((time.time() - start_time) * 1000),
+                    status_code=status_code,
+                    result_state=result_state,
+                    success=success,
+                    signature_alg="ed25519",
+                    signature_key_id="cappo-node-1",
+                    signature_value="local-node-signed",
+                )
+            )
+
+            if success:
+                lookback = datetime.now(timezone.utc) - timedelta(hours=1)
+                stats_res = await db.execute(
+                    select(
+                        func.avg(ProbeEvent.total_ms).label("avg_lat"),
+                        func.percentile_cont(0.95).within_group(ProbeEvent.total_ms).label("p95_lat"),
+                        func.count(ProbeEvent.id).label("cnt"),
+                    )
+                    .where(ProbeEvent.api_id == api.id)
+                    .where(ProbeEvent.api_region_code == region.region_code)
+                    .where(ProbeEvent.occurred_at >= lookback)
+                )
+                stats = stats_res.fetchone()
+
+                if stats and stats.cnt >= 5:
+                    p95 = float(stats.p95_lat)
+                    dev = compute_deviation(200.0, p95, 30.0)
+                    db.add(
+                        RegionalTelemetry(
+                            api_id=api.id,
+                            region_code=region.region_code,
+                            window_start=lookback,
+                            window_end=datetime.now(timezone.utc),
+                            sample_count=stats.cnt,
+                            success_count=stats.cnt,
+                            p50_latency_ms=int(stats.avg_lat),
+                            p95_latency_ms=int(p95),
+                            p99_latency_ms=int(p95 * 1.1),
+                            error_rate_percent=0.0,
+                            uptime_percent=100.0,
+                            trust_score=95.0,
+                        )
+                    )
+                    if dev["penalty_usdc"] > 0:
+                        print(f"[vnp-engine] Slashing detected for {api.name}: {dev['penalty_usdc']} USDC")
+                        db.add(
+                            SettlementEntry(
+                                provider_id=api.provider_id,
+                                entry_type=LedgerEntryType.slash,
+                                amount_minor=int(dev["penalty_usdc"] * 1e6),
+                                currency="USD",
+                                state=SettlementState.pending,
+                                reference_code=f"slash-{ep}-{probe_id[:8]}",
+                            )
+                        )
+
+        await db.commit()
 
 from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
 
@@ -557,9 +558,17 @@ async def lifespan(app: FastAPI):
         print(f"[startup] operator engine: WARNING — failed to start: {type(e).__name__}: {e}")
         traceback.print_exc()
 
-    # Start VNP background indexers and scoring engine
-    vnp_task = asyncio.create_task(vnp_background_indexer())
-    scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
+    # Start VNP background indexers and scoring engine.
+    # These in-process loops remain enabled by default while the distributed
+    # VNP probe deployment is rolled out; each has an explicit kill switch.
+    if _env_enabled("VNP_BACKGROUND_INDEXER_ENABLED"):
+        vnp_task = asyncio.create_task(vnp_background_indexer())
+    else:
+        print("[startup] vnp background indexer disabled by VNP_BACKGROUND_INDEXER_ENABLED=false")
+    if _env_enabled("VNP_SCORING_ENGINE_ENABLED"):
+        scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
+    else:
+        print("[startup] vnp scoring engine disabled by VNP_SCORING_ENGINE_ENABLED=false")
     
     # Start Poltergeist Daemon
     from backend.ops.poltergeist_daemon import poltergeist_daemon
@@ -567,7 +576,10 @@ async def lifespan(app: FastAPI):
     
     # Start the new physical edge probes
     from backend.core.vnp.probes import run_vnp_probes
-    physical_probes_task = asyncio.create_task(run_vnp_probes())
+    if _env_enabled("VNP_INPROCESS_PROBES_ENABLED"):
+        physical_probes_task = asyncio.create_task(run_vnp_probes())
+    else:
+        print("[startup] vnp in-process probes disabled by VNP_INPROCESS_PROBES_ENABLED=false")
 
     from backend.apps.api.terminal_state import terminal_state_manager
     terminal_state_task = asyncio.create_task(terminal_state_manager.state_loop())

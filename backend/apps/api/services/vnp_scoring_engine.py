@@ -6,17 +6,21 @@ Aligned with VNP Production Architecture Phase 3.
 import asyncio
 import json
 import logging
+import os
 import uuid
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
 
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 
 from backend.core.database.database import async_session
 from backend.core.services.redis_cache import redis_cache
 from backend.db.models.vnp import (
-    Api, ApiRegion, RegionalTelemetry, RouteSnapshot, ApiStatus
+    Api,
+    ApiRegion,
+    ApiStatus,
+    RegionalTelemetry,
+    RouteSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,11 +37,20 @@ class VNPScoringEngine:
 
     @classmethod
     async def run_loop(cls):
+        cycle_timeout = float(os.getenv("VNP_SCORING_ENGINE_TIMEOUT_SECONDS", "30"))
         while True:
             try:
-                await cls.compute_and_cache_snapshots()
-            except Exception as e:
-                logger.error(f"Error in VNP Scoring Engine loop: {e}", exc_info=True)
+                await asyncio.wait_for(
+                    cls.compute_and_cache_snapshots(),
+                    timeout=cycle_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "VNP Scoring Engine cycle timed out after %.1fs",
+                    cycle_timeout,
+                )
+            except Exception as exc:
+                logger.warning("VNP Scoring Engine cycle failed: %s", exc)
             await asyncio.sleep(cls.SCORING_INTERVAL)
 
     @classmethod
@@ -78,7 +91,7 @@ class VNPScoringEngine:
                     (RegionalTelemetry.measured_at == latest_tel_stmt.c.max_measured_at)
                 )
                 .where(Api.status == ApiStatus.active)
-                .where(ApiRegion.active == True)
+                .where(ApiRegion.active)
             )
 
             result = await db.execute(stmt)

@@ -83,12 +83,28 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
             last_err = exc
 
     if payload is None:
+        # TODO: issuer/rotation drift must be resolved with the token issuer
+        # owner; verification keys and JWT verification behavior stay unchanged here.
         try:
-            header = jwt.get_unverified_header(token)
             unverified = jwt.get_unverified_claims(token)
-            logging.error(f"[JWT_VERIFY_FAILED] header={header} unverified_claims={unverified} token={token} error={last_err}")
+            jti = unverified.get("jti")
+            sub = unverified.get("sub")
+            logging.error(
+                "[JWT_VERIFY_FAILED] jti=%s sub=%s token_prefix=%s error=%s",
+                jti,
+                sub,
+                token[:8],
+                last_err,
+            )
         except Exception as ue:
-            logging.error(f"[JWT_VERIFY_FAILED] token={token[:30]}... error={last_err} ue={ue}")
+            logging.error(
+                "[JWT_VERIFY_FAILED] jti=%s sub=%s token_prefix=%s error=%s metadata_error=%s",
+                None,
+                None,
+                token[:8],
+                last_err,
+                ue,
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -435,4 +451,3 @@ async def get_rls_db(
             await db.execute(text("RESET app.current_tenant_id"))
         except Exception:
             pass
-

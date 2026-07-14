@@ -1,12 +1,85 @@
 """Health check routes."""
 
+import asyncio
+import logging
+import time
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter
+from sqlalchemy import text
 
 from backend.core.config.settings import settings
+from backend.core.database.redis_client import redis_client
+from backend.core.llm.circuit_breaker import CircuitBreaker
 
 router = APIRouter(tags=["Health"])
+logger = logging.getLogger(__name__)
+_PROCESS_START_MONOTONIC = time.monotonic()
+_DEPENDENCY_TIMEOUT_SECONDS = 2.0
+
+
+async def _check_database() -> tuple[bool, float | None]:
+    started = time.perf_counter()
+    try:
+        from backend.core.database.database import engine
+
+        async def query() -> None:
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+
+        await asyncio.wait_for(query(), timeout=_DEPENDENCY_TIMEOUT_SECONDS)
+        return True, round((time.perf_counter() - started) * 1000, 1)
+    except Exception as exc:
+        logger.warning("Database health check failed: %s", type(exc).__name__)
+        return False, None
+
+
+async def _check_redis() -> tuple[bool, float | None]:
+    started = time.perf_counter()
+    client = None
+    try:
+        import redis.asyncio as redis
+
+        client = redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=_DEPENDENCY_TIMEOUT_SECONDS,
+            socket_timeout=_DEPENDENCY_TIMEOUT_SECONDS,
+        )
+        await asyncio.wait_for(client.ping(), timeout=_DEPENDENCY_TIMEOUT_SECONDS)
+        return True, round((time.perf_counter() - started) * 1000, 1)
+    except Exception as exc:
+        logger.warning("Redis health check failed: %s", type(exc).__name__)
+        return False, None
+    finally:
+        if client is not None:
+            await client.aclose()
+
+
+async def _check_llm() -> tuple[bool, float | None, list[str] | None]:
+    base_url = (getattr(settings, "OLLAMA_BASE_URL", None) or "").strip()
+    if not base_url:
+        return False, None, None
+
+    started = time.perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=_DEPENDENCY_TIMEOUT_SECONDS) as client:
+            response = await asyncio.wait_for(
+                client.get(f"{base_url.rstrip('/')}/api/tags"),
+                timeout=_DEPENDENCY_TIMEOUT_SECONDS,
+            )
+        response.raise_for_status()
+        models = response.json().get("models", [])
+        names = [model.get("name") for model in models if model.get("name")]
+        return True, round((time.perf_counter() - started) * 1000, 1), names
+    except Exception as exc:
+        logger.warning("LLM health check failed: %s", type(exc).__name__)
+        return False, None, None
+
+
+def _uptime_seconds() -> int:
+    return max(0, int(time.monotonic() - _PROCESS_START_MONOTONIC))
 
 
 @router.api_route("/health", methods=["GET", "HEAD"])
@@ -29,30 +102,18 @@ async def ping_check():
 @router.api_route("/healthz", methods=["GET", "HEAD"])
 async def deep_health_check():
     """Deep health check hitting core dependencies like DB and Redis."""
-    import traceback
-    try:
-        # Check DB
-        from sqlalchemy import text
-        from backend.core.database.database import engine
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-            
-        # Check Redis
-        from backend.core.database.redis_client import redis_client
-        if redis_client:
-            await redis_client.ping()
-            
+    db_ok, _ = await _check_database()
+    redis_ok, _ = await _check_redis()
+    if db_ok and redis_ok:
         return {
             "status": "healthy",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "version": settings.VERSION,
             "service": settings.APP_NAME,
         }
-    except Exception as e:
-        from fastapi import HTTPException
-        import logging
-        logging.getLogger(__name__).error(f"Health check failed: {str(e)}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=503, detail="Service Unavailable: core dependencies unreachable")
+    from fastapi import HTTPException
+
+    raise HTTPException(status_code=503, detail="Service Unavailable: core dependencies unreachable")
 
 
 @router.api_route("/api/v1/health", methods=["GET", "HEAD"])
@@ -67,81 +128,59 @@ async def health_check_api():
 
 @router.get("/health/detailed")
 async def detailed_health():
+    db_ok, db_latency = await _check_database()
+    redis_ok, redis_latency = await _check_redis()
+    llm_ok, llm_latency, llm_models = await _check_llm()
     return {
-        "status": "healthy",
+        "status": "healthy" if db_ok and redis_ok else "degraded",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": settings.VERSION,
         "service": settings.APP_NAME,
         "components": {
-            "database": {"status": "healthy", "latency_ms": 2},
-            "redis": {"status": "healthy", "latency_ms": 1},
-            "ai_services": {"status": "healthy", "models_loaded": 5},
+            "database": {
+                "status": "healthy" if db_ok else "unhealthy",
+                "latency_ms": db_latency,
+            },
+            "redis": {
+                "status": "healthy" if redis_ok else "unhealthy",
+                "latency_ms": redis_latency,
+            },
+            "ai_services": {
+                "status": "healthy" if llm_ok else "unknown",
+                "latency_ms": llm_latency,
+                "models_loaded": len(llm_models) if llm_models is not None else None,
+            },
         },
+        "uptime_seconds": _uptime_seconds(),
     }
 
 
 @router.get("/api-status")
 async def platform_status():
-    from backend.core.database.redis_client import redis_client
-    from backend.core.database.database import engine
-    from backend.core.llm.circuit_breaker import CircuitBreaker
-    import httpx
-    import time
-    
-    # Check DB
-    db_ok = False
-    try:
-        from sqlalchemy import text
-        from backend.core.database.database import SessionLocal
-        # Use simple select 1
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        db_ok = True
-    except Exception:
-        pass
-        
-    # Check Redis
-    redis_ok = False
-    if redis_client:
-        try:
-            await redis_client.ping()
-            redis_ok = True
-        except Exception:
-            pass
-            
-    # Check Ollama
-    llm_ok = False
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            res = await client.get(f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/tags")
-            if res.status_code == 200:
-                llm_ok = True
-    except Exception:
-        pass
-        
+    db_ok, _ = await _check_database()
+    redis_ok, _ = await _check_redis()
+
+    llm_ok, _, llm_models = await _check_llm()
+
     # Get Circuit Breaker State
     cb = CircuitBreaker("ollama")
     cb_state = await cb.get_state()
     cb_failures = 0
-    if redis_client:
-        try:
-            cb_failures = int(await redis_client.get(cb.failures_key) or "0")
-        except Exception:
-            pass
-            
+    try:
+        cb_failures = int(await redis_client.get(cb.failures_key) or "0")
+    except Exception:
+        pass
+
     threshold = int(getattr(settings, "CIRCUIT_BREAKER_FAILURE_THRESHOLD", 3))
     cooldown = int(getattr(settings, "CIRCUIT_BREAKER_COOLDOWN_SECONDS", 60))
-    
-    # Mock uptime for demo purposes
-    uptime = 43200
-    
+
     return {
         "status": "healthy" if (db_ok and redis_ok and llm_ok) else "degraded",
         "db_ok": db_ok,
         "redis_ok": redis_ok,
         "llm_ok": llm_ok,
         "llm_model": getattr(settings, "LLM_MODEL_DEFAULT", "qwen2.5:3b"),
-        "llm_models_available": ["qwen2.5:3b", "llama3.1:8b"],
+        "llm_models_available": llm_models or [],
         "groq_fallback_enabled": bool(getattr(settings, "LLM_FALLBACK", "groq") == "groq" and settings.GROQ_API_KEY),
         "circuit_breaker": {
             "state": cb_state,
@@ -149,7 +188,7 @@ async def platform_status():
             "threshold": threshold,
             "cooldown_seconds": cooldown
         },
-        "uptime_seconds": uptime
+        "uptime_seconds": _uptime_seconds()
     }
 
 

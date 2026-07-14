@@ -50,6 +50,9 @@ def create_access_token(
 import logging
 
 
+_jwt_redis_client = None
+
+
 def verify_token(token: str, enforce_replay: bool = False) -> dict:
     try:
         # Decode without verifying aud initially to allow soft enforcement
@@ -76,8 +79,16 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
         jti = payload.get("jti")
         if jti:
             import redis
+            global _jwt_redis_client
             try:
-                r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=2)
+                if _jwt_redis_client is None:
+                    _jwt_redis_client = redis.Redis.from_url(
+                        settings.REDIS_URL,
+                        decode_responses=True,
+                        socket_connect_timeout=2,
+                        socket_timeout=2,
+                    )
+                r = _jwt_redis_client
                 replay_mode = str(getattr(settings, "JWT_REPLAY_ENFORCEMENT", "off")).lower()
                 replay_seen = bool(r.exists(f"jti_cache:{jti}"))
                 if replay_seen:

@@ -18,6 +18,9 @@ from backend.services.safety_layer import (
 from backend.core.governance.compliance_profiles import get_compliance_profile, ComplianceProfile
 
 
+_mcp_redis_client = None
+
+
 class EnhancedMCPAPIRuntime:
     def __init__(self, compliance_profile_id: str = "global_default"):
         profile_id = os.getenv("VEKLOM_COMPLIANCE_PROFILE", compliance_profile_id)
@@ -38,12 +41,15 @@ class EnhancedMCPAPIRuntime:
         self.permissions_calculator = PermissionsCalculator()
         
         # Distributed State Tracking (Redis)
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        try:
-            self.redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
-        except Exception:
-            # Fallback for local dev/testing without Redis running
-            self.redis_client = None
+        global _mcp_redis_client
+        if _mcp_redis_client is None:
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            try:
+                _mcp_redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+            except Exception:
+                # Fallback for local dev/testing without Redis running
+                _mcp_redis_client = None
+        self.redis_client = _mcp_redis_client
 
     def _mark_nonce_spent(self, nonce: str, ttl_seconds: int = 3600) -> bool:
         """Atomic consume-once token burning using SET NX EX."""

@@ -3,7 +3,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Request, status
+import os
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -261,8 +262,49 @@ async def get_current_admin(user=Depends(get_current_user)):
     return user
 
 
-async def require_internal_operator(user=Depends(get_current_user)):
-    """Guard for UACP internal API routes."""
+class _InternalOperatorUser:
+    """Sentinel user returned when x-uacp-internal-key auth succeeds."""
+    id = "uacp-internal"
+    email = "uacp-internal@veklom.com"
+    workspace_id = "internal"
+    plan = "operator"
+    role = "operator"
+    is_active = True
+    status = "active"
+
+_INTERNAL_OPERATOR_USER = _InternalOperatorUser()
+
+_UACP_INTERNAL_KEY = os.getenv("UACP_INTERNAL_API_KEY", "") or os.getenv("UACP_ADMIN_KEY", "")
+
+
+async def require_internal_operator(
+    request: Request,
+    x_uacp_internal_key: Optional[str] = Header(None, alias="x-uacp-internal-key"),
+):
+    """Guard for UACP internal API routes.
+
+    Accepts either:
+      1. A valid x-uacp-internal-key header (shared secret for machine-to-machine calls from UACP V3)
+      2. A JWT bearer token with role admin/super_admin/operator/owner (human operators)
+    """
+    # --- Machine-to-machine: shared secret header ---
+    if x_uacp_internal_key:
+        if _UACP_INTERNAL_KEY and x_uacp_internal_key == _UACP_INTERNAL_KEY:
+            return _INTERNAL_OPERATOR_USER
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid x-uacp-internal-key"
+        )
+
+    # --- Human operator: JWT bearer token ---
+    from backend.core.security.auth import get_current_user  # avoid circular at module level
+    try:
+        user = await get_current_user(request)
+    except HTTPException:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required for UACP internal routes"
+        )
     if (user.role or "").lower() not in ("admin", "super_admin", "operator", "owner"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

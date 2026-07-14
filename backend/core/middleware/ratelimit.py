@@ -16,7 +16,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next):
         # Allow health checks and internal routes to bypass rate limiting
-        if request.url.path.startswith(("/health", "/status", "/openapi.json", "/.well-known")):
+        if request.url.path.startswith(("/health", "/_ping", "/status", "/openapi.json", "/.well-known")):
             return await call_next(request)
             
         # Determine client identifier (prefer authenticated user, fallback to IP)

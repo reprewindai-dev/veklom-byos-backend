@@ -174,7 +174,7 @@ _PAID_ROUTES: dict[str, dict] = {
 }
 
 _FREE_ROUTES_PREFIX = (
-    "/health", "/status", "/openapi.json", "/.well-known",
+    "/health", "/_ping", "/status", "/openapi.json", "/.well-known",
     "/llms.txt", "/pricing", "/robots.txt", "/docs", "/redoc",
     "/api/v1/ai/models", "/api/v1/workspace/providers",
     "/api/v1/auth/", "/api/v1/platform/pulse",

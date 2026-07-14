@@ -21,7 +21,7 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
 
         # Public bypass routes
         public_prefixes = (
-            "/status", "/health", "/api/health", "/api/v1/auth/login", "/api/v1/auth/register",
+            "/status", "/health", "/_ping", "/api/health", "/api/v1/auth/login", "/api/v1/auth/register",
             "/api/terminal",
             "/api/v1/health", "/redoc",
             "/api/v1/auth/eval-session", "/api/v1/auth/providers",

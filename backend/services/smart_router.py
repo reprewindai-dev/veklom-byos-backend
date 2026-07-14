@@ -23,10 +23,10 @@ fabricated telemetry.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -168,16 +168,44 @@ def _saw_score(n: ModelCandidate, req_scores: dict[str, int], weights: dict[str,
 async def _refine_with_observations(db: AsyncSession, workspace_id: str, fleet: list[ModelCandidate]) -> None:
     """Override priors with this workspace's observed avg cost/latency per provider."""
     try:
-        from backend.db.models.ai import ExecutionLog
-        rows = (await db.execute(
-            select(
-                ExecutionLog.provider,
-                func.avg(ExecutionLog.cost),
-                func.avg(ExecutionLog.latency_ms),
-                func.count(),
-            ).where(ExecutionLog.workspace_id == workspace_id).group_by(ExecutionLog.provider)
-        )).all()
-        by_provider = {p: (float(c or 0), float(l or 0), int(n or 0)) for p, c, l, n in rows}
+        import json
+
+        from backend.core.services.redis_cache import redis_cache
+
+        cache_key = f"router:obs:{workspace_id}"
+        cached_data = None
+
+        try:
+            cached_data = await redis_cache.get(cache_key)
+        except Exception as e:
+            logger.debug(f"[smart_router] redis cache get failed: {e}")
+
+        if cached_data:
+            try:
+                by_provider = json.loads(cached_data)
+            except Exception as e:
+                logger.debug(f"[smart_router] redis cache parse failed: {e}")
+                cached_data = None  # Fallback to DB
+                by_provider = {}
+
+        if not cached_data:
+            from backend.db.models.ai import ExecutionLog
+            rows = (await db.execute(
+                select(
+                    ExecutionLog.provider,
+                    func.avg(ExecutionLog.cost),
+                    func.avg(ExecutionLog.latency_ms),
+                    func.count(),
+                ).where(ExecutionLog.workspace_id == workspace_id).group_by(ExecutionLog.provider)
+            )).all()
+            by_provider = {p: [float(c or 0), float(lat or 0), int(num or 0)] for p, c, lat, num in rows}
+
+            try:
+                # Cache the aggregated observations for 5 minutes (300 seconds)
+                await redis_cache.set(cache_key, json.dumps(by_provider), ttl=300)
+            except Exception as e:
+                logger.debug(f"[smart_router] redis cache set failed: {e}")
+
         for cand in fleet:
             obs = by_provider.get(cand.provider)
             if obs and obs[2] >= 10:   # only trust with >=10 samples

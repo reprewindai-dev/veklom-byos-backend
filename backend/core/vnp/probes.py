@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import hmac
 import json
 import logging
 import os
@@ -12,7 +11,8 @@ import httpx
 from sqlalchemy import func, select
 
 from backend.core.database.database import async_session
-from backend.db.models.vnp import VnpMetric, VnpNode, VnpNodeHeartbeat, VnpObservation
+from backend.core.security.vnp_security import VNPEventVerifier, VNPSecurityError
+from backend.db.models.vnp import VnpMetric, VnpNode, VnpNodeHeartbeat, VnpNodeKey, VnpObservation
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ VNP_EDGE_NODES = [
     },
 ]
 
-EDGE_SOFTWARE_VERSION = "vnp-edge-probe:v1.0"
+EDGE_SOFTWARE_VERSION = "vnp-edge-probe:v1.1"
 
 
 def configured_edge_nodes() -> list[dict]:
@@ -88,9 +88,16 @@ def configured_edge_nodes() -> list[dict]:
     return nodes
 
 
-def sign_edge_payload(secret: str, payload: dict) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-    return hmac.new(secret.encode("utf-8"), encoded, hashlib.sha256).hexdigest()
+def signed_payload_is_valid(payload: dict) -> bool:
+    signature = payload.get("signature") if isinstance(payload, dict) else None
+    public_key = signature.get("public_key") if isinstance(signature, dict) else None
+    if not public_key:
+        return False
+    try:
+        VNPEventVerifier.verify_event_signature(payload, public_key)
+        return True
+    except VNPSecurityError:
+        return False
 
 
 async def ping_target(client: httpx.AsyncClient, target: dict) -> tuple[str, int, bool]:
@@ -114,8 +121,21 @@ async def ping_edge_node(client: httpx.AsyncClient, edge: dict, hub_secret: str)
     error_code = None
     response_fingerprint = None
     is_up = False
+    identity = None
+    probe_payload = None
+    edge_total_ms = None
 
     try:
+        identity_response = await client.get(
+            edge["url"].replace("/probe/ping", "/identity"),
+            headers={"x-veklom-hub-key": hub_secret},
+            timeout=10.0,
+        )
+        if identity_response.status_code == 200:
+            candidate_identity = identity_response.json()
+            if signed_payload_is_valid(candidate_identity):
+                identity = candidate_identity
+
         response = await client.post(
             edge["url"],
             json={"target_url": "https://api.veklom.com/health"},
@@ -123,23 +143,38 @@ async def ping_edge_node(client: httpx.AsyncClient, edge: dict, hub_secret: str)
             timeout=10.0,
         )
         status_code = response.status_code
-        is_up = response.status_code == 200
-        response_fingerprint = hashlib.sha256(response.content[:512]).hexdigest()
+        if response.status_code == 200:
+            candidate_payload = response.json()
+            if signed_payload_is_valid(candidate_payload):
+                probe_payload = candidate_payload
+                measurement = candidate_payload.get("measurement") or {}
+                edge_total_ms = measurement.get("total_ms")
+                response_fingerprint = measurement.get("response_fingerprint")
+                is_up = bool(measurement.get("success"))
+                status_code = measurement.get("status_code") or status_code
+            else:
+                error_code = "invalid_signature"
+        if response_fingerprint is None:
+            response_fingerprint = hashlib.sha256(response.content[:512]).hexdigest()
     except Exception as exc:
         error_code = type(exc).__name__
         logger.warning("[VNP Probe Swarm] edge ping failed for %s: %s", edge.get("region_code"), exc)
 
     completed_at = datetime.now(timezone.utc)
-    total_ms = int((time.monotonic() - start_time) * 1000)
+    hub_roundtrip_ms = int((time.monotonic() - start_time) * 1000)
+    total_ms = int(edge_total_ms) if isinstance(edge_total_ms, int) else hub_roundtrip_ms
     return {
         "edge": edge,
         "started_at": started_at,
         "completed_at": completed_at,
         "total_ms": total_ms,
+        "hub_roundtrip_ms": hub_roundtrip_ms,
         "status_code": status_code,
         "error_code": error_code,
         "response_fingerprint": response_fingerprint,
         "is_up": is_up,
+        "identity": identity,
+        "probe_payload": probe_payload,
     }
 
 
@@ -175,7 +210,11 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
                 node.macro_region = edge["macro_region"]
                 node.jurisdiction = edge["jurisdiction"]
                 node.gdpr_zone = bool(edge["gdpr_zone"])
-                node.software_version = EDGE_SOFTWARE_VERSION
+                node.software_version = (
+                    (result.get("identity") or {}).get("software_version")
+                    or (result.get("probe_payload") or {}).get("software_version")
+                    or EDGE_SOFTWARE_VERSION
+                )
 
             if result["is_up"]:
                 node.last_seen_at = result["completed_at"]
@@ -183,21 +222,40 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
             else:
                 node.health_state = "unreachable"
 
-            signature_key_id = f"hub-hmac:{region_code}"
-            heartbeat_payload = {
-                "node_id": str(node.id),
-                "region_code": region_code,
-                "timestamp": result["completed_at"].isoformat(),
-                "software_version": EDGE_SOFTWARE_VERSION,
-                "status_code": result["status_code"],
-            }
+            identity = result.get("identity") or {}
+            identity_sig = identity.get("signature") or {}
+            public_key = identity_sig.get("public_key")
+            signature_key_id = identity_sig.get("key_id") or f"unregistered:{region_code}"
+            if public_key and signature_key_id:
+                existing_key = (
+                    await db.execute(select(VnpNodeKey).where(VnpNodeKey.key_id == signature_key_id))
+                ).scalar_one_or_none()
+                if existing_key is None:
+                    db.add(
+                        VnpNodeKey(
+                            node_id=node.id,
+                            key_id=signature_key_id,
+                            public_key=public_key,
+                            active=True,
+                            created_at=now,
+                        )
+                    )
+                else:
+                    existing_key.node_id = node.id
+                    existing_key.public_key = public_key
+                    existing_key.active = True
+                    existing_key.revoked_at = None
+
+            probe_payload = result.get("probe_payload") or {}
+            probe_sig = probe_payload.get("signature") or {}
+            heartbeat_signature = identity_sig.get("sig") or probe_sig.get("sig") or ""
             db.add(
                 VnpNodeHeartbeat(
                     node_id=node.id,
                     timestamp=result["completed_at"],
-                    software_version=EDGE_SOFTWARE_VERSION,
+                    software_version=node.software_version or EDGE_SOFTWARE_VERSION,
                     signature_key_id=signature_key_id,
-                    signature=sign_edge_payload(hub_secret, heartbeat_payload),
+                    signature=heartbeat_signature,
                     created_at=now,
                 )
             )
@@ -215,37 +273,27 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
                     .limit(1)
                 )
             ).scalar_one_or_none()
-            observation_id = f"{region_code}:{int(result['completed_at'].timestamp() * 1000)}:{uuid.uuid4().hex[:8]}"
-            observation_payload = {
-                "observation_id": observation_id,
-                "node_id": str(node.id),
-                "region_code": region_code,
-                "started_at": result["started_at"].isoformat(),
-                "completed_at": result["completed_at"].isoformat(),
-                "total_ms": result["total_ms"],
-                "http_status": result["status_code"],
-                "sequence": int(sequence),
-                "previous_observation_hash": previous_signature,
-            }
+            observation_id = probe_payload.get("observation_id") or f"{region_code}:{int(result['completed_at'].timestamp() * 1000)}:{uuid.uuid4().hex[:8]}"
+            measurement = probe_payload.get("measurement") or {}
             db.add(
                 VnpObservation(
                     observation_id=observation_id,
                     node_id=node.id,
                     region=region_code,
                     physical_location=edge["physical_location"],
-                    target_id="vnp-edge-probe:/probe/ping",
-                    measurement_profile="wireguard-edge-heartbeat",
+                    target_id=probe_payload.get("target_url") or "https://api.veklom.com/health",
+                    measurement_profile="edge-target-http",
                     measurement_version="vnp-methodology-v1.0",
-                    started_at=result["started_at"],
-                    completed_at=result["completed_at"],
+                    started_at=datetime.fromisoformat(probe_payload["started_at"]) if probe_payload.get("started_at") else result["started_at"],
+                    completed_at=datetime.fromisoformat(probe_payload["completed_at"]) if probe_payload.get("completed_at") else result["completed_at"],
                     total_ms=result["total_ms"],
-                    http_status=result["status_code"],
+                    http_status=measurement.get("status_code") or result["status_code"],
                     response_fingerprint=result["response_fingerprint"],
-                    error_code=result["error_code"],
+                    error_code=measurement.get("error_code") or result["error_code"],
                     sequence=int(sequence),
                     previous_observation_hash=previous_signature,
                     signature_key_id=signature_key_id,
-                    signature=sign_edge_payload(hub_secret, observation_payload),
+                    signature=probe_sig.get("sig") or "",
                     created_at=now,
                 )
             )

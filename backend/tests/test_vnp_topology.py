@@ -55,6 +55,19 @@ def test_fresh_keyed_node_with_observation_is_connected():
     assert label == "Connected"
 
 
+def test_keyed_node_requires_observation_before_connected():
+    status, label = node_status(
+        registration_status="registered",
+        revocation_state=None,
+        active_key_count=1,
+        latest_heartbeat=datetime.now(timezone.utc),
+        observation_count=0,
+    )
+
+    assert status == "STANDBY"
+    assert label == "Partially Implemented"
+
+
 def test_stale_heartbeat_is_disconnected():
     status, label = node_status(
         registration_status="registered",

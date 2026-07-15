@@ -55,6 +55,16 @@ ZERO_TRUST_PUBLIC_PREFIXES = (
     "/api/v1/benchmarks/staking/state"
 )
 
+_INTERNAL_OPERATOR_PATH_PREFIX = "/api/v1/internal/"
+_INTERNAL_OPERATOR_PATHS = {
+    "/api/v1/repogate/seal",
+}
+
+
+def _accepts_internal_operator_credential(path: str) -> bool:
+    """Return whether a route validates the internal operator credential itself."""
+    return path.startswith(_INTERNAL_OPERATOR_PATH_PREFIX) or path in _INTERNAL_OPERATOR_PATHS
+
 
 def _is_zero_trust_public_path(path: str, method: str = "GET") -> bool:
     return (
@@ -73,10 +83,14 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
             
         auth_header = request.headers.get("Authorization")
         api_key_header = request.headers.get("X-API-Key")
+        internal_operator_key = request.headers.get("x-uacp-internal-key")
         # Cookie fallback — fixes session hydration race on page loads after login
         cookie_token = request.cookies.get("access_token")
+        has_internal_operator_credential = bool(
+            internal_operator_key and _accepts_internal_operator_credential(path)
+        )
         
-        if not auth_header and not api_key_header and not cookie_token:
+        if not auth_header and not api_key_header and not cookie_token and not has_internal_operator_credential:
             return JSONResponse(status_code=401, content={"detail": "Missing authentication credentials"})
             
         try:

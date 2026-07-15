@@ -297,9 +297,9 @@ async def require_internal_operator(
         )
 
     # --- Human operator: JWT bearer token ---
-    from backend.core.security.auth import get_current_user  # avoid circular at module level
     try:
-        user = await get_current_user(request)
+        credentials = await security_scheme(request)
+        user = await get_current_user(request, credentials=credentials)
     except HTTPException:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

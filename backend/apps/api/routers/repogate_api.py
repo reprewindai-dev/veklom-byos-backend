@@ -1,6 +1,8 @@
 import re
 import uuid
 import httpx
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
@@ -52,6 +54,7 @@ GITHUB_RE = re.compile(r"^https?://(?:www\.)?github\.com/([^/]+)/([^/?#]+)/?")
 
 from backend.core.security.auth import get_current_user
 from backend.core.security.encryption import decrypt_token
+from backend.core.security.auth import require_internal_operator
 
 @router.post("/scan")
 async def scan_repo(req: ScanRequest, user=Depends(get_current_user)):
@@ -143,11 +146,18 @@ from backend.db.models.vnp import AuditLog, TenantType
 from backend.core.database.database import async_session
 
 @router.post("/seal")
-async def seal_repogate_run(req: SealRequest):
+async def seal_repogate_run(req: SealRequest, operator=Depends(require_internal_operator)):
     """
     Receives completed runs and decisions from the Poltergeist Repo Gate (M2M fixer)
     and permanently stores the ledger hash proof as an AuditLog on the BYOS backend.
+
+    This is an internal trust boundary: a caller must be an authenticated operator.
+    The backend, rather than the caller, records when and by whom the evidence was
+    accepted so the source-reported timestamp cannot masquerade as the seal time.
     """
+    sealed_at = datetime.now(timezone.utc).isoformat()
+    receipt_id = f"repogate_{uuid.uuid4().hex}"
+
     async with async_session() as session:
         log_entry = AuditLog(
             actor_type=TenantType.operator,
@@ -161,10 +171,18 @@ async def seal_repogate_run(req: SealRequest):
                 "decision": req.decision,
                 "decision_note": req.decision_note,
                 "ledger_hash": req.ledger_hash,
-                "timestamp": req.timestamp
+                "reported_at": req.timestamp,
+                "sealed_at": sealed_at,
+                "sealed_by": str(getattr(operator, "id", "operator")),
+                "receipt_id": receipt_id,
             }
         )
         session.add(log_entry)
         await session.commit()
 
-    return {"status": "sealed", "ledger_hash": req.ledger_hash}
+    return {
+        "status": "sealed",
+        "receipt_id": receipt_id,
+        "ledger_hash": req.ledger_hash,
+        "sealed_at": sealed_at,
+    }

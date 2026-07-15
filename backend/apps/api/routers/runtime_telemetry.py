@@ -13,12 +13,11 @@ from backend.db.models.vnp import (
     Incident,
     AuditLog,
     AlertConfig,
-    ProbeEvent,
     Validator,
     SettlementEntry,
     LedgerEntryType,
-    VnpMetric,
 )
+from backend.apps.api.routers.vnp import build_vnp_verification_stack, get_vnp_evidence_counts
 
 router = APIRouter(prefix="/vnp", tags=["runtime", "vnp"])
 
@@ -52,12 +51,8 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
     )
     active_apis = int(api_count_result.scalar_one() or 0)
 
-    probe_count_result = await db.execute(select(func.count(ProbeEvent.id)))
-    signed_probe_events = int(probe_count_result.scalar_one() or 0)
-
-    physical_probe_count_result = await db.execute(select(func.count(VnpMetric.id)))
-    realtime_physical_probes = int(physical_probe_count_result.scalar_one() or 0)
-    total_probes = signed_probe_events + realtime_physical_probes
+    evidence_counts = await get_vnp_evidence_counts(db)
+    total_probes = evidence_counts["total_physical_measurements"]
 
     slash_result = await db.execute(
         select(func.coalesce(func.sum(SettlementEntry.amount_minor), 0))
@@ -80,9 +75,13 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
         "active_validators": active_validators,
         "active_apis": active_apis,
         "total_probes_recorded": total_probes,
-        "signed_probe_events": signed_probe_events,
-        "realtime_physical_probes": realtime_physical_probes,
-        "total_physical_probes_recorded": realtime_physical_probes,
+        "probe_events": evidence_counts["probe_events"],
+        "signed_probe_events": evidence_counts["total_signed_telemetry"],
+        "signed_probe_event_rows": evidence_counts["signed_probe_events"],
+        "signed_edge_observations": evidence_counts["signed_edge_observations"],
+        "realtime_physical_probes": evidence_counts["realtime_physical_probes"],
+        "total_physical_probes_recorded": total_probes,
+        "verification_stack": build_vnp_verification_stack(evidence_counts),
         "total_slashed_minor": total_slashed_minor,
         "avg_composite_score": avg_composite_score,
         "settlement_entries": settlement_entries,

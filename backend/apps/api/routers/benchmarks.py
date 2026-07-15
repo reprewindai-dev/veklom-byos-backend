@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 import random
+from uuid import UUID
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
@@ -29,6 +30,13 @@ router = APIRouter(prefix="/benchmarks", tags=["API Benchmarks & Staking"])
 
 def _enum_value(value):
     return getattr(value, "value", value)
+
+
+def _uuid_or_none(value: str):
+    try:
+        return UUID(value)
+    except (TypeError, ValueError):
+        return None
 
 # ============ PYDANTIC SCHEMAS ============
 class BenchmarkAPISchema(BaseModel):
@@ -380,8 +388,8 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
     entries.sort(key=_sort_key, reverse=True)
     return entries
 
-@router.get("/card/{api_did:path}")
-async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
+@router.get("/card/{api_identifier:path}")
+async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get_db)):
     """BenchmarkCard-style structured documentation card for a VNP API.
 
     Seven sections modelled on the BenchmarkCards framework (arXiv:2410.12974):
@@ -395,15 +403,20 @@ async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
     )
     from sqlalchemy.orm import selectinload
 
+    api_uuid = _uuid_or_none(api_identifier)
+    filters = [Api.api_did == api_identifier]
+    if api_uuid is not None:
+        filters.append(Api.id == api_uuid)
+
     api = (
         await db.execute(
             select(Api)
             .options(selectinload(Api.provider), selectinload(Api.regions))
-            .filter(Api.api_did == api_did)
+            .filter(or_(*filters))
         )
     ).scalar_one_or_none()
     if api is None:
-        raise HTTPException(status_code=404, detail=f"No VNP API registered with DID '{api_did}'")
+        raise HTTPException(status_code=404, detail=f"No VNP API registered with identifier '{api_identifier}'")
 
     # ---- Data section: real probe evidence ----
     probe_stats = (

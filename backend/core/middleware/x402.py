@@ -186,7 +186,8 @@ _FREE_ROUTES_PREFIX = (
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
     "/api/v1/integrations/", "/api/v1/receipts", "/api/v1/evidence/verify",
     "/api/v1/x402/config",
-    "/api/v1/benchmarks/leaderboard", "/api/v1/benchmarks/staking/state"
+    "/api/v1/benchmarks/leaderboard", "/api/v1/benchmarks/card/",
+    "/api/benchmarks/card/", "/api/v1/benchmarks/staking/state"
 )
 
 VEKLOM_API_BASE   = "https://veklom.com/api/v1"

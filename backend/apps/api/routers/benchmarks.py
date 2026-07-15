@@ -472,6 +472,20 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
     surface_targets = _backend_surface_targets(api.base_url, api.health_path)
     route_target = surface_targets[0] if surface_targets else None
     if surface_targets:
+        route_stats = None
+        route_signed_count = 0
+        if route_target:
+            route_stats = (
+                await db.execute(
+                    select(
+                        func.count(VnpObservation.id),
+                        func.min(VnpObservation.started_at),
+                        func.max(VnpObservation.completed_at),
+                        func.count(func.distinct(VnpObservation.region)),
+                    ).where(VnpObservation.target_id == route_target)
+                )
+            ).one()
+            route_signed_count = int(route_stats[0] or 0)
         surface_stats = (
             await db.execute(
                 select(
@@ -482,19 +496,10 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
                 ).where(VnpObservation.target_id.in_(surface_targets))
             )
         ).one()
-        surface_signed_count, first_surface, last_surface, surface_regions = surface_stats
-        route_signed_count = 0
-        if route_target:
-            route_signed_count = int(
-                (
-                    await db.execute(
-                        select(func.count(VnpObservation.id)).where(
-                            VnpObservation.target_id == route_target
-                        )
-                    )
-                ).scalar_one()
-                or 0
-            )
+        if route_signed_count and route_stats:
+            surface_signed_count, first_surface, last_surface, surface_regions = route_stats
+        else:
+            surface_signed_count, first_surface, last_surface, surface_regions = surface_stats
     else:
         surface_signed_count, first_surface, last_surface, surface_regions = 0, None, None, 0
         route_signed_count = 0

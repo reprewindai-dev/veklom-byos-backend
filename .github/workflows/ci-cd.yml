@@ -141,7 +141,7 @@ jobs:
           image = os.environ["COOLIFY_IMAGE"]
           text = path.read_text()
           updated = re.sub(
-              r"image: 'n13gp1nhrcdp0hvazvbnlxru:[^']+'",
+              r"image:\s*['\"]?n13gp1nhrcdp0hvazvbnlxru:[^'\"\s]+['\"]?",
               f"image: '{image}'",
               text,
               count=1,

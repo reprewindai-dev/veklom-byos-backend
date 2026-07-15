@@ -19,6 +19,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if inspector.has_table('banker_payments'):
+        if inspector.has_table('agent_wallet_ledger'):
+            op.drop_table('agent_wallet_ledger')
+        return
+
     op.create_table(
         'banker_payments',
         sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
@@ -41,7 +48,8 @@ def upgrade() -> None:
     op.create_index('ix_banker_payments_from_status', 'banker_payments', ['from_address', 'status'], unique=False)
     op.create_index(op.f('ix_banker_payments_tx_hash'), 'banker_payments', ['tx_hash'], unique=False)
     
-    op.drop_table('agent_wallet_ledger')
+    if inspector.has_table('agent_wallet_ledger'):
+        op.drop_table('agent_wallet_ledger')
 
 def downgrade() -> None:
     op.drop_index(op.f('ix_banker_payments_tx_hash'), table_name='banker_payments')

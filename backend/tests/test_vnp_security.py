@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
 from backend.core.security.vnp_security import VNPEventVerifier, VNPSecurityError
-from backend.db.models.vnp import VnpNodeHeartbeat
+from backend.db.models.vnp import VnpNodeHeartbeat, VnpObservation
 
 def test_vnp_event_verifier():
     # 1. Generate a test keypair
@@ -68,3 +68,11 @@ def test_vnp_node_heartbeat_requires_signed_evidence_fields():
     assert columns["heartbeat_id"].nullable is False
     assert columns["sequence"].nullable is False
     assert columns["payload_digest"].nullable is False
+
+
+def test_vnp_observation_tracks_site_and_transport_evidence():
+    columns = VnpObservation.__table__.columns
+
+    assert columns["site_code"].nullable is False
+    assert columns["transport_reachable"].nullable is False
+    assert "payload_digest" in columns

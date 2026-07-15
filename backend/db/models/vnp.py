@@ -382,11 +382,14 @@ class VnpNodeHeartbeat(Base):
     __tablename__ = "vnp_node_heartbeats"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    heartbeat_id = Column(String(100), nullable=False, unique=True)
     node_id = Column(UUID(as_uuid=True), ForeignKey("vnp_nodes.id", ondelete="CASCADE"), nullable=False)
     timestamp = Column(DateTime(timezone=True), nullable=False)
     software_version = Column(String(50), nullable=False)
+    sequence = Column(Integer, nullable=False)
     signature_key_id = Column(String(100), nullable=False)
     signature = Column(String, nullable=False)
+    payload_digest = Column(String(64), nullable=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 

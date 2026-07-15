@@ -1,5 +1,6 @@
 import json
 import base64
+import hashlib
 import logging
 from typing import Dict, Any
 
@@ -27,6 +28,16 @@ class VNPEventVerifier:
         This ensures the payload matches exactly what the producer signed.
         """
         return json.dumps(payload, separators=(',', ':'), sort_keys=True).encode('utf-8')
+
+    @staticmethod
+    def payload_digest(payload: Dict[str, Any]) -> str:
+        """Return the SHA-256 digest of the unsigned payload envelope."""
+        unsigned = dict(payload)
+        unsigned.pop("signature", None)
+        unsigned.pop("payload_digest", None)
+        return hashlib.sha256(
+            VNPEventVerifier.canonicalize_payload(unsigned)
+        ).hexdigest()
 
     @staticmethod
     def verify_event_signature(payload: Dict[str, Any], public_key_base64: str) -> bool:

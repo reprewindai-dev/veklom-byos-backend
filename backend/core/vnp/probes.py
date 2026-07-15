@@ -252,13 +252,30 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
             probe_payload = result.get("probe_payload") or {}
             probe_sig = probe_payload.get("signature") or {}
             heartbeat_signature = identity_sig.get("sig") or probe_sig.get("sig") or ""
+            heartbeat_sequence = (
+                await db.execute(
+                    select(func.count(VnpNodeHeartbeat.id)).where(VnpNodeHeartbeat.node_id == node.id)
+                )
+            ).scalar_one() + 1
+            heartbeat_payload = identity or probe_payload or {
+                "region": region_code,
+                "timestamp": result["completed_at"].isoformat(),
+                "software_version": node.software_version or EDGE_SOFTWARE_VERSION,
+            }
+            heartbeat_id = (
+                heartbeat_payload.get("heartbeat_id")
+                or f"{region_code}:heartbeat:{int(result['completed_at'].timestamp() * 1000)}:{uuid.uuid4().hex[:8]}"
+            )
             db.add(
                 VnpNodeHeartbeat(
+                    heartbeat_id=heartbeat_id,
                     node_id=node.id,
                     timestamp=result["completed_at"],
                     software_version=node.software_version or EDGE_SOFTWARE_VERSION,
+                    sequence=int(heartbeat_sequence),
                     signature_key_id=signature_key_id,
                     signature=heartbeat_signature,
+                    payload_digest=VNPEventVerifier.payload_digest(heartbeat_payload),
                     created_at=now,
                 )
             )

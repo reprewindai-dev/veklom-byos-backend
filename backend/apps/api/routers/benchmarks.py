@@ -434,10 +434,39 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
         await db.execute(
             select(func.count(ProbeEvent.id)).filter(
                 ProbeEvent.api_id == api.id,
-                ProbeEvent.evidence_hash.isnot(None),
+                or_(
+                    ProbeEvent.evidence_hash.isnot(None),
+                    ProbeEvent.worker_signature.isnot(None),
+                ),
             )
         )
     ).scalar_one()
+
+    telemetry_stats = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(RegionalTelemetry.sample_count), 0),
+                func.min(RegionalTelemetry.window_start),
+                func.max(RegionalTelemetry.window_end),
+                func.count(func.distinct(RegionalTelemetry.region_code)),
+            ).filter(RegionalTelemetry.api_id == api.id)
+        )
+    ).one()
+    telemetry_sample_count, first_telemetry, last_telemetry, telemetry_regions = telemetry_stats
+
+    sample_count = int(probe_count or telemetry_sample_count or 0)
+    first_measurement = first_probe or first_telemetry
+    last_measurement = last_probe or last_telemetry
+    region_count = int(max(probe_regions or 0, telemetry_regions or 0))
+    if probe_count:
+        data_source = "Worker-signed VNP probe events (vnp_probe_events)"
+        data_limitations = None
+    elif telemetry_sample_count:
+        data_source = "Regional VNP telemetry windows (vnp_regional_telemetry)"
+        data_limitations = None
+    else:
+        data_source = "VNP API registry"
+        data_limitations = "No API-scoped probe or regional telemetry evidence recorded yet."
 
     # ---- Performance section: latest regional telemetry ----
     telemetry = (
@@ -518,17 +547,17 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
             "goal": "Continuous trust scoring of the API via signed multi-region synthetic probes under the Veklom Nexus Protocol.",
             "audience": ["Platform engineers", "Procurement / vendor risk teams", "Autonomous agents selecting routes"],
             "tasks": ["Latency benchmarking", "Availability verification", "Error-rate tracking", "SLA attestation"],
-            "limitations": None if probe_count else "No probe evidence recorded yet — scores fall back to registration baselines.",
+            "limitations": data_limitations,
             "out_of_scope_uses": ["Functional correctness testing", "Security penetration assessment"],
         },
         "data": {
-            "source": "Worker-signed VNP probe events (vnp_probe_events)",
-            "sample_count": probe_count,
-            "signed_sample_count": signed_probe_count,
-            "region_count": probe_regions,
-            "first_measured_at": first_probe.isoformat() if first_probe else None,
-            "last_measured_at": last_probe.isoformat() if last_probe else None,
-            "annotation": "Each probe carries a worker signature, evidence hash and provenance hash.",
+            "source": data_source,
+            "sample_count": sample_count,
+            "signed_sample_count": int(signed_probe_count or 0),
+            "region_count": region_count,
+            "first_measured_at": first_measurement.isoformat() if first_measurement else None,
+            "last_measured_at": last_measurement.isoformat() if last_measurement else None,
+            "annotation": "Probe-event samples carry worker signatures when present; regional telemetry windows preserve API-scoped aggregate evidence.",
         },
         "methodology": {
             "methods": "Multi-region synthetic probing with windowed aggregation into regional telemetry.",

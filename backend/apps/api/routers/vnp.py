@@ -15,14 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.services.vnp_scoring import get_cached_api_score, update_api_composite_score
-from backend.db.models.vnp import Api, LedgerEntryType, ProbeEvent, SettlementEntry, Validator, VnpMetric
+from backend.db.models.vnp import Api, LedgerEntryType, ProbeEvent, SettlementEntry, Validator, VnpMetric, VnpObservation
 
 router = APIRouter(prefix="/vnp", tags=["Veklom Network Protocol"])
 
 
-VNP_VERIFICATION_STACK = [
-    {"section": "Physical measurements", "status": "Live"},
-    {"section": "Signed telemetry", "status": "Live"},
+FALLBACK_VNP_VERIFICATION_STACK = [
+    {"section": "Physical measurements", "status": "Disconnected"},
+    {"section": "Signed telemetry", "status": "Disconnected"},
     {"section": "Route beacons", "status": "Connected"},
     {"section": "Robust scoring", "status": "Connected"},
     {"section": "x402 settlement evidence", "status": "Live"},
@@ -40,13 +40,70 @@ class ProbeMetricPayload(BaseModel):
     success: bool
 
 
+async def get_vnp_evidence_counts(db: AsyncSession) -> dict:
+    """Read the evidence tables that back public VNP status labels."""
+    probe_events = int((await db.execute(select(func.count(ProbeEvent.id)))).scalar_one() or 0)
+    signed_probe_events = int(
+        (
+            await db.execute(
+                select(func.count(ProbeEvent.id)).where(
+                    ProbeEvent.worker_signature.isnot(None),
+                    ProbeEvent.worker_signature != "",
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    realtime_physical_probes = int((await db.execute(select(func.count(VnpMetric.id)))).scalar_one() or 0)
+    signed_edge_observations = int(
+        (
+            await db.execute(
+                select(func.count(VnpObservation.id)).where(
+                    VnpObservation.signature.isnot(None),
+                    VnpObservation.signature != "",
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    telemetry_windows = int((await db.execute(select(func.count(Api.id)).where(Api.status == "active"))).scalar_one() or 0)
+
+    return {
+        "probe_events": probe_events,
+        "signed_probe_events": signed_probe_events,
+        "realtime_physical_probes": realtime_physical_probes,
+        "signed_edge_observations": signed_edge_observations,
+        "total_physical_measurements": max(probe_events + realtime_physical_probes, signed_edge_observations),
+        "total_signed_telemetry": signed_probe_events + signed_edge_observations,
+        "active_api_routes": telemetry_windows,
+    }
+
+
+def build_vnp_verification_stack(counts: dict) -> list[dict]:
+    physical_status = "Live" if counts["total_physical_measurements"] > 0 else "Disconnected"
+    signed_status = "Live" if counts["total_signed_telemetry"] > 0 else "Disconnected"
+    route_status = "Connected" if counts["active_api_routes"] > 0 else "Disconnected"
+
+    return [
+        {"section": "Physical measurements", "status": physical_status},
+        {"section": "Signed telemetry", "status": signed_status},
+        {"section": "Route beacons", "status": route_status},
+        {"section": "Robust scoring", "status": route_status},
+        {"section": "x402 settlement evidence", "status": "Live"},
+        {"section": "PGL audit trails", "status": "Connected"},
+        {"section": "Agent/runtime enforcement", "status": "Connected", "backend": "cappo-backend"},
+    ]
+
+
 @router.get("/methodology")
-async def get_vnp_methodology() -> dict:
+async def get_vnp_methodology(db: AsyncSession = Depends(get_db)) -> dict:
     """Backend-backed VNP v1.0 methodology and route wiring manifest."""
+    evidence_counts = await get_vnp_evidence_counts(db)
     return {
         "methodology": "VNP Methodology v1.0",
         "tagline": "Cryptographic API telemetry for the machine-to-machine economy",
-        "verification_stack": VNP_VERIFICATION_STACK,
+        "verification_stack": build_vnp_verification_stack(evidence_counts),
+        "evidence_counts": evidence_counts,
         "repo": "reprewindai-dev/veklom-byos-backend",
         "backends": {
             "byos": {
@@ -230,16 +287,8 @@ async def vnp_metrics(db: AsyncSession = Depends(get_db)):
 
     # Signed probe events plus the live physical probe table used by the
     # public VNP directory/status surfaces.
-    probe_result = await db.execute(
-        select(func.count(ProbeEvent.id))
-    )
-    signed_probe_events = int(probe_result.scalar_one())
-
-    realtime_probe_result = await db.execute(
-        select(func.count(VnpMetric.id))
-    )
-    realtime_physical_probes = int(realtime_probe_result.scalar_one())
-    total_probes = signed_probe_events + realtime_physical_probes
+    evidence_counts = await get_vnp_evidence_counts(db)
+    total_probes = evidence_counts["total_physical_measurements"]
 
     # Average composite score across all active APIs
     avg_score_result = await db.execute(
@@ -254,8 +303,12 @@ async def vnp_metrics(db: AsyncSession = Depends(get_db)):
         "active_validators": active_validators,
         "active_apis": active_apis,
         "total_probes_recorded": total_probes,
-        "signed_probe_events": signed_probe_events,
-        "realtime_physical_probes": realtime_physical_probes,
+        "probe_events": evidence_counts["probe_events"],
+        "signed_probe_events": evidence_counts["total_signed_telemetry"],
+        "signed_probe_event_rows": evidence_counts["signed_probe_events"],
+        "signed_edge_observations": evidence_counts["signed_edge_observations"],
+        "realtime_physical_probes": evidence_counts["realtime_physical_probes"],
+        "verification_stack": build_vnp_verification_stack(evidence_counts),
         "total_slashed_minor": total_slashed_minor,
         "avg_composite_score": avg_composite_score,
         "yield_rate_annual_pct": 4.2,

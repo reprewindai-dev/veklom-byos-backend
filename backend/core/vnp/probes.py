@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 from backend.core.database.database import async_session
 from backend.core.security.vnp_security import VNPEventVerifier, VNPSecurityError
@@ -72,8 +72,9 @@ VNP_EDGE_NODES = [
 
 EDGE_SOFTWARE_VERSION = "vnp-edge-probe:v1.1"
 VNP_PROBE_INTERVAL_SECONDS = 10
-VNP_PROBE_CYCLE_TIMEOUT_SECONDS = 30
+VNP_PROBE_CYCLE_TIMEOUT_SECONDS = 120
 VNP_METRIC_RETENTION_DAYS = 7
+VNP_PROBE_ADVISORY_LOCK_ID = 610_402_501
 
 
 def configured_edge_nodes() -> list[dict]:
@@ -344,6 +345,30 @@ async def run_vnp_probes() -> None:
     )
 
     async def run_cycle(client: httpx.AsyncClient) -> None:
+        async with async_session() as lock_db:
+            lock_acquired = bool(
+                (
+                    await lock_db.execute(
+                        text("SELECT pg_try_advisory_lock(:lock_id)"),
+                        {"lock_id": VNP_PROBE_ADVISORY_LOCK_ID},
+                    )
+                ).scalar_one()
+            )
+            if not lock_acquired:
+                logger.info(
+                    "[VNP Probe Swarm] skipping cycle; another BYOS replica holds the probe lock"
+                )
+                return
+            try:
+                await _run_locked_cycle(client)
+            finally:
+                await lock_db.execute(
+                    text("SELECT pg_advisory_unlock(:lock_id)"),
+                    {"lock_id": VNP_PROBE_ADVISORY_LOCK_ID},
+                )
+                await lock_db.commit()
+
+    async def _run_locked_cycle(client: httpx.AsyncClient) -> None:
         tasks = [ping_target(client, target) for target in VNP_TARGETS]
         edge_secret = os.getenv("VNP_HUB_SECRET_KEY") or os.getenv("HUB_SECRET_KEY")
         edge_tasks = []

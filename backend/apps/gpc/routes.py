@@ -22,12 +22,12 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import asyncio
 
-from gpc_schemas import (
+from backend.apps.gpc.schemas import (
     GPCPipelineGraph, PipelineCompilationRequest, PipelineCompilationResult,
     NLToGraphRequest, NLToGraphResult, PipelineExecutionTrace,
     GPCComponentDefinition, PortType
 )
-from gpc_compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
+from backend.apps.gpc.compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
 
 logger = logging.getLogger("gpc")
 

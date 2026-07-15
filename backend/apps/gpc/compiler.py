@@ -16,8 +16,8 @@ import graphlib
 from typing import Dict, List, Tuple, Optional, Any, Type
 from dataclasses import dataclass
 from datetime import datetime
-from gpc_schemas import (
-    GPCPipelineGraph, GPCNode, GPCEdge, GPCComponentDefinition, 
+from backend.apps.gpc.schemas import (
+    GPCPipelineGraph, GPCNode, GPCEdge, GPCComponentDefinition,
     PipelineCompilationResult
 )
 

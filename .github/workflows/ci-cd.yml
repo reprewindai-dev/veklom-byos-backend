@@ -105,15 +105,19 @@ jobs:
           ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 << 'ENDSSH'
           set -e
           APP=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru
-          CONTAINER=n13gp1nhrcdp0hvazvbnlxru-213557155694
-          IMAGE=veklom-local:latest
+          PUBLIC_SERVICE=n13gp1nhrcdp0hvazvbnlxru-141959863314
+          HELPER_CONTAINER=n13gp1nhrcdp0hvazvbnlxru-213557155694
+          SHA="${{ github.sha }}"
+          IMAGE_TAG="${SHA:0:7}"
+          IMAGE=veklom-local:${IMAGE_TAG}
+          COOLIFY_IMAGE=n13gp1nhrcdp0hvazvbnlxru:${IMAGE_TAG}
           ENVFILE=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env
 
           cd $APP
           git pull origin main
 
           echo "--- Building image ---"
-          docker build -t $IMAGE .
+          docker build -t "$IMAGE" -t "$COOLIFY_IMAGE" .
 
           echo "--- Running Alembic migrations ---"
           docker run --rm \
@@ -126,7 +130,59 @@ jobs:
               -c backend/db/migrations/alembic.ini \
               upgrade head
 
-          echo "Migration complete. Container replacement is handled by Coolify."
+          echo "--- Recreating Coolify-managed public API container ---"
+          cp docker-compose.yaml "docker-compose.yaml.pre-${IMAGE_TAG}"
+          COOLIFY_IMAGE="$COOLIFY_IMAGE" python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("docker-compose.yaml")
+          image = os.environ["COOLIFY_IMAGE"]
+          text = path.read_text()
+          updated = re.sub(
+              r"image: 'n13gp1nhrcdp0hvazvbnlxru:[^']+'",
+              f"image: '{image}'",
+              text,
+              count=1,
+          )
+          if updated == text:
+              raise SystemExit("Coolify image line not found in docker-compose.yaml")
+          path.write_text(updated)
+          PY
+          docker compose -f docker-compose.yaml up -d --force-recreate --no-deps "$PUBLIC_SERVICE"
+
+          echo "--- Recreating internal helper API container ---"
+          docker stop "$HELPER_CONTAINER" >/dev/null 2>&1 || true
+          docker rm "$HELPER_CONTAINER" >/dev/null 2>&1 || true
+          docker run -d \
+            --name "$HELPER_CONTAINER" \
+            --network coolify \
+            --restart unless-stopped \
+            --env-file "$ENVFILE" \
+            -e VNP_INPROCESS_PROBES_ENABLED=false \
+            -e PORT=8088 \
+            -e PYTHONPATH=/app \
+            -w /app \
+            --label veklom.workload=backend-api \
+            "$COOLIFY_IMAGE" \
+            uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8088 >/dev/null
+
+          echo "--- Waiting for container health ---"
+          for name in "$PUBLIC_SERVICE" "$HELPER_CONTAINER"; do
+            for i in 1 2 3 4 5; do
+              STATUS=$(docker inspect "$name" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')
+              if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "running" ]; then
+                echo "$name is $STATUS"
+                break
+              fi
+              if [ "$i" = "5" ]; then
+                echo "$name did not become healthy; final status=$STATUS"
+                exit 1
+              fi
+              sleep 6
+            done
+          done
           ENDSSH
 
       - name: Verify Production Health

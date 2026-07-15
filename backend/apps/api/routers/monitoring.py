@@ -649,6 +649,14 @@ async def pulse_stream(user=Depends(get_current_user), db: AsyncSession = Depend
 @router.get("/insights/summary")
 async def insights_summary(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or ""
+    cache_key = f"insights:summary:{ws}"
+    cached = await redis_cache.get(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
     rows = (await db.execute(
         select(ExecutionLog.provider, func.sum(ExecutionLog.cost), func.count(), func.avg(ExecutionLog.latency_ms))
         .where(ExecutionLog.workspace_id == ws)
@@ -673,7 +681,7 @@ async def insights_summary(user=Depends(get_current_user), db: AsyncSession = De
 
     # For empty state honesty:
     if total_calls == 0:
-        return {
+        result = {
             "total_requests_today": 0,
             "avg_latency_ms": 0,
             "error_rate_percent": 0.0,
@@ -684,23 +692,34 @@ async def insights_summary(user=Depends(get_current_user), db: AsyncSession = De
             "avg_tokens_per_request": 0,
             "peak_hour_requests": 0,
         }
+    else:
+        result = {
+            "total_requests_today": total_calls,
+            "avg_latency_ms": avg_latency,
+            "error_rate_percent": 0.0,
+            "top_models": top_models,
+            "provider_split": provider_split,
+            "total_requests_30d": total_calls,
+            "total_cost_30d": round(total_cost, 6),
+            "avg_tokens_per_request": 0,
+            "peak_hour_requests": 0,
+        }
 
-    return {
-        "total_requests_today": total_calls,
-        "avg_latency_ms": avg_latency,
-        "error_rate_percent": 0.0,
-        "top_models": top_models,
-        "provider_split": provider_split,
-        "total_requests_30d": total_calls,
-        "total_cost_30d": round(total_cost, 6),
-        "avg_tokens_per_request": 0,
-        "peak_hour_requests": 0,
-    }
+    await redis_cache.set(cache_key, json.dumps(result), ttl=300)
+    return result
 
 
 @router.get("/insights/savings")
 async def insights_savings(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or ""
+    cache_key = f"insights:savings:{ws}"
+    cached = await redis_cache.get(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
     # True savings calculation: Compare actual cost to a flat baseline of $0.001 per token if routed to premium
     rows = (await db.execute(
         select(func.sum(ExecutionLog.total_tokens), func.sum(ExecutionLog.cost))
@@ -713,12 +732,15 @@ async def insights_savings(user=Depends(get_current_user), db: AsyncSession = De
     baseline_cost = (total_tokens / 1000.0) * 0.03 # $0.03/1k baseline
     savings = max(0, baseline_cost - actual_cost)
     
-    return {
+    result = {
         "total_saved_usd": round(savings, 2),
         "routing_savings": round(savings * 0.8, 2),
         "caching_savings": round(savings * 0.2, 2),
         "policy_savings": 0.00,
     }
+
+    await redis_cache.set(cache_key, json.dumps(result), ttl=300)
+    return result
 
 
 @router.get("/insights/savings/projected")
@@ -782,6 +804,14 @@ async def prometheus_metrics(user=Depends(get_current_user), db: AsyncSession = 
 @router.get("/metrics/performance")
 async def performance_metrics(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or ""
+    cache_key = f"metrics:performance:{ws}"
+    cached = await redis_cache.get(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
     # Since we can't easily calculate exact P90/P99 in a fast query without Postgres extensions,
     # we will use avg latency to construct honest estimations if there is data.
     rows = (await db.execute(
@@ -793,21 +823,24 @@ async def performance_metrics(user=Depends(get_current_user), db: AsyncSession =
     avg_lat = int(rows[1]) if rows and rows[1] else 0
     
     if count == 0:
-        return {
+        result = {
             "p50_ms": 0,
             "p90_ms": 0,
             "p99_ms": 0,
             "throughput_rps": 0,
             "error_rate": 0.0,
         }
-        
-    return {
-        "p50_ms": avg_lat,
-        "p90_ms": int(avg_lat * 1.5),
-        "p99_ms": int(avg_lat * 2.5),
-        "throughput_rps": count, # Simple placeholder for true RPS
-        "error_rate": 0.0,
-    }
+    else:
+        result = {
+            "p50_ms": avg_lat,
+            "p90_ms": int(avg_lat * 1.5),
+            "p99_ms": int(avg_lat * 2.5),
+            "throughput_rps": count, # Simple placeholder for true RPS
+            "error_rate": 0.0,
+        }
+
+    await redis_cache.set(cache_key, json.dumps(result), ttl=300)
+    return result
 
 
 # --- Telemetry ---

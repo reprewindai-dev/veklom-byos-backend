@@ -381,6 +381,98 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] db: vnp_apis migration warning: {type(e).__name__}: {e}")
 
+    # Idempotent column additions for VNP physical probe events.
+    # Earlier production tables used the v0.1.16 physical-probe shape
+    # (occurred_at/api_region_code/signature_value/total_ms). The current
+    # ORM/card surface reads the normalized v1.0 names below, so preserve and
+    # map old probe evidence forward on every startup.
+    vnp_probe_event_columns = [
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS partition_key VARCHAR(20)",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS region VARCHAR(50)",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS worker_signature TEXT",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS latency_ms FLOAT",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS http_version VARCHAR(10)",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS tls_version VARCHAR(20)",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS error_reason VARCHAR(255)",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS measured_at TIMESTAMPTZ",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS evidence_hash VARCHAR",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS provenance_hash VARCHAR",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS cryptography_anchor VARCHAR",
+        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'vnp_probe_events' AND column_name = 'occurred_at'
+            ) THEN
+                EXECUTE 'UPDATE vnp_probe_events SET measured_at = COALESCE(measured_at, occurred_at) WHERE measured_at IS NULL';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'vnp_probe_events' AND column_name = 'received_at'
+            ) THEN
+                EXECUTE 'UPDATE vnp_probe_events SET created_at = COALESCE(created_at, received_at) WHERE created_at IS NULL';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'vnp_probe_events' AND column_name = 'api_region_code'
+            ) THEN
+                EXECUTE 'UPDATE vnp_probe_events SET region = COALESCE(region, api_region_code) WHERE region IS NULL';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'vnp_probe_events' AND column_name = 'signature_value'
+            ) THEN
+                EXECUTE 'UPDATE vnp_probe_events SET worker_signature = COALESCE(worker_signature, signature_value) WHERE worker_signature IS NULL';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'vnp_probe_events' AND column_name = 'total_ms'
+            ) THEN
+                EXECUTE 'UPDATE vnp_probe_events SET latency_ms = COALESCE(latency_ms, total_ms::float) WHERE latency_ms IS NULL';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'vnp_probe_events' AND column_name = 'error_class'
+            ) THEN
+                EXECUTE 'UPDATE vnp_probe_events SET error_reason = COALESCE(error_reason, error_class) WHERE error_reason IS NULL';
+            END IF;
+        END $$;
+        """,
+        "UPDATE vnp_probe_events SET measured_at = COALESCE(measured_at, now()) WHERE measured_at IS NULL",
+        "UPDATE vnp_probe_events SET created_at = COALESCE(created_at, now()) WHERE created_at IS NULL",
+        "UPDATE vnp_probe_events SET partition_key = COALESCE(partition_key, to_char(measured_at, 'YYYY-MM')) WHERE partition_key IS NULL",
+        "UPDATE vnp_probe_events SET region = COALESCE(region, 'unknown') WHERE region IS NULL",
+        "UPDATE vnp_probe_events SET worker_signature = COALESCE(worker_signature, '') WHERE worker_signature IS NULL",
+        "UPDATE vnp_probe_events SET latency_ms = COALESCE(latency_ms, 0) WHERE latency_ms IS NULL",
+        "CREATE INDEX IF NOT EXISTS idx_probe_events_api_region_measured_at ON vnp_probe_events (api_id, region, measured_at)",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in vnp_probe_event_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: vnp_probe_events compatibility migration completed")
+    except Exception as e:
+        print(f"[startup] db: vnp_probe_events migration warning: {type(e).__name__}: {e}")
+
+    vnp_regional_telemetry_columns = [
+        "ALTER TABLE vnp_regional_telemetry ADD COLUMN IF NOT EXISTS provenance_hash VARCHAR",
+        "ALTER TABLE vnp_regional_telemetry ADD COLUMN IF NOT EXISTS on_chain_anchor VARCHAR",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for ddl in vnp_regional_telemetry_columns:
+                await conn.execute(text(ddl))
+        print("[startup] db: vnp_regional_telemetry compatibility migration completed")
+    except Exception as e:
+        print(f"[startup] db: vnp_regional_telemetry migration warning: {type(e).__name__}: {e}")
+
     # Idempotent column additions for vnp_claim_requests
     vnp_claim_requests_columns = [
         "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS provider_name VARCHAR(255) DEFAULT 'Unknown Provider'",

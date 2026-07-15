@@ -26,6 +26,10 @@ from backend.db.models.governed_run import GovernedRun
 
 router = APIRouter(prefix="/benchmarks", tags=["API Benchmarks & Staking"])
 
+
+def _enum_value(value):
+    return getattr(value, "value", value)
+
 # ============ PYDANTIC SCHEMAS ============
 class BenchmarkAPISchema(BaseModel):
     id: str
@@ -441,7 +445,7 @@ async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
             .limit(10)
         )
     ).scalars().all()
-    open_incident_count = sum(1 for i in incidents if i.state.value == "open")
+    open_incident_count = sum(1 for i in incidents if _enum_value(i.state) == "open")
 
     # ---- Compliance & provenance ----
     audit_count = (
@@ -524,7 +528,7 @@ async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
         "performance": {
             "composite_score": api.current_composite_score,
             "stability_rating": api.stability_rating,
-            "status": api.status.value,
+            "status": _enum_value(api.status),
             "p50_latency_ms": telemetry.p50_latency_ms if telemetry else None,
             "p95_latency_ms": telemetry.p95_latency_ms if telemetry else None,
             "p99_latency_ms": telemetry.p99_latency_ms if telemetry else None,
@@ -540,7 +544,7 @@ async def get_benchmark_card(api_did: str, db: AsyncSession = Depends(get_db)):
                 {
                     "title": i.title,
                     "severity": i.severity,
-                    "state": i.state.value,
+                    "state": _enum_value(i.state),
                     "opened_at": i.opened_at.isoformat() if i.opened_at else None,
                 }
                 for i in incidents

@@ -47,7 +47,7 @@ async def quarantine_agent(
 ):
     """
     The Infection Containment API.
-    Updates the agent's PGL Genome Ledger state to QUARANTINED.
+    Updates the agent's PGL Gnomledger state to QUARANTINED.
     Dynamically rewires the agent's DB connections to a read-only, ephemeral decoy buffer 
     via RLS triggers, allowing security teams to study anomalous logic without risk.
     """
@@ -215,7 +215,7 @@ async def quarantine_agent(
 ):
     """
     The Infection Containment API.
-    Updates the agent's PGL Genome Ledger state to QUARANTINED.
+    Updates the agent's PGL Gnomledger state to QUARANTINED.
     Dynamically rewires the agent's DB connections to a read-only, ephemeral decoy buffer 
     via RLS triggers, allowing security teams to study anomalous logic without risk.
     """

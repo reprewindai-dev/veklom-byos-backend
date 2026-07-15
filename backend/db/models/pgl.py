@@ -1,4 +1,4 @@
-"""PGL (Provenance / Genome Ledger) persistence — the identity substrate.
+"""PGL Gnomledger persistence — the identity substrate.
 
 This backs the keystone invariant: *no governed action executes anonymously*.
 Every `commit_intent` / `attest_outcome` / `register_rollback` from the

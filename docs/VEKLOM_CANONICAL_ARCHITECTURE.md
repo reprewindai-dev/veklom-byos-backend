@@ -25,8 +25,8 @@ This document represents the unified architectural truth lock for the Veklom pla
 - **Role:** The sole final authority for consequential execution (LAW 0).
 - **Rules:** It controls all Execution Authorization Tokens (EAT) and side-effect releases. Lane 3 executions CANNOT proceed without explicit CAPPO approval. It is purely deterministic and acts without circular authority logic.
 
-### 2.5 The Evidence: PGL & Genome Ledger
-- **Component:** IdentityRAG / Genome Ledger
+### 2.5 The Evidence: PGL & Gnomledger
+- **Component:** IdentityRAG / Gnomledger
 - **Role:** Manages identity, lineage, and canonical evidence.
 - **Rules:** Requires persistent signing keys (no simulated fallback). Seals the cryptographic proof of all transactions and connection states.
 

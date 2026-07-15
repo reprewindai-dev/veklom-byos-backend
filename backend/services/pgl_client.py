@@ -20,7 +20,7 @@ def _hash_event(payload: Dict[str, Any], prev_event_hash: Optional[str]) -> str:
 
 
 class PGLClient:
-    """Sovereign Provenance / Genome Ledger (PGL) client.
+    """Sovereign PGL Gnomledger client.
 
     Backs the keystone invariant: no governed action executes anonymously.
     When constructed with a DB session it writes REAL, SHA-256 hash-chained

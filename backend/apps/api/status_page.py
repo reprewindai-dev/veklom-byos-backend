@@ -255,7 +255,7 @@ def _status_html(status_data: dict) -> str:
 
     <div class="system-card">
       <div class="system-header">
-        <div class="system-name">PGL Genome Ledger</div>
+        <div class="system-name">PGL Gnomledger</div>
         <div class="system-status-icon"></div>
       </div>
       <div class="system-metrics">

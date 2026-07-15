@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import random
+from urllib.parse import urlparse
 from uuid import UUID
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
@@ -37,6 +38,16 @@ def _uuid_or_none(value: str):
         return UUID(value)
     except (TypeError, ValueError):
         return None
+
+
+def _backend_surface_targets(base_url: str) -> list[str]:
+    parsed = urlparse(base_url)
+    if parsed.netloc != "api.veklom.com":
+        return []
+    return [
+        "https://api.veklom.com/health",
+        "api-health",
+    ]
 
 # ============ PYDANTIC SCHEMAS ============
 class BenchmarkAPISchema(BaseModel):
@@ -399,7 +410,7 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
     honest "Needs proof" state instead of fabricated content.
     """
     from backend.db.models.vnp import (
-        Api, RegionalTelemetry, ProbeEvent, Incident, AuditLog, ClaimRequest
+        Api, RegionalTelemetry, ProbeEvent, Incident, AuditLog, ClaimRequest, VnpObservation
     )
     from sqlalchemy.orm import selectinload
 
@@ -454,16 +465,36 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
     ).one()
     telemetry_sample_count, first_telemetry, last_telemetry, telemetry_regions = telemetry_stats
 
-    sample_count = int(probe_count or telemetry_sample_count or 0)
-    first_measurement = first_probe or first_telemetry
-    last_measurement = last_probe or last_telemetry
-    region_count = int(max(probe_regions or 0, telemetry_regions or 0))
+    surface_targets = _backend_surface_targets(api.base_url)
+    if surface_targets:
+        surface_stats = (
+            await db.execute(
+                select(
+                    func.count(VnpObservation.id),
+                    func.min(VnpObservation.started_at),
+                    func.max(VnpObservation.completed_at),
+                    func.count(func.distinct(VnpObservation.region)),
+                ).where(VnpObservation.target_id.in_(surface_targets))
+            )
+        ).one()
+        surface_signed_count, first_surface, last_surface, surface_regions = surface_stats
+    else:
+        surface_signed_count, first_surface, last_surface, surface_regions = 0, None, None, 0
+
+    sample_count = int(probe_count or telemetry_sample_count or surface_signed_count or 0)
+    first_measurement = first_probe or first_telemetry or first_surface
+    last_measurement = last_probe or last_telemetry or last_surface
+    region_count = int(max(probe_regions or 0, telemetry_regions or 0, surface_regions or 0))
     if probe_count:
         data_source = "Worker-signed VNP probe events (vnp_probe_events)"
         data_limitations = None
     elif telemetry_sample_count:
         data_source = "Regional VNP telemetry windows (vnp_regional_telemetry)"
         data_limitations = None
+    elif surface_signed_count:
+        data_source = "Signed BYOS backend-surface observations (vnp_observations)"
+        data_limitations = "Route-specific probe rows for this API are not populated yet; evidence reflects the shared api.veklom.com backend surface that hosts the route."
+        signed_probe_count = surface_signed_count
     else:
         data_source = "VNP API registry"
         data_limitations = "No API-scoped probe or regional telemetry evidence recorded yet."
@@ -557,7 +588,7 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
             "region_count": region_count,
             "first_measured_at": first_measurement.isoformat() if first_measurement else None,
             "last_measured_at": last_measurement.isoformat() if last_measurement else None,
-            "annotation": "Probe-event samples carry worker signatures when present; regional telemetry windows preserve API-scoped aggregate evidence.",
+            "annotation": "Probe-event samples carry worker signatures when present; regional telemetry windows preserve API-scoped aggregate evidence. Backend-surface observations are used only when the API is hosted on the measured Veklom backend surface.",
         },
         "methodology": {
             "methods": "Multi-region synthetic probing with windowed aggregation into regional telemetry.",

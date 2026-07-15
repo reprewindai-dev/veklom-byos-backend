@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.services.vnp_scoring import get_cached_api_score, update_api_composite_score
+from backend.db.models.ledger import SettlementLedger, SettlementStatus
+from backend.db.models.payment import Payment as BankerPayment
 from backend.db.models.vnp import Api, LedgerEntryType, ProbeEvent, SettlementEntry, Validator, VnpMetric, VnpObservation
 
 router = APIRouter(prefix="/vnp", tags=["Veklom Network Protocol"])
@@ -67,6 +69,41 @@ async def get_vnp_evidence_counts(db: AsyncSession) -> dict:
         or 0
     )
     telemetry_windows = int((await db.execute(select(func.count(Api.id)).where(Api.status == "active"))).scalar_one() or 0)
+    vnp_settlement_entries = int((await db.execute(select(func.count(SettlementEntry.id)))).scalar_one() or 0)
+    canonical_settlement_entries = int((await db.execute(select(func.count(SettlementLedger.id)))).scalar_one() or 0)
+    canonical_settled_entries = int(
+        (
+            await db.execute(
+                select(func.count(SettlementLedger.id)).where(
+                    SettlementLedger.status == SettlementStatus.SETTLED
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    canonical_tx_entries = int(
+        (
+            await db.execute(
+                select(func.count(SettlementLedger.id)).where(
+                    SettlementLedger.settlement_tx_hash.isnot(None),
+                    SettlementLedger.settlement_tx_hash != "",
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    banker_settlement_entries = int(
+        (
+            await db.execute(
+                select(func.count(BankerPayment.id)).where(
+                    BankerPayment.tx_hash.isnot(None),
+                    BankerPayment.tx_hash != "",
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    x402_settlement_evidence = canonical_settled_entries + canonical_tx_entries + banker_settlement_entries
 
     return {
         "probe_events": probe_events,
@@ -76,6 +113,12 @@ async def get_vnp_evidence_counts(db: AsyncSession) -> dict:
         "total_physical_measurements": max(probe_events + realtime_physical_probes, signed_edge_observations),
         "total_signed_telemetry": signed_probe_events + signed_edge_observations,
         "active_api_routes": telemetry_windows,
+        "vnp_settlement_entries": vnp_settlement_entries,
+        "canonical_settlement_entries": canonical_settlement_entries,
+        "canonical_settled_entries": canonical_settled_entries,
+        "canonical_settlement_tx_entries": canonical_tx_entries,
+        "banker_settlement_entries": banker_settlement_entries,
+        "x402_settlement_evidence": x402_settlement_evidence,
     }
 
 
@@ -83,13 +126,14 @@ def build_vnp_verification_stack(counts: dict) -> list[dict]:
     physical_status = "Live" if counts["total_physical_measurements"] > 0 else "Disconnected"
     signed_status = "Live" if counts["total_signed_telemetry"] > 0 else "Disconnected"
     route_status = "Connected" if counts["active_api_routes"] > 0 else "Disconnected"
+    x402_status = "Live" if counts.get("x402_settlement_evidence", 0) > 0 else "Connected"
 
     return [
         {"section": "Physical measurements", "status": physical_status},
         {"section": "Signed telemetry", "status": signed_status},
         {"section": "Route beacons", "status": route_status},
         {"section": "Robust scoring", "status": route_status},
-        {"section": "x402 settlement evidence", "status": "Live"},
+        {"section": "x402 settlement evidence", "status": x402_status},
         {"section": "PGL audit trails", "status": "Connected"},
         {"section": "Agent/runtime enforcement", "status": "Connected", "backend": "cappo-backend"},
     ]

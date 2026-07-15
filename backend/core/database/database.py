@@ -1,6 +1,7 @@
 """Database engine and session management."""
 
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -10,6 +11,20 @@ from sqlalchemy.pool import NullPool
 from backend.core.config.settings import settings
 
 db_url = settings.DATABASE_URL
+
+
+def _mask_database_url(url: str) -> str:
+    try:
+        parts = urlsplit(url)
+        if not parts.password:
+            return url
+        username = parts.username or ""
+        host = parts.hostname or ""
+        port = f":{parts.port}" if parts.port else ""
+        auth = f"{username}:***@" if username else "***@"
+        return urlunsplit((parts.scheme, f"{auth}{host}{port}", parts.path, parts.query, parts.fragment))
+    except Exception:
+        return "<masked>"
 if not db_url or not db_url.strip() or "sqlite" in db_url:
     raise ValueError(
         "A valid PostgreSQL DATABASE_URL is required. SQLite is not supported due to pgvector/JSONB requirements."
@@ -38,7 +53,7 @@ except Exception as e:
     raise e
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-print(f"DATABASE ENGINE INITIALIZED: ID={id(engine)}, URL={db_url}")
+print(f"DATABASE ENGINE INITIALIZED: ID={id(engine)}, URL={_mask_database_url(db_url)}")
 
 
 class Base(DeclarativeBase):

@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
   checks: write
@@ -238,13 +238,18 @@ jobs:
               > 👻 _Poltergeist flagged this deployment as failed at ${new Date().toUTCString()}._`;
             }
 
-            // Post as a commit comment
-            await github.rest.repos.createCommitComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: sha,
-              body: bodyText,
-            });
+            // Post as a commit comment when the token is allowed. Deployment
+            // verification must stay green if the repository blocks comments.
+            try {
+              await github.rest.repos.createCommitComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: sha,
+                body: bodyText,
+              });
+            } catch (error) {
+              core.warning(`Deployment receipt comment skipped: ${error.message}`);
+            }
 
   # -----------------------------------------------------------------------
   # JOB 3: Nightly Health Audit — canonical compliance + disk + alive check

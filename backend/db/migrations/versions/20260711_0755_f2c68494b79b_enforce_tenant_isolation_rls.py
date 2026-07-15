@@ -9,7 +9,6 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.engine.reflection import Inspector
 
 # revision identifiers, used by Alembic.
 revision: str = 'f2c68494b79b'
@@ -42,7 +41,14 @@ TENANT_TABLES = [
 ]
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
     for table_name in TENANT_TABLES:
+        if not inspector.has_table(table_name):
+            continue
+        columns = {column["name"] for column in inspector.get_columns(table_name)}
+        if "workspace_id" not in columns:
+            continue
         op.execute(f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;")
         op.execute(f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;")
         op.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {table_name};")
@@ -57,7 +63,11 @@ def upgrade() -> None:
         """)
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
     for table_name in TENANT_TABLES:
+        if not inspector.has_table(table_name):
+            continue
         op.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {table_name};")
         op.execute(f"ALTER TABLE {table_name} NO FORCE ROW LEVEL SECURITY;")
         op.execute(f"ALTER TABLE {table_name} DISABLE ROW LEVEL SECURITY;")

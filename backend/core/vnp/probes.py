@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select, text
 
 from backend.core.database.database import async_session
 from backend.core.security.vnp_security import VNPEventVerifier, VNPSecurityError
-from backend.db.models.vnp import VnpMetric, VnpNode, VnpNodeHeartbeat, VnpNodeKey, VnpObservation
+from backend.db.models.vnp import Api, VnpMetric, VnpNode, VnpNodeHeartbeat, VnpNodeKey, VnpObservation
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,7 @@ VNP_PROBE_INTERVAL_SECONDS = 10
 VNP_PROBE_CYCLE_TIMEOUT_SECONDS = 120
 VNP_METRIC_RETENTION_DAYS = 7
 VNP_PROBE_ADVISORY_LOCK_ID = 610_402_501
+VNP_EDGE_DEFAULT_TARGET = "https://api.veklom.com/health"
 
 
 def configured_edge_nodes() -> list[dict]:
@@ -90,6 +91,23 @@ def configured_edge_nodes() -> list[dict]:
         logger.warning("[VNP Probe Swarm] VNP_EDGE_PROBES_JSON must be a list")
         return VNP_EDGE_NODES
     return nodes
+
+
+async def edge_target_urls() -> list[str]:
+    targets = {VNP_EDGE_DEFAULT_TARGET}
+    async with async_session() as db:
+        rows = (await db.execute(select(Api.base_url, Api.health_path))).all()
+    for base_url, health_path in rows:
+        if not base_url:
+            continue
+        normalized_base = str(base_url).rstrip("/")
+        if not normalized_base.startswith("https://api.veklom.com/"):
+            continue
+        path = health_path or "/health"
+        if not path.startswith("/"):
+            path = f"/{path}"
+        targets.add(f"{normalized_base}{path}")
+    return sorted(targets)
 
 
 def signed_payload_is_valid(payload: dict) -> bool:
@@ -118,7 +136,7 @@ async def ping_target(client: httpx.AsyncClient, target: dict) -> tuple[str, int
     return target["id"], latency_ms, is_up
 
 
-async def ping_edge_node(client: httpx.AsyncClient, edge: dict, hub_secret: str) -> dict:
+async def ping_edge_node(client: httpx.AsyncClient, edge: dict, hub_secret: str, target_url: str) -> dict:
     started_at = datetime.now(timezone.utc)
     start_time = time.monotonic()
     status_code = None
@@ -142,7 +160,7 @@ async def ping_edge_node(client: httpx.AsyncClient, edge: dict, hub_secret: str)
 
         response = await client.post(
             edge["url"],
-            json={"target_url": "https://api.veklom.com/health"},
+            json={"target_url": target_url},
             headers={"x-veklom-hub-key": hub_secret},
             timeout=10.0,
         )
@@ -169,6 +187,7 @@ async def ping_edge_node(client: httpx.AsyncClient, edge: dict, hub_secret: str)
     total_ms = int(edge_total_ms) if isinstance(edge_total_ms, int) else hub_roundtrip_ms
     return {
         "edge": edge,
+        "target_url": target_url,
         "started_at": started_at,
         "completed_at": completed_at,
         "total_ms": total_ms,
@@ -298,7 +317,14 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
                     .limit(1)
                 )
             ).scalar_one_or_none()
-            observation_id = probe_payload.get("observation_id") or f"{region_code}:{int(result['completed_at'].timestamp() * 1000)}:{uuid.uuid4().hex[:8]}"
+            target_url = probe_payload.get("target_url") or result.get("target_url") or VNP_EDGE_DEFAULT_TARGET
+            target_hash = hashlib.sha256(target_url.encode("utf-8")).hexdigest()[:8]
+            raw_observation_id = probe_payload.get("observation_id")
+            observation_id = (
+                f"{raw_observation_id}:{target_hash}"[:100]
+                if raw_observation_id
+                else f"{region_code}:{int(result['completed_at'].timestamp() * 1000)}:{target_hash}:{uuid.uuid4().hex[:8]}"
+            )
             measurement = probe_payload.get("measurement") or {}
             db.add(
                 VnpObservation(
@@ -307,7 +333,7 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
                     region=region_code,
                     site_code=region_code,
                     physical_location=edge["physical_location"],
-                    target_id=probe_payload.get("target_url") or "https://api.veklom.com/health",
+                    target_id=target_url,
                     measurement_profile="edge-target-http",
                     measurement_version="vnp-methodology-v1.0",
                     started_at=datetime.fromisoformat(probe_payload["started_at"]) if probe_payload.get("started_at") else result["started_at"],
@@ -373,9 +399,11 @@ async def run_vnp_probes() -> None:
         edge_secret = os.getenv("VNP_HUB_SECRET_KEY") or os.getenv("HUB_SECRET_KEY")
         edge_tasks = []
         if edge_secret:
+            targets = await edge_target_urls()
             edge_tasks = [
-                ping_edge_node(client, edge, edge_secret)
+                ping_edge_node(client, edge, edge_secret, target_url)
                 for edge in configured_edge_nodes()
+                for target_url in targets
             ]
         else:
             logger.warning(

@@ -40,11 +40,15 @@ def _uuid_or_none(value: str):
         return None
 
 
-def _backend_surface_targets(base_url: str) -> list[str]:
+def _backend_surface_targets(base_url: str, health_path: str = "/health") -> list[str]:
     parsed = urlparse(base_url)
     if parsed.netloc != "api.veklom.com":
         return []
+    path = health_path or "/health"
+    if not path.startswith("/"):
+        path = f"/{path}"
     return [
+        f"{base_url.rstrip('/')}{path}",
         "https://api.veklom.com/health",
         "api-health",
     ]
@@ -465,7 +469,8 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
     ).one()
     telemetry_sample_count, first_telemetry, last_telemetry, telemetry_regions = telemetry_stats
 
-    surface_targets = _backend_surface_targets(api.base_url)
+    surface_targets = _backend_surface_targets(api.base_url, api.health_path)
+    route_target = surface_targets[0] if surface_targets else None
     if surface_targets:
         surface_stats = (
             await db.execute(
@@ -478,8 +483,21 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
             )
         ).one()
         surface_signed_count, first_surface, last_surface, surface_regions = surface_stats
+        route_signed_count = 0
+        if route_target:
+            route_signed_count = int(
+                (
+                    await db.execute(
+                        select(func.count(VnpObservation.id)).where(
+                            VnpObservation.target_id == route_target
+                        )
+                    )
+                ).scalar_one()
+                or 0
+            )
     else:
         surface_signed_count, first_surface, last_surface, surface_regions = 0, None, None, 0
+        route_signed_count = 0
 
     sample_count = int(probe_count or telemetry_sample_count or surface_signed_count or 0)
     first_measurement = first_probe or first_telemetry or first_surface
@@ -492,8 +510,12 @@ async def get_benchmark_card(api_identifier: str, db: AsyncSession = Depends(get
         data_source = "Regional VNP telemetry windows (vnp_regional_telemetry)"
         data_limitations = None
     elif surface_signed_count:
-        data_source = "Signed BYOS backend-surface observations (vnp_observations)"
-        data_limitations = "Route-specific probe rows for this API are not populated yet; evidence reflects the shared api.veklom.com backend surface that hosts the route."
+        if route_signed_count:
+            data_source = "Signed VNP route-target observations (vnp_observations)"
+            data_limitations = None
+        else:
+            data_source = "Signed BYOS backend-surface observations (vnp_observations)"
+            data_limitations = "Route-specific probe rows for this API are not populated yet; evidence reflects the shared api.veklom.com backend surface that hosts the route."
         signed_probe_count = surface_signed_count
     else:
         data_source = "VNP API registry"

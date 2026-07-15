@@ -452,6 +452,10 @@ async def lifespan(app: FastAPI):
         "UPDATE vnp_probe_events SET worker_signature = COALESCE(worker_signature, '') WHERE worker_signature IS NULL",
         "UPDATE vnp_probe_events SET latency_ms = COALESCE(latency_ms, 0) WHERE latency_ms IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_probe_events_api_region_measured_at ON vnp_probe_events (api_id, region, measured_at)",
+        "CREATE INDEX IF NOT EXISTS idx_vnp_node_heartbeats_node_sequence ON vnp_node_heartbeats (node_id, sequence DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_vnp_node_heartbeats_node_timestamp ON vnp_node_heartbeats (node_id, timestamp DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_vnp_observations_node_sequence ON vnp_observations (node_id, sequence DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_vnp_observations_node_created_at ON vnp_observations (node_id, created_at DESC)",
     ]
     try:
         async with engine.begin() as conn:
@@ -475,10 +479,31 @@ async def lifespan(app: FastAPI):
 
     # Idempotent column additions for vnp_claim_requests
     vnp_claim_requests_columns = [
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(200) DEFAULT 'public'",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS api_domain VARCHAR(255) DEFAULT 'unknown.local'",
         "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS provider_name VARCHAR(255) DEFAULT 'Unknown Provider'",
         "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS api_name VARCHAR(255) DEFAULT 'Unknown API'",
         "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS base_url VARCHAR(500) DEFAULT 'https://api.unknown.com'",
         "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS health_path VARCHAR(255) DEFAULT '/health'",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS company_name VARCHAR(255) DEFAULT 'Unknown Company'",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255) DEFAULT 'unknown@veklom.com'",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS pgl_provider_id VARCHAR(200)",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS pgl_certificate_id VARCHAR(200)",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS dns_record VARCHAR(255) DEFAULT ''",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS dns_value VARCHAR(255) DEFAULT ''",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'submitted'",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ",
+        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (now() + interval '30 days')",
+        "UPDATE vnp_claim_requests SET workspace_id = COALESCE(workspace_id, 'public') WHERE workspace_id IS NULL",
+        "UPDATE vnp_claim_requests SET api_domain = COALESCE(api_domain, 'unknown.local') WHERE api_domain IS NULL",
+        "UPDATE vnp_claim_requests SET company_name = COALESCE(company_name, 'Unknown Company') WHERE company_name IS NULL",
+        "UPDATE vnp_claim_requests SET contact_email = COALESCE(contact_email, 'unknown@veklom.com') WHERE contact_email IS NULL",
+        "UPDATE vnp_claim_requests SET dns_record = COALESCE(dns_record, '') WHERE dns_record IS NULL",
+        "UPDATE vnp_claim_requests SET dns_value = COALESCE(dns_value, '') WHERE dns_value IS NULL",
+        "UPDATE vnp_claim_requests SET status = COALESCE(status, 'submitted') WHERE status IS NULL",
+        "UPDATE vnp_claim_requests SET created_at = COALESCE(created_at, now()) WHERE created_at IS NULL",
+        "UPDATE vnp_claim_requests SET expires_at = COALESCE(expires_at, now() + interval '30 days') WHERE expires_at IS NULL",
     ]
     try:
         async with engine.begin() as conn:

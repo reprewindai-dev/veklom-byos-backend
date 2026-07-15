@@ -254,7 +254,9 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
             heartbeat_signature = identity_sig.get("sig") or probe_sig.get("sig") or ""
             heartbeat_sequence = (
                 await db.execute(
-                    select(func.count(VnpNodeHeartbeat.id)).where(VnpNodeHeartbeat.node_id == node.id)
+                    select(func.coalesce(func.max(VnpNodeHeartbeat.sequence), 0)).where(
+                        VnpNodeHeartbeat.node_id == node.id
+                    )
                 )
             ).scalar_one() + 1
             heartbeat_payload = identity or probe_payload or {
@@ -282,7 +284,9 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
 
             sequence = (
                 await db.execute(
-                    select(func.count(VnpObservation.id)).where(VnpObservation.node_id == node.id)
+                    select(func.coalesce(func.max(VnpObservation.sequence), 0)).where(
+                        VnpObservation.node_id == node.id
+                    )
                 )
             ).scalar_one() + 1
             previous_signature = (

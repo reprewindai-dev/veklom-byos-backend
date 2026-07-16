@@ -12,9 +12,13 @@ logger = logging.getLogger("vek-backend")
 
 app = FastAPI(title="Veklom Scaffold Backend", version="1.0.0")
 
+# Configure CORS securely: explicitly specify allowed origins from env or default to frontend URL
+allowed_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

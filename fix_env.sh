@@ -7,7 +7,7 @@ ENV=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env
 sed -i -e '$a\' "$ENV"
 
 # 2. Fix the mangled HOST=0.0.0.0GITHUB line
-sed -i 's/HOST=0\.0\.0\.0GITHUB_CLIENT_ID/HOST=0.0.0.0\nGITHUB_CLIENT_ID/' "$ENV"
+sed -i 's/HOST=0\.0\.0\.0GITHUB_CLIENT_ID=.*/HOST=0.0.0.0/' "$ENV"
 
 # 3. Remove duplicate GITHUB lines (keep last occurrence by removing all then re-appending)
 sed -i '/^GITHUB_CLIENT_ID=/d' "$ENV"

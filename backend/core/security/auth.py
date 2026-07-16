@@ -414,12 +414,16 @@ async def get_current_user_or_api_key(
 
         prefix = api_key_header[:10]
         from backend.db.models.user import APIKey, User
-        result = await db.execute(select(APIKey).where(APIKey.key_prefix == prefix, APIKey.is_active))
+        from sqlalchemy.orm import joinedload
+        result = await db.execute(
+            select(APIKey)
+            .options(joinedload(APIKey.user))
+            .where(APIKey.key_prefix == prefix, APIKey.is_active)
+        )
         keys = result.scalars().all()
         for key in keys:
             if verify_password(api_key_header, key.key_hash):
-                user_res = await db.execute(select(User).where(User.id == key.user_id))
-                user = user_res.scalar_one_or_none()
+                user = key.user
                 if user is not None:
                     if user.workspace_id:
                         from backend.core.database.database import set_tenant_session

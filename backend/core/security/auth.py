@@ -1,9 +1,11 @@
 """JWT auth utilities."""
 
+import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import os
+import bcrypt
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -12,12 +14,10 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
-from backend.core.database.database import get_db, get_db_session
+from backend.core.database.database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security_scheme = HTTPBearer(auto_error=False)
-
-import bcrypt
 
 
 def get_password_hash(password: str) -> str:
@@ -48,9 +48,6 @@ def create_access_token(
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-import logging
-
-
 _jwt_redis_client = None
 
 
@@ -67,7 +64,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
         settings.JWT_SECRET_KEY,
         "test_secret_key_for_development_only"
     ]
-    
+
     payload = None
     last_err = None
     for key in candidate_keys:
@@ -413,13 +410,18 @@ async def get_current_user_or_api_key(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key format")
 
         prefix = api_key_header[:10]
-        from backend.db.models.user import APIKey, User
-        result = await db.execute(select(APIKey).where(APIKey.key_prefix == prefix, APIKey.is_active))
+        from sqlalchemy.orm import joinedload
+
+        from backend.db.models.user import APIKey
+        result = await db.execute(
+            select(APIKey)
+            .options(joinedload(APIKey.user))
+            .where(APIKey.key_prefix == prefix, APIKey.is_active)
+        )
         keys = result.scalars().all()
         for key in keys:
             if verify_password(api_key_header, key.key_hash):
-                user_res = await db.execute(select(User).where(User.id == key.user_id))
-                user = user_res.scalar_one_or_none()
+                user = key.user
                 if user is not None:
                     if user.workspace_id:
                         from backend.core.database.database import set_tenant_session

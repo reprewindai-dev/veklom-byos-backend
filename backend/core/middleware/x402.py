@@ -81,7 +81,7 @@ _PAID_ROUTES: dict[str, dict] = {
     "GET:/api/v1/gpc/plans":            {"price_usdc": 0.001,  "name": "GPC Plans List", "free_daily": 0, "category": "A", "unit": "per list"},
     "POST:/api/v1/gpc/runs":            {"price_usdc": 0.02,   "name": "GPC Background Dispatcher", "free_daily": 0, "category": "A", "unit": "per run"},
     "GET:/api/v1/gpc/runs":             {"price_usdc": 0.002,  "name": "GPC Runs List", "free_daily": 0, "category": "A", "unit": "per list"},
-    "GET:/api/v1/gpc/events":           {"price_usdc": 0.001,  "name": "GPC Real-Time Status Signals", "free_daily": 50, "category": "A", "unit": "per stream"},
+    "GET:/api/v1/gpc/events":           {"price_usdc": 0.001,  "name": "GPC Real-Time Status Signals", "free_daily": 0, "category": "A", "unit": "per stream"},
     "GET:/api/v1/gpc/bootstrap":        {"price_usdc": 0.001,  "name": "GPC System Core Bootstrap", "free_daily": 0, "category": "A", "unit": "per bootstrap"},
 
     # Category B: The cAPI (Constitutional API) 9-Phase Hard Gate (9 Endpoints)
@@ -142,11 +142,11 @@ _PAID_ROUTES: dict[str, dict] = {
     "GET:/api/v1/compliance/evidence/{framework_id}/export": {"price_usdc": 0.02,  "name": "Dynamic UACP Evidence Export", "free_daily": 0, "category": "F", "unit": "per export"},
 
     # Category G: Self-Learning Feedback & Observability (11 Endpoints)
-    "GET:/api/v1/gpc/stats":                            {"price_usdc": 0.005, "name": "UACP Core Pressure Estimator", "free_daily": 50, "category": "G", "unit": "per stats"},
+    "GET:/api/v1/gpc/stats":                            {"price_usdc": 0.005, "name": "UACP Core Pressure Estimator", "free_daily": 0, "category": "G", "unit": "per stats"},
     "GET:/api/v1/explain/routing/{decision_id}":        {"price_usdc": 0.005, "name": "Explanatory Weight Router Resolver", "free_daily": 0, "category": "G", "unit": "per explanation"},
     "GET:/api/v1/explain/cost/{prediction_id}":         {"price_usdc": 0.005, "name": "Budget Risk Predictor", "free_daily": 0, "category": "G", "unit": "per prediction"},
     "GET:/api/v1/gpc/ssrn-signals":                     {"price_usdc": 0.002, "name": "Academic SSRN Research Feed Signals", "free_daily": 0, "category": "G", "unit": "per stream"},
-    "GET:/api/v1/gpc/observability/signals":            {"price_usdc": 0.002, "name": "Dynamic Observability Telemetry", "free_daily": 50, "category": "G", "unit": "per signals"},
+    "GET:/api/v1/gpc/observability/signals":            {"price_usdc": 0.002, "name": "Dynamic Observability Telemetry", "free_daily": 0, "category": "G", "unit": "per signals"},
     "POST:/api/v1/onboarding/register":                 {"price_usdc": 0.01,  "name": "Institutional Profile Onboarding Register", "free_daily": 0, "category": "G", "unit": "per register"},
     "POST:/api/v1/playground/evaluate":                 {"price_usdc": 0.01,  "name": "Sandbox Evaluation Engine", "free_daily": 0, "category": "G", "unit": "per evaluation"},
     "POST:/api/v1/copilot/explain":                     {"price_usdc": 0.01,  "name": "Generative Code Risk Explanation", "free_daily": 0, "category": "G", "unit": "per explanation"},
@@ -900,8 +900,29 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                     
                     if db_user:
                         ws_id = db_user.workspace_id or ""
-                        
-                        # Kill Switch verification
+
+                        # ── OWNER BYPASS ──────────────────────────────────────────────────
+                        # The platform owner gets unlimited, unrestricted access to every
+                        # paid route with zero gates, zero deductions, zero kill-switch
+                        # checks. Nobody else gets this — not even other admins.
+                        _owner_email = (
+                            os.getenv("PLATFORM_OWNER_EMAIL", "").strip()
+                            or settings.ADMIN_EMAIL.strip()
+                        )
+                        _is_platform_owner = (
+                            (db_user.role or "").upper() == "OWNER"
+                            or (db_user.email or "").lower() == _owner_email.lower()
+                        )
+                        if _is_platform_owner:
+                            logger.info(
+                                f"[OWNER BYPASS] {db_user.email} ({db_user.role}) — "
+                                f"unrestricted pass-through for {method} {path}"
+                            )
+                            response = await call_next(request)
+                            response.headers["X-Veklom-Owner-Bypass"] = "true"
+                            return response
+                        # ── END OWNER BYPASS ──────────────────────────────────────────────
+
                         ks_res = await db.execute(
                             select(KillSwitchState).where(
                                 KillSwitchState.workspace_id == ws_id,

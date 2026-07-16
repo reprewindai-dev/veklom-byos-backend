@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     API_URL: str = "http://localhost:80"
     API_BASE_URL: str = "http://localhost:80"
     ADMIN_EMAIL: str = "founder@veklom.com"
+    # Platform owner gets unconditional bypass on all x402 payment gates.
+    # Defaults to ADMIN_EMAIL if not explicitly set.
+    PLATFORM_OWNER_EMAIL: str = ""
     VEKLOM_API_BASE: str = "/api/v1"
     AI_CITIZENSHIP_SECRET: str = ""
     ENABLE_MFA: bool = True

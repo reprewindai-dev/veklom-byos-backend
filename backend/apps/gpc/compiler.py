@@ -217,8 +217,13 @@ class DuckDBQueryGenerator(BaseComponentCodeGenerator):
         input_var = list(input_vars.values())[0]
         sql = node.config.get("sqlQuery", "SELECT * FROM df")
         
-        # result = duckdb.query(f"SELECT * FROM {df_input}").to_df()
+        # Assign the input variable to a local variable named 'df'
+        # so duckdb's auto-lookup can find it without using an f-string.
         return [
+            ast.Assign(
+                targets=[ast.Name(id='df', ctx=ast.Store())],
+                value=ast.Name(id=input_var, ctx=ast.Load())
+            ),
             ast.Assign(
                 targets=[ast.Name(id=output_var, ctx=ast.Store())],
                 value=ast.Call(
@@ -228,9 +233,7 @@ class DuckDBQueryGenerator(BaseComponentCodeGenerator):
                                 value=ast.Name(id='duckdb', ctx=ast.Load()),
                                 attr='query'
                             ),
-                            args=[ast.JoinedStr(values=[
-                                ast.Constant(value=sql)
-                            ])],
+                            args=[ast.Constant(value=sql)],
                             keywords=[]
                         ),
                         attr='to_df'

@@ -35,6 +35,8 @@ ZERO_TRUST_PUBLIC_PREFIXES = (
     "/api/v1/platform/pulse", "/api/v1/sdk/", "/api/v1/agent-use-cases",
     "/sdk/examples", "/mcp/", "/openapi.json", "/api/v1/openapi.json",
     "/v1/openapi.json", "/api/v1/sys/health", "/api/v1/sys/gpu",
+    # OpenAI-compatible gateway: auth handled inside route handler (Bearer JWT + byos_ keys)
+    "/v1/chat/completions", "/v1/models",
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
     "/api/v1/workspace/overview/live", "/api/v1/integrations/pagerduty",
     "/api/v1/pgl/registry", "/api/v1/capi/execute",

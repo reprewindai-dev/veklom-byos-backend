@@ -907,11 +907,11 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                         # checks. Nobody else gets this — not even other admins.
                         _owner_email = (
                             os.getenv("PLATFORM_OWNER_EMAIL", "").strip()
+                            or settings.PLATFORM_OWNER_EMAIL.strip()
                             or settings.ADMIN_EMAIL.strip()
                         )
                         _is_platform_owner = (
-                            (db_user.role or "").upper() == "OWNER"
-                            or (db_user.email or "").lower() == _owner_email.lower()
+                            (db_user.email or "").lower() == _owner_email.lower()
                         )
                         if _is_platform_owner:
                             logger.info(

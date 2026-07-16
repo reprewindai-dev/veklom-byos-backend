@@ -48,22 +48,30 @@ async def run_treasury_cycle():
             if tel.api_id not in breached_apis:
                 breached_apis[tel.api_id] = tel
 
+        api_ids = list(breached_apis.keys())
+
+        # Bulk Fetch APIs
+        apis_stmt = select(Api).where(Api.id.in_(api_ids))
+        apis_list = (await db.execute(apis_stmt)).scalars().all()
+        apis_by_id = {api.id: api for api in apis_list}
+
+        # Bulk Fetch existing incidents
+        incs_stmt = select(Incident.scope_id).where(
+            and_(
+                Incident.scope_id.in_(api_ids),
+                Incident.state.in_([IncidentState.open, IncidentState.acknowledged])
+            )
+        )
+        existing_inc_scopes = set((await db.execute(incs_stmt)).scalars().all())
+
         for api_id, telemetry in breached_apis.items():
-            # Fetch API and Provider info
-            api_stmt = select(Api).where(Api.id == api_id)
-            api = (await db.execute(api_stmt)).scalar_one_or_none()
+            # Use pre-fetched API
+            api = apis_by_id.get(api_id)
             if not api:
                 continue
 
-            # Check if there's already an open incident for this API
-            inc_stmt = select(Incident).where(
-                and_(
-                    Incident.scope_id == api_id,
-                    Incident.state.in_([IncidentState.open, IncidentState.acknowledged])
-                )
-            )
-            existing_inc = (await db.execute(inc_stmt)).first()
-            if existing_inc:
+            # Check if there's already an open incident for this API from pre-fetched set
+            if api_id in existing_inc_scopes:
                 logger.info(f"Open incident already exists for API {api_id}. Skipping slash.")
                 continue
 

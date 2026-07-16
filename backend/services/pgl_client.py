@@ -233,22 +233,30 @@ class PGLClient:
             logger.warning(f"[PGL] (sim) rollback post={post_execution_certificate_id} reason={reason}")
             return result
 
+        from sqlalchemy.orm import aliased
         from backend.db.models.pgl import PGLCertificate
-        post = (await self.db.execute(
-            select(PGLCertificate).where(PGLCertificate.certificate_id == post_execution_certificate_id)
-        )).scalar_one_or_none()
+
+        PostCert = aliased(PGLCertificate, name="post_cert")
+        PreCert = aliased(PGLCertificate, name="pre_cert")
+
+        row = (await self.db.execute(
+            select(PostCert, PreCert)
+            .outerjoin(PreCert, PostCert.pre_certificate_id == PreCert.certificate_id)
+            .where(PostCert.certificate_id == post_execution_certificate_id)
+        )).first()
+
+        post = row[0] if row else None
+        pre = row[1] if row and len(row) > 1 else None
+
         ws = post.workspace_id if post else "unknown"
         actor = post.actor_id if post else "unknown"
+
         if post:
             post.status = "ROLLED_BACK"
             post.resolved_at = datetime.now(timezone.utc)
-            if post.pre_certificate_id:
-                pre = (await self.db.execute(
-                    select(PGLCertificate).where(PGLCertificate.certificate_id == post.pre_certificate_id)
-                )).scalar_one_or_none()
-                if pre:
-                    pre.status = "ROLLED_BACK"
-                    pre.resolved_at = datetime.now(timezone.utc)
+            if pre:
+                pre.status = "ROLLED_BACK"
+                pre.resolved_at = datetime.now(timezone.utc)
 
         event_hash = await self._append_event(
             ws, actor, post_execution_certificate_id, "rollback",

@@ -1235,8 +1235,7 @@ def _mount_static():
     if REPOGATE_DIR.exists():
         app.mount("/repogate", StaticFiles(directory=str(REPOGATE_DIR), html=True), name="repogate")
     if GPC_DIR.exists():
-        app.mount("/gpc-engine", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc-engine")
-        app.mount("/gpc", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc")
+        pass
     if IRONGRID_DIR.exists():
         app.mount("/irongrid", StaticFiles(directory=str(IRONGRID_DIR), html=True), name="irongrid")
     if LOCKERPHYCER_DIR.exists():
@@ -1504,6 +1503,12 @@ async def enforce_route_access(request, call_next):
                    '<body>Paid plan required. <a href="/workspace/#/billing">Upgrade your plan</a></body></html>'
             from starlette.responses import HTMLResponse
             return HTMLResponse(html, status_code=403)
+
+    host = request.headers.get("host", "")
+    if host and ("gpc.veklom.com" in host or "www.gpc.veklom.com" in host):
+        query_str = f"?{request.url.query}" if request.url.query else ""
+        from starlette.responses import RedirectResponse
+        return RedirectResponse(url=f"https://control.veklom.com/gpc{query_str}", status_code=307)
 
     response = await call_next(request)
 

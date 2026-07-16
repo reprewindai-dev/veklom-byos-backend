@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, case, cast, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -226,34 +226,23 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
     provider_breakdown = {}
 
     try:
-        # Execution metrics
-        total_execs = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
+        # Execution metrics - batched query
+        metrics_stmt = select(
+            func.count().label("exec_count"),
+            func.coalesce(func.sum(ExecLog.total_tokens), 0).label("tokens"),
+            func.coalesce(func.sum(ExecLog.cost_usd), 0.0).label("cost"),
+            func.coalesce(func.avg(ExecLog.latency_ms), 0).label("latency")
+        ).select_from(ExecLog).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_24h
+        )
 
-        total_tokens = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
-
-        total_cost = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0.0
-
-        avg_latency = await db.scalar(
-            select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
+        metrics_res = await db.execute(metrics_stmt)
+        row = metrics_res.fetchone()
+        if row:
+            total_execs, total_tokens, total_cost, avg_latency = row
+        else:
+            total_execs, total_tokens, total_cost, avg_latency = 0, 0, 0.0, 0
 
         # Provider breakdown
         provider_rows = await db.execute(
@@ -557,11 +546,24 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     last_24h = now - timedelta(hours=24)
     elapsed_minutes = max(1, int((now - today_start).total_seconds() / 60))
 
-    total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
     requests_per_min = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_minute)) or 0
-    total_tokens = await db.scalar(select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
-    spend_today = await db.scalar(select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0.0
-    avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
+
+    # Batch query for today_start metrics
+    metrics_stmt = select(
+        func.count().label("req_count"),
+        func.coalesce(func.sum(ExecLog.total_tokens), 0).label("tokens"),
+        func.coalesce(func.sum(ExecLog.cost_usd), 0.0).label("cost"),
+        func.coalesce(func.avg(ExecLog.latency_ms), 0).label("latency")
+    ).select_from(ExecLog).where(
+        ExecLog.workspace_id == workspace_id,
+        ExecLog.created_at >= today_start
+    )
+    metrics_res = await db.execute(metrics_stmt)
+    metrics_row = metrics_res.fetchone()
+    if metrics_row:
+        total_requests, total_tokens, spend_today, avg_latency = metrics_row
+    else:
+        total_requests, total_tokens, spend_today, avg_latency = 0, 0, 0.0, 0
     audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
     budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
 
@@ -739,12 +741,25 @@ async def workspace_observability(user=Depends(get_current_user), db: AsyncSessi
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Get real metrics from database
-    total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
-    error_count = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start, ExecLog.status == "failed")) or 0
-    error_rate = (error_count / total_requests) if total_requests > 0 else 0.0
+    # Get real metrics from database - batched query
+    metrics_stmt = select(
+        func.count().label("req_count"),
+        func.sum(case((ExecLog.status == "failed", 1), else_=0)).label("err_count"),
+        func.coalesce(func.avg(ExecLog.latency_ms), 0).label("latency")
+    ).select_from(ExecLog).where(
+        ExecLog.workspace_id == workspace_id,
+        ExecLog.created_at >= today_start
+    )
+    metrics_res = await db.execute(metrics_stmt)
+    metrics_row = metrics_res.fetchone()
+    if metrics_row:
+        total_requests = metrics_row[0] or 0
+        error_count = metrics_row[1] or 0
+        avg_latency = metrics_row[2] or 0
+    else:
+        total_requests, error_count, avg_latency = 0, 0, 0
 
-    avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
+    error_rate = (error_count / total_requests) if total_requests > 0 else 0.0
 
     policy_flagged_count = await db.scalar(
         select(func.count())
@@ -1882,7 +1897,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     encrypted_token = user.github_access_token
     if not encrypted_token:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="No GitHub access token configured for this user. Please connect your GitHub account in integrations settings."
         )
 
@@ -1924,7 +1939,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
                             pipeline_files.append(normalized_path)
             else:
                 raise HTTPException(
-                    status_code=400, 
+                    status_code=400,
                     detail=f"GitHub API returned error status {resp.status_code} during tree fetch: {resp.text}"
                 )
     except HTTPException:
@@ -1932,8 +1947,9 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch GitHub repository tree: {str(e)}")
 
-    import yaml
     import json
+
+    import yaml
 
     synced_agents_count = 0
     synced_pipelines_count = 0
@@ -1945,7 +1961,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
                 "Accept": "application/vnd.github.v3+json",
                 "User-Agent": "Veklom-BYOS"
             }
-            
+
             # Fetch and parse agents
             for path in agent_files:
                 try:
@@ -2018,7 +2034,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     if synced_agents_count == 0 and synced_pipelines_count == 0:
         repo_name = repo.split('/')[-1] if repo else "repository"
         default_name = repo_name.replace("-", " ").replace("_", " ").title()
-        
+
         agent_id = f"ag_{uuid.uuid4().hex[:12]}"
         new_agent = Agent(
             id=agent_id,
@@ -2029,7 +2045,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
         )
         db.add(new_agent)
         synced_agents_count = 1
-        
+
         pipe_id = f"pipe_{uuid.uuid4().hex[:12]}"
         new_pipe = Pipeline(
             id=pipe_id,

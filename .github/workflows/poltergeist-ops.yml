@@ -99,6 +99,9 @@ jobs:
           echo "migration_count=$MIGRATION_COUNT" >> $GITHUB_OUTPUT
 
       - name: Post PR Summary Comment
+        # GitHub downgrades GITHUB_TOKEN permissions for fork pull requests.
+        # The diff analysis still runs, but a comment attempt must not fail CI.
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           script: |

@@ -215,9 +215,7 @@ class DuckDBQueryGenerator(BaseComponentCodeGenerator):
                                 value=ast.Name(id='duckdb', ctx=ast.Load()),
                                 attr='query'
                             ),
-                            args=[ast.JoinedStr(values=[
-                                ast.Constant(value=sql)
-                            ])],
+                            args=[ast.Constant(value=sql)],
                             keywords=[]
                         ),
                         attr='to_df'

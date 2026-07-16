@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import json
 
 from web3 import Web3
-from web3.middleware import geth_poa_middleware
+from web3.middleware import ExtraDataToPOAMiddleware
 from backend.core.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def anchor_merkle_root_to_base(merkle_root: str, window_start: datetime, window_
     """
     rpc_url = settings.FLASHBLOCKS_RPC_URL or BASE_RPC_URL
     w3 = Web3(Web3.HTTPProvider(rpc_url))
-    w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     
     if not w3.is_connected():
         logger.error(f"Failed to connect to Base RPC at {rpc_url}")

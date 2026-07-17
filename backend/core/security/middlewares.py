@@ -13,6 +13,9 @@ from backend.db.models.security import KillSwitchState
 ZERO_TRUST_PUBLIC_PATHS = (
     "/demo/pipeline/health",
     "/api/v1/demo/pipeline/health",
+    # Protocol manifest — exact match ensures public access even if prefix check has edge cases
+    "/protocol.json",
+    "/protocol/introspect",
 )
 
 ZERO_TRUST_PUBLIC_PREFIXES = (
@@ -38,7 +41,7 @@ ZERO_TRUST_PUBLIC_PREFIXES = (
     # OpenAI-compatible gateway: auth handled inside route handler (Bearer JWT + byos_ keys)
     "/v1/chat/completions", "/v1/models",
     # Veklom Protocol manifest and introspection — public, enables AI agent self-discovery
-    "/protocol.json", "/protocol/introspect",
+    "/protocol.json", "/protocol/introspect", "/protocol",
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
     "/api/v1/workspace/overview/live", "/api/v1/integrations/pagerduty",
     "/api/v1/pgl/registry", "/api/v1/capi/execute",

@@ -999,6 +999,8 @@ from backend.apps.gpc.routes import router as gpc_router
 from backend.apps.api.routers import openai_compat
 from backend.apps.api.routers import protocol as veklom_protocol
 from backend.apps.api.routers import payapi_compliance
+from backend.apps.api.routers import session_mesh
+
 
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
@@ -1106,6 +1108,8 @@ app.include_router(webhook.router, prefix="/api/v1")
 # Edge Legacy & Webhook Ingestion Ingress
 app.include_router(edge.router, prefix="/api/v1")
 app.include_router(payapi_compliance.router, prefix="/api/v1")
+app.include_router(session_mesh.router, prefix="/api/v1")
+
 
 
 # x402 Payment & Verification Ingress

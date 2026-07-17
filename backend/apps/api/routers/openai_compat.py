@@ -261,6 +261,13 @@ async def chat_completions(
             "latency_ms": latency_ms,
         },
     }
+    response["_links"] = {
+        "models": {"href": "/v1/models", "method": "GET"},
+        "evidence": {"href": f"/api/v1/evidence/verify", "method": "POST"},
+        "pipeline": {"href": "/api/v1/gpc/compile", "method": "POST"},
+        "manifest": {"href": "/protocol.json", "method": "GET"},
+        "introspect": {"href": "/protocol/introspect", "method": "POST"},
+    }
     return response
 
 

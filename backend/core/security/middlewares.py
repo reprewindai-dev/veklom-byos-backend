@@ -37,6 +37,8 @@ ZERO_TRUST_PUBLIC_PREFIXES = (
     "/v1/openapi.json", "/api/v1/sys/health", "/api/v1/sys/gpu",
     # OpenAI-compatible gateway: auth handled inside route handler (Bearer JWT + byos_ keys)
     "/v1/chat/completions", "/v1/models",
+    # Veklom Protocol manifest and introspection — public, enables AI agent self-discovery
+    "/protocol.json", "/protocol/introspect",
     "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
     "/api/v1/workspace/overview/live", "/api/v1/integrations/pagerduty",
     "/api/v1/pgl/registry", "/api/v1/capi/execute",

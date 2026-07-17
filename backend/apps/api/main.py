@@ -997,6 +997,7 @@ from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
 from backend.apps.gpc.routes import router as gpc_router
 from backend.apps.api.routers import openai_compat
+from backend.apps.api.routers import protocol as veklom_protocol
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
 app.include_router(discovery.router)
@@ -1006,6 +1007,9 @@ app.include_router(gpc_router)
 # This is the real endpoint advertised in the openapi.json schema.
 # Accepts Bearer JWT or X-API-Key: byos_...
 app.include_router(openai_compat.router)
+
+# Veklom Protocol manifest — /protocol.json and /protocol/introspect
+app.include_router(veklom_protocol.router)
 
 # Health & status (no prefix)
 app.include_router(health.router)

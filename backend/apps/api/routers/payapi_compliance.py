@@ -76,13 +76,16 @@ async def autonomous_interrogator(body: AutonomousRequest, user=Depends(get_curr
 @router.post("/capi/execute")
 async def capi_execute(body: Dict[str, Any], user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Governed Execution Interception Gateway - Intercepts and passes all agentic execution intents through the gate"""
-    intent_payload = body.get("intent", {})
+    intent_payload = body.get("intent")
+    if not isinstance(intent_payload, dict):
+        intent_payload = body
+        
     intent = ExecutionIntent(
         agent_id=intent_payload.get("agent_id", "default_agent"),
         pgl_id=intent_payload.get("pgl_id", "default_pgl"),
         target_protocol=intent_payload.get("target_protocol", "http"),
         action=intent_payload.get("action", "unknown"),
-        payload=intent_payload.get("payload", {})
+        payload=intent_payload.get("payload") or {}
     )
     is_approved, reason, failure_phase, phase_results = await evaluate_intent_governed(
         intent, db, user.workspace_id, operator_id=user.id

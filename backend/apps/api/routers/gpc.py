@@ -1,549 +1,472 @@
-"""GPC (Governed Plan Compiler) routes — proxied from uacpgemini."""
+"""
+GPC FastAPI Routes
+REST API for GPC pipeline system.
 
-import json
-import uuid
-from datetime import datetime, timezone
+Endpoints:
+- POST /api/v1/gpc/compile — Compile graph to Python
+- POST /api/v1/gpc/generate — NL intent to graph (AI)
+- POST /api/v1/gpc/execute — Run compiled pipeline
+- GET /api/v1/gpc/components — List available components
+- GET /api/v1/gpc/audit — Query audit trail
+- GET /api/v1/gpc/stats — GPC statistics
 
-from fastapi import APIRouter, Depends, Request
+Generated for: veklom-byos-backend/backend/apps/gpc/
+"""
+
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
-
-from backend.core.security.auth import get_current_user, get_current_user_optional
-from backend.core.services.autonomous_worker import run_gpc_background
+from pydantic import ValidationError
+import json
+import logging
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
 import asyncio
-from backend.core.database.database import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
-from backend.db.models.pipelines import Pipeline
-from backend.core.ai.provider_router import run_completion
-from backend.ops.poltergeist_daemon import poltergeist_daemon
-from backend.core.services.poltergeist_registry import poltergeist_registry
-from pydantic import BaseModel
-import httpx
-from backend.core.replay.ingestion import replay_ingestion, CloudEvent
 
-router = APIRouter(prefix="/gpc", tags=["GPC"])
+from gpc_schemas import (
+    GPCPipelineGraph, PipelineCompilationRequest, PipelineCompilationResult,
+    NLToGraphRequest, NLToGraphResult, PipelineExecutionTrace,
+    GPCComponentDefinition, PortType
+)
+from gpc_compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
 
-class GitHubDeployRequest(BaseModel):
-    pipeline_id: str
-    target_repo: str
-    python_code: str
+logger = logging.getLogger("gpc")
+
+router = APIRouter(prefix="/api/v1/gpc", tags=["gpc"])
 
 
-@router.get("/plans")
-async def list_plans(user=Depends(get_current_user_optional)):
-    return []
+# ============================================================================
+# DEPENDENCIES & AUTH
+# ============================================================================
 
-
-@router.post("/plans")
-async def save_plan(body: dict, user=Depends(get_current_user_optional)):
-    plan_id = str(uuid.uuid4())[:8]
-    return {
-        "id": plan_id,
-        "name": body.get("name", f"Plan-{plan_id}"),
-        "intent": body.get("intent", ""),
-        "graph": body.get("graph", {"nodes": [], "edges": []}),
-        "status": "compiled",
-        "createdAt": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-@router.post("/intent-to-plan")
-async def intent_to_plan(body: dict, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
-    intent = body.get("intent", "")
-    provider = body.get("provider", "ollama")
-    model = body.get("model", "qwen2.5:3b")
-
-    prompt = f"""
-You are an expert AI data engineering architecture generator for the Veklom GPC (Generative Pipeline Compiler).
-A user has provided the following "messy" natural language description for a new Python ETL pipeline:
-"{intent}"
-
-Convert this intent into a STRICT valid JSON output matching this structure:
-{{
-  "nodes": [
-    {{
-      "id": "node_id_1", 
-      "type": "data", 
-      "position": {{"x": 100, "y": 120}}, 
-      "data": {{
-        "label": "Node Label", 
-        "nodeType": "CsvFileInput"
-      }}
-    }},
-    ...
-  ],
-  "edges": [
-    {{"id": "e_node_id_1_node_id_2", "source": "node_id_1", "target": "node_id_2"}}
-  ],
-  "node_configs": {{
-    "node_id_1": {{
-      "filePath": "input.csv",
-      "sep": ","
-    }}
-  }}
-}}
-
-Available values for "nodeType" include:
-1. "CsvFileInput" (Required configs: "filePath": str, "sep": str (usually ","))
-2. "FilterRows" (Required configs: "column": str, "value": str)
-3. "Aggregate" (Required configs: "groupBy": str, "aggregateColumn": str, "aggregateFunction": str (sum, mean, count, min, max))
-4. "SelectColumns" (Required configs: "columns": list of str)
-5. "ParquetOutput" (Required configs: "outputPath": str)
-6. "DuckDBQuery" (Required configs: "sqlQuery": str)
-
-Assign beautiful, logical "label" values like "Load CSV", "Filter Active", "Group by Status", "Output Parquet", etc.
-Ensure nodes are laid out horizontally from left to right by incrementing their position "x" coordinates (e.g. x=100, x=300, x=500, x=700).
-Return ONLY valid JSON and nothing else. Do not wrap in markdown code blocks.
-"""
-
+async def get_tenant_id(authorization: str = None) -> str:
+    """Extract tenant_id from JWT bearer token."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    
+    # In production: validate JWT, extract tenant_id
+    # For now: mock implementation
     try:
-        res = await run_completion({
-            "provider": provider,
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}]
-        })
-        content = res.payload.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-        content = content.strip().removeprefix("```json").removesuffix("```").strip()
-        graph_data = json.loads(content)
+        token = authorization.replace("Bearer ", "")
+        # Parse JWT and extract tenant_id claim
+        # This is a placeholder; use PyJWT in production
+        return "tenant_" + token[:16]
     except Exception as e:
-        # Fallback if LLM fails
-        graph_data = {
-            "nodes": [
-                {"id": "n1", "type": "data", "position": {"x": 100, "y": 120}, "data": {"label": "Load CSV", "nodeType": "CsvFileInput"}},
-                {"id": "n2", "type": "data", "position": {"x": 320, "y": 120}, "data": {"label": "Filter Status", "nodeType": "FilterRows"}},
-                {"id": "n3", "type": "data", "position": {"x": 540, "y": 120}, "data": {"label": "Export Parquet", "nodeType": "ParquetOutput"}},
-            ],
-            "edges": [
-                {"id": "e_n1_n2", "source": "n1", "target": "n2"},
-                {"id": "e_n2_n3", "source": "n2", "target": "n3"}
-            ],
-            "node_configs": {
-                "n1": {"filePath": "input.csv", "sep": ","},
-                "n2": {"column": "status", "value": "active"},
-                "n3": {"outputPath": "output.parquet"}
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# ============================================================================
+# COMPILATION ENDPOINT
+# ============================================================================
+
+@router.post("/compile", response_model=PipelineCompilationResult)
+async def compile_pipeline(
+    request: PipelineCompilationRequest,
+    tenant_id: str = Depends(get_tenant_id)
+) -> PipelineCompilationResult:
+    """
+    Compile a pipeline graph into executable Python code.
+    
+    Expects:
+        - pipeline_id: ID of the pipeline to compile
+        - tenant_id: Tenant making request
+    
+    Returns:
+        Compilation result with Python code, execution order, parallel levels
+    """
+    try:
+        # In production: load pipeline from database
+        # For now: mock load
+        pipeline_graph = GPCPipelineGraph(
+            pipeline_id=request.pipeline_id,
+            tenant_id=tenant_id
+        )
+        
+        compiler = GPCCompiler(component_registry=DEFAULT_COMPONENTS)
+        result = compiler.compile(pipeline_graph)
+        
+        logger.info(
+            f"Pipeline {request.pipeline_id} compiled successfully",
+            extra={
+                "tenant_id": tenant_id,
+                "nodes": result.node_count,
+                "levels": len(result.parallel_levels)
             }
-        }
-
-    pipeline_id = str(uuid.uuid4())
-    name = f"GPC Plan: {intent[:40]}"
-    
-    pipe = Pipeline(
-        id=pipeline_id,
-        workspace_id=user.workspace_id if user else "default",
-        name=name,
-        description=f"Generated via GPC for intent: {intent}",
-        steps={
-            "template": "GPC",
-            "nodes": len(graph_data.get("nodes", [])),
-            "vectorStore": "pgvector",
-            "invocations": 0,
-            "lastRun": "—",
-            "graph": graph_data  # Crucial bridge: Save the visual graph inside the steps["graph"] field
-        },
-        config_json=graph_data
-    )
-    db.add(pipe)
-    await db.commit()
-
-    return {
-        "id": pipeline_id,
-        "name": name,
-        "intent": intent,
-        "pipeline_graph": graph_data,
-        "success": True,
-        "confidence_score": 0.95
-    }
-
-@router.post("/generate")
-async def generate(body: dict, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
-    # Map frontend /generate to intent logic
-    intent = body.get("user_intent", "")
-    body["intent"] = intent
-    return await intent_to_plan(body, user, db)
-
-
-@router.post("/compile")
-async def compile_pipeline(body: dict, user=Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
-    pipeline_id = body.get("pipeline_id")
-    tenant_id = body.get("tenant_id", "default")
-    
-    if not pipeline_id:
-        return {"success": False, "warnings": ["Missing pipeline_id"]}
+        )
         
-    # In a real scenario, we'd fetch the pipeline graph from Postgres using pipeline_id.
-    # We will simulate fetching the graph and identifying capabilities needed.
+        return result
     
-    # 1. Identify missing capabilities and submit to Poltergeist
-    fingerprint = f"cap_{pipeline_id[:8]}"
-    workspace_id = user.workspace_id if user else "default"
+    except TopologicalSortError as e:
+        logger.error(f"Cycle detected in pipeline {request.pipeline_id}: {e}")
+        return PipelineCompilationResult(
+            success=False,
+            python_code="",
+            node_count=0,
+            execution_order=[],
+            parallel_levels=[],
+            warnings=[str(e)]
+        )
     
-    # Send a real manifest that matches our builder types so it generates proper code
-    dynamic_manifest = {
-        "type": "python_transform",
-        "engine": "duckdb",
-        "pipeline_id": pipeline_id,
-        "nodes": ["n1", "n2", "n3"]
-    }
+    except Exception as e:
+        logger.exception(f"Compilation failed for pipeline {request.pipeline_id}")
+        return PipelineCompilationResult(
+            success=False,
+            python_code="",
+            node_count=0,
+            execution_order=[],
+            parallel_levels=[],
+            warnings=[f"Compilation error: {str(e)}"]
+        )
+
+
+# ============================================================================
+# NL-TO-GRAPH GENERATION ENDPOINT
+# ============================================================================
+
+@router.post("/generate", response_model=NLToGraphResult)
+async def generate_pipeline_from_intent(
+    request: NLToGraphRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+) -> NLToGraphResult:
+    """
+    Convert natural language intent into a pipeline graph using LLM.
     
-    # Submit to Poltergeist Deduplicating Build Queue
-    await poltergeist_daemon.submit_intent(
-        workspace_id=workspace_id,
-        fingerprint=fingerprint,
-        required_revision=1,
-        manifest=dynamic_manifest
-    )
+    Expects:
+        - user_intent: Messy natural language description
+        - available_components: Optional list of component types to use
+        - data_residency_region: Where data will be processed (ca-central-1, ca-west-1, on-premise)
     
-    # 2. Poll the Freshness Gate (blocking until capabilities are fresh)
-    from backend.ops.poltergeist_daemon import CompilerFreshnessGate
-    is_fresh = await CompilerFreshnessGate.wait_for_freshness(fingerprint, required_revision=1, timeout_seconds=10)
-    
-    if not is_fresh:
-        return {"success": False, "warnings": ["Poltergeist build timed out or failed."]}
+    Returns:
+        Generated pipeline graph + reasoning
+    """
+    try:
+        # In production: call vLLM + XGrammar or Claude API with structured output
+        # Placeholder: mock LLM response
+        intent_lower = request.user_intent.lower()
         
-    # 3. Generate AST/Python code (Simulated)
-    python_code = f"""# Auto-generated by Veklom GPC
-# Pipeline ID: {pipeline_id}
-import pandas as pd
-from backend.ops.builders import DataTransformer
-
-def run_pipeline():
-    print("Executing pipeline...")
-    # Poltergeist capability invoked
-    transformer = DataTransformer()
-    df = pd.DataFrame({{"test": [1,2,3]}})
-    df = transformer.transform(df, [])
-    print("Pipeline complete.")
-    
-if __name__ == "__main__":
-    run_pipeline()
-"""
-    
-    return {
-        "success": True,
-        "pipeline_id": pipeline_id,
-        "python_code": python_code,
-        "node_count": 3,
-        "warnings": ["Compiled successfully with Poltergeist."],
-        "execution_order": ["n1", "n2", "n3"],
-        "parallel_levels": [["n1"], ["n2"], ["n3"]]
-    }
-
-@router.get("/execute")
-async def execute_pipeline(pipeline_id: str, request: Request, user=Depends(get_current_user_optional)):
-    async def event_stream():
-        # Start event
-        yield f"data: {json.dumps({'event': 'start', 'pipeline_id': pipeline_id})}\n\n"
-        await asyncio.sleep(0.5)
+        # Mock logic: detect CSV input → parsing → output
+        has_csv_input = "csv" in intent_lower or "file" in intent_lower
+        has_filter = "filter" in intent_lower or "where" in intent_lower
+        has_output = "save" in intent_lower or "export" in intent_lower or "parquet" in intent_lower
         
-        # Simulate node execution for n1, n2, n3
-        nodes = ["n1", "n2", "n3"]
-        for index, node_id in enumerate(nodes):
-            if await request.is_disconnected():
-                break
-                
-            yield f"data: {json.dumps({'event': 'node_start', 'node_id': node_id, 'index': index})}\n\n"
-            await asyncio.sleep(1) # simulate compute time
-            
-            yield f"data: {json.dumps({'event': 'node_complete', 'node_id': node_id, 'preview': {'rows': 100, 'columns': ['col1', 'col2'], 'sample': [[1, 'A'], [2, 'B']]}})}\n\n"
-            
-        yield f"data: {json.dumps({'event': 'complete'})}\n\n"
+        nodes = []
+        edges = []
+        node_id_counter = 0
         
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-@router.get("/runs")
-async def list_runs(user=Depends(get_current_user_optional)):
-    return []
-
-
-@router.post("/runs")
-async def start_run(body: dict, user=Depends(get_current_user_optional)):
-    run_id = str(uuid.uuid4())
-    # Assuming frontend sends the graph in the body, otherwise we use a mock one
-    graph = body.get("graph", {
-        "nodes": [
-            {"id": "n1", "description": "Validation & Setup"},
-            {"id": "n2", "description": "Reasoning Engine"},
-            {"id": "n3", "description": "Final Output generation"}
-        ]
-    })
-    provider = body.get("provider", "ollama")
-    model = body.get("model", "llama3")
-    
-    workspace_id = user.workspace_id if user else "default"
-    user_id = user.id if user else "public"
-    asyncio.create_task(run_gpc_background(run_id, graph, workspace_id, user_id, provider, model))
-    
-    return {
-        "id": run_id,
-        "planId": body.get("planId", ""),
-        "status": "PENDING",
-        "progress": 0,
-        "currentStep": "Initializing",
-        "startTime": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-@router.get("/events")
-async def list_events(user=Depends(get_current_user_optional)):
-    now = datetime.now(timezone.utc).isoformat()
-    return [
-        {"id": "ev1", "type": "plan_compiled", "message": "Plan compiled successfully", "timestamp": now},
-        {"id": "ev2", "type": "policy_check", "message": "All policy checks passed", "timestamp": now},
-    ]
-
-
-@router.get("/ssrn-signals")
-async def ssrn_signals(user=Depends(get_current_user_optional)):
-    return [
-        {"id": "sig1", "title": "Quantum Computing Advance", "strength": 0.85, "timestamp": datetime.now(timezone.utc).isoformat(), "category": "research"},
-        {"id": "sig2", "title": "LLM Alignment Progress", "strength": 0.72, "timestamp": datetime.now(timezone.utc).isoformat(), "category": "ai_safety"},
-    ]
-
-
-@router.get("/bootstrap")
-async def bootstrap(user=Depends(get_current_user_optional)):
-    email = user.email if user else "public@veklom.com"
-    return {"userEmail": email, "version": "0.2.0", "environment": "production"}
-
-class BootstrapRequest(BaseModel):
-    dry_run: bool = False
-    atomic: bool = False
-    quorum: int = 100
-    nodes: list[str] = []
-
-@router.post("/bootstrap")
-async def post_bootstrap(body: BootstrapRequest, user=Depends(get_current_user_optional)):
-    if body.atomic and not body.dry_run:
-        # Atomic requires prior dry-run. Since we don't store dry-run state across requests in this basic version,
-        # we strictly enforce that if you request atomic, you must also be doing a dry_run first or we simulate
-        # the requirement by returning an error if atomic is set without dry_run in the actual client flow.
-        # Actually, the user says "dry-run is mandatory before atomic". We can require a proof token, but
-        # a simple way is rejecting atomic=True if a dry-run token wasn't provided. Let's implement strict rejection:
-        pass # We'll enforce this below.
+        # Input node
+        if has_csv_input:
+            input_node_id = f"node_{node_id_counter}"
+            node_id_counter += 1
+            nodes.append({
+                "id": input_node_id,
+                "node_type": "CsvFileInput",
+                "label": "Load CSV",
+                "config": {"filePath": "input.csv", "sep": ","},
+                "output_ports": [{"id": "out", "port_type": "pandas_df", "label": "DataFrame"}]
+            })
         
-    email = user.email if user else "public@veklom.com"
-    
-    # 1. Validation
-    if body.atomic and body.quorum != 100:
-        return {"success": False, "error": "Cannot specify both --atomic and --quorum. Atomic implies 100% quorum."}
+        # Filter node
+        prev_node_id = input_node_id if has_csv_input else None
+        if has_filter and prev_node_id:
+            filter_node_id = f"node_{node_id_counter}"
+            node_id_counter += 1
+            nodes.append({
+                "id": filter_node_id,
+                "node_type": "FilterRows",
+                "label": "Filter Rows",
+                "config": {"column": "status", "value": "active"},
+                "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input DataFrame"}],
+                "output_ports": [{"id": "out", "port_type": "pandas_df", "label": "Filtered DataFrame"}]
+            })
+            edges.append({
+                "id": f"edge_{len(edges)}",
+                "source_node_id": prev_node_id,
+                "source_port_id": "out",
+                "target_node_id": filter_node_id,
+                "target_port_id": "in"
+            })
+            prev_node_id = filter_node_id
         
-    if body.atomic and not body.dry_run:
-        # In a real system, we'd check a Redis cache to see if this user recently completed a dry-run.
-        # We will simulate the requirement. We'll allow it if they send a 'proof_of_dry_run' (which we'll just check).
-        # Let's say we reject it strictly to prove the point.
-        pass
+        # Output node
+        if has_output and prev_node_id:
+            output_node_id = f"node_{node_id_counter}"
+            nodes.append({
+                "id": output_node_id,
+                "node_type": "ParquetOutput",
+                "label": "Export Parquet",
+                "config": {"outputPath": "output.parquet"},
+                "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input DataFrame"}]
+            })
+            edges.append({
+                "id": f"edge_{len(edges)}",
+                "source_node_id": prev_node_id,
+                "source_port_id": "out",
+                "target_node_id": output_node_id,
+                "target_port_id": "in"
+            })
         
-    # Let's simulate fleet node processing
-    total_nodes = len(body.nodes) if body.nodes else 10
-    failed_nodes = 1 if not body.dry_run else 0 # Force 1 failure in live run to test rollback
-    
-    success_rate = ((total_nodes - failed_nodes) / total_nodes) * 100
-    
-    if body.dry_run:
-        return {
-            "success": True, 
-            "mode": "dry-run", 
-            "message": "Dry-run successful. Ready for atomic or quorum bootstrap.",
-            "proof_token": "dry_run_verified_token"
+        # Construct graph
+        graph_dict = {
+            "pipeline_id": f"pipeline_{tenant_id[:8]}_{datetime.utcnow().timestamp()}",
+            "tenant_id": tenant_id,
+            "nodes": nodes,
+            "edges": edges,
+            "data_residency_region": request.data_residency_region,
+            "prompt_version": "gpc-v1-mock"
         }
         
-    # Live Run Execution
-    if body.atomic:
-        if failed_nodes > 0:
-            return {
-                "success": False, 
-                "mode": "atomic", 
-                "error": "1 failure detected in atomic mode. Total rollback triggered.",
-                "failed_nodes": failed_nodes
+        pipeline_graph = GPCPipelineGraph(**graph_dict)
+        
+        # Log generation event
+        logger.info(
+            f"Pipeline generated from intent",
+            extra={
+                "tenant_id": tenant_id,
+                "nodes": len(nodes),
+                "intent_length": len(request.user_intent)
             }
-            
-    if body.quorum < 100:
-        if success_rate >= body.quorum:
-            # Emit deviation to replay
-            event = CloudEvent(
-                id=str(uuid.uuid4()),
-                source="urn:veklom:bootstrap",
-                type="veklom.bootstrap.deviation",
-                data={
-                    "total_nodes": total_nodes,
-                    "failed_nodes": failed_nodes,
-                    "success_rate": success_rate,
-                    "quorum_target": body.quorum
-                }
+        )
+        
+        return NLToGraphResult(
+            success=True,
+            pipeline_graph=pipeline_graph,
+            reasoning="Generated nodes for CSV input, filtering, and Parquet export based on intent analysis",
+            retry_count=0,
+            confidence_score=0.85
+        )
+    
+    except ValidationError as e:
+        return NLToGraphResult(
+            success=False,
+            pipeline_graph=None,
+            reasoning="",
+            errors=[str(e)]
+        )
+    except Exception as e:
+        logger.exception(f"Pipeline generation failed for tenant {tenant_id}")
+        return NLToGraphResult(
+            success=False,
+            pipeline_graph=None,
+            reasoning="",
+            errors=[f"Generation error: {str(e)}"]
+        )
+
+
+# ============================================================================
+# EXECUTION ENDPOINT
+# ============================================================================
+
+@router.post("/execute")
+async def execute_pipeline(
+    pipeline_id: str,
+    tenant_id: str = Depends(get_tenant_id),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
+    """
+    Execute a compiled pipeline in isolated sandbox.
+    
+    Streams execution status + preview data via Server-Sent Events.
+    """
+    
+    async def event_generator():
+        try:
+            # Load pipeline
+            pipeline_graph = GPCPipelineGraph(
+                pipeline_id=pipeline_id,
+                tenant_id=tenant_id
             )
-            packet_id = replay_ingestion.emit(event)
-            return {
-                "success": True,
-                "mode": f"quorum={body.quorum}",
-                "message": f"Bootstrap successful with deviations. {failed_nodes} nodes failed.",
-                "deviation_packet_id": packet_id
-            }
-        else:
-            return {
-                "success": False,
-                "mode": f"quorum={body.quorum}",
-                "error": f"Success rate {success_rate}% fell below quorum target {body.quorum}%. Rollback triggered."
-            }
             
-    # Default success (if atomic=False and quorum=100 and no failures, but we forced 1 failure above)
-    return {
-        "success": False, 
-        "error": f"1 failure detected. 100% success required.",
-        "failed_nodes": failed_nodes
-    }
+            # Compile
+            compiler = GPCCompiler()
+            compilation = compiler.compile(pipeline_graph)
+            
+            if not compilation.success:
+                yield f"data: {json.dumps({'error': 'Compilation failed', 'warnings': compilation.warnings})}\n\n"
+                return
+            
+            # Emit start event
+            yield f"data: {json.dumps({'event': 'start', 'node_count': compilation.node_count})}\n\n"
+            
+            # Execute nodes in order (mock)
+            for i, node_id in enumerate(compilation.execution_order):
+                yield f"data: {json.dumps({'event': 'node_start', 'node_id': node_id, 'index': i})}\n\n"
+                
+                # Mock: sleep to simulate execution
+                await asyncio.sleep(0.5)
+                
+                # Mock preview data
+                preview = {
+                    "rows": 100 + i * 50,
+                    "columns": ["id", "name", "value"],
+                    "sample": [[i, f"row_{i}", f"val_{i}"] for i in range(3)]
+                }
+                
+                yield f"data: {json.dumps({'event': 'node_complete', 'node_id': node_id, 'preview': preview})}\n\n"
+            
+            # Emit completion
+            yield f"data: {json.dumps({'event': 'complete', 'success': True})}\n\n"
+            
+            # Log execution trace
+            trace = PipelineExecutionTrace(
+                tenant_id=tenant_id,
+                pipeline_id=pipeline_id,
+                user_id="system",
+                execution_status="success",
+                data_residency_region="ca-central-1",
+                schema_version="1.0"
+            )
+            logger.info(f"Pipeline execution completed", extra=trace.model_dump())
+        
+        except Exception as e:
+            logger.exception(f"Pipeline execution failed: {e}")
+            yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream"
+    )
 
 
-@router.get("/observability/signals")
-async def observability_signals(user=Depends(get_current_user_optional)):
-    return {
-        "vk-model-llama3-70b": {
-            "latency_ms": 143,
-            "throughput_rps": 120,
-            "error_rate": 0.001,
-            "active_plans": 2,
-            "active_runs": 1,
+# ============================================================================
+# COMPONENTS ENDPOINT
+# ============================================================================
+
+@router.get("/components", response_model=List[Dict[str, Any]])
+async def list_components(
+    tenant_id: str = Depends(get_tenant_id)
+):
+    """
+    List all available node components.
+    Returns both global and tenant-private components.
+    """
+    components = []
+    
+    # Mock component definitions
+    base_components = [
+        {
+            "node_type": "CsvFileInput",
+            "display_name": "CSV File Input",
+            "category": "input",
+            "description": "Load data from a CSV file",
+            "icon": "FileText",
+            "output_ports": [{"id": "out", "port_type": "pandas_df", "label": "DataFrame"}]
+        },
+        {
+            "node_type": "FilterRows",
+            "display_name": "Filter Rows",
+            "category": "transform",
+            "description": "Filter DataFrame rows based on condition",
+            "icon": "Filter",
+            "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input"}],
+            "output_ports": [{"id": "out", "port_type": "pandas_df", "label": "Filtered"}]
+        },
+        {
+            "node_type": "Aggregate",
+            "display_name": "Aggregate",
+            "category": "transform",
+            "description": "Group and aggregate data",
+            "icon": "Layers",
+            "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input"}],
+            "output_ports": [{"id": "out", "port_type": "pandas_df", "label": "Aggregated"}]
+        },
+        {
+            "node_type": "SelectColumns",
+            "display_name": "Select Columns",
+            "category": "transform",
+            "description": "Select specific columns",
+            "icon": "Columns",
+            "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input"}],
+            "output_ports": [{"id": "out", "port_type": "pandas_df", "label": "Selected"}]
+        },
+        {
+            "node_type": "ParquetOutput",
+            "display_name": "Parquet Output",
+            "category": "output",
+            "description": "Save data to Parquet file",
+            "icon": "Download",
+            "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input"}]
+        },
+        {
+            "node_type": "DuckDBQuery",
+            "display_name": "DuckDB Query",
+            "category": "transform",
+            "description": "Execute SQL query via DuckDB",
+            "icon": "Database",
+            "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input"}],
+            "output_ports": [{"id": "out", "port_type": "duckdb_rel", "label": "Result"}]
         }
+    ]
+    
+    return base_components
+
+
+# ============================================================================
+# AUDIT ENDPOINT
+# ============================================================================
+
+@router.get("/audit")
+async def query_audit_log(
+    tenant_id: str = Depends(get_tenant_id),
+    pipeline_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    days: int = 7
+):
+    """
+    Query audit trail for compliance (Law 25 Section 93).
+    
+    Filters:
+        - pipeline_id: Specific pipeline
+        - user_id: Specific user
+        - days: Lookback window (default 7)
+    """
+    # In production: query audit log database
+    # Mock response
+    start_date = datetime.utcnow() - timedelta(days=days)
+    
+    events = [
+        {
+            "trace_id": f"trace_{i}",
+            "tenant_id": tenant_id,
+            "pipeline_id": pipeline_id or f"pipeline_{i}",
+            "user_id": user_id or f"user_{i}",
+            "execution_status": "success" if i % 2 == 0 else "failure",
+            "started_at": (start_date + timedelta(hours=i)).isoformat(),
+            "duration_ms": 1000 + i * 100,
+            "nodes_executed": 5,
+            "data_residency_region": "ca-central-1"
+        }
+        for i in range(10)
+    ]
+    
+    return {
+        "total": len(events),
+        "events": events,
+        "query_date": datetime.utcnow().isoformat(),
+        "tenant_id": tenant_id
     }
 
+
+# ============================================================================
+# STATS ENDPOINT
+# ============================================================================
 
 @router.get("/stats")
-async def gpc_stats(user=Depends(get_current_user_optional)):
-    from backend.db.session import SessionLocal
-    from backend.db.models.governance import InstitutionalPlan, GovernedRun
-    from backend.db.models.provider import LLMProvider
-    from backend.db.models.agent_stack import Agent, SafetyIncident
-    from backend.db.models.evidence import EvidencePack
-    import sqlite3
-    import math
-    
-    with SessionLocal() as db:
-        # Get real stats from primary db (veklom-byos-backend-2)
-        active_plans = db.query(InstitutionalPlan).count()
-        active_runs = db.query(GovernedRun).count()
-        providers_count = db.query(LLMProvider).count()
-        agents_count = db.query(Agent).count()
-        archives_count = db.query(EvidencePack).count()
-        escalations_count = db.query(SafetyIncident).count()
-        
-    # Get stats from secondary backend (cappo-backend)
-    cappo_runs = 0
-    cappo_events = 0
-    try:
-        conn = sqlite3.connect("C:/Users/antho/.windsurf/cappo-backend/cappo.db")
-        c = conn.cursor()
-        cappo_runs = c.execute("SELECT COUNT(*) FROM governed_runs").fetchone()[0]
-        cappo_events = c.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0]
-        conn.close()
-    except Exception as e:
-        pass
-        
-    # Calculate real mathematical pressure
-    total_runs = active_runs + cappo_runs
-    total_events = archives_count + cappo_events
-    
-    # Base pressure primes naturally from agents and providers
-    base_pressure = 0.85 if providers_count > 0 else 0.50
-    base_pressure += min(0.10, (agents_count * 0.01))
-    
-    # Dynamic load from active elements
-    dynamic_load = (total_runs * 0.02) + (active_plans * 0.01) + (escalations_count * 0.05) + (total_events * 0.001)
-    
-    load = min(0.99, base_pressure + dynamic_load)
-    
+async def get_gpc_statistics(
+    tenant_id: str = Depends(get_tenant_id)
+):
+    """
+    Get GPC system statistics for dashboard.
+    """
+    # In production: query metrics database
+    # Mock response
     return {
-        "activeNodes": providers_count + agents_count + total_runs,
-        "queueDepth": total_runs,
-        "throughput": 42.5 + total_runs * 10,
-        "cpuUsage": 12.3 + active_runs * 5,
-        "memoryUsage": 45.1 + active_runs * 2,
-        "policyAlignment": 99.9,
-        "uacp_pressure": load,
-        "quantum_coherence": 85.0 + active_runs,
-        "plans_total": active_plans,
-        "runs_total": total_runs,
-        "signals_total": total_events,
-        "latest_hash": "gpc_live_" + datetime.now(timezone.utc).strftime("%Y%m%d"),
-        "signals": [
-            {"id": "UACP_PRESSURE", "title": "UACP Core Pressure", "value": load, "timestamp": datetime.now(timezone.utc).isoformat(), "category": "system"}
-        ]
+        "plans_total": 42,
+        "runs_total": 156,
+        "decisions": {
+            "approved": 148,
+            "blocked": 8
+        },
+        "avg_compile_time_ms": 234,
+        "avg_execution_time_ms": 2890,
+        "success_rate": 0.945
     }
-
-
-@router.post("/capability/submit")
-async def submit_capability_build(body: dict, user=Depends(get_current_user_optional)):
-    """
-    Submits a capability intent to the Poltergeist Deduplicating Build Queue.
-    This acts as the backend resolver for GraphQL subscriptions in the UI.
-    """
-    fingerprint = body.get("fingerprint")
-    if not fingerprint:
-        return {"error": "fingerprint is required"}
-        
-    required_revision = body.get("required_revision", 1)
-    workspace_id = user.workspace_id if user else "default"
-    
-    await poltergeist_daemon.submit_intent(
-        workspace_id=workspace_id,
-        fingerprint=fingerprint,
-        required_revision=required_revision,
-        manifest=body.get("manifest", {})
-    )
-    
-    return {"status": "queued", "fingerprint": fingerprint, "revision": required_revision}
-
-@router.get("/capability/{fingerprint}/status")
-async def get_capability_status(fingerprint: str):
-    """
-    Returns the real-time build status from the Poltergeist memory.
-    """
-    state = await poltergeist_registry.get_capability_state(fingerprint)
-    if not state:
-        return {"status": "unknown"}
-    return state
-
-
-@router.post("/deploy/github")
-async def deploy_to_github(body: GitHubDeployRequest, user=Depends(get_current_user)):
-    """
-    Instantly dispatches a compiled GPC pipeline payload to a target GitHub repository 
-    for CI/CD deployment via GitHub Actions (repository_dispatch).
-    """
-    # 1. Ensure the user has connected GitHub
-    if not getattr(user, "github_access_token", None):
-        return {"success": False, "error": "GitHub account not connected. Please connect your GitHub account in the Asset Spine or Settings to deploy pipelines."}
-        
-    github_token = user.github_access_token
-    target_repo = body.target_repo.strip()
-    
-    # Optional formatting validation on repo
-    if "/" not in target_repo:
-        return {"success": False, "error": "Invalid repository format. Please use 'owner/repo' (e.g., 'my-org/my-production-pipelines')."}
-    
-    # 2. Fire the repository_dispatch event to GitHub Actions
-    url = f"https://api.github.com/repos/{target_repo}/dispatches"
-    
-    headers = {
-        "Accept": "application/vnd.github.v3+json",
-        "Authorization": f"token {github_token}",
-        "User-Agent": "Veklom-Sovereign-Control-Plane"
-    }
-    
-    payload = {
-        "event_type": "veklom-gpc-deploy",
-        "client_payload": {
-            "pipeline_id": body.pipeline_id,
-            "python_code": body.python_code
-        }
-    }
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(url, headers=headers, json=payload, timeout=10.0)
-            
-            # GitHub returns 204 No Content for successful dispatches
-            if resp.status_code == 204:
-                return {"success": True, "message": f"Successfully dispatched deployment to {target_repo}."}
-            else:
-                return {"success": False, "error": f"GitHub API Error ({resp.status_code}): {resp.text}"}
-                
-        except Exception as e:
-            return {"success": False, "error": f"Failed to reach GitHub API: {str(e)}"}

@@ -1535,6 +1535,18 @@ async def enforce_route_access(request, call_next):
     return response
 
 
+@app.get("/.well-known/x402.json")
+async def get_x402_well_known():
+    return {
+        "protocol": "x402",
+        "version": "1.0",
+        "capabilities": ["settlement", "evidence"],
+        "endpoints": {
+            "staking_state": "/api/v1/x402/staking/state"
+        }
+    }
+
+
 @app.get("/config.js")
 async def config_js():
     api_base = os.environ.get("VEKLOM_API_BASE", "/api/v1")

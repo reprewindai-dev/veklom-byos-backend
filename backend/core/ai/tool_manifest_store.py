@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-MANIFEST_STORE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/mcp_manifests.json"))
+MANIFEST_STORE_PATH = "/tmp/mcp_manifests.json"
 
 # L1 Cache: In-memory dictionary
 _LOCAL_MANIFESTS_CACHE = {}

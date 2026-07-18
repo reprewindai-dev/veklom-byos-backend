@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import delete, func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.core.database.database import async_session
 from backend.core.security.vnp_security import VNPEventVerifier, VNPSecurityError
@@ -210,64 +211,63 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
         for result in edge_results:
             edge = result["edge"]
             region_code = edge["region_code"]
-            node = (
-                await db.execute(select(VnpNode).where(VnpNode.region_code == region_code))
-            ).scalar_one_or_none()
-            if node is None:
-                node = VnpNode(
-                    name=edge["name"],
-                    physical_location=edge["physical_location"],
-                    region_code=region_code,
-                    macro_region=edge["macro_region"],
-                    jurisdiction=edge["jurisdiction"],
-                    gdpr_zone=bool(edge["gdpr_zone"]),
-                    software_version=EDGE_SOFTWARE_VERSION,
-                    health_state="unknown",
-                    registration_status="registered",
-                )
-                db.add(node)
-                await db.flush()
-            else:
-                node.name = edge["name"]
-                node.physical_location = edge["physical_location"]
-                node.macro_region = edge["macro_region"]
-                node.jurisdiction = edge["jurisdiction"]
-                node.gdpr_zone = bool(edge["gdpr_zone"])
-                node.software_version = (
-                    (result.get("identity") or {}).get("software_version")
-                    or (result.get("probe_payload") or {}).get("software_version")
-                    or EDGE_SOFTWARE_VERSION
-                )
+            software_version = (
+                (result.get("identity") or {}).get("software_version")
+                or (result.get("probe_payload") or {}).get("software_version")
+                or EDGE_SOFTWARE_VERSION
+            )
 
-            if result["is_up"]:
-                node.last_seen_at = result["completed_at"]
-                node.health_state = "reachable"
-            else:
-                node.health_state = "unreachable"
+            node_stmt = pg_insert(VnpNode).values(
+                name=edge["name"],
+                physical_location=edge["physical_location"],
+                region_code=region_code,
+                macro_region=edge["macro_region"],
+                jurisdiction=edge["jurisdiction"],
+                gdpr_zone=bool(edge["gdpr_zone"]),
+                software_version=software_version,
+                health_state="reachable" if result["is_up"] else "unreachable",
+                registration_status="registered",
+                last_seen_at=result["completed_at"] if result["is_up"] else None,
+            )
+            node_stmt = node_stmt.on_conflict_do_update(
+                index_elements=['region_code'],
+                set_={
+                    "name": node_stmt.excluded.name,
+                    "physical_location": node_stmt.excluded.physical_location,
+                    "macro_region": node_stmt.excluded.macro_region,
+                    "jurisdiction": node_stmt.excluded.jurisdiction,
+                    "gdpr_zone": node_stmt.excluded.gdpr_zone,
+                    "software_version": node_stmt.excluded.software_version,
+                    "health_state": node_stmt.excluded.health_state,
+                    "last_seen_at": node_stmt.excluded.last_seen_at,
+                }
+            ).returning(VnpNode.id, VnpNode.software_version)
+            
+            node_res = await db.execute(node_stmt)
+            node_id, node_software_version = node_res.one()
 
             identity = result.get("identity") or {}
             identity_sig = identity.get("signature") or {}
             public_key = identity_sig.get("public_key")
             signature_key_id = identity_sig.get("key_id") or f"unregistered:{region_code}"
+            
             if public_key and signature_key_id:
-                existing_key = (
-                    await db.execute(select(VnpNodeKey).where(VnpNodeKey.key_id == signature_key_id))
-                ).scalar_one_or_none()
-                if existing_key is None:
-                    db.add(
-                        VnpNodeKey(
-                            node_id=node.id,
-                            key_id=signature_key_id,
-                            public_key=public_key,
-                            active=True,
-                            created_at=now,
-                        )
-                    )
-                else:
-                    existing_key.node_id = node.id
-                    existing_key.public_key = public_key
-                    existing_key.active = True
-                    existing_key.revoked_at = None
+                key_stmt = pg_insert(VnpNodeKey).values(
+                    node_id=node_id,
+                    key_id=signature_key_id,
+                    public_key=public_key,
+                    active=True,
+                    created_at=now,
+                ).on_conflict_do_update(
+                    index_elements=['key_id'],
+                    set_={
+                        "node_id": node_id,
+                        "public_key": public_key,
+                        "active": True,
+                        "revoked_at": None,
+                    }
+                )
+                await db.execute(key_stmt)
 
             probe_payload = result.get("probe_payload") or {}
             probe_sig = probe_payload.get("signature") or {}
@@ -275,7 +275,7 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
             heartbeat_sequence = (
                 await db.execute(
                     select(func.coalesce(func.max(VnpNodeHeartbeat.sequence), 0)).where(
-                        VnpNodeHeartbeat.node_id == node.id
+                        VnpNodeHeartbeat.node_id == node_id
                     )
                 )
             ).scalar_one() + 1
@@ -291,9 +291,9 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
             db.add(
                 VnpNodeHeartbeat(
                     heartbeat_id=heartbeat_id,
-                    node_id=node.id,
+                    node_id=node_id,
                     timestamp=result["completed_at"],
-                    software_version=node.software_version or EDGE_SOFTWARE_VERSION,
+                    software_version=node_software_version or EDGE_SOFTWARE_VERSION,
                     sequence=int(heartbeat_sequence),
                     signature_key_id=signature_key_id,
                     signature=heartbeat_signature,
@@ -305,14 +305,14 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
             sequence = (
                 await db.execute(
                     select(func.coalesce(func.max(VnpObservation.sequence), 0)).where(
-                        VnpObservation.node_id == node.id
+                        VnpObservation.node_id == node_id
                     )
                 )
             ).scalar_one() + 1
             previous_signature = (
                 await db.execute(
                     select(VnpObservation.signature)
-                    .where(VnpObservation.node_id == node.id)
+                    .where(VnpObservation.node_id == node_id)
                     .order_by(VnpObservation.created_at.desc())
                     .limit(1)
                 )
@@ -329,7 +329,7 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
             db.add(
                 VnpObservation(
                     observation_id=observation_id,
-                    node_id=node.id,
+                    node_id=node_id,
                     region=region_code,
                     site_code=region_code,
                     physical_location=edge["physical_location"],

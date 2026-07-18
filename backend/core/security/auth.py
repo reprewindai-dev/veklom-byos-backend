@@ -87,11 +87,22 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
             unverified = jwt.get_unverified_claims(token)
             jti = unverified.get("jti")
             sub = unverified.get("sub")
+            
+            try:
+                unverified_header = jwt.get_unverified_header(token)
+                alg = unverified_header.get("alg")
+                kid = unverified_header.get("kid")
+            except Exception:
+                alg = "unknown"
+                kid = "unknown"
+
             logging.error(
-                "[JWT_VERIFY_FAILED] jti=%s sub=%s token_prefix=%s error=%s",
+                "[JWT_VERIFY_FAILED] jti=%s sub=%s token_prefix=%s alg=%s kid=%s error=%s",
                 jti,
                 sub,
                 token[:8],
+                alg,
+                kid,
                 last_err,
             )
         except Exception as ue:

@@ -171,9 +171,17 @@ class InfrastructureSentinel:
         """
         Pings /health. If the endpoint is dark for > HEALTH_DARK_THRESHOLD_S
         seconds we attempt a container self-restart via supervisord/uvicorn
-        signal. Inside Docker we send SIGHUP to PID 1 which triggers a
-        graceful reload.
+        signal, BUT ONLY if the database is healthy (to avoid restart loops
+        when DB is down).
         """
+        db_healthy = False
+        try:
+            from backend.core.database.database import get_db_status
+            status = await get_db_status()
+            db_healthy = status.get("status") == "healthy"
+        except Exception:
+            pass
+
         try:
             import httpx
             async with httpx.AsyncClient(timeout=10.0) as http:
@@ -194,8 +202,12 @@ class InfrastructureSentinel:
         logger.warning(f"[sentinel][health] /health dark for {dark_for:.0f}s")
 
         if dark_for >= self.HEALTH_DARK_THRESHOLD_S:
+            if not db_healthy:
+                logger.warning("[sentinel][health] threshold exceeded, but DB is down. Waiting instead of restarting.")
+                return
+                
             logger.error(
-                "[sentinel][health] threshold exceeded — attempting graceful restart"
+                "[sentinel][health] threshold exceeded and DB is healthy — attempting graceful restart"
             )
             try:
                 # Inside the container: send SIGHUP to uvicorn (PID 1 or main worker)
@@ -239,6 +251,8 @@ class InfrastructureSentinel:
                 f"[sentinel][disk] after prune: {new_pct:.1f}% "
                 f"(freed {(usage.used - new_usage.used) / 1e9:.2f} GB)"
             )
+        except FileNotFoundError:
+            logger.info("[sentinel][disk] root path not accessible, skipping watchdog")
         except Exception as exc:
             logger.error(f"[sentinel][disk] disk watchdog error: {exc}")
 

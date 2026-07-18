@@ -166,40 +166,51 @@ async def get_swarm_topology(db: AsyncSession = Depends(get_db)):
             if canonical_region_from_node(node.region_code)
         }
 
+        node_ids = [n.id for n in nodes_by_region.values()]
+        key_counts = {}
+        latest_heartbeats = {}
+        observation_counts = {}
+        latest_observations = {}
+
+        if node_ids:
+            # Batch fetch key counts
+            kc_stmt = select(VnpNodeKey.node_id, func.count(VnpNodeKey.id)).where(
+                VnpNodeKey.node_id.in_(node_ids),
+                VnpNodeKey.active.is_(True),
+                VnpNodeKey.revoked_at.is_(None)
+            ).group_by(VnpNodeKey.node_id)
+            for row in await db.execute(kc_stmt):
+                key_counts[row[0]] = row[1]
+
+            # Batch fetch latest heartbeats
+            lh_stmt = select(VnpNodeHeartbeat.node_id, func.max(VnpNodeHeartbeat.timestamp)).where(
+                VnpNodeHeartbeat.node_id.in_(node_ids)
+            ).group_by(VnpNodeHeartbeat.node_id)
+            for row in await db.execute(lh_stmt):
+                latest_heartbeats[row[0]] = row[1]
+
+            # Batch fetch observation counts
+            oc_stmt = select(VnpObservation.node_id, func.count(VnpObservation.id)).where(
+                VnpObservation.node_id.in_(node_ids)
+            ).group_by(VnpObservation.node_id)
+            for row in await db.execute(oc_stmt):
+                observation_counts[row[0]] = row[1]
+
+            # Batch fetch latest observation timestamp
+            lo_stmt = select(VnpObservation.node_id, func.max(VnpObservation.completed_at)).where(
+                VnpObservation.node_id.in_(node_ids)
+            ).group_by(VnpObservation.node_id)
+            for row in await db.execute(lo_stmt):
+                latest_observations[row[0]] = row[1]
+
         for canonical in CANONICAL_VNP_NODES:
             node = nodes_by_region.get(canonical["region"])
             if node:
                 registered_node_count += 1
-                key_count = (
-                    await db.execute(
-                        select(func.count(VnpNodeKey.id)).where(
-                            VnpNodeKey.node_id == node.id,
-                            VnpNodeKey.active.is_(True),
-                            VnpNodeKey.revoked_at.is_(None),
-                        )
-                    )
-                ).scalar_one()
-                latest_heartbeat = (
-                    await db.execute(
-                        select(func.max(VnpNodeHeartbeat.timestamp)).where(
-                            VnpNodeHeartbeat.node_id == node.id,
-                        )
-                    )
-                ).scalar_one()
-                observation_count = (
-                    await db.execute(
-                        select(func.count(VnpObservation.id)).where(
-                            VnpObservation.node_id == node.id,
-                        )
-                    )
-                ).scalar_one()
-                latest_observation = (
-                    await db.execute(
-                        select(func.max(VnpObservation.completed_at)).where(
-                            VnpObservation.node_id == node.id,
-                        )
-                    )
-                ).scalar_one()
+                key_count = key_counts.get(node.id, 0)
+                latest_heartbeat = latest_heartbeats.get(node.id)
+                observation_count = observation_counts.get(node.id, 0)
+                latest_observation = latest_observations.get(node.id)
                 status, status_str = node_status(
                     registration_status=node.registration_status,
                     revocation_state=node.revocation_state,

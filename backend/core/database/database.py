@@ -34,16 +34,16 @@ try:
     engine_options = {
         "echo": settings.DEBUG,
         "future": True,
-        "connect_args": {"timeout": 10, "command_timeout": 10},
+        "connect_args": {"timeout": 3, "command_timeout": 5},
     }
     if settings.APP_ENV == "test":
         # asyncpg connections are tied to their event loop; pytest creates several.
         engine_options["poolclass"] = NullPool
     else:
         engine_options.update(
-            pool_size=20,
+            pool_size=10,
             max_overflow=15,
-            pool_timeout=30,
+            pool_timeout=10,
             pool_pre_ping=True,
             pool_recycle=1800,
         )

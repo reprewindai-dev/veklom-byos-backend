@@ -155,6 +155,29 @@ async def detailed_health():
     }
 
 
+@router.get("/health/dependencies")
+async def health_dependencies():
+    """Checks Postgres, Redis, and internal dependencies."""
+    db_ok, db_latency = await _check_database()
+    redis_ok, redis_latency = await _check_redis()
+    
+    # We will simulate CAPI, PGL, VNP checks since they are microservices
+    # Real implementation could involve httpx calls to their health endpoints
+    return {
+        "status": "healthy" if db_ok and redis_ok else "unhealthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "dependencies": {
+            "postgres": "up" if db_ok else "down",
+            "redis": "up" if redis_ok else "down",
+            "celery": "unknown",
+            "operator_engine": "up", # Running in-process in this backend
+            "capi": "unknown", 
+            "pgl": "unknown",
+            "vnp": "unknown"
+        }
+    }
+
+
 @router.get("/api-status")
 async def platform_status():
     db_ok, _ = await _check_database()

@@ -21,10 +21,9 @@ All endpoints:
   - return real DB rows or explicit empty-state; never fabricated records.
   - admin-write operations (register, update) also require OWNER/ADMIN role.
 """
+
 from __future__ import annotations
 
-import hashlib
-import json
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -36,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
-from backend.db.models.agent import Account, Agent, AgentUser, HRM_TIERS
+from backend.db.models.agent import HRM_TIERS, Account, Agent, AgentUser
 from backend.db.models.ledger import LedgerEvent
 
 router = APIRouter(prefix="/agents/hrm", tags=["HRM Agents"])
@@ -49,9 +48,7 @@ def _utcnow() -> datetime:
 async def _account(user, db: AsyncSession) -> Optional[Account]:
     if not getattr(user, "email", None):
         return None
-    au = (await db.execute(
-        select(AgentUser).where(AgentUser.email == user.email).limit(1)
-    )).scalar_one_or_none()
+    au = (await db.execute(select(AgentUser).where(AgentUser.email == user.email).limit(1))).scalar_one_or_none()
     if not au:
         return None
     return (await db.execute(select(Account).where(Account.id == au.account_id))).scalar_one_or_none()
@@ -90,6 +87,7 @@ def _empty(reason: str) -> dict:
 # Performance audit across the full task force, grouped by tier.
 # ---------------------------------------------------------------------------
 
+
 @router.get("/audit")
 async def hrm_audit(
     user=Depends(get_current_user),
@@ -105,11 +103,17 @@ async def hrm_audit(
     if not acct:
         return _empty("No account row for this user.")
 
-    agents = (await db.execute(
-        select(Agent)
-        .where(Agent.account_id == acct.id, Agent.hrm_tier.isnot(None))
-        .order_by(Agent.agent_number.asc().nullsfirst(), Agent.id.asc())
-    )).scalars().all()
+    agents = (
+        (
+            await db.execute(
+                select(Agent)
+                .where(Agent.account_id == acct.id, Agent.hrm_tier.isnot(None))
+                .order_by(Agent.agent_number.asc().nullsfirst(), Agent.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     if not agents:
         return {
@@ -120,19 +124,22 @@ async def hrm_audit(
         }
 
     agent_ids = [a.id for a in agents]
-    event_counts_rows = (await db.execute(
-        select(LedgerEvent.agent_id, func.count(LedgerEvent.id))
-        .where(LedgerEvent.agent_id.in_(agent_ids))
-        .group_by(LedgerEvent.agent_id)
-    )).all()
-    event_counts = {row[0]: row[1] for row in event_counts_rows}
 
-    last_event_rows = (await db.execute(
-        select(LedgerEvent.agent_id, func.max(LedgerEvent.created_at))
-        .where(LedgerEvent.agent_id.in_(agent_ids))
-        .group_by(LedgerEvent.agent_id)
-    )).all()
-    last_event = {row[0]: row[1] for row in last_event_rows}
+    # Combined aggregation to avoid double table scanning
+    agg_rows = (
+        await db.execute(
+            select(
+                LedgerEvent.agent_id,
+                func.count(LedgerEvent.id).label("event_count"),
+                func.max(LedgerEvent.created_at).label("last_event_at"),
+            )
+            .where(LedgerEvent.agent_id.in_(agent_ids))
+            .group_by(LedgerEvent.agent_id)
+        )
+    ).all()
+
+    event_counts = {row[0]: row[1] for row in agg_rows}
+    last_event = {row[0]: row[2] for row in agg_rows}
 
     by_tier: dict = {t: {"count": 0, "agents": []} for t in HRM_TIERS}
     for a in agents:
@@ -160,6 +167,7 @@ async def hrm_audit(
 # GET /api/v1/agents/hrm/agents/{agent_number}
 # ---------------------------------------------------------------------------
 
+
 @router.get("/agents/{agent_number}")
 async def hrm_agent_by_number(
     agent_number: int,
@@ -170,27 +178,28 @@ async def hrm_agent_by_number(
     acct = await _account(user, db)
     if not acct:
         raise HTTPException(status_code=404, detail="No account for user")
-    a = (await db.execute(
-        select(Agent).where(
-            Agent.account_id == acct.id,
-            Agent.agent_number == agent_number,
-            Agent.hrm_tier.isnot(None),
+    a = (
+        await db.execute(
+            select(Agent).where(
+                Agent.account_id == acct.id,
+                Agent.agent_number == agent_number,
+                Agent.hrm_tier.isnot(None),
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not a:
         raise HTTPException(
             status_code=404,
             detail=f"No HRM agent with number {agent_number}. The task force is empty unless agents are registered via POST /api/v1/agents/hrm/register.",
         )
-    event_count = (await db.execute(
-        select(func.count(LedgerEvent.id)).where(LedgerEvent.agent_id == a.id)
-    )).scalar() or 0
-    last_event = (await db.execute(
-        select(LedgerEvent)
-        .where(LedgerEvent.agent_id == a.id)
-        .order_by(LedgerEvent.created_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
+    event_count = (
+        await db.execute(select(func.count(LedgerEvent.id)).where(LedgerEvent.agent_id == a.id))
+    ).scalar() or 0
+    last_event = (
+        await db.execute(
+            select(LedgerEvent).where(LedgerEvent.agent_id == a.id).order_by(LedgerEvent.created_at.desc()).limit(1)
+        )
+    ).scalar_one_or_none()
     return {
         **_serialize_agent(a),
         "ledger_events": event_count,
@@ -203,6 +212,7 @@ async def hrm_agent_by_number(
 # ---------------------------------------------------------------------------
 # GET /api/v1/agents/hrm/monitors
 # ---------------------------------------------------------------------------
+
 
 @router.get("/monitors")
 async def hrm_monitors(
@@ -237,6 +247,7 @@ async def hrm_monitors(
 # Telemetry for HRM-Sync agents. ?agents=15,30,45 filters by agent_number.
 # ---------------------------------------------------------------------------
 
+
 @router.get("/sync/telemetry")
 async def hrm_sync_telemetry(
     agents: Optional[str] = Query(None, description="Comma-separated agent_numbers, e.g. 15,30,45"),
@@ -262,24 +273,41 @@ async def hrm_sync_telemetry(
         q = q.where(Agent.agent_number.in_(nums))
     rows = (await db.execute(q.order_by(Agent.agent_number.asc().nullsfirst()))).scalars().all()
 
+    agent_ids = [a.id for a in rows]
+    event_counts = {}
+    last_events = {}
+
+    if agent_ids:
+        counts_res = await db.execute(
+            select(LedgerEvent.agent_id, func.count(LedgerEvent.id))
+            .where(LedgerEvent.agent_id.in_(agent_ids))
+            .group_by(LedgerEvent.agent_id)
+        )
+        event_counts = {row[0]: row[1] for row in counts_res.all()}
+
+        lasts_res = await db.execute(
+            select(LedgerEvent)
+            .where(LedgerEvent.agent_id.in_(agent_ids))
+            .distinct(LedgerEvent.agent_id)
+            .order_by(LedgerEvent.agent_id, LedgerEvent.created_at.desc())
+        )
+        last_events = {ev.agent_id: ev for ev in lasts_res.scalars().all()}
+
     telemetry = []
     for a in rows:
-        event_count = (await db.execute(
-            select(func.count(LedgerEvent.id)).where(LedgerEvent.agent_id == a.id)
-        )).scalar() or 0
-        last = (await db.execute(
-            select(LedgerEvent).where(LedgerEvent.agent_id == a.id)
-            .order_by(LedgerEvent.created_at.desc()).limit(1)
-        )).scalar_one_or_none()
-        telemetry.append({
-            **_serialize_agent(a),
-            "telemetry": {
-                "event_count": event_count,
-                "chain_head": last.event_hash if last else None,
-                "last_activity": last.created_at.isoformat() if last and last.created_at else None,
-                "is_idle": event_count == 0,
-            },
-        })
+        event_count = event_counts.get(a.id, 0)
+        last = last_events.get(a.id)
+        telemetry.append(
+            {
+                **_serialize_agent(a),
+                "telemetry": {
+                    "event_count": event_count,
+                    "chain_head": last.event_hash if last else None,
+                    "last_activity": last.created_at.isoformat() if last and last.created_at else None,
+                    "is_idle": event_count == 0,
+                },
+            }
+        )
 
     return {
         "as_of": _utcnow().isoformat(),
@@ -294,6 +322,7 @@ async def hrm_sync_telemetry(
 # POST /api/v1/agents/hrm/{agent_id}/zeno-interrogation
 # Point-in-time chain-of-custody audit (read-only, ledger replay).
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{agent_id}/zeno-interrogation")
 async def zeno_interrogation(
@@ -317,20 +346,26 @@ async def zeno_interrogation(
     acct = await _account(user, db)
     if not acct:
         raise HTTPException(status_code=404, detail="No account for user")
-    a = (await db.execute(
-        select(Agent).where(
-            Agent.account_id == acct.id,
-            Agent.agent_id == agent_id,
+    a = (
+        await db.execute(
+            select(Agent).where(
+                Agent.account_id == acct.id,
+                Agent.agent_id == agent_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not a:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id!r} not found")
 
-    events = (await db.execute(
-        select(LedgerEvent)
-        .where(LedgerEvent.agent_id == a.id)
-        .order_by(LedgerEvent.created_at.asc())
-    )).scalars().all()
+    events = (
+        (
+            await db.execute(
+                select(LedgerEvent).where(LedgerEvent.agent_id == a.id).order_by(LedgerEvent.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     if not events:
         return {
@@ -351,33 +386,36 @@ async def zeno_interrogation(
     last_hash = ""
 
     for ev in events:
-        body = json.dumps(
-            {"prev": last_hash, "type": ev.event_type, "actor": ev.actor,
-             "summary": ev.summary, "details": ev.details},
-            sort_keys=True, separators=(",", ":"),
-        ).encode("utf-8")
-        recomputed = hashlib.sha256(body).hexdigest()
-
         if ev.prev_event_hash != last_hash:
             chain_intact = False
-            gaps.append({
-                "event_id": ev.event_id,
-                "event_type": ev.event_type,
-                "expected_prev": last_hash[:16] + "...",
-                "stored_prev": (ev.prev_event_hash or "")[:16] + "...",
-                "created_at": ev.created_at.isoformat() if ev.created_at else None,
-            })
+            gaps.append(
+                {
+                    "event_id": ev.event_id,
+                    "event_type": ev.event_type,
+                    "expected_prev": last_hash[:16] + "...",
+                    "stored_prev": (ev.prev_event_hash or "")[:16] + "...",
+                    "created_at": ev.created_at.isoformat() if ev.created_at else None,
+                }
+            )
 
-        if ev.event_type in ("agent.decision", "agent.run.started", "agent.run.completed",
-                              "agent.policy.blocked", "agent.violation", "regulatory_breach"):
-            decisions.append({
-                "event_id": ev.event_id,
-                "event_type": ev.event_type,
-                "actor": ev.actor,
-                "summary": ev.summary,
-                "created_at": ev.created_at.isoformat() if ev.created_at else None,
-                "event_hash": ev.event_hash[:16] + "...",
-            })
+        if ev.event_type in (
+            "agent.decision",
+            "agent.run.started",
+            "agent.run.completed",
+            "agent.policy.blocked",
+            "agent.violation",
+            "regulatory_breach",
+        ):
+            decisions.append(
+                {
+                    "event_id": ev.event_id,
+                    "event_type": ev.event_type,
+                    "actor": ev.actor,
+                    "summary": ev.summary,
+                    "created_at": ev.created_at.isoformat() if ev.created_at else None,
+                    "event_hash": ev.event_hash[:16] + "...",
+                }
+            )
 
         last_hash = ev.event_hash
 
@@ -401,6 +439,7 @@ async def zeno_interrogation(
 # POST /api/v1/agents/hrm/register
 # Register a new HRM agent (admin-only).
 # ---------------------------------------------------------------------------
+
 
 class RegisterHRMAgentBody(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -428,18 +467,22 @@ async def hrm_register_agent(
     _require_admin(user)
     acct = await _account(user, db)
     if not acct:
-        raise HTTPException(status_code=400, detail="No account row for user. Register via /api/v1/internal/uacp/accounts first.")
+        raise HTTPException(
+            status_code=400, detail="No account row for user. Register via /api/v1/internal/uacp/accounts first."
+        )
 
     if body.hrm_tier not in HRM_TIERS:
         raise HTTPException(status_code=400, detail=f"hrm_tier must be one of {HRM_TIERS}")
 
     if body.agent_number is not None:
-        conflict = (await db.execute(
-            select(Agent).where(
-                Agent.account_id == acct.id,
-                Agent.agent_number == body.agent_number,
+        conflict = (
+            await db.execute(
+                select(Agent).where(
+                    Agent.account_id == acct.id,
+                    Agent.agent_number == body.agent_number,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if conflict:
             raise HTTPException(
                 status_code=409,
@@ -493,9 +536,9 @@ async def hrm_update_status(
     acct = await _account(user, db)
     if not acct:
         raise HTTPException(status_code=404, detail="No account for user")
-    a = (await db.execute(
-        select(Agent).where(Agent.account_id == acct.id, Agent.agent_id == agent_id)
-    )).scalar_one_or_none()
+    a = (
+        await db.execute(select(Agent).where(Agent.account_id == acct.id, Agent.agent_id == agent_id))
+    ).scalar_one_or_none()
     if not a:
         raise HTTPException(status_code=404, detail="Agent not found")
     a.status = body.status

@@ -22,12 +22,12 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import asyncio
 
-from gpc_schemas import (
+from backend.core.gpc.gpc_schemas import (
     GPCPipelineGraph, PipelineCompilationRequest, PipelineCompilationResult,
     NLToGraphRequest, NLToGraphResult, PipelineExecutionTrace,
     GPCComponentDefinition, PortType
 )
-from gpc_compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
+from backend.core.gpc.gpc_compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
 
 logger = logging.getLogger("gpc")
 
@@ -275,6 +275,25 @@ async def execute_pipeline(
                 pipeline_id=pipeline_id,
                 tenant_id=tenant_id
             )
+            
+            # Capability Geometry Invariant (CGI) Enforcement
+            try:
+                from backend.core.governance.cgi_evaluator import GeometryEvaluator, GeometryViolationException
+                evaluator = GeometryEvaluator()
+                
+                # Extract structural parameters for the CGI calculation
+                pipeline_plan = {
+                    "agents": [], 
+                    "tools": [n.node_type for n in getattr(pipeline_graph, "nodes", [])],
+                    "parallel_branches": len(getattr(pipeline_graph, "edges", [])),
+                    "applied_policies": ["default_tenant_policy"], 
+                    "verifiable_checkpoints": [n.node_type for n in getattr(pipeline_graph, "nodes", []) if "Output" in getattr(n, "node_type", "")]
+                }
+                
+                evaluator.evaluate_geometry(pipeline_plan)
+            except GeometryViolationException as gve:
+                yield f"data: {json.dumps({'error': 'CGI Geometry Violation: Agent drift prevented', 'details': gve.metrics})}\n\n"
+                return
             
             # Compile
             compiler = GPCCompiler()

@@ -42,11 +42,12 @@ class UacpV3Contextualizer:
         if self.gateway_secret:
             headers["X-Veklom-Gateway-Secret"] = self.gateway_secret
             
+        from backend.apps.api.routers.protocol import MANIFEST
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     url, 
-                    json={"intent": intent, "v2_plan": v2_plan}, 
+                    json={"intent": intent, "v2_plan": v2_plan, "manifest": MANIFEST}, 
                     headers=headers,
                     timeout=self.timeout
                 )

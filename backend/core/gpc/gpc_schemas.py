@@ -183,6 +183,7 @@ class PipelineCompilationResult(BaseModel):
     parallel_levels: List[List[str]] = Field(..., description="Parallel execution levels")
     compilation_timestamp: datetime = Field(default_factory=datetime.utcnow)
     warnings: List[str] = Field(default_factory=list, description="Non-fatal warnings")
+    links: Dict[str, Dict[str, str]] = Field(default_factory=dict, description="HATEOAS hypermedia links", alias="_links")
 
 
 class PipelineExecutionTrace(BaseModel):

@@ -84,6 +84,12 @@ async def compile_pipeline(
         compiler = GPCCompiler(component_registry=DEFAULT_COMPONENTS)
         result = compiler.compile(pipeline_graph)
         
+        result.links = {
+            "execute": {"href": "/api/v1/gpc/execute", "method": "POST"},
+            "audit": {"href": f"/api/v1/gpc/audit?pipeline_id={request.pipeline_id}", "method": "GET"},
+            "stake": {"href": "/api/v1/vnp/stake", "method": "POST"}
+        }
+        
         logger.info(
             f"Pipeline {request.pipeline_id} compiled successfully",
             extra={
@@ -416,7 +422,30 @@ async def list_components(
         }
     ]
     
-    return base_components
+    from backend.apps.api.routers.protocol import MANIFEST
+    
+    dynamic_components = []
+    for cap in MANIFEST.get("capabilities", []):
+        # We replace . or / in ID to make it a valid node_type
+        clean_id = str(cap.get("id", "")).replace(".", "_").replace("/", "_")
+        if not clean_id:
+            continue
+            
+        dynamic_components.append({
+            "node_type": f"Dynamic_{clean_id}",
+            "display_name": cap.get("name", "Unknown Capability"),
+            "category": "custom",
+            "description": cap.get("description", ""),
+            "icon": "Box",
+            "input_ports": [{"id": "in", "port_type": "any", "label": "Input Payload"}],
+            "output_ports": [{"id": "out", "port_type": "any", "label": "Result"}],
+            "config": {
+                "endpoint": cap.get("endpoint"),
+                "capability_id": cap.get("id")
+            }
+        })
+    
+    return base_components + dynamic_components
 
 
 # ============================================================================

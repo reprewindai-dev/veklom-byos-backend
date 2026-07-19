@@ -60,3 +60,4 @@ class RuntimeResponse(BaseModel):
     elicitation_id: Optional[UUID] = None
     trace_id: Optional[str] = None
     pgl_hash: Optional[str] = None
+    links: Dict[str, Dict[str, str]] = Field(default_factory=dict, alias="_links")

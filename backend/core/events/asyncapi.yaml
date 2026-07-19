@@ -1,0 +1,96 @@
+asyncapi: 3.0.0
+info:
+  title: Veklom Federated Execution Mesh
+  version: 1.0.0
+  description: Event-driven architecture for the Veklom Capability Mesh
+  contact:
+    name: Veklom Engineering
+    email: eng@veklom.com
+
+servers:
+  production:
+    host: events.veklom.com
+    protocol: kafka
+    description: Production event broker
+    security:
+      - bearerAuth: []
+
+channels:
+  vnp.events:
+    address: vnp.events
+    messages:
+      vnp_invocation:
+        $ref: '#/components/messages/VnpInvocationEvent'
+      vnp_settlement:
+        $ref: '#/components/messages/VnpSettlementEvent'
+  
+  evidence.events:
+    address: evidence.events
+    messages:
+      pack_created:
+        $ref: '#/components/messages/EvidencePackCreatedEvent'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  messages:
+    VnpInvocationEvent:
+      name: VnpInvocationEvent
+      title: VNP Capability Invocation
+      summary: Emitted when a capability is invoked through VNP v2.
+      payload:
+        type: object
+        properties:
+          trace_id:
+            type: string
+          capability_id:
+            type: string
+          agent_id:
+            type: string
+          workspace_id:
+            type: string
+          status:
+            type: string
+            enum: [SUCCESS, SAFETY_VIOLATION, POLICY_DENIED]
+          pgl_hash:
+            type: string
+    
+    VnpSettlementEvent:
+      name: VnpSettlementEvent
+      title: VNP Settlement
+      summary: Emitted when a capability invocation is settled.
+      payload:
+        type: object
+        properties:
+          trace_id:
+            type: string
+          amount:
+            type: number
+          currency:
+            type: string
+          settlement_hash:
+            type: string
+            
+    EvidencePackCreatedEvent:
+      name: EvidencePackCreatedEvent
+      title: Evidence Pack Created
+      summary: Emitted when a new verifiable evidence pack is created.
+      payload:
+        type: object
+        properties:
+          evidence_pack_id:
+            type: string
+          authority_run_id:
+            type: string
+          workspace_id:
+            type: string
+          agent_id:
+            type: string
+          hash_chain:
+            type: string
+          prev_hash:
+            type: string

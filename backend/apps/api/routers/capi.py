@@ -537,4 +537,12 @@ async def resolve_capability(query: CAPIResolveQuery):
     ]
     if not matches:
         raise HTTPException(status_code=404, detail=f"No capability found matching '{query.query}'")
-    return {"resolved": matches[0]}
+    
+    capability = matches[0]
+    return {
+        "resolved": capability,
+        "_links": {
+            "execute": {"href": capability.get("endpoint"), "method": "POST"},
+            "protocol": {"href": "/protocol.json", "method": "GET"}
+        }
+    }

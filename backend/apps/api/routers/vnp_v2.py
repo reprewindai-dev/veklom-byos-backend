@@ -72,7 +72,12 @@ async def execute_capability(
             details={"request": req.model_dump(), "reason": error}
         )
         pgl_hash = pgl_res.get("event_hash", "unverified")
-        return RuntimeResponse(type="SafetyViolation", reason=error, pgl_hash=pgl_hash)
+        return RuntimeResponse(
+            type="SafetyViolation", 
+            reason=error, 
+            pgl_hash=pgl_hash,
+            links={"protocol": {"href": "/protocol.json", "method": "GET"}}
+        )
 
     # 2. Policy Plane
     decision = PolicyEngine.evaluate(req, cap)
@@ -84,7 +89,12 @@ async def execute_capability(
             details={"request": req.model_dump(), "reason": decision.reason}
         )
         pgl_hash = pgl_res.get("event_hash", "unverified")
-        return RuntimeResponse(type="PolicyDenied", reason=decision.reason, pgl_hash=pgl_hash)
+        return RuntimeResponse(
+            type="PolicyDenied", 
+            reason=decision.reason, 
+            pgl_hash=pgl_hash,
+            links={"protocol": {"href": "/protocol.json", "method": "GET"}}
+        )
 
     if decision.decision == "RequireApproval":
         elicitation_id = uuid.uuid4()
@@ -98,7 +108,11 @@ async def execute_capability(
             type="GovernanceRequired",
             elicitation_id=elicitation_id,
             message=decision.message,
-            pgl_hash=pgl_hash
+            pgl_hash=pgl_hash,
+            links={
+                "resolve": {"href": f"/api/v1/vnp/v2/resolve/{elicitation_id}", "method": "POST"},
+                "protocol": {"href": "/protocol.json", "method": "GET"}
+            }
         )
 
     # 3. Settlement Plane (Phase 1: Lock)
@@ -146,7 +160,11 @@ async def execute_capability(
             type="Success",
             result=sanitized_result,
             trace_id=req.context.trace_id,
-            pgl_hash=pgl_hash
+            pgl_hash=pgl_hash,
+            links={
+                "evidence": {"href": f"/api/v1/evidence/{execution_hash}", "method": "GET"},
+                "protocol": {"href": "/protocol.json", "method": "GET"}
+            }
         )
 
     except Exception as e:

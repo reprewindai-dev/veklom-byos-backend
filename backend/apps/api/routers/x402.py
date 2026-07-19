@@ -1038,36 +1038,106 @@ async def get_staking_state(db: AsyncSession = Depends(get_db)):
         result_settle = await db.execute(select(SettlementEntry).order_by(SettlementEntry.created_at.desc()).limit(10))
         settlements = result_settle.scalars().all()
         
-        # Structure the response
+        # Structure the response using REAL data only.
+        # Query real P95 latency from vnp_metrics_realtime per API name.
+        from sqlalchemy import text, func as sqlfunc
+        from backend.db.models.vnp import VnpMetric
+
+        # Fetch real P95 latency per api_name (using percentile_cont if available, else approx via sorted query)
+        # We use a subquery to get the 95th percentile latency from real probe data.
+        real_latency_map: dict = {}
+        try:
+            latency_rows = await db.execute(
+                text("""
+                    SELECT api_name,
+                           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_ms,
+                           COUNT(*) AS probe_count,
+                           AVG(latency_ms) AS avg_ms,
+                           SUM(CASE WHEN is_up THEN 1 ELSE 0 END)::float / COUNT(*) AS uptime_ratio
+                    FROM vnp_metrics_realtime
+                    WHERE measured_at > NOW() - INTERVAL '24 hours'
+                    GROUP BY api_name
+                """)
+            )
+            for row in latency_rows:
+                real_latency_map[row.api_name] = {
+                    "p95_ms": int(row.p95_ms) if row.p95_ms is not None else None,
+                    "probe_count": int(row.probe_count),
+                    "avg_ms": round(float(row.avg_ms), 1) if row.avg_ms else None,
+                    "uptime_ratio": round(float(row.uptime_ratio), 4) if row.uptime_ratio is not None else None,
+                }
+        except Exception as latency_err:
+            logger.warning(f"Could not query real latency data: {latency_err}")
+
+        # Fetch real validator bond amounts from stake registry
+        from backend.db.models.vnp import SettlementEntry as VNPSettlementEntry
+        bond_map: dict = {}
+        try:
+            bond_rows = await db.execute(
+                text("""
+                    SELECT provider_id, SUM(amount_minor) AS total_staked_minor
+                    FROM vnp_settlement_entries
+                    WHERE state = 'active'
+                    GROUP BY provider_id
+                """)
+            )
+            for row in bond_rows:
+                bond_map[str(row.provider_id)] = int(row.total_staked_minor or 0) / 10**6
+        except Exception:
+            pass  # No bond data yet — show 0
+
         providers_data = []
         for api in apis:
-            # Deterministic simulation based on api ID if no real metrics exist yet
-            h = int(hashlib.md5(str(api.id).encode()).hexdigest(), 16)
-            observed_p95 = ((h >> 8) % 600) + 800
-            target_p95 = 1000
-            
-            providers_data.append({
-                "apiId": str(api.id),
-                "name": api.name,
-                "provider": "Veklom Nexus",
-                "targetP95Ms": target_p95,
-                "observedP95Ms": observed_p95,
-                "deviation": {
-                    "toleranceMs": 150,
-                    "excessMs": max(0, observed_p95 - target_p95),
-                    "deviationMs": observed_p95 - target_p95,
-                    "penaltyUsdc": max(0, (observed_p95 - target_p95) * 2)
-                },
-                "status": "healthy" if observed_p95 <= target_p95 + 150 else "critical",
-                "bondAmountUsdc": 500000 + (h % 500000),
-                "slashedTotalUsdc": 0,
-                "consensus": {
-                    "kdeMode": observed_p95 - 10,
-                    "historicalEwma": observed_p95 + 5,
-                    "shadowProbe": observed_p95,
-                    "finalScore": observed_p95
+            api_id_str = str(api.id)
+            real = real_latency_map.get(api.name, {})
+            has_real_latency = real.get("p95_ms") is not None
+            p95 = real.get("p95_ms")
+            target_p95 = 1000  # SLA target — always real config
+
+            bond_usdc = bond_map.get(api_id_str, 0.0)
+
+            if has_real_latency:
+                deviation_ms = p95 - target_p95
+                entry = {
+                    "apiId": api_id_str,
+                    "name": api.name,
+                    "provider": "Veklom Nexus",
+                    "data_status": "live",
+                    "probe_count_24h": real.get("probe_count", 0),
+                    "targetP95Ms": target_p95,
+                    "observedP95Ms": p95,
+                    "avgMs": real.get("avg_ms"),
+                    "uptimeRatio": real.get("uptime_ratio"),
+                    "deviation": {
+                        "toleranceMs": 150,
+                        "excessMs": max(0, deviation_ms),
+                        "deviationMs": deviation_ms,
+                        "penaltyUsdc": max(0.0, deviation_ms * 2) if deviation_ms > 150 else 0.0,
+                    },
+                    "status": "healthy" if deviation_ms <= 150 else ("warning" if deviation_ms <= 300 else "critical"),
+                    "bondAmountUsdc": bond_usdc,
+                    "slashedTotalUsdc": 0,
+                    "consensus": None,  # Requires validator network — not yet active
                 }
-            })
+            else:
+                # No real probe data exists yet — be explicit, show nothing invented
+                entry = {
+                    "apiId": api_id_str,
+                    "name": api.name,
+                    "provider": "Veklom Nexus",
+                    "data_status": "awaiting_probes",
+                    "probe_count_24h": 0,
+                    "targetP95Ms": target_p95,
+                    "observedP95Ms": None,
+                    "avgMs": None,
+                    "uptimeRatio": None,
+                    "deviation": None,
+                    "status": "no_data",
+                    "bondAmountUsdc": bond_usdc,
+                    "slashedTotalUsdc": 0,
+                    "consensus": None,
+                }
+            providers_data.append(entry)
             
         verifiers_data = []
         total_bonded = 0
@@ -1096,12 +1166,14 @@ async def get_staking_state(db: AsyncSession = Depends(get_db)):
         return {
             "providers": providers_data,
             "protocolStats": {
-                "totalValueBonded": total_bonded or 1500000,
+                # All values are real DB counts. No invented fallbacks.
+                "totalValueBonded": round(total_bonded, 2),  # 0.0 until validators stake
                 "activeApis": len(providers_data),
-                "activeVerifiers": len(verifiers_data),
-                "totalPenalties": sum([s["penaltyUsdc"] for s in settlements_data]),
-                "settlementRate": 98.5,
-                "epochsProcessed": len(settlements_data) + 1000
+                "activeVerifiers": len(verifiers_data),      # 0 until validators register
+                "totalPenalties": round(sum([s["penaltyUsdc"] for s in settlements_data]), 4),
+                "settlementRate": None,                       # None until settlements exist — not 98.5
+                "epochsProcessed": len(settlements_data),    # Real count — not padded with +1000
+                "probeWorkersActive": False,                  # Honest: probe workers not yet running
             },
             "settlements": settlements_data,
             "verifiers": verifiers_data,

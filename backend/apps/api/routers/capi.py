@@ -531,10 +531,12 @@ async def resolve_capability(query: CAPIResolveQuery):
     """
     from backend.apps.api.routers.protocol import MANIFEST
     q = query.query.lower()
-    matches = [
-        cap for cap in MANIFEST.get("capabilities", [])
-        if q in cap.get("name", "").lower() or q in cap.get("description", "").lower() or q in cap.get("endpoint", "").lower()
-    ]
+    matches = []
+    for cap_id, cap in MANIFEST.get("capabilities", {}).items():
+        if q in cap.get("name", cap_id).lower() or q in cap.get("description", "").lower() or q in str(cap.get("endpoint", "")).lower():
+            cap_copy = dict(cap)
+            cap_copy["capability_id"] = cap_id
+            matches.append(cap_copy)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No capability found matching '{query.query}'")
     

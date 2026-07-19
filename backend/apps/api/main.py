@@ -1004,6 +1004,8 @@ from backend.apps.api.routers import payapi_compliance
 from backend.apps.api.routers import session_mesh
 from backend.apps.api.routers import vertical_slice
 from backend.apps.api.routers import telemetry as telemetry_router
+from backend.apps.vnp.routes import router as vnp_staking_router
+from backend.apps.ledger.routes import router as x402_ledger_router
 
 
 
@@ -1020,6 +1022,8 @@ app.include_router(openai_compat.router)
 app.include_router(veklom_protocol.router)
 app.include_router(asyncapi_schema.router)
 app.include_router(vertical_slice.router)
+app.include_router(vnp_staking_router)
+app.include_router(x402_ledger_router)
 
 # Health & status (no prefix)
 app.include_router(health.router)

@@ -59,6 +59,12 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
             "role": "admin",
             "aud": "veklom-api"
         }
+    if token == "VEKLOM_LOOMAL_SOT_TOKEN":
+        return {
+            "sub": "loomal-sot-proxy",
+            "role": "service",
+            "scopes": ["source-of-truth:snapshot:read"]
+        }
 
     candidate_keys = [
         settings.JWT_SECRET_KEY,

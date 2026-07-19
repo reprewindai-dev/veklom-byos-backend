@@ -19,7 +19,7 @@ from pydantic import ValidationError
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Annotated
 import asyncio
 
 from backend.core.gpc.gpc_schemas import (
@@ -27,6 +27,9 @@ from backend.core.gpc.gpc_schemas import (
     NLToGraphRequest, NLToGraphResult, PipelineExecutionTrace,
     GPCComponentDefinition, PortType
 )
+from backend.apps.gpc.canonical_plan import CanonicalPlanIR, PlanStep, CapabilityRequirement
+from backend.apps.policy.pdp_engine import PolicyDecisionPoint
+from backend.apps.orchestration.workflow_orchestrator import DurableWorkflowEngine
 from backend.core.gpc.gpc_compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
 
 logger = logging.getLogger("gpc")
@@ -38,15 +41,22 @@ router = APIRouter(prefix="/api/v1/gpc", tags=["gpc"])
 # DEPENDENCIES & AUTH
 # ============================================================================
 
-async def get_tenant_id(authorization: str = None) -> str:
+from fastapi import Header
+
+async def get_tenant_id(
+    authorization: Annotated[str | None, Header()] = None
+) -> str:
     """Extract tenant_id from JWT bearer token."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid Authorization header",
+        )
     
     # In production: validate JWT, extract tenant_id
     # For now: mock implementation
     try:
-        token = authorization.replace("Bearer ", "")
+        token = authorization.removeprefix("Bearer ").strip()
         # Parse JWT and extract tenant_id claim
         # This is a placeholder; use PyJWT in production
         return "tenant_" + token[:16]
@@ -309,27 +319,67 @@ async def execute_pipeline(
                 yield f"data: {json.dumps({'error': 'Compilation failed', 'warnings': compilation.warnings})}\n\n"
                 return
             
-            # Emit start event
-            yield f"data: {json.dumps({'event': 'start', 'node_count': compilation.node_count})}\n\n"
+            # Construct CanonicalPlanIR from compilation
+            plan_steps = []
+            for node_id in compilation.execution_order:
+                # Find the node
+                node = next((n for n in pipeline_graph.nodes if n.id == node_id), None)
+                if node:
+                    plan_steps.append(
+                        PlanStep(
+                            step_id=node_id,
+                            action=node.node_type,
+                            parameters=getattr(node, 'config', {}),
+                            capabilities_required=[CapabilityRequirement(name=node.node_type)]
+                        )
+                    )
+
+            canonical_plan = CanonicalPlanIR(
+                tenant_id=tenant_id,
+                steps=plan_steps,
+                risk_flags=["demo_risk"],  # Dummy risk
+                budget_constraints={"max_cost": 10.0}
+            )
+
+            # Evaluate Policy
+            pdp = PolicyDecisionPoint(tenant_policies={"max_max_cost": 50.0, "denied_risks": []})
+            decision = pdp.evaluate_plan(canonical_plan, identity_context={"user_id": "system"})
+
+            if decision.status == "Denied":
+                yield f"data: {json.dumps({'error': 'Policy Denied', 'reason': decision.reason})}\n\n"
+                return
+
+            # Submit to Workflow Engine
+            engine = DurableWorkflowEngine()
+            workflow_id = engine.submit_plan(canonical_plan, decision)
             
-            # Execute nodes in order (mock)
-            for i, node_id in enumerate(compilation.execution_order):
-                yield f"data: {json.dumps({'event': 'node_start', 'node_id': node_id, 'index': i})}\n\n"
+            # Emit start event
+            yield f"data: {json.dumps({'event': 'start', 'node_count': compilation.node_count, 'workflow_id': workflow_id})}\n\n"
+            
+            # Execute nodes durably
+            workflow_state = await engine.run_workflow(workflow_id, canonical_plan)
+            
+            for i, step in enumerate(canonical_plan.steps):
+                step_state = workflow_state.steps_state.get(step.step_id)
+                if not step_state: continue
                 
-                # Mock: sleep to simulate execution
-                await asyncio.sleep(0.5)
+                yield f"data: {json.dumps({'event': 'node_start', 'node_id': step.step_id, 'index': i})}\n\n"
                 
-                # Mock preview data
+                if step_state.status == "Failed":
+                    yield f"data: {json.dumps({'event': 'node_failed', 'node_id': step.step_id, 'error': step_state.error})}\n\n"
+                    break
+                    
+                # Mock preview data replacing the result
                 preview = {
                     "rows": 100 + i * 50,
                     "columns": ["id", "name", "value"],
                     "sample": [[i, f"row_{i}", f"val_{i}"] for i in range(3)]
                 }
                 
-                yield f"data: {json.dumps({'event': 'node_complete', 'node_id': node_id, 'preview': preview})}\n\n"
+                yield f"data: {json.dumps({'event': 'node_complete', 'node_id': step.step_id, 'preview': preview})}\n\n"
             
             # Emit completion
-            yield f"data: {json.dumps({'event': 'complete', 'success': True})}\n\n"
+            yield f"data: {json.dumps({'event': 'complete', 'success': workflow_state.status == 'Success'})}\n\n"
             
             # Log execution trace
             trace = PipelineExecutionTrace(
@@ -425,15 +475,15 @@ async def list_components(
     from backend.apps.api.routers.protocol import MANIFEST
     
     dynamic_components = []
-    for cap in MANIFEST.get("capabilities", []):
+    for cap_id, cap in MANIFEST.get("capabilities", {}).items():
         # We replace . or / in ID to make it a valid node_type
-        clean_id = str(cap.get("id", "")).replace(".", "_").replace("/", "_")
+        clean_id = cap_id.replace(".", "_").replace("/", "_")
         if not clean_id:
             continue
             
         dynamic_components.append({
             "node_type": f"Dynamic_{clean_id}",
-            "display_name": cap.get("name", "Unknown Capability"),
+            "display_name": cap.get("name", cap_id),
             "category": "custom",
             "description": cap.get("description", ""),
             "icon": "Box",
@@ -441,7 +491,7 @@ async def list_components(
             "output_ports": [{"id": "out", "port_type": "any", "label": "Result"}],
             "config": {
                 "endpoint": cap.get("endpoint"),
-                "capability_id": cap.get("id")
+                "capability_id": cap_id
             }
         })
     

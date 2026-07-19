@@ -172,6 +172,13 @@ class PipelineCompilationRequest(BaseModel):
     pipeline_id: str = Field(..., description="Pipeline to compile")
     tenant_id: str = Field(..., description="Executing tenant")
     target_node_id: Optional[str] = Field(default=None, description="If set, compile only this node and ancestors")
+    pipeline_graph: Optional[Dict[str, Any]] = Field(default=None, description="For testing: inject the graph directly")
+
+class PipelineExecutionRequest(BaseModel):
+    """Request to execute a pipeline."""
+    pipeline_id: str = Field(...)
+    tenant_id: str = Field(...)
+    pipeline_graph: Optional[Dict[str, Any]] = Field(default=None)
 
 
 class PipelineCompilationResult(BaseModel):

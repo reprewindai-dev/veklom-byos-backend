@@ -19,14 +19,17 @@ from pydantic import ValidationError
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Annotated
 import asyncio
 
 from backend.apps.gpc.schemas import (
     GPCPipelineGraph, PipelineCompilationRequest, PipelineCompilationResult,
     NLToGraphRequest, NLToGraphResult, PipelineExecutionTrace,
-    GPCComponentDefinition, PortType
+    GPCComponentDefinition, PortType, PipelineExecutionRequest
 )
+from backend.apps.gpc.canonical_plan import CanonicalPlanIR, PlanStep, CapabilityRequirement
+from backend.apps.policy.pdp_engine import PolicyDecisionPoint
+from backend.apps.orchestration.workflow_orchestrator import DurableWorkflowEngine
 from backend.apps.gpc.compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
 
 logger = logging.getLogger("gpc")
@@ -38,15 +41,22 @@ router = APIRouter(prefix="/api/v1/gpc", tags=["gpc"])
 # DEPENDENCIES & AUTH
 # ============================================================================
 
-async def get_tenant_id(authorization: str = None) -> str:
+from fastapi import Header
+
+async def get_tenant_id(
+    authorization: Annotated[str | None, Header()] = None
+) -> str:
     """Extract tenant_id from JWT bearer token."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid Authorization header",
+        )
     
     # In production: validate JWT, extract tenant_id
     # For now: mock implementation
     try:
-        token = authorization.replace("Bearer ", "")
+        token = authorization.removeprefix("Bearer ").strip()
         # Parse JWT and extract tenant_id claim
         # This is a placeholder; use PyJWT in production
         return "tenant_" + token[:16]
@@ -76,10 +86,16 @@ async def compile_pipeline(
     try:
         # In production: load pipeline from database
         # For now: mock load
-        pipeline_graph = GPCPipelineGraph(
-            pipeline_id=request.pipeline_id,
-            tenant_id=tenant_id
-        )
+        if request.pipeline_graph:
+            graph_data = request.pipeline_graph.copy()
+            graph_data["pipeline_id"] = request.pipeline_id
+            graph_data["tenant_id"] = tenant_id
+            pipeline_graph = GPCPipelineGraph(**graph_data)
+        else:
+            pipeline_graph = GPCPipelineGraph(
+                pipeline_id=request.pipeline_id,
+                tenant_id=tenant_id
+            )
         
         compiler = GPCCompiler(component_registry=DEFAULT_COMPONENTS)
         result = compiler.compile(pipeline_graph)
@@ -258,7 +274,7 @@ async def generate_pipeline_from_intent(
 
 @router.post("/execute")
 async def execute_pipeline(
-    pipeline_id: str,
+    request: PipelineExecutionRequest,
     tenant_id: str = Depends(get_tenant_id),
     background_tasks: BackgroundTasks = BackgroundTasks()
 ):
@@ -271,10 +287,16 @@ async def execute_pipeline(
     async def event_generator():
         try:
             # Load pipeline
-            pipeline_graph = GPCPipelineGraph(
-                pipeline_id=pipeline_id,
-                tenant_id=tenant_id
-            )
+            if request.pipeline_graph:
+                graph_data = request.pipeline_graph.copy()
+                graph_data["pipeline_id"] = request.pipeline_id
+                graph_data["tenant_id"] = tenant_id
+                pipeline_graph = GPCPipelineGraph(**graph_data)
+            else:
+                pipeline_graph = GPCPipelineGraph(
+                    pipeline_id=request.pipeline_id,
+                    tenant_id=tenant_id
+                )
             
             # Compile
             compiler = GPCCompiler()
@@ -284,32 +306,72 @@ async def execute_pipeline(
                 yield f"data: {json.dumps({'error': 'Compilation failed', 'warnings': compilation.warnings})}\n\n"
                 return
             
-            # Emit start event
-            yield f"data: {json.dumps({'event': 'start', 'node_count': compilation.node_count})}\n\n"
+            # Construct CanonicalPlanIR from compilation
+            plan_steps = []
+            for node_id in compilation.execution_order:
+                # Find the node
+                node = next((n for n in pipeline_graph.nodes if n.id == node_id), None)
+                if node:
+                    plan_steps.append(
+                        PlanStep(
+                            step_id=node_id,
+                            action=node.node_type,
+                            parameters=getattr(node, 'config', {}),
+                            capabilities_required=[CapabilityRequirement(name=node.node_type)]
+                        )
+                    )
+
+            canonical_plan = CanonicalPlanIR(
+                tenant_id=tenant_id,
+                steps=plan_steps,
+                risk_flags=["demo_risk"],  # Dummy risk
+                budget_constraints={"max_cost": 10.0}
+            )
+
+            # Evaluate Policy
+            pdp = PolicyDecisionPoint(tenant_policies={"max_max_cost": 50.0, "denied_risks": []})
+            decision = pdp.evaluate_plan(canonical_plan, identity_context={"user_id": "system"})
+
+            if decision.status == "Denied":
+                yield f"data: {json.dumps({'error': 'Policy Denied', 'reason': decision.reason})}\n\n"
+                return
+
+            # Submit to Workflow Engine
+            engine = DurableWorkflowEngine()
+            workflow_id = engine.submit_plan(canonical_plan, decision)
             
-            # Execute nodes in order (mock)
-            for i, node_id in enumerate(compilation.execution_order):
-                yield f"data: {json.dumps({'event': 'node_start', 'node_id': node_id, 'index': i})}\n\n"
+            # Emit start event
+            yield f"data: {json.dumps({'event': 'start', 'node_count': compilation.node_count, 'workflow_id': workflow_id})}\n\n"
+            
+            # Execute nodes durably
+            workflow_state = await engine.run_workflow(workflow_id, canonical_plan)
+            
+            for i, step in enumerate(canonical_plan.steps):
+                step_state = workflow_state.steps_state.get(step.step_id)
+                if not step_state: continue
                 
-                # Mock: sleep to simulate execution
-                await asyncio.sleep(0.5)
+                yield f"data: {json.dumps({'event': 'node_start', 'node_id': step.step_id, 'index': i})}\n\n"
                 
-                # Mock preview data
+                if step_state.status == "Failed":
+                    yield f"data: {json.dumps({'event': 'node_failed', 'node_id': step.step_id, 'error': step_state.error})}\n\n"
+                    break
+                    
+                # Mock preview data replacing the result
                 preview = {
                     "rows": 100 + i * 50,
                     "columns": ["id", "name", "value"],
                     "sample": [[i, f"row_{i}", f"val_{i}"] for i in range(3)]
                 }
                 
-                yield f"data: {json.dumps({'event': 'node_complete', 'node_id': node_id, 'preview': preview})}\n\n"
+                yield f"data: {json.dumps({'event': 'node_complete', 'node_id': step.step_id, 'preview': preview})}\n\n"
             
             # Emit completion
-            yield f"data: {json.dumps({'event': 'complete', 'success': True})}\n\n"
+            yield f"data: {json.dumps({'event': 'complete', 'success': workflow_state.status == 'Success'})}\n\n"
             
             # Log execution trace
             trace = PipelineExecutionTrace(
                 tenant_id=tenant_id,
-                pipeline_id=pipeline_id,
+                pipeline_id=request.pipeline_id,
                 user_id="system",
                 execution_status="success",
                 data_residency_region="ca-central-1",

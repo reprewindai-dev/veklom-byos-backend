@@ -897,6 +897,19 @@ def _add_cors_headers(request: Request, response):
 
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
+    """
+    Handle 404s.
+    If the request is for the GPC SPA (/gpc/...), serve the index.html so client-side routing works.
+    Otherwise, redirect unhandled routes to the Next.js frontend.
+    """
+    if request.url.path.startswith("/gpc"):
+        if GPC_DIR.exists():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(GPC_DIR / "index.html"))
+        else:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"detail": "GPC frontend not built"})
+
     if request.url.path.startswith("/api/"):
         return _add_cors_headers(request, JSONResponse(status_code=404, content={"detail": "Not found"}))
     
@@ -1264,7 +1277,7 @@ def _mount_static():
     if REPOGATE_DIR.exists():
         app.mount("/repogate", StaticFiles(directory=str(REPOGATE_DIR), html=True), name="repogate")
     if GPC_DIR.exists():
-        app.mount("/governance", StaticFiles(directory=str(GPC_DIR), html=True), name="governance")
+        app.mount("/gpc", StaticFiles(directory=str(GPC_DIR), html=True), name="gpc")
     if IRONGRID_DIR.exists():
         app.mount("/irongrid", StaticFiles(directory=str(IRONGRID_DIR), html=True), name="irongrid")
     if LOCKERPHYCER_DIR.exists():
@@ -1519,8 +1532,8 @@ async def enforce_route_access(request, call_next):
                     return HTMLResponse(html)
 
     # GPC — paid plan required (sovereign / pro / enterprise)
-    if path.startswith("/gpc") or path.startswith("/gpc-engine") or path.startswith("/governance"):
-        if path.startswith("/gpc/assets") or path.startswith("/gpc-engine/assets") or path.startswith("/governance/assets") or request.query_params.get("public_demo") == "1":
+    if path.startswith("/gpc") or path.startswith("/gpc-engine"):
+        if path.startswith("/gpc/assets") or path.startswith("/gpc-engine/assets") or request.query_params.get("public_demo") == "1":
             return await call_next(request)
         user = await _get_user_from_request(request)
         allowed = False
@@ -1537,7 +1550,8 @@ async def enforce_route_access(request, call_next):
     if host and ("gpc.veklom.com" in host or "www.gpc.veklom.com" in host):
         query_str = f"?{request.url.query}" if request.url.query else ""
         from starlette.responses import RedirectResponse
-        return RedirectResponse(url=f"https://control.veklom.com/gpc{query_str}", status_code=307)
+        # Redirect to the backend GPC canvas instead of the control plane
+        return RedirectResponse(url=f"https://veklom.com/gpc{query_str}", status_code=307)
 
     response = await call_next(request)
 

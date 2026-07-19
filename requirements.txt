@@ -132,4 +132,4 @@ z3-solver==4.16.0.0
 aiodns==3.2.0
 pycares==5.0.1
 loguru
-aioboto3
+aioboto3==12.3.0

@@ -322,55 +322,13 @@ async def verify_x402_evidence(
 
 
 
-@router.get("/staking/state")
-async def get_staking_state() -> Dict[str, Any]:
-    """
-    Returns the current x402 SLA staking state for network providers.
-    """
-    return {
-        "providers": [
-            {
-                "name": "BYOS",
-                "apiId": "veklom-byos-backend",
-                "status": "healthy",
-                "targetP95Ms": 1000,
-                "observedP95Ms": 1133,
-                "bondAmountUsdc": 669499.0,
-                "slashedTotalUsdc": 0.0,
-                "consensus": "needs_proof"
-            },
-            {
-                "name": "x402 Settlement Ledger",
-                "apiId": "pgl-settlement",
-                "status": "healthy",
-                "targetP95Ms": 1000,
-                "observedP95Ms": 1121,
-                "bondAmountUsdc": 659781.0,
-                "slashedTotalUsdc": 0.0,
-                "consensus": "needs_proof"
-            },
-            {
-                "name": "Runtime Guard",
-                "apiId": "runtime-guard",
-                "status": "critical",
-                "targetP95Ms": 1000,
-                "observedP95Ms": 1187,
-                "bondAmountUsdc": 578523.0,
-                "slashedTotalUsdc": 0.0,
-                "consensus": "needs_proof"
-            },
-            {
-                "name": "Dynamic Router",
-                "apiId": "dynamic-router",
-                "status": "critical",
-                "targetP95Ms": 1000,
-                "observedP95Ms": 1155,
-                "bondAmountUsdc": 533440.0,
-                "slashedTotalUsdc": 0.0,
-                "consensus": "needs_proof"
-            }
-        ]
-    }
+
+
+# NOTE: The authoritative /staking/state implementation is below (uses real DB data).
+# This stub has been removed to prevent FastAPI from shadowing the real handler.
+# See get_staking_state() with db: AsyncSession dependency ~line 1023.
+
+
 
 # ---------------------------------------------------------------------------
 # Machine-to-Machine Endpoints

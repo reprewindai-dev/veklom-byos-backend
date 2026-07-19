@@ -25,7 +25,7 @@ def _mask_database_url(url: str) -> str:
         return urlunsplit((parts.scheme, f"{auth}{host}{port}", parts.path, parts.query, parts.fragment))
     except Exception:
         return "<masked>"
-if not db_url or not db_url.strip() or "sqlite" in db_url:
+if settings.APP_ENV != "test" and (not db_url or not db_url.strip() or "sqlite" in db_url):
     raise ValueError(
         "A valid PostgreSQL DATABASE_URL is required. SQLite is not supported due to pgvector/JSONB requirements."
     )

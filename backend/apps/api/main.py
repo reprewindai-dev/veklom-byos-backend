@@ -911,7 +911,7 @@ async def not_found(request: Request, exc):
             subpath = f"{subpath}/"
         return RedirectResponse(url=f"https://control.veklom.com/{subpath}{query_str}", status_code=307)
     
-    if request.url.path in ("/login", "/signup", "/governance", "/governance/"):
+    if request.url.path in ("/login", "/signup"):
         from fastapi.responses import RedirectResponse
         query_str = f"?{request.url.query}" if request.url.query else ""
         path_name = request.url.path.strip("/")
@@ -1264,7 +1264,7 @@ def _mount_static():
     if REPOGATE_DIR.exists():
         app.mount("/repogate", StaticFiles(directory=str(REPOGATE_DIR), html=True), name="repogate")
     if GPC_DIR.exists():
-        pass
+        app.mount("/governance", StaticFiles(directory=str(GPC_DIR), html=True), name="governance")
     if IRONGRID_DIR.exists():
         app.mount("/irongrid", StaticFiles(directory=str(IRONGRID_DIR), html=True), name="irongrid")
     if LOCKERPHYCER_DIR.exists():
@@ -1519,8 +1519,8 @@ async def enforce_route_access(request, call_next):
                     return HTMLResponse(html)
 
     # GPC — paid plan required (sovereign / pro / enterprise)
-    if path.startswith("/gpc") or path.startswith("/gpc-engine"):
-        if path.startswith("/gpc/assets") or path.startswith("/gpc-engine/assets") or request.query_params.get("public_demo") == "1":
+    if path.startswith("/gpc") or path.startswith("/gpc-engine") or path.startswith("/governance"):
+        if path.startswith("/gpc/assets") or path.startswith("/gpc-engine/assets") or path.startswith("/governance/assets") or request.query_params.get("public_demo") == "1":
             return await call_next(request)
         user = await _get_user_from_request(request)
         allowed = False

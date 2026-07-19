@@ -38,6 +38,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if redis_module.redis_client.is_fallback:
             return await call_next(request)
             
+        # Execute Redis rate limit script
+        allowed = True
+        remaining_tokens = capacity
         try:
             # Token bucket implementation via Redis Lua Script for atomicity
             lua_script = """
@@ -73,22 +76,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             
             now_ts = time.time()
             result = await redis_module.redis_client.eval(lua_script, 1, client_id, capacity, refill_rate, now_ts)
-            
             allowed, remaining_tokens = result
-            
-            if not allowed:
-                logger.warning(f"Rate limit exceeded for {client_id}")
-                return JSONResponse(
-                    status_code=429,
-                    content={"error": "Too Many Requests", "detail": "Rate limit exceeded. Please slow down."},
-                    headers={"Retry-After": "1"}
-                )
-                
-            response = await call_next(request)
-            response.headers["X-RateLimit-Remaining"] = str(remaining_tokens)
-            return response
             
         except Exception as e:
             logger.error(f"RateLimit middleware error: {e}")
             # Fail open if Redis throws an exception
-            return await call_next(request)
+            allowed = True
+            remaining_tokens = capacity
+
+        if not allowed:
+            logger.warning(f"Rate limit exceeded for {client_id}")
+            return JSONResponse(
+                status_code=429,
+                content={"error": "Too Many Requests", "detail": "Rate limit exceeded. Please slow down."},
+                headers={"Retry-After": "1"}
+            )
+            
+        response = await call_next(request)
+        response.headers["X-RateLimit-Remaining"] = str(remaining_tokens)
+        return response

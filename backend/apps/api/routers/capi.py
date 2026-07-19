@@ -518,3 +518,23 @@ async def resolve_quarantine(
         sanitized_resp, diag_log = error_sanitizer.sanitize_exception(e)
         logger.error(f"[cAPI] Failed to resolve quarantine {quarantine_id}: {diag_log}")
         raise HTTPException(status_code=500, detail=sanitized_resp)
+
+class CAPIResolveQuery(BaseModel):
+    query: str
+
+@router.post("/resolve")
+async def resolve_capability(query: CAPIResolveQuery):
+    """
+    cAPI Capability Resolver.
+    Replaces GraphQL introspection. Returns the specific execution endpoint
+    and required schema for a requested capability.
+    """
+    from backend.apps.api.routers.protocol import MANIFEST
+    q = query.query.lower()
+    matches = [
+        cap for cap in MANIFEST.get("capabilities", [])
+        if q in cap.get("name", "").lower() or q in cap.get("description", "").lower() or q in cap.get("endpoint", "").lower()
+    ]
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"No capability found matching '{query.query}'")
+    return {"resolved": matches[0]}

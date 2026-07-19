@@ -104,6 +104,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
                 alg,
                 kid,
                 last_err,
+                exc_info=last_err,
             )
         except Exception as ue:
             logging.error(
@@ -113,6 +114,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
                 token[:8],
                 last_err,
                 ue,
+                exc_info=ue,
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -413,7 +415,7 @@ async def get_current_user_or_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     if credentials is not None:
-        return await get_current_user(request, credentials)
+        return await get_current_user(request, credentials, db=db)
 
     api_key_header = request.headers.get("X-API-Key")
     if api_key_header:

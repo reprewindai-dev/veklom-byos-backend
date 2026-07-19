@@ -611,6 +611,7 @@ async def create_budget_rule(body: dict, user=Depends(get_current_user), db: Asy
     else:
         rule = BudgetRule(
             workspace_id=workspace_id,
+            name="Default Monthly Budget",
             limit_usd=amount,
             is_active=True
         )

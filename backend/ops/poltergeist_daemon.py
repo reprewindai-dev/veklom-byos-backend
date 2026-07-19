@@ -60,6 +60,7 @@ class InfrastructureSentinel:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._health_dark_since: Optional[float] = None  # epoch seconds
+        self.is_degraded = False
 
     def start(self):
         if self._running:
@@ -228,14 +229,21 @@ class InfrastructureSentinel:
         cache and dangling images to recover space.
         """
         try:
-            usage = shutil.disk_usage("/")
+            target_path = os.environ.get("SENTINEL_DISK_PATH", "/")
+            if not os.path.exists(target_path):
+                logger.info(f"[sentinel][disk] path {target_path} not accessible, skipping watchdog")
+                return
+
+            usage = shutil.disk_usage(target_path)
             pct = (usage.used / usage.total) * 100
             if pct < self.DISK_PRUNE_THRESHOLD_PCT:
+                self.is_degraded = False
                 return
 
             logger.warning(
                 f"[sentinel][disk] disk at {pct:.1f}% — pruning Docker caches"
             )
+            self.is_degraded = True
             loop = asyncio.get_event_loop()
             # Run in thread pool so we don't block the event loop
             await loop.run_in_executor(
@@ -245,16 +253,16 @@ class InfrastructureSentinel:
                     capture_output=True, timeout=120
                 )
             )
-            new_usage = shutil.disk_usage("/")
+            new_usage = shutil.disk_usage(target_path)
             new_pct = (new_usage.used / new_usage.total) * 100
+            self.is_degraded = new_pct >= self.DISK_PRUNE_THRESHOLD_PCT
             logger.info(
                 f"[sentinel][disk] after prune: {new_pct:.1f}% "
                 f"(freed {(usage.used - new_usage.used) / 1e9:.2f} GB)"
             )
-        except FileNotFoundError:
-            logger.info("[sentinel][disk] root path not accessible, skipping watchdog")
         except Exception as exc:
             logger.error(f"[sentinel][disk] disk watchdog error: {exc}")
+            self.is_degraded = True
 
 
 # Singleton

@@ -76,7 +76,12 @@ async def build_evidence_pack(
             "artifacts": evidence_pack.artifacts,
             "hashes": evidence_pack.hashes,
             "verification": evidence_pack.verification,
-            "created_at": evidence_pack.created_at.isoformat() if evidence_pack.created_at else None
+            "created_at": evidence_pack.created_at.isoformat() if evidence_pack.created_at else None,
+            "_links": {
+                "self": f"/api/v1/evidence/{evidence_pack.evidence_pack_id}",
+                "verify": "/api/v1/evidence/verify",
+                "protocol": "/protocol.json"
+            }
         }
         
     except ValueError as e:

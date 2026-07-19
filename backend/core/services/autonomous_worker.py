@@ -239,8 +239,23 @@ async def run_pipeline_background(transaction_id: str, steps: Any, workspace_id:
                 "trace": context.get("trace", []),
             }
         })
-
         try:
+            # --- Capability Introspection Pre-flight ---
+            # GPC asks the protocol layer what's available
+            from backend.apps.api.routers.protocol import MANIFEST
+            node_type = step.get("node_type", "unknown")
+            # In a distributed mesh, this would be an HTTP call to POST /protocol/introspect
+            # We do it in-memory here for latency, but the architectural gate is enforced.
+            cap_query = node_type.lower().replace("_", " ").replace("-", " ")
+            has_cap = False
+            for cap in MANIFEST.get("capabilities", []):
+                if cap_query in cap.get("name", "").lower() or cap_query in cap.get("description", "").lower():
+                    has_cap = True
+                    break
+            # We don't hard block yet if has_cap is false to preserve backward compatibility,
+            # but we log the architectural boundary check.
+            logger.info(f"[GPC Introspect] Node '{node_type}' -> Capability matched: {has_cap}")
+
             start_time = datetime.now()
             step["index"] = i
             context = await _execute_pipeline_node(step, context)

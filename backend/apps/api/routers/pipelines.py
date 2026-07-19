@@ -1297,6 +1297,11 @@ def _pipe_dict(p: Pipeline) -> dict:
         "status": p.status or "draft",
         "invocations": extra.get("invocations", 0),
         "lastRun": extra.get("lastRun", "—"),
+        "_links": {
+            "self": f"/api/v1/pipelines/{p.id}",
+            "runs": f"/api/v1/pipelines/{p.id}/runs",
+            "protocol": "/protocol.json"
+        }
     }
 
 

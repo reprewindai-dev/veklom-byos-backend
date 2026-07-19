@@ -85,11 +85,40 @@ def _uptime_seconds() -> int:
 @router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     """Shallow health check for SLA-gated E2E monitors."""
+    from backend.ops.poltergeist_daemon import infrastructure_sentinel
+    
+    # Check if Sentinel thinks we are degraded
+    if getattr(infrastructure_sentinel, "is_degraded", False):
+        status_val = "degraded"
+    else:
+        status_val = "healthy"
+
     return {
-        "status": "healthy",
+        "status": status_val,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": settings.VERSION,
         "service": settings.APP_NAME,
+    }
+
+@router.api_route("/ready", methods=["GET", "HEAD"])
+async def ready_check():
+    """Strict gate for orchestrator traffic routing (e.g. Kubernetes, Coolify)."""
+    db_ok, _ = await _check_database()
+    redis_ok, _ = await _check_redis()
+    
+    from backend.ops.poltergeist_daemon import infrastructure_sentinel
+    sentinel_degraded = getattr(infrastructure_sentinel, "is_degraded", False)
+
+    if not db_ok or not redis_ok or sentinel_degraded:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Service Unavailable: core dependencies unreachable (DB: {db_ok}, Redis: {redis_ok}, Sentinel: {not sentinel_degraded})"
+        )
+
+    return {
+        "status": "ready",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 

@@ -29,6 +29,7 @@ LABEL veklom.workload="backend-api"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 10001 veklom && \

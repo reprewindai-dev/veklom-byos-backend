@@ -2329,8 +2329,9 @@ app.include_router(referrals.router, prefix="/api/v1")
 app.include_router(pricing.router, prefix="/api/v1")
 
 # AI Agents Stack 2026 - Six-Layer Architecture
-# Layer 2: Protocols and Tools (MCP Support)
+# Layer 2: Protocols and Tools (MCP Support & cAPI)
 app.include_router(mcp.router, prefix="/api/v1")
+app.include_router(capi.router, prefix="/api/v1")
 
 # Layer 3: Memory and Context
 app.include_router(agent_memory.router, prefix="/api/v1")

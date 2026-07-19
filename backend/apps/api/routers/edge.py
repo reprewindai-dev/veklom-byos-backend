@@ -205,27 +205,7 @@ def normalize_payload(payload: Dict[str, Any], protocol: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # API Key Verification Dependency
 # ---------------------------------------------------------------------------
-
-async def verify_edge_api_key(
-    x_edge_api_key: Optional[str] = Header(None, alias="X-Edge-Api-Key")
-) -> str:
-    """Verifies that the incoming request carries a valid Edge API Key. Fails closed."""
-    if not settings.EDGE_API_KEY or settings.EDGE_API_KEY.strip() == "":
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Edge Ingestion authentication is not configured in this environment (failed closed)."
-        )
-    if not x_edge_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-Edge-Api-Key authentication header."
-        )
-    if x_edge_api_key != settings.EDGE_API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid Edge API Key credentials."
-        )
-    return x_edge_api_key
+from backend.core.security.auth import get_current_user_or_api_key
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +215,7 @@ async def verify_edge_api_key(
 @router.post("/input/webhook", response_model=CanonicalEdgeResponse)
 async def ingest_webhook_event(
     payload: LegacyWebhookPayload,
-    x_key: str = Depends(verify_edge_api_key),
+    current_user: Any = Depends(get_current_user_or_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -273,7 +253,7 @@ async def ingest_webhook_event(
     try:
         from backend.db.models.security import AuditLog
         audit_log = AuditLog(
-            workspace_id=payload.workspace_id or "default",
+            workspace_id=current_user.workspace_id,
             action=f"edge.ingest.{payload.source_protocol}",
             resource_type="edge_event",
             resource_id=msg_id,
@@ -296,7 +276,7 @@ async def ingest_webhook_event(
         try:
             from backend.db.models.security import SecurityEvent
             sec_event = SecurityEvent(
-                workspace_id=payload.workspace_id or "default",
+                workspace_id=current_user.workspace_id,
                 event_type="edge_alert_escalation",
                 threat_type="legacy_system_anomaly",
                 severity=payload.severity.lower(),
@@ -344,8 +324,8 @@ async def ingest_webhook_event(
             }
             # Create asynchronous execution plan using the actual run model
             await orchestrator.create_run(
-                workspace_id=payload.workspace_id or "default",
-                tenant_id=payload.tenant_id or payload.workspace_id or "default",
+                workspace_id=current_user.workspace_id,
+                tenant_id=current_user.workspace_id,
                 actor_id="system_edge_connector",
                 intent=intent_payload
             )
@@ -377,7 +357,7 @@ async def ingest_webhook_event(
 # ---------------------------------------------------------------------------
 
 @router.get("/connectors/status")
-async def get_connectors_status(x_key: str = Depends(verify_edge_api_key)):
+async def get_connectors_status(current_user: Any = Depends(get_current_user_or_api_key)):
     """Inquires the operational status of all legacy industrial protocols."""
     return {
         "webhook_connector": {

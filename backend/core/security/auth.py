@@ -205,6 +205,7 @@ async def get_current_user(
 
     payload = verify_token(token)
     user_id: Optional[str] = payload.get("sub")
+    jwt_workspace_id: Optional[str] = payload.get("workspace_id")
 
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
@@ -215,6 +216,11 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        
+    # Enforce PGL IdentityRAG: Prefer workspace_id from signed JWT if present
+    if jwt_workspace_id:
+        user.workspace_id = jwt_workspace_id
+
     status_value = (user.status or "").upper()
     if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
@@ -385,6 +391,8 @@ async def get_current_user_optional(
         return _GUEST_USER
 
     user_id: Optional[str] = payload.get("sub")
+    jwt_workspace_id: Optional[str] = payload.get("workspace_id")
+    
     if user_id is None:
         return _GUEST_USER
 
@@ -394,6 +402,11 @@ async def get_current_user_optional(
     user = result.scalar_one_or_none()
     if user is None:
         return _GUEST_USER
+        
+    # Enforce PGL IdentityRAG: Prefer workspace_id from signed JWT if present
+    if jwt_workspace_id:
+        user.workspace_id = jwt_workspace_id
+
     status_value = (user.status or "").upper()
     if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
         return _GUEST_USER

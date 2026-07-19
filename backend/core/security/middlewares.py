@@ -105,6 +105,8 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
                 token = auth_header.split(" ")[1]
                 payload = verify_token(token, enforce_replay=False)
                 request.state.user_id = payload.get("sub")
+                if payload.get("workspace_id"):
+                    request.state.workspace_id = payload.get("workspace_id")
             elif api_key_header:
                 if not api_key_header.startswith("byos_"):
                     return JSONResponse(status_code=401, content={"detail": "Invalid API Key format"})
@@ -113,6 +115,8 @@ class ZeroTrustMiddleware(BaseHTTPMiddleware):
                 # Accept HttpOnly cookie set on login/register
                 payload = verify_token(cookie_token, enforce_replay=False)
                 request.state.user_id = payload.get("sub")
+                if payload.get("workspace_id"):
+                    request.state.workspace_id = payload.get("workspace_id")
         except Exception as e:
             return JSONResponse(status_code=401, content={"detail": f"Invalid credentials: {str(e)}"})
             
@@ -159,7 +163,11 @@ class BudgetCheckMiddleware(BaseHTTPMiddleware):
                         token = auth_header.split(" ")[1]
                         payload = verify_token(token, enforce_replay=False)
                         user_id = payload.get("sub")
-                        if user_id:
+                        jwt_workspace_id = payload.get("workspace_id")
+                        
+                        if jwt_workspace_id:
+                            workspace_id = jwt_workspace_id
+                        elif user_id:
                             result = await session.execute(select(User).where(User.id == user_id))
                             user = result.scalar_one_or_none()
                             if user:

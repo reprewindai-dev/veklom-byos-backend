@@ -894,28 +894,64 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 from backend.db.models.billing import Subscription, BudgetRule, WalletTransaction
                 from backend.db.models.security import KillSwitchState
 
-                async with get_db_session() as db:
-                    user_res = await db.execute(select(User).where(User.id == user_id))
-                    db_user = user_res.scalar_one_or_none()
-                    
-                    if db_user:
-                        ws_id = db_user.workspace_id or ""
+                from backend.core.database.redis_client import redis_client
+                import json
 
-                        # ── OWNER BYPASS ──────────────────────────────────────────────────
-                        # The platform owner gets unlimited, unrestricted access to every
-                        # paid route with zero gates, zero deductions, zero kill-switch
-                        # checks. Nobody else gets this — not even other admins.
+                async with get_db_session() as db:
+                    cache_key = f"x402_auth_ctx:{user_id}"
+                    auth_ctx = None
+                    
+                    if not redis_client.is_fallback:
+                        cached_str = await redis_client.get(cache_key)
+                        if cached_str:
+                            try:
+                                auth_ctx = json.loads(cached_str)
+                            except Exception:
+                                pass
+                                
+                    if not auth_ctx:
+                        user_res = await db.execute(select(User).where(User.id == user_id))
+                        db_user = user_res.scalar_one_or_none()
+                        if not db_user:
+                            return JSONResponse(status_code=401, content={"error": "User not found"})
+                            
+                        ws_id = db_user.workspace_id or ""
                         _owner_email = (
                             os.getenv("PLATFORM_OWNER_EMAIL", "").strip()
                             or settings.PLATFORM_OWNER_EMAIL.strip()
                             or settings.ADMIN_EMAIL.strip()
                         )
-                        _is_platform_owner = (
-                            (db_user.email or "").lower() == _owner_email.lower()
-                        )
-                        if _is_platform_owner:
+                        _is_platform_owner = ((db_user.email or "").lower() == _owner_email.lower())
+                        
+                        budget_res = await db.execute(select(BudgetRule).where(BudgetRule.workspace_id == ws_id, BudgetRule.is_active == True))
+                        budget_rules = budget_res.scalars().all()
+                        budget_breached = None
+                        for rule in budget_rules:
+                            if rule.current_spend >= rule.limit_usd:
+                                budget_breached = f"Budget rule breached: {rule.name} limit reached ({rule.current_spend}/{rule.limit_usd} USD)."
+                                
+                        ws_res = await db.execute(select(Workspace).where(Workspace.id == ws_id))
+                        db_ws = ws_res.scalar_one_or_none()
+                        plan = db_ws.license_tier.lower() if db_ws and db_ws.license_tier else "free"
+                        
+                        auth_ctx = {
+                            "ws_id": ws_id,
+                            "is_owner": _is_platform_owner,
+                            "budget_breached": budget_breached,
+                            "plan": plan,
+                            "email": db_user.email
+                        }
+                        
+                        if not redis_client.is_fallback:
+                            await redis_client.set(cache_key, json.dumps(auth_ctx), ex=60) # 60 seconds cache
+                            
+                    if auth_ctx:
+                        ws_id = auth_ctx["ws_id"]
+                        
+                        # ── OWNER BYPASS ──────────────────────────────────────────────────
+                        if auth_ctx["is_owner"]:
                             logger.info(
-                                f"[OWNER BYPASS] {db_user.email} ({db_user.role}) — "
+                                f"[OWNER BYPASS] {auth_ctx['email']} — "
                                 f"unrestricted pass-through for {method} {path}"
                             )
                             response = await call_next(request)
@@ -923,6 +959,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                             return response
                         # ── END OWNER BYPASS ──────────────────────────────────────────────
 
+                        # Re-check KillSwitch directly to avoid caching emergency halts
                         ks_res = await db.execute(
                             select(KillSwitchState).where(
                                 KillSwitchState.workspace_id == ws_id,
@@ -940,46 +977,19 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                                     "activated_at": kill_switch.activated_at.isoformat() if kill_switch.activated_at else None
                                 }
                             )
-
-                        # Budget constraints verification
-                        budget_res = await db.execute(
-                            select(BudgetRule).where(
-                                BudgetRule.workspace_id == ws_id,
-                                BudgetRule.is_active == True
+                            
+                        if auth_ctx.get("budget_breached"):
+                            # Optionally set KillSwitch if breached (deferred)
+                            return JSONResponse(
+                                status_code=402,
+                                content={
+                                    "detail": auth_ctx["budget_breached"],
+                                    "kill_switch_active": True,
+                                    "reason": "Automatic halt: Budget rule breached"
+                                }
                             )
-                        )
-                        budget_rules = budget_res.scalars().all()
-                        for rule in budget_rules:
-                            if rule.current_spend >= rule.limit_usd:
-                                # Automatically trigger Cost Kill Switch
-                                ks_check = await db.execute(
-                                    select(KillSwitchState).where(
-                                        KillSwitchState.workspace_id == ws_id,
-                                        KillSwitchState.is_active == True
-                                    )
-                                )
-                                if not ks_check.scalar_one_or_none():
-                                    new_ks = KillSwitchState(
-                                        workspace_id=ws_id,
-                                        is_active=True,
-                                        reason=f"Automatic halt: Budget rule breached ({rule.name})",
-                                        activated_by="system"
-                                    )
-                                    db.add(new_ks)
-                                    await db.commit()
-                                
-                                return JSONResponse(
-                                    status_code=402,
-                                    content={
-                                        "detail": f"Budget rule breached: {rule.name} limit reached ({rule.current_spend}/{rule.limit_usd} USD).",
-                                        "kill_switch_active": True,
-                                        "reason": f"Automatic halt: Budget rule breached ({rule.name})"
-                                    }
-                                )
-
-                        ws_res = await db.execute(select(Workspace).where(Workspace.id == ws_id))
-                        db_ws = ws_res.scalar_one_or_none()
-                        plan = db_ws.license_tier.lower() if db_ws and db_ws.license_tier else "free"
+                            
+                        plan = auth_ctx.get("plan", "free")
                         
                         # 1. Community / Free Tier Constraints (Evaluation Mode)
                         if plan in ("free", "community", "none", None):

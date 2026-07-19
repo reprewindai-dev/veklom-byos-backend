@@ -15,6 +15,33 @@ MANIFEST: Dict[str, Any] = {
     "description": "A self-describing, governed AI execution platform",
     "base_url": "https://api.veklom.com",
     "health": "/health",
+    "convergenceGeometry": {
+        "behaviorVectorDefinition": [
+            "deployment_latency_ms_p95",
+            "resource_allocation_accuracy",
+            "security_policy_compliance_score",
+            "minimum_agent_stability_index"
+        ],
+        "maxBehaviorDrift": 0.015,
+        "builderFreedomBudget": {
+            "maxIndependentAgents": 3,
+            "maxParallelBranches": 2,
+            "allowableToolCombinations": 8
+        },
+        "governanceConstraints": {
+            "requiredSchemaDialect": "draft/2020-12",
+            "enforcedRbacPolicies": 5,
+            "statelessValidationRequired": True
+        },
+        "evidenceRequirements": {
+            "minTestSuites": 3,
+            "minDeterministicReplays": 5000,
+            "requiredProofTypes": [
+                "context_divergence_verification",
+                "policy_invariant_check"
+            ]
+        }
+    },
     "capabilities": [
         {
             "name": "Inference API",

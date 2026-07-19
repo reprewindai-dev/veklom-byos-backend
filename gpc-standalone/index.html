@@ -12,6 +12,10 @@
 // API Configuration for standalone deployment
 window.__VEKLOM_API_BASE__ = 'https://api.veklom.com/api/v1';
 </script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+</script>
 <style>
 :root {
   --vk-bg: #050505;
@@ -695,22 +699,21 @@ async function compilePlan() {
     .filter(Boolean);
 
   try {
-    const res = await fetch(`${API_BASE}/gpc/intent-to-plan`, {
+    const res = await fetch(`${API_BASE}/gpc/generate`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ 
-        intent, 
-        compliance, 
-        provider: 'gemini', 
-        model: 'gemini-2.5-flash',
-        budget_usdc: 0.015
+        user_intent: intent, 
+        data_residency_region: 'ca-central-1'
       }),
     });
 
     if (!res.ok) throw new Error('Compilation failed');
 
-    const plan = await res.json();
-    renderPlan(plan);
+    const result = await res.json();
+    if (!result.success) throw new Error(result.errors ? result.errors[0] : 'Unknown error');
+    
+    renderPlan(result.pipeline_graph, result.reasoning);
     document.getElementById('intentInput').value = '';
     showToast('Governed Plan Compiled successfully');
   } catch (err) {
@@ -721,32 +724,42 @@ async function compilePlan() {
   }
 }
 
-function renderPlan(plan) {
+function renderPlan(plan, reasoning) {
   const container = document.getElementById('plansContainer');
-  const nodes = plan.graph?.nodes || [];
+  const nodes = plan.nodes || [];
+  const edges = plan.edges || [];
+  
+  // Generate Mermaid syntax
+  let mermaidSyntax = 'graph TD\\n';
+  nodes.forEach(n => {
+    mermaidSyntax += `  ${n.id}["${n.label} (${n.node_type})"]\\n`;
+  });
+  edges.forEach(e => {
+    mermaidSyntax += `  ${e.source_node_id} --> ${e.target_node_id}\\n`;
+  });
+
+  const graphId = 'mermaid-' + Date.now();
+
   const html = `
     <div class="plan-output">
       <div class="plan-header">
-        <span class="plan-title">${plan.name || 'Governed Plan'}</span>
+        <span class="plan-title">${plan.pipeline_id || 'Governed Plan'}</span>
         <span class="plan-status compiled">Compiled</span>
       </div>
       <div class="plan-body">
-        <div class="plan-graph">
-          ${nodes.map(n => `
-            <div class="plan-node">
-              <div class="node-icon ${n.type || 'classical'}">${n.type === 'quantum' ? '⚛' : '◆'}</div>
-              <div class="node-info">
-                <div class="node-desc">${n.description}</div>
-                <div class="node-tag">${n.policy_tag || ''}</div>
-              </div>
-              <div class="node-entropy">Δ ${(n.entropy || 0).toFixed(2)}</div>
-            </div>
-          `).join('')}
+        <p style="margin-bottom: 16px; font-size: 0.875rem; color: var(--vk-text-dim);">${reasoning}</p>
+        <div class="plan-graph mermaid" id="${graphId}">
+          ${mermaidSyntax}
         </div>
       </div>
     </div>
   `;
   container.insertAdjacentHTML('afterbegin', html);
+  
+  // Render Mermaid graph
+  setTimeout(() => {
+    mermaid.init(undefined, document.getElementById(graphId));
+  }, 50);
 }
 
 function showToast(msg) {

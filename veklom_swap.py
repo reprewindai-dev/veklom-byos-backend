@@ -34,7 +34,7 @@ CONTAINER_PROD_NAME = f"{CONTAINER_BASE}-213557155694"
 
 
 def run(cmd, check=True, capture=True):
-    r = subprocess.run(cmd, shell=True, capture_output=capture, text=True)
+    r = subprocess.run(cmd, capture_output=capture, text=True)
     if check and r.returncode != 0:
         print(f"FAILED: {cmd}")
         print(r.stderr)
@@ -43,7 +43,7 @@ def run(cmd, check=True, capture=True):
 
 
 def get_container_ip(name):
-    return run(f"docker inspect {name} --format '{{{{.NetworkSettings.Networks.{NETWORK}.IPAddress}}}}'")
+    return run(["docker", "inspect", name, "--format", f"{{{{.NetworkSettings.Networks.{NETWORK}.IPAddress}}}}"])
 
 
 def write_traefik_config(backend_ip):
@@ -80,8 +80,8 @@ def wait_healthy(container_name, max_wait=MAX_WAIT_SECONDS):
     print(f"  Waiting for {container_name} to be healthy...")
     for i in range(max_wait // 3):
         time.sleep(3)
-        status = run(f"docker inspect {container_name} --format '{{{{.State.Health.Status}}}}'", check=False)
-        logs = run(f"docker inspect {container_name} --format '{{{{.State.Status}}}}'", check=False)
+        status = run(["docker", "inspect", container_name, "--format", "{{.State.Health.Status}}"], check=False)
+        logs = run(["docker", "inspect", container_name, "--format", "{{.State.Status}}"], check=False)
         if status == "healthy":
             return True
         if logs == "exited":
@@ -92,8 +92,8 @@ def wait_healthy(container_name, max_wait=MAX_WAIT_SECONDS):
 
 def check_api_live(ip):
     r = subprocess.run(
-        f"curl -sf http://{ip}:{PORT}/health",
-        shell=True, capture_output=True, text=True, timeout=5
+        ["curl", "-sf", f"http://{ip}:{PORT}/health"],
+        capture_output=True, text=True, timeout=5
     )
     return r.returncode == 0 and "healthy" in r.stdout
 
@@ -110,32 +110,35 @@ def main():
     print(f"{'='*60}\n")
 
     # 1. Find current running container
-    old_name = run(
-        f"docker ps --filter name={CONTAINER_BASE} --filter status=running --format '{{{{.Names}}}}' | head -1",
+    old_names_output = run(
+        ["docker", "ps", "--filter", f"name={CONTAINER_BASE}", "--filter", "status=running", "--format", "{{.Names}}"],
         check=False
     )
+    old_names = old_names_output.splitlines() if old_names_output else []
+    old_name = old_names[0] if old_names else ""
     print(f"  Current container: {old_name or 'NONE'}")
 
     # 2. Start new container (no port binding yet — just on coolify network)
     print(f"\n[1/5] Starting new container...")
-    run(
-        f"docker run -d --name {new_name} "
-        f"--network {NETWORK} "
-        f"--env-file {ENV_FILE} "
-        f"--restart unless-stopped "
-        f"--health-cmd 'curl -sf http://localhost:{PORT}/health' "
-        f"--health-interval 5s "
-        f"--health-retries 5 "
-        f"--health-start-period 30s "
-        f"{image}"
-    )
+    run([
+        "docker", "run", "-d",
+        "--name", new_name,
+        "--network", NETWORK,
+        "--env-file", ENV_FILE,
+        "--restart", "unless-stopped",
+        "--health-cmd", f"curl -sf http://localhost:{PORT}/health",
+        "--health-interval", "5s",
+        "--health-retries", "5",
+        "--health-start-period", "30s",
+        image
+    ])
 
     # 3. Wait for new container to be healthy
     print(f"\n[2/5] Waiting for health check...")
     if not wait_healthy(new_name):
         print("\n  ERROR: New container failed to become healthy. Rolling back.")
-        run(f"docker stop {new_name}", check=False)
-        run(f"docker rm {new_name}", check=False)
+        run(["docker", "stop", new_name], check=False)
+        run(["docker", "rm", new_name], check=False)
         if old_name:
             old_ip = get_container_ip(old_name)
             write_traefik_config(old_ip)
@@ -148,8 +151,8 @@ def main():
     print(f"\n[3/5] Verifying API response...")
     if not check_api_live(new_ip):
         print("  ERROR: Health check passed but API not responding. Rolling back.")
-        run(f"docker stop {new_name}", check=False)
-        run(f"docker rm {new_name}", check=False)
+        run(["docker", "stop", new_name], check=False)
+        run(["docker", "rm", new_name], check=False)
         sys.exit(1)
     print(f"  API confirmed healthy")
 
@@ -161,24 +164,25 @@ def main():
     # 6. Stop old container
     print(f"\n[5/5] Stopping old container...")
     if old_name and old_name != new_name:
-        run(f"docker stop {old_name}", check=False)
-        run(f"docker rm {old_name}", check=False)
+        run(["docker", "stop", old_name], check=False)
+        run(["docker", "rm", old_name], check=False)
         print(f"  Removed: {old_name}")
 
     # Rename new container to the canonical prod name
-    run(f"docker stop {new_name}", check=False)
-    run(f"docker rm {CONTAINER_PROD_NAME}", check=False)
-    run(
-        f"docker run -d --name {CONTAINER_PROD_NAME} "
-        f"--network {NETWORK} "
-        f"--env-file {ENV_FILE} "
-        f"--restart unless-stopped "
-        f"-p {PORT}:{PORT} "
-        f"--health-cmd 'curl -sf http://localhost:{PORT}/health' "
-        f"--health-interval 10s "
-        f"--health-retries 3 "
-        f"{image}"
-    )
+    run(["docker", "stop", new_name], check=False)
+    run(["docker", "rm", CONTAINER_PROD_NAME], check=False)
+    run([
+        "docker", "run", "-d",
+        "--name", CONTAINER_PROD_NAME,
+        "--network", NETWORK,
+        "--env-file", ENV_FILE,
+        "--restart", "unless-stopped",
+        "-p", f"{PORT}:{PORT}",
+        "--health-cmd", f"curl -sf http://localhost:{PORT}/health",
+        "--health-interval", "10s",
+        "--health-retries", "3",
+        image
+    ])
     time.sleep(5)
     final_ip = get_container_ip(CONTAINER_PROD_NAME)
     write_traefik_config(final_ip)

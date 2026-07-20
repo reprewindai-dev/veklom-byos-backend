@@ -8,10 +8,16 @@ import requests
 import json
 import sys
 import time
+import os
 
 # Coolify Configuration
-COOLIFY_URL = "http://5.78.135.11:8000"
-COOLIFY_API_TOKEN = "35|bebXAUHPDJw509LsGDr0BVG8qI354iWdVZmohKt5469cc08b"
+COOLIFY_URL = os.getenv("COOLIFY_URL", "http://5.78.135.11:8000")
+COOLIFY_API_TOKEN = os.getenv("COOLIFY_API_TOKEN")
+
+if not COOLIFY_API_TOKEN:
+    print("❌ Error: COOLIFY_API_TOKEN environment variable is not set.", file=sys.stderr)
+    print("Please set it before running this script: export COOLIFY_API_TOKEN='your_token_here'", file=sys.stderr)
+    sys.exit(1)
 
 # Application Configuration
 APP_CONFIG = {

@@ -3,6 +3,7 @@ interlink-cAPI — Governed connection server for agents and API resources.
 STANDALONE SERVICE — Aligned with Veklom Production Architecture.
 """
 
+import os
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,9 +15,12 @@ app = FastAPI(
     description="Veklom Governed Connection Layer (cAPI)"
 )
 
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+allowed_origins = [origin.strip() for origin in cors_origins_env.split(",")] if cors_origins_env else []
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

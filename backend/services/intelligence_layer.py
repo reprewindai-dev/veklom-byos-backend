@@ -31,8 +31,6 @@ class CostAttributionService:
         }
 
 class RiskScoringService:
-    def __init__(self):
-        pass
         
     def calculate_risk_score(self, agent_id: str, factors: Dict[str, Any]) -> Dict[str, Any]:
         # Basic calculation stub

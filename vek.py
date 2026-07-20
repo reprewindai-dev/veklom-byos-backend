@@ -21,7 +21,7 @@ except Exception:
 
 # ASCII Banner for Veklom
 BANNER = """
-\033[95m__      __  ______   _  __  _         ____    __  __ 
+\033[95m__      __  ______   _  __  _         ____    __  __
 \\ \\    / / |  ____| | |/ / | |       / __ \\  |  \\/  |
  \\ \\  / /  | |__    | ' /  | |      | |  | | | \\  / |
   \\ \\/ /   |  __|   |  <   | |      | |  | | | |\\/| |
@@ -154,7 +154,7 @@ app = FastAPI(title="Veklom Scaffold Backend", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -180,11 +180,11 @@ def health():
 def run_onboarding(req: AgentOnboardingRequest):
     # 1. Run Z3 SMT ePCA Guardrails
     is_safe, proof_msg = check_action_safety(req.country, req.age, req.identity_score, is_authorized=True)
-    
+
     # 2. Calculate simulated Semantic Drift (Cosine Metric)
     # Drift increases with successive mock workflow cycles
     drift_score = round(1.0 - math.cos(0.052), 6)
-    
+
     if not is_safe:
         logger.error(f"ePCA Veto: {proof_msg}")
         raise HTTPException(
@@ -195,7 +195,7 @@ def run_onboarding(req: AgentOnboardingRequest):
                 "remediation": "Update request attributes to satisfy Z3 compliance formulas."
             }
         )
-    
+
     # 3. Commit state with mock SPIFFE identity
     session_id = str(uuid.uuid4())
     logger.info(f"Durable state saved for session {session_id} using SPIFFE identity")
@@ -310,7 +310,7 @@ export default function Dashboard() {
         {/* Run Controls */}
         <div style={{ backgroundColor: '#111122', padding: '1.5rem', borderRadius: '8px', border: '1px solid #1e1e2f' }}>
           <h2 style={{ color: '#06b6d4', marginBottom: '1.5rem', fontSize: '1.2rem' }}>Durable Execution Launcher</h2>
-          
+
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '4px' }}>Representative Name</label>
             <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
@@ -432,24 +432,25 @@ SPIRE_AGENT_CONF = """agent {
 }
 """
 
+
 def init_scaffold(target_dir: Path):
     """Generates the full enterprise-ready developer on-ramp environment."""
     print(f"\\033[94m[vek init] Scaffolding new project layout into '{target_dir}'...\\033[0m")
-    
+
     # 1. Create directory tree
     backend_dir = target_dir / "backend"
     frontend_dir = target_dir / "frontend"
     frontend_pages_dir = frontend_dir / "pages"
     spire_server_dir = target_dir / "spire" / "server"
     spire_agent_dir = target_dir / "spire" / "agent"
-    
+
     for folder in [backend_dir, frontend_dir, frontend_pages_dir, spire_server_dir, spire_agent_dir]:
         folder.mkdir(parents=True, exist_ok=True)
-        
+
     # 2. Write root Docker Compose
     with open(target_dir / "docker-compose.yml", "w") as f:
         f.write(DOCKER_COMPOSE_SCAFFOLD)
-        
+
     # 3. Write Backend files
     with open(backend_dir / "requirements.txt", "w") as f:
         f.write(BACKEND_REQUIREMENTS_SCAFFOLD)
@@ -459,7 +460,7 @@ def init_scaffold(target_dir: Path):
         f.write(BACKEND_MAIN_SCAFFOLD)
     with open(backend_dir / "Dockerfile", "w") as f:
         f.write(BACKEND_DOCKERFILE_SCAFFOLD)
-        
+
     # 4. Write Frontend files
     with open(frontend_dir / "package.json", "w") as f:
         f.write(FRONTEND_PACKAGE_SCAFFOLD)
@@ -467,7 +468,7 @@ def init_scaffold(target_dir: Path):
         f.write(FRONTEND_PAGE_SCAFFOLD)
     with open(frontend_dir / "Dockerfile", "w") as f:
         f.write(FRONTEND_DOCKERFILE_SCAFFOLD)
-        
+
     # 5. Write SPIRE helper configs
     with open(spire_server_dir / "server.conf", "w") as f:
         f.write(SPIRE_SERVER_CONF)
@@ -483,6 +484,7 @@ def init_scaffold(target_dir: Path):
     print("  - Telemetry Televiewer: \033[94mhttp://localhost:3000\033[0m")
     print("  - Temporal Console: \033[94mhttp://localhost:8233\033[0m")
 
+
 def main():
     print(BANNER)
     parser = argparse.ArgumentParser(description="Veklom Multi-Tenant Control Plane Developer CLI")
@@ -490,7 +492,9 @@ def main():
 
     # Command: init
     init_parser = subparsers.add_parser("init", help="Initialize and scaffold a new local on-ramp environment")
-    init_parser.add_argument("path", nargs="?", default="./vek-scaffold", help="Target subdirectory to write project files")
+    init_parser.add_argument(
+        "path", nargs="?", default="./vek-scaffold", help="Target subdirectory to write project files"
+    )
 
     args = parser.parse_args()
 
@@ -499,6 +503,7 @@ def main():
         init_scaffold(target)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()

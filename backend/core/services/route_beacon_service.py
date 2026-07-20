@@ -60,21 +60,28 @@ class RouteBeaconService:
         apis_res = await db.execute(api_stmt)
         apis = apis_res.scalars().all()
 
-        candidates = []
-        for api in apis:
-            # Policy filters
-            if policy.allowed_provider_ids and str(api.provider_id) not in policy.allowed_provider_ids:
-                continue
+        # Batch fetch latest telemetry for all relevant APIs
+        valid_apis = [api for api in apis if not policy.allowed_provider_ids or str(api.provider_id) in policy.allowed_provider_ids]
+        api_ids = [api.id for api in valid_apis]
 
-            # Get latest telemetry
+        telemetry_by_api = {}
+        if api_ids:
             tel_stmt = (
                 select(RegionalTelemetry)
-                .where(RegionalTelemetry.api_id == api.id)
-                .order_by(RegionalTelemetry.measured_at.desc())
-                .limit(1)
+                .where(RegionalTelemetry.api_id.in_(api_ids))
+                .distinct(RegionalTelemetry.api_id)
+                .order_by(RegionalTelemetry.api_id, RegionalTelemetry.measured_at.desc())
             )
             tel_res = await db.execute(tel_stmt)
-            telemetry = tel_res.scalar_one_or_none()
+            telemetries = tel_res.scalars().all()
+
+            for t in telemetries:
+                if t.api_id not in telemetry_by_api:
+                    telemetry_by_api[t.api_id] = t
+
+        candidates = []
+        for api in valid_apis:
+            telemetry = telemetry_by_api.get(api.id)
             if not telemetry:
                 continue
 

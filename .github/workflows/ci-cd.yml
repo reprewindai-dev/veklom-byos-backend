@@ -78,6 +78,19 @@ jobs:
           print('All critical imports OK')
           "
 
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: veklom-backend-ci:${{ github.sha }}
+          artifact-name: sbom.spdx.json
+
+      - name: Scan Image for Vulnerabilities
+        uses: anchore/scan-action@v3
+        with:
+          image: veklom-backend-ci:${{ github.sha }}
+          fail-build: true
+          severity-cutoff: high
+
       - name: Report
         if: success()
         run: echo "Build and import check passed for ${{ github.sha }}"

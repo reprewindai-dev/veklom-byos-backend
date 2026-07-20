@@ -192,7 +192,7 @@ jobs:
             --network coolify \
             --restart unless-stopped \
             --env-file "$ENVFILE" \
-            -e VNP_INPROCESS_PROBES_ENABLED=false \
+            -e VNP_INPROCESS_PROBES_ENABLED=true \
             -e PORT=8088 \
             -e PYTHONPATH=/app \
             -w /app \

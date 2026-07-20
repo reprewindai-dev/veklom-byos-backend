@@ -44,6 +44,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 COPY agents/ ./agents/
+COPY scripts/ ./scripts/
 
 RUN mkdir -p /app/logs && chown -R veklom:veklom /app
 USER veklom

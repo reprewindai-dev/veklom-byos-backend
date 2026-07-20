@@ -69,6 +69,14 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
     )
     avg_composite_score = round(float(avg_score_result.scalar_one() or 100.0), 2)
 
+    # Fetch the latest on_chain_anchor across all telemetry for the network-wide beacon
+    global_telemetry_stmt = select(RegionalTelemetry).where(RegionalTelemetry.on_chain_anchor.isnot(None)).order_by(RegionalTelemetry.measured_at.desc()).limit(1)
+    global_tel_result = await db.execute(global_telemetry_stmt)
+    latest_global_tel = global_tel_result.scalar_one_or_none()
+
+    trust_beacon_merkle = latest_global_tel.on_chain_anchor if latest_global_tel else None
+    block_anchored = 1 if trust_beacon_merkle else 0
+
     return {
         "apis": api_list,
         "network_status": "operational",
@@ -91,10 +99,10 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
         "canonical_settlement_tx_entries": evidence_counts["canonical_settlement_tx_entries"],
         "banker_settlement_entries": evidence_counts["banker_settlement_entries"],
         "x402_settlement_evidence": evidence_counts["x402_settlement_evidence"],
-        "trustBeaconMerkle": None,
-        "trustBeaconStatus": "Not Yet Wired",
-        "blockAnchored": evidence_counts["x402_settlement_evidence"],
-        "blockAnchoredStatus": "Connected" if evidence_counts["x402_settlement_evidence"] else "Config Incomplete",
+        "trustBeaconMerkle": trust_beacon_merkle,
+        "trustBeaconStatus": "Anchored to Base L2" if trust_beacon_merkle else "Needs proof",
+        "blockAnchored": block_anchored,
+        "blockAnchoredStatus": "Verified" if block_anchored else "Needs proof",
         "protocol_version": "1.0.0",
         "methodology": "VNP Methodology v1.0",
         "timestamp": datetime.now(timezone.utc).isoformat()

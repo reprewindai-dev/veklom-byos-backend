@@ -419,7 +419,21 @@ async def get_nexus_scores(db: AsyncSession = Depends(get_db)):
             "lastUpdated": _time_ago(api.updated_at) if hasattr(api, "updated_at") and api.updated_at else "—",
         })
 
-    return scorecards
+    # Fetch the latest on_chain_anchor across all telemetry for the network-wide beacon
+    global_telemetry_stmt = select(RegionalTelemetry).where(RegionalTelemetry.on_chain_anchor.isnot(None)).order_by(RegionalTelemetry.measured_at.desc()).limit(1)
+    global_tel_result = await db.execute(global_telemetry_stmt)
+    latest_global_tel = global_tel_result.scalar_one_or_none()
+
+    trust_beacon_merkle = latest_global_tel.on_chain_anchor if latest_global_tel else None
+    block_anchored = 1 if trust_beacon_merkle else 0
+
+    return {
+        "apis": scorecards,
+        "trustBeaconMerkle": trust_beacon_merkle,
+        "trustBeaconStatus": "Anchored to Base L2" if trust_beacon_merkle else "Needs proof",
+        "blockAnchored": block_anchored,
+        "blockAnchoredStatus": "Verified" if block_anchored else "Needs proof",
+    }
 
 
 def _nexus_grade(score: int) -> str:

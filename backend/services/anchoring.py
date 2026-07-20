@@ -38,10 +38,11 @@ def create_merkle_root(hashes: List[str]) -> str:
         
     return "0x" + current_level[0]
 
-def anchor_merkle_root_to_base(merkle_root: str, window_start: datetime, window_end: datetime) -> str:
+def anchor_merkle_root_to_base(merkle_root: str, window_start: datetime, window_end: datetime) -> dict:
     """
     Anchors the Merkle root to the VNP Registry Smart Contract on Base L2.
-    Returns the transaction hash.
+    Waits for the receipt and validates chain ID and status.
+    Returns a dict with tx_hash, block_number, chain_id, contract_address, status.
     """
     rpc_url = settings.FLASHBLOCKS_RPC_URL or BASE_RPC_URL
     w3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -49,21 +50,25 @@ def anchor_merkle_root_to_base(merkle_root: str, window_start: datetime, window_
     
     if not w3.is_connected():
         logger.error(f"Failed to connect to Base RPC at {rpc_url}")
-        return ""
+        return None
         
     private_key = settings.VEKLOM_TREASURY_PRIVATE_KEY
     if not private_key:
-        logger.warning("No treasury private key provided for L2 anchoring. Simulating success.")
-        return "0x0000000000000000000000000000000000000000000000000000000000000000"
+        logger.error("No treasury private key provided for L2 anchoring. Failing closed.")
+        return None
+        
+    contract_address = settings.VNP_L2_REGISTRY_ADDRESS
+    if not contract_address:
+        logger.error("No L2 Registry address provided. Failing closed.")
+        return None
+
+    chain_id = w3.eth.chain_id
+    if chain_id != 8453:
+        logger.error(f"Incorrect chain ID. Expected 8453, got {chain_id}")
+        return None
         
     account = w3.eth.account.from_key(private_key)
     
-    # Contract setup (Standard Data Availability Anchor ABI)
-    contract_address = settings.VNP_L2_REGISTRY_ADDRESS
-    if not contract_address:
-        logger.warning("No L2 Registry address. Simulating success.")
-        return "0x0000000000000000000000000000000000000000000000000000000000000000"
-        
     abi = [{
         "inputs": [
             {"internalType": "bytes32", "name": "merkleRoot", "type": "bytes32"},
@@ -74,6 +79,15 @@ def anchor_merkle_root_to_base(merkle_root: str, window_start: datetime, window_
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
+    }, {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "internalType": "bytes32", "name": "merkleRoot", "type": "bytes32"},
+            {"indexed": False, "internalType": "uint256", "name": "windowStart", "type": "uint256"},
+            {"indexed": False, "internalType": "uint256", "name": "windowEnd", "type": "uint256"}
+        ],
+        "name": "TelemetryAnchored",
+        "type": "event"
     }]
     
     contract = w3.eth.contract(address=w3.to_checksum_address(contract_address), abi=abi)
@@ -91,14 +105,41 @@ def anchor_merkle_root_to_base(merkle_root: str, window_start: datetime, window_
             'nonce': w3.eth.get_transaction_count(account.address),
             'gas': 200000,
             'maxFeePerGas': w3.eth.gas_price * 2,
-            'maxPriorityFeePerGas': w3.to_wei(1, 'gwei')
+            'maxPriorityFeePerGas': w3.to_wei(1, 'gwei'),
+            'chainId': chain_id
         })
         
         signed_tx = w3.eth.account.sign_transaction(tx, private_key)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        logger.info(f"Anchored VNP telemetry to Base L2: {tx_hash.hex()}")
-        return tx_hash.hex()
+        logger.info(f"Submitted VNP telemetry to Base L2: {tx_hash.hex()}. Waiting for receipt...")
+        
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        
+        if receipt.status != 1:
+            logger.error("Transaction reverted.")
+            return None
+            
+        # Verify the contract event
+        events = contract.events.TelemetryAnchored().process_receipt(receipt)
+        event_matched = False
+        for event in events:
+            if event.args.merkleRoot == merkle_bytes:
+                event_matched = True
+                break
+                
+        if not event_matched:
+            logger.error("Transaction succeeded but event did not match expected Merkle root.")
+            return None
+
+        return {
+            "tx_hash": tx_hash.hex(),
+            "block_number": receipt.blockNumber,
+            "chain_id": chain_id,
+            "contract_address": contract_address,
+            "status": receipt.status,
+            "confirmation_state": "confirmed"
+        }
         
     except Exception as e:
         logger.error(f"Error anchoring to Base L2: {str(e)}")
-        return ""
+        return None

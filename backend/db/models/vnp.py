@@ -224,6 +224,10 @@ class RegionalTelemetry(Base):
     trust_score = Column(Numeric(5, 2), nullable=False)
     provenance_hash = Column(String)
     on_chain_anchor = Column(String)
+    block_number = Column(Integer)
+    chain_id = Column(Integer)
+    contract_address = Column(String(42))
+    confirmation_state = Column(String(50))
     measured_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     __table_args__ = (

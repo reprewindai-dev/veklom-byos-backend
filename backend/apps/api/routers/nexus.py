@@ -416,6 +416,10 @@ async def get_nexus_scores(db: AsyncSession = Depends(get_db)):
             "dimensions": dimensions,
             "anchorHash": anchor_hash,
             "txHash": tx_hash,
+            "blockNumber": latest_telemetry.block_number if latest_telemetry else None,
+            "chainId": latest_telemetry.chain_id if latest_telemetry else None,
+            "contractAddress": latest_telemetry.contract_address if latest_telemetry else None,
+            "confirmationState": latest_telemetry.confirmation_state if latest_telemetry else "pending",
             "lastUpdated": _time_ago(api.updated_at) if hasattr(api, "updated_at") and api.updated_at else "—",
         })
 
@@ -425,14 +429,20 @@ async def get_nexus_scores(db: AsyncSession = Depends(get_db)):
     latest_global_tel = global_tel_result.scalar_one_or_none()
 
     trust_beacon_merkle = latest_global_tel.on_chain_anchor if latest_global_tel else None
-    block_anchored = 1 if trust_beacon_merkle else 0
+    
+    # Never display Verified from a non-null Merkle root alone
+    confirmed = (latest_global_tel and latest_global_tel.confirmation_state == "confirmed")
+    block_anchored = 1 if confirmed else 0
 
     return {
         "apis": scorecards,
         "trustBeaconMerkle": trust_beacon_merkle,
-        "trustBeaconStatus": "Anchored to Base L2" if trust_beacon_merkle else "Needs proof",
+        "trustBeaconStatus": "Anchored to Base L2" if confirmed else "Needs proof",
         "blockAnchored": block_anchored,
-        "blockAnchoredStatus": "Verified" if block_anchored else "Needs proof",
+        "blockAnchoredStatus": "Verified" if confirmed else "Needs proof",
+        "blockNumber": latest_global_tel.block_number if latest_global_tel else None,
+        "chainId": latest_global_tel.chain_id if latest_global_tel else None,
+        "contractAddress": latest_global_tel.contract_address if latest_global_tel else None,
     }
 
 

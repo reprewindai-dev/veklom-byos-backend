@@ -66,12 +66,18 @@ async def main():
             window_end = events[0].measured_at
             
             print(f"  Submitting to Base L2...")
-            tx_hash = anchor_merkle_root_to_base(merkle_root, window_start, window_end)
+            result = anchor_merkle_root_to_base(merkle_root, window_start, window_end)
             
-            if not tx_hash:
+            if not result or result.get('status') != 1:
                 print("  Failed to anchor to Base L2.")
                 continue
                 
+            tx_hash = result['tx_hash']
+            block_number = result['block_number']
+            chain_id = result['chain_id']
+            contract_address = result['contract_address']
+            confirmation_state = result['confirmation_state']
+
             print(f"  Anchored! TX Hash: {tx_hash}")
             
             # 5. Save to RegionalTelemetry (Create a new record or update latest)
@@ -90,6 +96,10 @@ async def main():
                 telemetry.provenance_hash = tx_hash
                 telemetry.window_start = window_start
                 telemetry.window_end = window_end
+                telemetry.block_number = block_number
+                telemetry.chain_id = chain_id
+                telemetry.contract_address = contract_address
+                telemetry.confirmation_state = confirmation_state
             else:
                 print("  Creating new RegionalTelemetry record.")
                 telemetry = RegionalTelemetry(
@@ -108,6 +118,10 @@ async def main():
                     trust_score=api.current_composite_score,
                     provenance_hash=tx_hash,
                     on_chain_anchor=merkle_root,
+                    block_number=block_number,
+                    chain_id=chain_id,
+                    contract_address=contract_address,
+                    confirmation_state=confirmation_state,
                     measured_at=datetime.now(timezone.utc)
                 )
                 db.add(telemetry)

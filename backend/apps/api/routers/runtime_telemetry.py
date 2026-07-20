@@ -75,7 +75,10 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
     latest_global_tel = global_tel_result.scalar_one_or_none()
 
     trust_beacon_merkle = latest_global_tel.on_chain_anchor if latest_global_tel else None
-    block_anchored = 1 if trust_beacon_merkle else 0
+    
+    # Never display Verified from a non-null Merkle root alone
+    confirmed = (latest_global_tel and latest_global_tel.confirmation_state == "confirmed")
+    block_anchored = 1 if confirmed else 0
 
     return {
         "apis": api_list,
@@ -100,9 +103,12 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
         "banker_settlement_entries": evidence_counts["banker_settlement_entries"],
         "x402_settlement_evidence": evidence_counts["x402_settlement_evidence"],
         "trustBeaconMerkle": trust_beacon_merkle,
-        "trustBeaconStatus": "Anchored to Base L2" if trust_beacon_merkle else "Needs proof",
+        "trustBeaconStatus": "Anchored to Base L2" if confirmed else "Needs proof",
         "blockAnchored": block_anchored,
-        "blockAnchoredStatus": "Verified" if block_anchored else "Needs proof",
+        "blockAnchoredStatus": "Verified" if confirmed else "Needs proof",
+        "blockNumber": latest_global_tel.block_number if latest_global_tel else None,
+        "chainId": latest_global_tel.chain_id if latest_global_tel else None,
+        "contractAddress": latest_global_tel.contract_address if latest_global_tel else None,
         "protocol_version": "1.0.0",
         "methodology": "VNP Methodology v1.0",
         "timestamp": datetime.now(timezone.utc).isoformat()

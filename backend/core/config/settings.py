@@ -186,6 +186,8 @@ class Settings(BaseSettings):
     CHAIN_ID: int = 1
     USDC_ADDRESS: str = ""
     VEKLOM_TREASURY_ADDRESS: str = "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
+    VEKLOM_TREASURY_PRIVATE_KEY: str = ""
+    VNP_L2_REGISTRY_ADDRESS: str = ""
     
     # Edge Ingestion
     EDGE_API_KEY: str = "veklom_edge_dev_key"

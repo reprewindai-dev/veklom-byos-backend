@@ -17,7 +17,7 @@ from backend.core.database.database import get_db
 from backend.core.services.vnp_scoring import get_cached_api_score, update_api_composite_score
 from backend.db.models.ledger import SettlementLedger, SettlementStatus
 from backend.db.models.payment import Payment as BankerPayment
-from backend.db.models.vnp import Api, LedgerEntryType, ProbeEvent, SettlementEntry, Validator, VnpMetric, VnpObservation
+from backend.db.models.vnp import Api, LedgerEntryType, ProbeEvent, SettlementEntry, Validator, VnpMetric, VnpObservation, RegionalTelemetry
 
 router = APIRouter(prefix="/vnp", tags=["Veklom Network Protocol"])
 
@@ -341,6 +341,17 @@ async def vnp_metrics(db: AsyncSession = Depends(get_db)):
     )
     avg_composite_score = round(float(avg_score_result.scalar_one()), 2)
 
+    # Fetch the latest on_chain_anchor across all telemetry for the network-wide beacon
+    global_telemetry_stmt = select(RegionalTelemetry).where(RegionalTelemetry.on_chain_anchor.isnot(None)).order_by(RegionalTelemetry.measured_at.desc()).limit(1)
+    global_tel_result = await db.execute(global_telemetry_stmt)
+    latest_global_tel = global_tel_result.scalar_one_or_none()
+
+    trust_beacon_merkle = latest_global_tel.on_chain_anchor if latest_global_tel else None
+    
+    # Never display Verified from a non-null Merkle root alone
+    confirmed = (latest_global_tel and latest_global_tel.confirmation_state == "confirmed")
+    block_anchored = 1 if confirmed else 0
+
     return {
         "network_status": "operational",
         "total_staked_usd": total_staked,
@@ -358,7 +369,15 @@ async def vnp_metrics(db: AsyncSession = Depends(get_db)):
         "yield_rate_annual_pct": 4.2,
         "epoch_duration_seconds": 300,
         "protocol_version": "1.0.0",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        # Add the fields required by the UI for the proof
+        "trustBeaconMerkle": trust_beacon_merkle,
+        "trustBeaconStatus": "Anchored to Base L2" if confirmed else "Needs proof",
+        "blockAnchored": block_anchored,
+        "blockAnchoredStatus": "Verified" if confirmed else "Needs proof",
+        "blockNumber": latest_global_tel.block_number if latest_global_tel else None,
+        "chainId": latest_global_tel.chain_id if latest_global_tel else None,
+        "contractAddress": latest_global_tel.contract_address if latest_global_tel else None,
     }
 
 

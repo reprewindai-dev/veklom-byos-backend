@@ -106,6 +106,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Download SBOM Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom.spdx.json
+
+      - name: Generate ABIDE Evidence Record
+        run: |
+          SBOM_HASH=$(sha256sum sbom.spdx.json | awk '{print $1}')
+          cat > abide-evidence.json <<EOF
+          {
+            "commit_sha": "${{ github.sha }}",
+            "image": "veklom-local:${{ github.sha }}",
+            "sbom_hash": "$SBOM_HASH",
+            "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          }
+          EOF
+          echo "Generated ABIDE Release Evidence:"
+          cat abide-evidence.json
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh

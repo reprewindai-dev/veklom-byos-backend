@@ -1,0 +1,12 @@
+﻿{
+  "name": "Veklom Runtime Authority",
+  "version": "1.0.0",
+  "description": "Governance Vocabulary Layer to ensure financially-aware, SLA-bound, trust-verified systems without generating governance slop.",
+  "hooks": {
+    "audit-route": "Ensure FastAPI route has proper x402 middleware and X-VNP-Stake headers.",
+    "slash-check": "Inject 800ms Tier-1 latency check and KDE Consensus slash mechanic.",
+    "enforce-settlement": "Wrap endpoints with Veklom Settlement Ledger.",
+    "rag-sync": "Update local workspace context to synchronize with PGL Identity schema."
+  },
+  "rules": ".agents/AGENTS.md"
+}

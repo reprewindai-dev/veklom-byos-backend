@@ -46,7 +46,7 @@ agents:
 veklom validate && veklom apply
 ```
 
-Then open http://localhost:8000 to:
+Then open http://localhost:8088 to:
 - Add Slack + Postgres connectors
 - Run the Ops Assistant
 - View audit logs

@@ -177,7 +177,7 @@ cd deployment
 ```
 
 ### Service URLs
-- **Backend API**: http://localhost:8000
+- **Backend API**: http://localhost:8088
 - **Governance Gateway**: http://localhost:8080
 - **Edge Gateway**: http://localhost:8081
 - **Frontend**: http://localhost:3000

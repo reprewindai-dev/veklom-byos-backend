@@ -102,7 +102,7 @@
         "sentinel_metrics_refresh_rate_seconds": 10,
         "sentinel_metrics_history_days": 7,
         "sentinel_push_interval_seconds": 60,
-        "sentinel_custom_url": "http://host.docker.internal:8000",
+        "sentinel_custom_url": "http://host.docker.internal:8088",
         "server_disk_usage_notification_threshold": 80,
         "is_sentinel_debug_enabled": false,
         "server_disk_usage_check_frequency": "0 23 * * *",

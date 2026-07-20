@@ -30,6 +30,8 @@ class ExecRequest(BaseModel):
     use_memory: bool = True
     max_tokens: Optional[int] = 2048
     temperature: Optional[float] = 0.7
+    execution_mode: str = "live"
+
 
 @router.post("/v1/exec")
 async def exec_prompt(

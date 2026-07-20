@@ -939,13 +939,13 @@ docker compose -f docker-compose.dev.yml up -d
 cd backend && alembic upgrade head
 
 # 5. Start API
-uvicorn apps.api.main:app --reload --port 8000
+uvicorn apps.api.main:app --reload --port 8088
 
 # 6. Open pipeline dashboard
 # Navigate to http://localhost:5173/pipelines
 
 # 7. Create your first pipeline
-curl -X POST http://localhost:8000/api/v1/pipelines \
+curl -X POST http://localhost:8088/api/v1/pipelines \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

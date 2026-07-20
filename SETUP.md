@@ -72,18 +72,18 @@ alembic upgrade head
 ## 7. Start the Server
 
 ```bash
-uvicorn backend.apps.api.main:app --reload --port 8000
+uvicorn backend.apps.api.main:app --reload --port 8088
 ```
 
 ## 8. Verify
 
 ```bash
-curl http://localhost:8000/api/v1/health
+curl http://localhost:8088/api/v1/health
 # Expected: {"status": "ok", ...}
 ```
 
-Swagger UI: http://localhost:8000/docs  
-ReDoc: http://localhost:8000/redoc
+Swagger UI: http://localhost:8088/docs  
+ReDoc: http://localhost:8088/redoc
 
 ---
 

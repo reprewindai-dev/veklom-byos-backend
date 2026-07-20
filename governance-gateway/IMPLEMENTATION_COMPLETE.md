@@ -240,10 +240,10 @@ cargo test
 ### Environment Configuration
 ```bash
 # Backend URLs
-BACKEND_URL=http://localhost:8000
-AUTHORITY_URL=http://localhost:8000/api/v1/authority
-PGL_URL=http://localhost:8000/api/v1/pgl
-AUDIT_URL=http://localhost:8000/api/v1/evidence
+BACKEND_URL=http://localhost:8088
+AUTHORITY_URL=http://localhost:8088/api/v1/authority
+PGL_URL=http://localhost:8088/api/v1/pgl
+AUDIT_URL=http://localhost:8088/api/v1/evidence
 
 # Gateway settings
 GATEWAY_PORT=8080

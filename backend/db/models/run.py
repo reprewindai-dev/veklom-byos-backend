@@ -44,6 +44,7 @@ class VeklomRun(Base):
     evidence = Column(JSONB, nullable=True)
 
     status = Column(String(32), nullable=False, default=VeklomRunStatus.INTENT_CAPTURED.value)
+    execution_mode = Column(String(32), nullable=False, default="live")
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)

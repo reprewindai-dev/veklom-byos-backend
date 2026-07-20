@@ -41,14 +41,14 @@ services:
       - ENVIRONMENT=production
       - RUST_LOG=info
     ports:
-      - "8000:8000"
+      - "8000:8088"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -61,10 +61,10 @@ services:
       context: ../governance-gateway
       dockerfile: Dockerfile
     environment:
-      - BACKEND_URL=http://backend:8000
-      - AUTHORITY_URL=http://backend:8000/api/v1/authority
-      - PGL_URL=http://backend:8000/api/v1/pgl
-      - AUDIT_URL=http://backend:8000/api/v1/evidence
+      - BACKEND_URL=http://backend:8088
+      - AUTHORITY_URL=http://backend:8088/api/v1/authority
+      - PGL_URL=http://backend:8088/api/v1/pgl
+      - AUDIT_URL=http://backend:8088/api/v1/evidence
       - GATEWAY_PORT=8080
       - RUST_LOG=info
     ports:
@@ -164,7 +164,7 @@ services:
       context: ../veklom-control-plane
       dockerfile: Dockerfile
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8088
       - NEXT_PUBLIC_GOVERNANCE_URL=http://localhost:8080
       - NEXT_PUBLIC_EDGE_URL=http://localhost:8081
     ports:

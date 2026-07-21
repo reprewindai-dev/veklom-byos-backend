@@ -220,6 +220,13 @@ async def get_current_user(
     if user.workspace_id:
         from backend.core.database.database import set_tenant_session
         await set_tenant_session(db, user.workspace_id)
+    else:
+        # PGL IdentityRAG resolution fallback
+        from backend.core.clients.capi_client import capi_client
+        resolved = await capi_client.resolve_tenant_workspace(user.id)
+        if resolved and "workspace_id" in resolved:
+            from backend.core.database.database import set_tenant_session
+            await set_tenant_session(db, resolved["workspace_id"])
 
     if status_value == "PENDING_VERIFICATION":
         allowed_paths = {

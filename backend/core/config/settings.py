@@ -246,6 +246,10 @@ class Settings(BaseSettings):
     GNOMLEDGER_URL: str = "http://localhost:8090"  # GnomLedger runs on port 8090
     GNOMLEDGER_API_KEY: str = ""
 
+    # cAPI (Universal USB Integration)
+    CAPI_BACKEND_URL: str = "http://capi-container:3003"
+    CAPI_API_KEY: str = ""
+
     # Coinbase Developer Platform (CDP) / Paid Gateway
     # These values are required for the paid gateway and CDP wallet integration.
     # Keep secrets only in production environment variables (Coolify) and

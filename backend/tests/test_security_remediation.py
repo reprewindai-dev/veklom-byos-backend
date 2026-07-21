@@ -20,7 +20,6 @@ from backend.core.security.webhook_signatures import (
 )
 
 
-
 def make_request(headers=None):
     return Request({
         "type": "http",

@@ -1,10 +1,11 @@
 """Admin API endpoints for billing reconciliation and webhook monitoring."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from typing import List, Optional
 from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import require_internal_operator
@@ -27,7 +28,7 @@ async def list_recon_findings(
     query = select(ReconFinding).order_by(desc(ReconFinding.detected_at)).limit(limit).offset(offset)
     result = await db.execute(query)
     findings = result.scalars().all()
-    
+
     return {
         "findings": [
             {
@@ -52,14 +53,14 @@ async def list_webhook_dead_letter(
 ):
     """List failed webhook processing entries from dead-letter queue."""
     query = select(WebhookDeadLetter).order_by(desc(WebhookDeadLetter.created_at))
-    
+
     if status:
         query = query.where(WebhookDeadLetter.status == status)
-    
+
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
     entries = result.scalars().all()
-    
+
     return {
         "entries": [
             {
@@ -86,21 +87,22 @@ async def retry_dead_letter_entry(
     query = select(WebhookDeadLetter).where(WebhookDeadLetter.id == entry_id)
     result = await db.execute(query)
     entry = result.scalar_one_or_none()
-    
+
     if not entry:
         raise HTTPException(status_code=404, detail="Dead-letter entry not found")
-    
+
     # Update status to retrying
     entry.status = "retrying"
     entry.retry_count += 1
     entry.updated_at = datetime.now(timezone.utc)
-    
+
     await db.commit()
-    
+
     # Trigger actual webhook retry logic
-    from backend.apps.api.routers.webhook import process_with_idempotency, handle_webhook_payload
     import json
-    
+
+    from backend.apps.api.routers.webhook import handle_webhook_payload, process_with_idempotency
+
     try:
         body_bytes = json.dumps(entry.payload).encode()
 
@@ -152,40 +154,38 @@ async def delete_dead_letter_entry(
     query = select(WebhookDeadLetter).where(WebhookDeadLetter.id == entry_id)
     result = await db.execute(query)
     entry = result.scalar_one_or_none()
-    
+
     if not entry:
         raise HTTPException(status_code=404, detail="Dead-letter entry not found")
-    
+
     await db.delete(entry)
     await db.commit()
-    
+
     return {"status": "deleted", "entry_id": entry_id}
 
 
 @router.get("/recon-summary")
 async def get_reconciliation_summary(db: AsyncSession = Depends(get_db)):
     """Get summary statistics for reconciliation findings."""
+    # ⚡ Bolt Optimization: Use database aggregation instead of fetching all rows into memory
     # Count total findings
-    findings_query = select(ReconFinding)
-    findings_result = await db.execute(findings_query)
-    total_findings = len(findings_result.scalars().all())
-    
-    # Count dead-letter entries by status
-    dead_letter_query = select(WebhookDeadLetter)
-    dead_letter_result = await db.execute(dead_letter_query)
-    dead_letters = dead_letter_result.scalars().all()
-    
-    status_counts = {}
-    for dl in dead_letters:
-        status_counts[dl.status] = status_counts.get(dl.status, 0) + 1
-    
+    total_findings = await db.scalar(select(func.count(ReconFinding.id))) or 0
+
+    # Count dead-letter entries by status directly in DB
+    dead_letter_result = await db.execute(
+        select(WebhookDeadLetter.status, func.count(WebhookDeadLetter.id))
+        .group_by(WebhookDeadLetter.status)
+    )
+    status_counts = dict(dead_letter_result.all())
+    total_dead_letters = sum(status_counts.values())
+
     return {
         "recon_findings": {
             "total": total_findings,
             "recent_count": total_findings  # Could add time-based filtering
         },
         "webhook_dead_letter": {
-            "total": len(dead_letters),
+            "total": total_dead_letters,
             "by_status": status_counts
         }
     }

@@ -13,3 +13,7 @@
 ## 2025-02-27 - [Resolve N+1 bottlenecks in HRM telemetry and audit]
 **Learning:** Looping through SQL rows and doing aggregate queries (`COUNT`, `ORDER BY DESC LIMIT 1`) inside the loop creates severe $O(N)$ database query inflation, known as the N+1 query problem. In endpoints like `hrm_sync_telemetry`, this causes massive performance degradation on larger agent task forces. Similarly, in `hrm_audit`, firing two unbounded full-group-by table scans (one for `COUNT`, one for `MAX(created_at)`) on `LedgerEvent` doubles the execution overhead.
 **Action:** Use a single bulk group-by SQL query and `DISTINCT ON` block (where applicable, due to Postgres DB backing) to fetch metrics up front outside of the loop. Combine queries that iterate over the exact same tables and group definitions (e.g. `func.count(id)` and `func.max(created_at)`). By pre-fetching values into hash maps using `.in_()`, we drop runtime from $O(N)$ back to $O(1)$.
+
+## 2025-02-28 - [Optimize Unbounded Aggregations in Admin Billing]
+**Learning:** Loading all row entities from the database into Python memory (using `scalars().all()`) just to group or count records causes severe $O(N)$ bottlenecks as tables grow. This limits scaling, eats bandwidth, and causes slow API response times.
+**Action:** Push simple grouping and counting down to the database using `func.count()` and `.group_by()`. This keeps the API responses decoupled from table size by doing $O(1)$ Python processing and letting Postgres calculate aggregates effectively.

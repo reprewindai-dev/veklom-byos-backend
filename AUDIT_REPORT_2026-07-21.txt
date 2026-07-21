@@ -1,0 +1,173 @@
+VEKLOM PRODUCTION READINESS AUDIT
+Date: 2026-07-21
+Revision audited: 384e98f
+Audit type: read-only repository audit; no production mutation performed
+
+RELEASE VERDICT
+RED — DO NOT RELEASE this revision to production.
+
+Evidence: compileall passed; Alembic has one head; full pytest failed with 19 failures and 8 errors (184 passed, 2 skipped); Ruff reported 6,099 findings; pip check reported four dependency conflicts. Production, live payments, backups, and external webhooks were not exercised.
+
+CRITICAL RELEASE BLOCKERS
+
+C-01 — Literal authentication bypasses and development JWT keys are accepted.
+Evidence: backend/core/security/auth.py:54-84.
+Remove static tokens and fallback signing keys, rotate any exposed credentials, and fail closed in production.
+
+C-02 — Password-bearing database credentials are committed to tracked source.
+Evidence: insert_user.py:35; remote_check.py:3.
+Revoke/rotate the credential, remove it from source/history as appropriate, and enforce secret scanning.
+
+C-03 — GitHub and Resend webhook authenticity controls are insufficient.
+Evidence: backend/apps/api/routers/webhooks.py:31-173.
+Resend accepts/logs raw payloads without signature verification; GitHub lacks verified signatures, replay protection, and strict event/repository allow-lists.
+
+C-04 — Stripe webhook handling does not provision or reconcile paid state.
+Evidence: backend/apps/api/routers/billing.py:884-910.
+Implement durable subscription/invoice/payment-event writes, idempotency, and cancellation/payment-failure reconciliation.
+
+C-05 — Payment relay webhook fails open when its secret is absent.
+Evidence: backend/apps/api/routers/webhook.py:218-240.
+Missing verification configuration must reject the request.
+
+C-06 — Payment-proof dependency is syntactic, not cryptographic.
+Evidence: backend/core/security/payment_proof.py:6-39.
+Caller-supplied proof or a synthetic hash is accepted; protected routes must require independently verified payment authorization.
+
+C-07 — Checkout amount is client-controlled.
+Evidence: backend/apps/api/routers/billing.py:347-381.
+Resolve prices exclusively from a server-owned plan catalog/Stripe price IDs; ignore or reject client amounts.
+
+HIGH FINDINGS — REQUIRED BEFORE RELEASE
+
+H-01 — x402 replay prevention and settlement are race-prone and fail open.
+Evidence: backend/core/middleware/x402.py:607-608, 751-753, 1171-1196.
+Use atomic idempotency/ledger transactions and fail closed on settlement errors.
+
+H-02 — Wallet debit is non-atomic and debit failures may be ignored.
+Evidence: backend/core/security/wallet_guard.py:149-207.
+Use locking/atomic balance updates and reject on debit failure.
+
+H-03 — Entitlements are primarily role-derived instead of subscription-derived.
+Evidence: backend/core/security/entitlements.py:90-142; backend/core/services/entitlements.py:7-28.
+Bind paid access and limits to verified billing state.
+
+H-04 — Billing controls are writable by any authenticated user.
+Evidence: backend/apps/api/routers/billing.py:599-631, 845-861.
+Enforce ownership/RBAC and audit financial-control mutations.
+
+H-05 — Settlement tenant identity is derived from request body fields.
+Evidence: backend/core/middleware/x402.py:1171-1184.
+Bind identity to authenticated principal and server-side tenancy.
+
+H-06 — Trusted-host protection can become wildcard.
+Evidence: backend/apps/api/main.py:849-851, 882.
+Use an explicit production host allow-list.
+
+H-07 — CORS reflects arbitrary origins while allowing credentials.
+Evidence: backend/apps/api/main.py:889-895, 2360-2367.
+Remove reflection and allow only exact control-plane origins.
+
+H-08 — Tokens are exposed through query-string redirects/SSE fallback.
+Evidence: backend/core/security/auth.py:199-202; backend/apps/api/routers/auth.py:398+.
+Use secure cookies/headers or one-time authorization codes; never put tokens in URLs.
+
+H-09 — RLS session-variable contract is inconsistent.
+Evidence: RLS migrations 20260711_0755_f2c68494b79b and 20260711_1904_5340720ec7f0; backend/core/database/database.py:74-81, 509-527.
+Policies read app.workspace_id while the dependency sets app.current_tenant_id. Standardize context and test cross-tenant denial.
+
+H-10 — Startup performs ad-hoc schema DDL and suppresses failures.
+Evidence: backend/apps/api/main.py:281-529.
+Use migration-only schema changes and fail deployment on incompatible schema.
+
+H-11 — CI can report success while tests fail or are absent.
+Evidence: .github/workflows/ci-cd.yml:38-58.
+Remove the swallowed test exit and test the same artifact that is deployed.
+
+H-12 — CI scans one image while deployment rebuilds another.
+Evidence: .github/workflows/ci-cd.yml:19-21, 135-163.
+Promote the immutable tested/scanned image digest.
+
+H-13 — Deployment cleanup tears down services on every script exit.
+Evidence: deployment/deploy.sh:215-220, 279-283.
+Make cleanup scoped, explicit, and rollback-safe.
+
+H-14 — Release checks are false-green.
+Evidence: Makefile:15-35.
+Replace unconditional success output with real blocking gates.
+
+H-15 — Liveness is used where readiness is required.
+Evidence: backend/apps/api/routers/health.py:85-122 and CI health checks.
+Verify dependency-aware readiness and actual host routing.
+
+H-16 — Static analysis and coverage are not enforced.
+Evidence: Ruff output; .github/workflows/ci-cd.yml; pyproject.toml.
+Eliminate or explicitly triage the 6,099 findings, especially undefined names.
+
+H-17 — Dependency resolution is not reproducible in the deployed image.
+Evidence: Dockerfile, pyproject.toml, requirements.txt, uv.lock, pip check.
+Build from one locked, hash-verified dependency set and enforce pip check.
+
+H-18 — JWT audience enforcement is ineffective and workspace claims are trusted.
+Evidence: backend/core/config/settings.py:116, 285-288; backend/core/security/auth.py:133-140, 207-230.
+Enforce issuer/audience and derive workspace from membership, not an unvalidated claim.
+
+H-19 — Logout/revocation does not invalidate JWTs and MFA verification is non-functional.
+Evidence: backend/apps/api/routers/auth.py:1044-1051, 1165-1188, 1277-1295; backend/core/security/auth.py:206-218.
+Implement session/JTI checks, refresh rotation/reuse detection, per-user encrypted MFA secrets, and actual TOTP verification.
+
+H-20 — Unauthenticated MCP WebSocket and dynamic gateway expose tool/SSRF surfaces.
+Evidence: backend/apps/api/routers/mcp.py:342-377, 487-495; mcp_gateway.py:78-119, 143-145, 178-242.
+Authenticate WebSockets, bind tools to workspace, enforce URL/IP/redirect allow-lists, and never return configured auth headers.
+
+H-21 — API-key expiry/scopes/workspace are not enforced; rate limits fail open.
+Evidence: backend/core/security/auth.py:431-472; backend/core/middleware/ratelimit.py:17-39, 81-85.
+Enforce expiry/scopes/tenant binding and distributed atomic limits for authentication-sensitive paths.
+
+H-22 — Upload and static path handling permit resource/path abuse.
+Evidence: backend/apps/api/routers/upload.py:35-78; backend/apps/api/main.py:2054-2059.
+Stream with hard limits, validate file signatures, scan/quarantine, and enforce canonical path containment.
+
+MEDIUM FINDINGS — NEXT HARDENING CYCLE
+
+M-01 — Free-usage and IP rate-limit state is process-local; it is bypassable across restarts/replicas.
+Evidence: backend/core/middleware/x402.py; backend/core/security/middlewares.py:258-285.
+Use Redis/database-backed atomic counters.
+
+M-02 — Billing, wallet, admin, and diagnostic routes return synthetic/demo data or success without durable side effects.
+Evidence: backend/apps/api/routers/wallet.py:7-62; admin.py:34-61, 104-112, 146-148, 253-265; billing.py:99-108, 145-150, 927-940.
+Remove placeholders or disable the routes until implemented.
+
+M-03 — Fuzzing and smoke checks are non-functional or non-gating.
+Evidence: .github/workflows/mayhem-for-api.yml:48-57 and deployment verification.
+Replace placeholder/non-blocking jobs with executable environment-correct checks.
+
+M-04 — Clean-database migration and restore safety are not demonstrated.
+Evidence: migration set and CI workflow.
+Add upgrade-from-empty/current tests, rollback policy, encrypted backups, restore drills, and RPO/RTO ownership.
+
+M-05 — API contract drift is likely across routers, schemas, and the decoupled control plane.
+Evidence: backend/apps/api/main.py:1026+ and failing pytest suite.
+Add OpenAPI contract tests for auth, billing, and tenant boundaries.
+
+PRIORITIZED REMEDIATION ORDER
+1. Remove/rotate bypass tokens and tracked credentials; audit history and production secrets.
+2. Authenticate every webhook; implement Stripe idempotency and durable billing reconciliation.
+3. Make wallet/x402 authorization, debit, replay prevention, and settlement atomic and tenant-bound.
+4. Correct RLS context propagation and add cross-tenant denial tests.
+5. Remove client-controlled pricing and bind entitlements to verified subscriptions.
+6. Make CI tests, lint, dependencies, migrations, image scans, readiness, and smoke checks blocking.
+7. Remove startup DDL, wildcard host/CORS behavior, URL token transport, and destructive cleanup.
+8. Remove synthetic production responses and complete backup/restore/contract coverage.
+
+RELEASE EXIT CRITERIA
+- All critical findings closed with regression tests and secret-rotation evidence.
+- Full test suite passes with zero failures/errors.
+- Ruff/type/dependency gates pass or have reviewed, owned, expiring exceptions.
+- Clean-database migrations and production-like startup pass.
+- Payment/webhook/x402/wallet flows are authenticated, idempotent, tenant-scoped, and reconciliation-tested.
+- CI deploys the exact immutable image digest tested and scanned.
+- Readiness, routing, rollback, backup, and restore checks are demonstrated in staging.
+
+AUDIT LIMITATIONS
+This audit used repository source, configuration, tests, and local static/runtime checks. It did not alter production, access live databases, execute real payment transactions, validate external webhook delivery, or perform a destructive deployment. Re-verify findings after remediation in isolated staging and a controlled production release.

@@ -13,26 +13,21 @@ help:
 
 
 release-check:
-	@echo "=== Gate 1: Artifact & Integrity ==="
-	@echo "Skipping image signature/SBOM scan (not configured for current deployment)"
-	@echo ""
-	@echo "=== Gate 2: Infra Health ==="
-	@curl -fsS https://veklom.com/health >/dev/null || (echo "FAIL: Health endpoint down" && exit 1)
-	@echo "PASS: Health endpoint responding"
-	@echo ""
-	@echo "=== Gate 3: Observability ==="
-	@echo "Skipping PostHog funnel check (not configured)"
-	@echo ""
-	@echo "=== Gate 4: DSA / Legal ==="
-	@echo "Skipping DSA check (endpoint not implemented)"
-	@echo ""
-	@echo "=== Gate 5: Payments ==="
-	@echo "Skipping payment checks (not configured)"
-	@echo ""
-	@echo "=== Gate 6: Latency & Errors ==="
-	@echo "Skipping latency check (use Grafana dashboards)"
-	@echo ""
-	@echo "=== All Gates Passed ==="
+	@echo "=== Gate 1: Python compilation ==="
+	python -m compileall -q backend
+	@echo "PASS: Python compilation"
+	@echo "=== Gate 2: Alembic single head ==="
+	@heads=$$(python -m alembic -c backend/db/migrations/alembic.ini heads | grep -c '(head)'); \
+	if [ "$$heads" -ne 1 ]; then echo "FAIL: expected one Alembic head, found $$heads"; exit 1; fi
+	@echo "PASS: one Alembic head"
+	@echo "=== Gate 3: Tests ==="
+	python -m pytest backend/tests -q
+	@echo "=== Gate 4: Lint ==="
+	python -m ruff check backend
+	@echo "=== Gate 5: Readiness ==="
+	curl -fsS https://api.veklom.com/ready >/dev/null
+	@echo "PASS: readiness endpoint responding"
+	@echo "=== All release gates passed ==="
 
 rollback:
 	@echo "=== Veklom Rollback ==="
@@ -51,9 +46,9 @@ rollback:
 
 health-check:
 	@echo "=== Veklom Health Check ==="
-	@curl -fsS https://veklom.com/health || (echo "FAIL: Health endpoint down" && exit 1)
+	@curl -fsS https://api.veklom.com/ready || (echo "FAIL: Readiness endpoint down" && exit 1)
 	@echo ""
-	@echo "PASS: https://veklom.com/health is responding"
+	@echo "PASS: https://api.veklom.com/ready is responding"
 
 smoke-x402:
 	@echo "=== E2E Wallet->Relayer->Webhook->Ledger Smoke Test ==="

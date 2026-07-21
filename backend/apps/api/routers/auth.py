@@ -10,11 +10,13 @@ import secrets
 import time
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
 import httpx
+import pyotp
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +24,7 @@ from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.security.auth import (
     create_access_token,
+    _get_active_session,
     get_current_user,
     get_current_user_optional,
     get_password_hash,
@@ -51,6 +54,51 @@ async def issue_demo_pgl():
     return {"access_token": access_token, "token_type": "bearer"}
 
 CONTROL_PLANE_URL = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+
+def _safe_github_redirect(next_url: str | None) -> str:
+    """Return a same-origin control-plane redirect and reject open redirects."""
+    fallback = f"{CONTROL_PLANE_URL}/dashboard/"
+    if not next_url:
+        return fallback
+    if next_url.startswith("/") and not next_url.startswith("//"):
+        return f"{CONTROL_PLANE_URL}{next_url}"
+
+    requested = urlparse(next_url)
+    allowed = urlparse(CONTROL_PLANE_URL)
+    if (
+        requested.scheme in {"http", "https"}
+        and requested.scheme == allowed.scheme
+        and requested.netloc == allowed.netloc
+    ):
+        return next_url
+    return fallback
+
+
+def _github_bridge_html(next_url: str | None = None) -> str:
+    """Render a token-free bridge; authentication is delivered via HttpOnly cookies."""
+    redirect_url = _safe_github_redirect(next_url)
+    encoded = json.dumps({"redirect_url": redirect_url}, separators=(",", ":"))
+    return f"""<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Completing Veklom sign-in</title></head>
+<body>
+  <p>Sign-in complete. Redirecting to Veklom.</p>
+  <script>
+    const payload = {encoded};
+    window.location.replace(payload.redirect_url);
+  </script>
+</body>
+</html>"""
+
+def _verify_mfa_code(secret: str, code: str) -> bool:
+    if not secret or not code or len(code) != 6 or not code.isdigit():
+        return False
+    try:
+        return pyotp.TOTP(secret).verify(code, valid_window=1)
+    except (TypeError, ValueError):
+        return False
+
 
 def safe_posthog_capture(*args, **kwargs):
     """Wrap PostHog capture to ensure it never blocks or crashes auth endpoints."""
@@ -476,9 +524,19 @@ async def create_eval_session(body: dict = None, db: AsyncSession = Depends(get_
     user = await _get_or_create_eval_user(db, fingerprint=fingerprint)
 
     access_token = create_access_token(data={"sub": user.id})
+    refresh_token = create_access_token(
+        data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+    db.add(Session(
+        user_id=user.id,
+        session_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+    ))
+    await db.commit()
     return {
         "access_token": access_token,
-        "refresh_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "user": _user_dict(user),
@@ -605,7 +663,7 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
             refresh_token=refresh_token,
             ip_address=request.client.host if request.client else "",
             user_agent=request.headers.get("user-agent", "")[:512],
-            expires_at=datetime.utcnow() + timedelta(hours=1),
+            expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         ))
         await db.commit()
         await db.refresh(user)
@@ -1047,7 +1105,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         refresh_token=refresh_token,
         ip_address=request.client.host if request.client else "",
         user_agent=request.headers.get("user-agent", "")[:512],
-        expires_at=datetime.utcnow() + timedelta(hours=1),
+        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(session)
     await log_audit_event(
@@ -1175,10 +1233,19 @@ async def refresh(body: dict, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    session = await _get_active_session(db, user.id, token, refresh=True)
+    if session is None:
+        raise HTTPException(status_code=401, detail="Refresh session revoked or expired")
+
     access_token = create_access_token(data={"sub": user.id})
     new_refresh = create_access_token(
         data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
+    session.session_token = access_token
+    session.refresh_token = new_refresh
+    session.last_accessed = datetime.utcnow()
+    session.expires_at = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    await db.commit()
 
     return {
         "access_token": access_token,
@@ -1275,12 +1342,20 @@ async def update_me(body: dict, user=Depends(get_current_user), db: AsyncSession
 
 
 @router.post("/mfa/enable")
-async def mfa_setup(user=Depends(get_current_user)):
-    return {"secret": "JBSWY3DPEHPK3PXP", "provisioning_uri": "otpauth://totp/Veklom?secret=JBSWY3DPEHPK3PXP", "qr_url": "otpauth://totp/Veklom?secret=JBSWY3DPEHPK3PXP"}
+async def mfa_setup(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    secret = pyotp.random_base32()
+    user.mfa_secret = encrypt_token(secret)
+    user.mfa_enabled = False
+    await db.commit()
+    uri = pyotp.TOTP(secret).provisioning_uri(name=user.email, issuer_name="Veklom")
+    return {"secret": secret, "provisioning_uri": uri, "qr_url": uri}
 
 
 @router.post("/mfa/verify")
 async def mfa_verify(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    secret = decrypt_token(user.mfa_secret or "")
+    if not _verify_mfa_code(secret, str(body.get("code", ""))):
+        raise HTTPException(status_code=401, detail="Invalid MFA code")
     user.mfa_enabled = True
     await db.commit()
     return {"verified": True}
@@ -1288,7 +1363,11 @@ async def mfa_verify(body: dict, user=Depends(get_current_user), db: AsyncSessio
 
 @router.post("/mfa/disable")
 @router.delete("/mfa/disable")
-async def mfa_disable(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def mfa_disable(body: dict | None = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    body = body or {}
+    secret = decrypt_token(user.mfa_secret or "")
+    if user.mfa_enabled and not _verify_mfa_code(secret, str(body.get("code", ""))):
+        raise HTTPException(status_code=401, detail="Valid MFA code required")
     user.mfa_enabled = False
     user.mfa_secret = ""
     await db.commit()
@@ -1307,12 +1386,16 @@ async def list_api_keys(user=Depends(get_current_user), db: AsyncSession = Depen
 @router.post("/api-keys")
 async def create_api_key(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     raw_key = f"byos_{secrets.token_urlsafe(32)}"
+    requested_scopes = body.get("scopes", ["read", "write"])
+    if not isinstance(requested_scopes, list) or not all(isinstance(scope, str) for scope in requested_scopes):
+        raise HTTPException(status_code=400, detail="scopes must be a list of strings")
     key = APIKey(
         user_id=user.id,
+        workspace_id=user.workspace_id or "",
         name=body.get("name", "Untitled Key"),
         key_hash=get_password_hash(raw_key),
         key_prefix=raw_key[:10],
-        scopes=str(body.get("scopes", ["read", "write"])),
+        scopes=json.dumps(requested_scopes),
     )
     db.add(key)
     await db.commit()
@@ -1621,7 +1704,7 @@ async def github_callback(
         refresh_token=app_refresh_token,
         ip_address=request.client.host if request.client else "",
         user_agent=request.headers.get("user-agent", "")[:512],
-        expires_at=datetime.utcnow() + timedelta(hours=1),
+        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(session)
     await db.commit()
@@ -1630,15 +1713,21 @@ async def github_callback(
     next_url = next_url_from_state or request.cookies.get("github_next_url") or ""
 
     if request.method == "GET":
-        if next_url and (next_url.startswith("/") or next_url.startswith("https://") or next_url.startswith("http://")):
-            if next_url.startswith("/"):
-                final_url = f"{CONTROL_PLANE_URL}{next_url}"
-            else:
-                final_url = next_url
-        else:
-            final_url = f"{CONTROL_PLANE_URL}/dashboard/"
-            
-        response = HTMLResponse(content=_github_bridge_html(app_access_token, app_refresh_token, user, final_url))
+        final_url = _safe_github_redirect(next_url)
+        response = HTMLResponse(content=_github_bridge_html(final_url))
+        cookie_kwargs = {"httponly": True, "samesite": "lax", "secure": True, "path": "/"}
+        response.set_cookie(
+            key="access_token",
+            value=app_access_token,
+            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            **cookie_kwargs,
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=app_refresh_token,
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+            **cookie_kwargs,
+        )
         response.delete_cookie("github_next_url")
         return response
 

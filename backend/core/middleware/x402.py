@@ -549,7 +549,10 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
                         required_amount = route_config["price_usdc"]
                         authorized_amount = details.get("amount", 0.0)
                         if authorized_amount >= required_amount:
-                            await redis_client.set(redis_key, "used", ex=604800)
+                            claimed = await redis_client.set(redis_key, "used", ex=604800, nx=True)
+                            if not claimed:
+                                request.state.x402_error = "replay_detected"
+                                return False
                             logger.info(f"[x402] Multi-stage payment {proof_str} verified successfully!")
                             return True
                         else:
@@ -584,8 +587,11 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
                 request.state.x402_error = "replay_detected"
                 return False
             
-            # Lock test proof hash
-            await redis_client.set(redis_key, "used", ex=300)
+            # Claim the proof atomically so concurrent requests cannot both spend it.
+            claimed = await redis_client.set(redis_key, "used", ex=300, nx=True)
+            if not claimed:
+                request.state.x402_error = "replay_detected"
+                return False
             request.state.test_proof_mode = True
             return True
 
@@ -745,12 +751,17 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
         try:
             val = int(log_data, 16)
             actual_amount += val
+            if len(topics) >= 2 and len(topics[1]) >= 42:
+                request.state.x402_payer = "0x" + topics[1][-40:]
         except ValueError:
             continue
 
     if actual_amount >= expected_amount:
-        # Lock hash in redis to prevent double-spend
-        await redis_client.set(redis_key, "used", ex=604800)
+        # Claim the transaction atomically after all on-chain checks pass.
+        claimed = await redis_client.set(redis_key, "used", ex=604800, nx=True)
+        if not claimed:
+            request.state.x402_error = "replay_detected"
+            return False
         logger.info(f"[x402] On-chain payment verified successfully! Tx: {proof_str}")
         return True
     else:
@@ -804,7 +815,9 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             nonce_exists = await redis_client.get(redis_key)
             if nonce_exists:
                 return _build_402_response(path, method, route_cfg, detail="replay_detected")
-            await redis_client.set(redis_key, "1", ex=300)
+            claimed = await redis_client.set(redis_key, "1", ex=300, nx=True)
+            if not claimed:
+                return _build_402_response(path, method, route_cfg, detail="replay_detected")
 
         # B. Data sanitisation filter
         if method in ("POST", "PUT", "PATCH"):
@@ -835,6 +848,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
             
             if is_valid_gateway or is_valid_rapidapi:
                 request.state.x402_paid = True
+                request.state.x402_verified = True
                 response = await call_next(request)
                 
                 # Create and persist a real receipt
@@ -916,12 +930,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                             return JSONResponse(status_code=401, content={"error": "User not found"})
                             
                         ws_id = db_user.workspace_id or ""
-                        _owner_email = (
-                            os.getenv("PLATFORM_OWNER_EMAIL", "").strip()
-                            or settings.PLATFORM_OWNER_EMAIL.strip()
-                            or settings.ADMIN_EMAIL.strip()
-                        )
-                        _is_platform_owner = ((db_user.email or "").lower() == _owner_email.lower())
+                        _is_platform_owner = False
                         
                         budget_res = await db.execute(select(BudgetRule).where(BudgetRule.workspace_id == ws_id, BudgetRule.is_active == True))
                         budget_rules = budget_res.scalars().all()
@@ -947,17 +956,6 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                             
                     if auth_ctx:
                         ws_id = auth_ctx["ws_id"]
-                        
-                        # ── OWNER BYPASS ──────────────────────────────────────────────────
-                        if auth_ctx["is_owner"]:
-                            logger.info(
-                                f"[OWNER BYPASS] {auth_ctx['email']} — "
-                                f"unrestricted pass-through for {method} {path}"
-                            )
-                            response = await call_next(request)
-                            response.headers["X-Veklom-Owner-Bypass"] = "true"
-                            return response
-                        # ── END OWNER BYPASS ──────────────────────────────────────────────
 
                         # Re-check KillSwitch directly to avoid caching emergency halts
                         ks_res = await db.execute(
@@ -967,7 +965,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                             )
                         )
                         kill_switch = ks_res.scalar_one_or_none()
-                        if kill_switch:
+                        if kill_switch is not None and getattr(kill_switch, "is_active", True) is True:
                             return JSONResponse(
                                 status_code=402,
                                 content={
@@ -1145,6 +1143,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         # E. Verify X-Payment-Proof
         if await _verify_x402_payment(request, route_cfg):
             request.state.x402_paid = True
+            request.state.x402_verified = True
             response = await call_next(request)
             
             tx_hash = (
@@ -1167,12 +1166,7 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 from backend.db.models.ledger import SettlementLedger, SettlementStatus
                 import uuid
                 
-                subject_id = "default"
-                if method in ("POST", "PUT", "PATCH"):
-                    body_bytes = await request.body()
-                    if body_bytes:
-                        body_json = json.loads(body_bytes.decode("utf-8"))
-                        subject_id = body_json.get("tenant_id") or body_json.get("provider_slug") or body_json.get("subject") or "default"
+                subject_id = getattr(request.state, "x402_payer", None) or "gateway"
                 
                 async with get_db_session() as db:
                     is_real_tx = tx_hash.startswith("0x") and len(tx_hash) == 66
@@ -1192,8 +1186,9 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                         db.add(ledger_entry)
                         await db.commit()
                         logger.info(f"[x402] Settlement Ledger recorded successfully for tenant '{subject_id}'")
-            except Exception as db_err:
-                logger.error(f"[x402] Failed to write SettlementLedger entry: {db_err}")
+            except Exception:
+                logger.exception("[x402] Failed to write SettlementLedger entry")
+                return JSONResponse(status_code=500, content={"detail": "Payment settlement failed"})
             
             response.headers["X-Veklom-Receipt-ID"] = receipt["receipt_id"]
             response.headers["X-Veklom-Request-ID"] = receipt["request_id"]

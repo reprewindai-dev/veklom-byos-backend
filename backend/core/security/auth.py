@@ -51,25 +51,23 @@ def create_access_token(
 _jwt_redis_client = None
 
 
-def verify_token(token: str, enforce_replay: bool = False) -> dict:
-    if token in ("{VEKLOM_API_TOKEN}", "VEKLOM_API_TOKEN"):
-        return {
-            "sub": "d9e7fa01-f216-4003-a4fc-03a321b29217",
-            "email": "reprewindai@gmail.com",
-            "role": "admin",
-            "aud": "veklom-api"
-        }
-    if token == "VEKLOM_LOOMAL_SOT_TOKEN":
-        return {
-            "sub": "loomal-sot-proxy",
-            "role": "service",
-            "scopes": ["source-of-truth:snapshot:read"]
-        }
+async def _get_active_session(db: AsyncSession, user_id: str, token: str):
+    """Return the active server-side session matching the presented access token."""
+    from backend.db.models.user import Session
 
-    candidate_keys = [
-        settings.JWT_SECRET_KEY,
-        "test_secret_key_for_development_only"
-    ]
+    result = await db.execute(
+        select(Session).where(
+            Session.user_id == user_id,
+            Session.session_token == token,
+            Session.is_active.is_(True),
+            Session.expires_at > datetime.utcnow(),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+def verify_token(token: str, enforce_replay: bool = False) -> dict:
+    candidate_keys = [settings.JWT_SECRET_KEY]
 
     payload = None
     last_err = None
@@ -130,14 +128,10 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
     # Audience Enforcement
     aud = payload.get("aud")
     expected_aud = getattr(settings, "JWT_EXPECTED_AUDIENCE", "veklom-api")
-    enforcement_mode = getattr(settings, "JWT_AUD_ENFORCEMENT", "strict")
-
     if aud != expected_aud:
         msg = f"Invalid or missing audience in token: expected {expected_aud}, got {aud}"
-        if enforcement_mode == "strict":
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token audience")
-        else:
-            logging.warning(f"[JWT_AUD_WARN] {msg}")
+        logging.error("[JWT_AUD_REJECTED] %s", msg)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token audience")
 
     # JTI replay checks (optional/configurable)
     jti = payload.get("jti")
@@ -197,10 +191,6 @@ async def get_current_user(
         token = request.cookies.get("access_token")
 
     if not token:
-        # Fallback to query parameter token for EventSource/SSE streams
-        token = request.query_params.get("token")
-
-    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
 
     payload = verify_token(token)
@@ -216,10 +206,12 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    if await _get_active_session(db, user_id, token) is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked or expired")
         
-    # Enforce PGL IdentityRAG: Prefer workspace_id from signed JWT if present
-    if jwt_workspace_id:
-        user.workspace_id = jwt_workspace_id
+    if jwt_workspace_id and jwt_workspace_id != user.workspace_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace claim does not match account")
 
     status_value = (user.status or "").upper()
     if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
@@ -253,15 +245,6 @@ async def get_current_user(
     if not last_activity or (now_utc - last_activity).total_seconds() > 300:
         user.last_activity = now_utc
         needs_commit = True
-
-    # Omniscient Platform Admin override
-    if user.email == "reprewindai@gmail.com":
-        if user.role != "admin":
-            user.role = "admin"
-            needs_commit = True
-        if hasattr(user, "is_superuser") and not user.is_superuser:
-            user.is_superuser = True
-            needs_commit = True
 
     if needs_commit:
         await db.commit()
@@ -402,10 +385,12 @@ async def get_current_user_optional(
     user = result.scalar_one_or_none()
     if user is None:
         return _GUEST_USER
+
+    if await _get_active_session(db, user_id, token) is None:
+        return _GUEST_USER
         
-    # Enforce PGL IdentityRAG: Prefer workspace_id from signed JWT if present
-    if jwt_workspace_id:
-        user.workspace_id = jwt_workspace_id
+    if jwt_workspace_id and jwt_workspace_id != user.workspace_id:
+        return _GUEST_USER
 
     status_value = (user.status or "").upper()
     if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
@@ -455,6 +440,10 @@ async def get_current_user_or_api_key(
             if verify_password(api_key_header, key.key_hash):
                 user = key.user
                 if user is not None:
+                    if not key.is_active or (key.expires_at and key.expires_at <= datetime.utcnow()):
+                        continue
+                    if key.workspace_id and key.workspace_id != user.workspace_id:
+                        continue
                     if user.workspace_id:
                         from backend.core.database.database import set_tenant_session
                         await set_tenant_session(db, user.workspace_id)
@@ -466,6 +455,7 @@ async def get_current_user_or_api_key(
                     if not last_activity or (now_utc - last_activity).total_seconds() > 300:
                         user.last_activity = now_utc
                         await db.commit()
+                    request.state.api_key_scopes = key.scopes or "[]"
                     return user
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or inactive API Key")
 
@@ -517,13 +507,13 @@ async def get_rls_db(
     """
     tenant_id = getattr(user, "workspace_id", None) or getattr(user, "tenant_id", "default_tenant")
 
-    # Inject tenant variable
-    await db.execute(text("SET LOCAL app.current_tenant_id = :tenant_id"), {"tenant_id": tenant_id})
+    # RLS policies use app.workspace_id. SET LOCAL scopes the value to this transaction.
+    await db.execute(text("SELECT set_config('app.workspace_id', :tenant_id, true)"), {"tenant_id": tenant_id})
     try:
         yield db
     finally:
         # Prevent connection pool leakage
         try:
-            await db.execute(text("RESET app.current_tenant_id"))
+            await db.execute(text("RESET app.workspace_id"))
         except Exception:
             pass

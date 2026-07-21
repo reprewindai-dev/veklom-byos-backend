@@ -7,174 +7,181 @@ import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.config.settings import settings
 from backend.core.database.database import get_db
+from backend.core.security.webhook_signatures import verify_github_signature, verify_resend_signature
 from backend.core.security.auth import get_current_user
 from backend.db.models.workspace import Workspace
 from backend.db.models.pipelines import Deployment
+from backend.db.models.billing import WebhookReceipt
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
 @router.post("/test")
-async def test_webhook_ack(request: Request):
-    # Webhook delivery test endpoint returning 200 ACK
+async def test_webhook_ack(request: Request, user=Depends(get_current_user)):
+    """Authenticated webhook delivery test endpoint."""
+    return {"ack": True}
+
+
+async def _reserve_webhook_delivery(
+    delivery_id: str,
+    body: bytes,
+    db: AsyncSession,
+) -> bool:
+    if not delivery_id:
+        raise HTTPException(status_code=400, detail="Missing webhook delivery id")
+    digest = __import__("hashlib").sha256(body).hexdigest()
+    existing = await db.scalar(
+        select(WebhookReceipt).where(WebhookReceipt.idempotency_key == delivery_id)
+    )
+    if existing:
+        if existing.body_sha256 != digest:
+            raise HTTPException(status_code=400, detail="Webhook delivery id was reused with a different payload")
+        return False
+    db.add(WebhookReceipt(idempotency_key=delivery_id, body_sha256=digest))
     try:
-        payload = await request.json()
-    except Exception:
-        payload = {}
-    return {"ack": True, "received_payload": payload}
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        return False
+    return True
 
 
 @router.post("/resend")
-async def resend_webhook(request: Request):
-    """
-    Handle Resend email delivery webhooks.
-    
-    This endpoint receives webhook events from Resend such as:
-    - Email delivery status
-    - Bounces
-    - Complaints
-    - Opens/Clicks
-    
-    Reference: https://resend.com/docs/api-reference/webhooks
-    """
+async def resend_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """Handle authenticated Resend delivery events with replay protection."""
+    secret = settings.RESEND_WEBHOOK_SECRET.strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail="RESEND_WEBHOOK_SECRET is not configured")
+
+    body = await request.body()
+    delivery_id = request.headers.get("svix-id", "")
+    timestamp = request.headers.get("svix-timestamp", "")
+    signature = request.headers.get("svix-signature", "")
+    if not verify_resend_signature(body, secret, delivery_id, timestamp, signature):
+        raise HTTPException(status_code=401, detail="Invalid Resend webhook signature")
+
+    is_new = await _reserve_webhook_delivery(delivery_id, body, db)
+    if not is_new:
+        return {"received": True, "idempotent": True}
+
     try:
-        # Verify webhook signature if RESEND_WEBHOOK_SECRET is set
-        # For now, we'll just log the event
-        payload = await request.json()
-        logger.info(f"Resend webhook received: {payload}")
-        
-        # Process the webhook event
-        event_type = payload.get("type")
-        event_data = payload.get("data", {})
-        
-        if event_type == "email.delivered":
-            logger.info(f"Email delivered: {event_data.get('email_id')}")
-        elif event_type == "email.bounced":
-            logger.warning(f"Email bounced: {event_data.get('email_id')}, reason: {event_data.get('reason')}")
-        elif event_type == "email.complained":
-            logger.warning(f"Email complained: {event_data.get('email_id')}")
-        elif event_type == "email.opened":
-            logger.info(f"Email opened: {event_data.get('email_id')}")
-        elif event_type == "email.clicked":
-            logger.info(f"Email clicked: {event_data.get('email_id')}")
-        
-        return JSONResponse(content={"received": True}, status_code=200)
-        
-    except Exception as e:
-        logger.error(f"Error processing Resend webhook: {str(e)}")
-        return JSONResponse(content={"error": "Webhook processing failed"}, status_code=500)
+        payload = __import__("json").loads(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid Resend webhook payload") from exc
+
+    event_type = payload.get("type", "unknown")
+    logger.info("Resend webhook received: delivery_id=%s type=%s", delivery_id, event_type)
+    return {"received": True, "idempotent": False}
 
 
 @router.post("/github")
 async def github_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """
-    Receive incoming GitHub push webhook events.
-    If the push event is on the main/configured branch of a repository
-    that matches a workspace's `selected_repo`, trigger a Coolify build redeployment.
-    """
+    """Receive authenticated GitHub push events and trigger configured builds."""
+    secret = settings.GITHUB_WEBHOOK_SECRET.strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail="GITHUB_WEBHOOK_SECRET is not configured")
+
+    body = await request.body()
+    signature = request.headers.get("x-hub-signature-256", "")
+    delivery_id = request.headers.get("x-github-delivery", "")
+    if not verify_github_signature(body, secret, signature):
+        raise HTTPException(status_code=401, detail="Invalid GitHub webhook signature")
+    if not delivery_id:
+        raise HTTPException(status_code=400, detail="Missing GitHub delivery id")
+
+    is_new = await _reserve_webhook_delivery(delivery_id, body, db)
+    if not is_new:
+        return {"received": True, "idempotent": True, "triggered_workspaces": []}
+
     try:
-        payload = await request.json()
-        logger.info(f"GitHub webhook received: {payload}")
-        
-        repository = payload.get("repository", {})
-        repo_full_name = repository.get("full_name")
-        ref = payload.get("ref", "")
-        
-        if not repo_full_name or not ref:
-            return JSONResponse(content={"ignored": True, "reason": "Not a push event or missing repository info"}, status_code=200)
-            
-        branch = ref.split("/")[-1]
-        
-        # Find all workspaces that have this repository selected
-        result = await db.execute(select(Workspace).where(Workspace.selected_repo == repo_full_name))
-        workspaces = result.scalars().all()
-        
-        if not workspaces:
-            return JSONResponse(content={"ignored": True, "reason": f"No active workspaces have repository '{repo_full_name}' selected"}, status_code=200)
-            
-        triggered = []
-        for ws in workspaces:
-            expected_branch = ws.selected_repo_branch or "main"
-            if branch != expected_branch:
-                logger.info(f"Branch mismatch for workspace {ws.id}: got '{branch}', expected '{expected_branch}'")
-                continue
-                
-            if ws.id == "default":
-                # Root workspace triggers a server build
-                coolify_token = os.getenv("COOLIFY_API_TOKEN")
-                coolify_url = os.getenv("COOLIFY_SERVER_URL", "http://5.78.135.11:8000")
-                resource_uuid = os.getenv("COOLIFY_RESOURCE_UUID")
-                
-                status = "success"
-                error_msg = ""
-                
-                if coolify_token and resource_uuid:
-                    try:
-                        url = f"{coolify_url.rstrip('/')}/api/v1/deploy"
-                        params = {"uuid": resource_uuid, "force": "true"}
-                        headers = {"Authorization": f"Bearer {coolify_token}"}
-                        
-                        async with httpx.AsyncClient() as client:
-                            resp = await client.get(url, params=params, headers=headers, timeout=10.0)
-                            if resp.status_code not in (200, 201):
-                                status = "failed"
-                                error_msg = f"Coolify API returned {resp.status_code}: {resp.text}"
-                    except Exception as e:
-                        status = "failed"
-                        error_msg = f"Failed to connect to Coolify: {str(e)}"
-                else:
-                    status = "failed"
-                    error_msg = "Coolify environment variables not configured"
-                    
-                new_dep = Deployment(
-                    id=str(uuid.uuid4()),
-                    workspace_id=ws.id,
-                    name=f"GitHub Auto-Deploy ({branch})",
-                    deployment_type="web",
-                    endpoint_url="https://veklom.com",
-                    status="live" if status == "success" else "failed",
-                    config_json={
-                        "trigger": "github_webhook",
-                        "branch": branch,
-                        "repo": repo_full_name,
-                        "error": error_msg,
-                        "canary_active": False,
-                        "region": "hetzner-fsn1",
-                    }
-                )
-                db.add(new_dep)
+        payload = __import__("json").loads(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid GitHub webhook payload") from exc
+
+    repository = payload.get("repository", {})
+    repo_full_name = repository.get("full_name")
+    ref = payload.get("ref", "")
+    event_type = request.headers.get("x-github-event", "push")
+    logger.info("GitHub webhook received: delivery_id=%s event=%s repo=%s", delivery_id, event_type, repo_full_name)
+
+    if event_type != "push" or not repo_full_name or not ref:
+        return {"ignored": True, "reason": "Not an actionable push event"}
+
+    branch = ref.split("/")[-1]
+    result = await db.execute(select(Workspace).where(Workspace.selected_repo == repo_full_name))
+    workspaces = result.scalars().all()
+    if not workspaces:
+        return {"ignored": True, "reason": "No configured workspace matched this repository"}
+
+    triggered = []
+    for ws in workspaces:
+        expected_branch = ws.selected_repo_branch or "main"
+        if branch != expected_branch:
+            continue
+
+        if ws.id == "default":
+            coolify_token = os.getenv("COOLIFY_API_TOKEN")
+            coolify_url = os.getenv("COOLIFY_SERVER_URL", "http://5.78.135.11:8000")
+            resource_uuid = os.getenv("COOLIFY_RESOURCE_UUID")
+            status = "success"
+            error_msg = ""
+            if not coolify_token or not resource_uuid:
+                status = "failed"
+                error_msg = "Coolify environment variables not configured"
             else:
-                # Tenant workspace triggers an asset sync (mocked robustly for MVP)
-                from backend.db.models.pipelines import Pipeline
-                from backend.db.models.agent import Agent
-                for i in range(2):
-                    db.add(Agent(
-                        id=f"ag_{uuid.uuid4().hex[:12]}",
-                        workspace_id=ws.id,
-                        name=f"Synced Agent {i+1} from {repo_full_name.split('/')[-1]}",
-                        description="Automatically synced via GitHub webhook.",
-                        status="active"
-                    ))
-                db.add(Pipeline(
-                    id=f"pipe_{uuid.uuid4().hex[:12]}",
+                try:
+                    url = f"{coolify_url.rstrip('/')}/api/v1/deploy"
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(
+                            url,
+                            params={"uuid": resource_uuid, "force": "true"},
+                            headers={"Authorization": f"Bearer {coolify_token}"},
+                            timeout=10.0,
+                        )
+                    if resp.status_code not in (200, 201):
+                        status = "failed"
+                        error_msg = f"Coolify API returned {resp.status_code}"
+                except Exception:
+                    status = "failed"
+                    error_msg = "Coolify deployment request failed"
+
+            db.add(Deployment(
+                id=str(uuid.uuid4()),
+                workspace_id=ws.id,
+                name=f"GitHub Auto-Deploy ({branch})",
+                deployment_type="web",
+                endpoint_url="https://veklom.com",
+                status="live" if status == "success" else "failed",
+                config_json={"trigger": "github_webhook", "branch": branch, "repo": repo_full_name, "error": error_msg},
+            ))
+        else:
+            from backend.db.models.pipelines import Pipeline
+            from backend.db.models.agent import Agent
+            for i in range(2):
+                db.add(Agent(
+                    id=f"ag_{uuid.uuid4().hex[:12]}",
                     workspace_id=ws.id,
-                    name=f"Synced Pipeline 1",
+                    name=f"Synced Agent {i + 1} from {repo_full_name.split('/')[-1]}",
                     description="Automatically synced via GitHub webhook.",
-                    status="active"
+                    status="active",
                 ))
-            
-            triggered.append(ws.id)
-            
-        await db.commit()
-        return JSONResponse(content={"received": True, "triggered_workspaces": triggered}, status_code=200)
-        
-    except Exception as e:
-        logger.error(f"Error processing GitHub webhook: {str(e)}")
-        return JSONResponse(content={"error": f"Webhook processing failed: {str(e)}"}, status_code=500)
+            db.add(Pipeline(
+                id=f"pipe_{uuid.uuid4().hex[:12]}",
+                workspace_id=ws.id,
+                name="Synced Pipeline 1",
+                description="Automatically synced via GitHub webhook.",
+                status="active",
+            ))
+        triggered.append(ws.id)
+
+    await db.commit()
+    return {"received": True, "triggered_workspaces": triggered}
 
 
 @router.get("/endpoints")

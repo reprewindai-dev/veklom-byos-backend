@@ -72,6 +72,7 @@ orjson==3.11.9
 packaging==25.0
 parsimonious==0.10.0
 passlib==1.7.4
+pyotp==2.9.0
 pgvector==0.3.6
 posthog==7.20.5
 prompt_toolkit==3.0.52

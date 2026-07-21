@@ -1,39 +1,27 @@
-from fastapi import Request, HTTPException, status
 import hashlib
-import json
+
+from fastapi import HTTPException, Request, status
 
 
 async def require_payment_proof(request: Request) -> dict:
+    """Require proof that the x402 middleware completed payment verification.
+
+    Caller-controlled headers are metadata only; they are never accepted as proof
+    without the middleware's verified request state.
     """
-    Dependency that extracts and validates standard or legacy x402 payment proof headers.
-    Checks payment-signature, Payment-Signature, X-Payment-Proof, and X-Payment.
-    """
-    proof_header = (
-        request.headers.get("x-payment") or 
-        request.headers.get("X-Payment") or 
-        request.headers.get("X-PAYMENT") or 
-        request.headers.get("payment-signature") or 
-        request.headers.get("Payment-Signature") or 
-        request.headers.get("X-Payment-Proof")
-    )
-    if not proof_header:
+    if not getattr(request.state, "x402_verified", False):
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Missing X-PAYMENT or payment-signature header for governed execution."
+            detail="Verified payment is required for governed execution.",
         )
-    
-    try:
-        # For our local/development environment, we expect a JSON encoded proof
-        proof = json.loads(proof_header)
-        
-        # Enforce that the proof has required tracking metadata
-        if "payment_proof_hash" not in proof and "proof_hash" not in proof:
-            proof["payment_proof_hash"] = hashlib.sha256(proof_header.encode()).hexdigest()
-            
-        return proof
-    except json.JSONDecodeError:
-        # Fallback to returning a synthetic proof dict from the raw header
-        return {
-            "payment_proof_hash": hashlib.sha256(proof_header.encode()).hexdigest(),
-            "raw": proof_header
-        }
+
+    proof_header = (
+        request.headers.get("x-payment")
+        or request.headers.get("payment-signature")
+        or request.headers.get("x-payment-proof")
+    )
+    proof_hash = getattr(request.state, "x402_proof_hash", None)
+    return {
+        "payment_proof_hash": proof_hash or hashlib.sha256((proof_header or "").encode()).hexdigest(),
+        "verified": True,
+    }

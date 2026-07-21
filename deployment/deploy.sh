@@ -276,8 +276,8 @@ main() {
     esac
 }
 
-# Trap signals for cleanup
-trap cleanup EXIT
+# Cleanup is explicit via the cleanup subcommand; deployments must not tear down
+# the currently running stack merely because a build or health check failed.
 
 # Run main function
 main "$@"

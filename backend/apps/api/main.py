@@ -278,255 +278,14 @@ async def lifespan(app: FastAPI):
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
 
-    # Initialize database schema.  We log loud + structured because a silent
-    # success here used to mask cases where the metadata object had zero
-    # tables registered (because of import order) or the connection pointed
-    # at the wrong DB.  Now we always count what was registered and verify
-    # at least the critical tables landed.
+    # Schema is owned by Alembic. Startup must never mutate production schema.
+    # Deployment runs `alembic upgrade head` before replacing the application.
     try:
-        async with engine.begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        print("[startup] db: Extension 'vector' created or already exists")
-    except Exception as ext_err:
-        print(f"[startup] db: Warning — Could not enable 'vector' extension: {ext_err}. Dynamic vector fallbacks will be used.")
-
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-            registered = sorted(Base.metadata.tables.keys())
-            print(f"[startup] db: create_all completed, {len(registered)} tables on Base.metadata")
-            from sqlalchemy import inspect
-            critical = ("users", "execution_logs", "audit_logs", "workspaces", "agents")
-            
-            def get_present_tables(sync_conn):
-                return inspect(sync_conn).get_table_names()
-            
-            present_tables = await conn.run_sync(get_present_tables)
-            present = set(present_tables)
-            missing = [t for t in critical if t not in present]
-            if missing:
-                print(f"[startup] db: WARNING — critical tables missing after create_all: {missing}")
-            else:
-                print(f"[startup] db: critical tables verified ({len(critical)} present)")
-    except Exception as e:
-        # Loud error so it shows up in container logs and Sentry.
-        import traceback
-        print(f"[startup] db: FAILED to initialise schema: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        # Continue startup — but the operator now sees the error.
-
-    # Idempotent column additions for HRM fields on the `agents` table.
-    # `create_all` only creates new tables, not new columns on existing ones.
-    # These ALTER TABLE ... ADD COLUMN IF NOT EXISTS statements are safe to
-    # re-run on every startup.
-    hrm_columns = [
-        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS hrm_tier VARCHAR(32)",
-        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_number INTEGER",
-        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS squad_id VARCHAR(64)",
-        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS capabilities JSONB",
-        "CREATE INDEX IF NOT EXISTS ix_agents_hrm_tier ON agents (hrm_tier)",
-        "CREATE INDEX IF NOT EXISTS ix_agents_agent_number ON agents (agent_number)",
-        "CREATE INDEX IF NOT EXISTS ix_agents_squad_id ON agents (squad_id)",
-    ]
-    try:
-        async with engine.begin() as conn:
-            for ddl in hrm_columns:
-                await conn.execute(text(ddl))
-        print("[startup] db: HRM column migration completed")
-    except Exception as e:
-        print(f"[startup] db: HRM migration warning: {type(e).__name__}: {e}")
-
-    # Idempotent column additions for workspaces (GitHub selection fields)
-    workspace_github_columns = [
-        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS selected_repo VARCHAR(255)",
-        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS selected_repo_branch VARCHAR(128)",
-        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_provider VARCHAR(64)",
-        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_selected_by VARCHAR(36)",
-        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_selected_at TIMESTAMP",
-    ]
-    try:
-        async with engine.begin() as conn:
-            for ddl in workspace_github_columns:
-                await conn.execute(text(ddl))
-        print("[startup] db: Workspace GitHub column migration completed")
-    except Exception as e:
-        print(f"[startup] db: Workspace GitHub migration warning: {type(e).__name__}: {e}")
-
-    # Idempotent column additions for pipeline_runs
-    pipeline_run_columns = [
-        "ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(36)",
-        "ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)",
-        "ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS steps JSONB",
-    ]
-    try:
-        async with engine.begin() as conn:
-            for ddl in pipeline_run_columns:
-                await conn.execute(text(ddl))
-        print("[startup] db: PipelineRun column migration completed")
-    except Exception as e:
-        print(f"[startup] db: PipelineRun migration warning: {type(e).__name__}: {e}")
-
-    # Idempotent column additions for vnp_apis
-    vnp_api_columns = [
-        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS x402_ready BOOLEAN DEFAULT false",
-        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS pricing_model VARCHAR(50) DEFAULT 'metered'",
-        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS current_composite_score FLOAT DEFAULT 100.0",
-        "ALTER TABLE vnp_apis ADD COLUMN IF NOT EXISTS stability_rating VARCHAR(50) DEFAULT 'Stable'",
-    ]
-    try:
-        async with engine.begin() as conn:
-            for ddl in vnp_api_columns:
-                await conn.execute(text(ddl))
-        print("[startup] db: vnp_apis column migration completed")
-    except Exception as e:
-        print(f"[startup] db: vnp_apis migration warning: {type(e).__name__}: {e}")
-
-    # Idempotent column additions for VNP physical probe events.
-    # Earlier production tables used the v0.1.16 physical-probe shape
-    # (occurred_at/api_region_code/signature_value/total_ms). The current
-    # ORM/card surface reads the normalized v1.0 names below, so preserve and
-    # map old probe evidence forward on every startup.
-    vnp_probe_event_columns = [
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS partition_key VARCHAR(20)",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS region VARCHAR(50)",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS worker_signature TEXT",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS latency_ms FLOAT",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS http_version VARCHAR(10)",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS tls_version VARCHAR(20)",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS error_reason VARCHAR(255)",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS measured_at TIMESTAMPTZ",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS evidence_hash VARCHAR",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS provenance_hash VARCHAR",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS cryptography_anchor VARCHAR",
-        "ALTER TABLE vnp_probe_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
-        """
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'vnp_probe_events' AND column_name = 'occurred_at'
-            ) THEN
-                EXECUTE 'UPDATE vnp_probe_events SET measured_at = COALESCE(measured_at, occurred_at) WHERE measured_at IS NULL';
-            END IF;
-
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'vnp_probe_events' AND column_name = 'received_at'
-            ) THEN
-                EXECUTE 'UPDATE vnp_probe_events SET created_at = COALESCE(created_at, received_at) WHERE created_at IS NULL';
-            END IF;
-
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'vnp_probe_events' AND column_name = 'api_region_code'
-            ) THEN
-                EXECUTE 'UPDATE vnp_probe_events SET region = COALESCE(region, api_region_code) WHERE region IS NULL';
-            END IF;
-
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'vnp_probe_events' AND column_name = 'signature_value'
-            ) THEN
-                EXECUTE 'UPDATE vnp_probe_events SET worker_signature = COALESCE(worker_signature, signature_value) WHERE worker_signature IS NULL';
-            END IF;
-
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'vnp_probe_events' AND column_name = 'total_ms'
-            ) THEN
-                EXECUTE 'UPDATE vnp_probe_events SET latency_ms = COALESCE(latency_ms, total_ms::float) WHERE latency_ms IS NULL';
-            END IF;
-
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'vnp_probe_events' AND column_name = 'error_class'
-            ) THEN
-                EXECUTE 'UPDATE vnp_probe_events SET error_reason = COALESCE(error_reason, error_class) WHERE error_reason IS NULL';
-            END IF;
-        END $$;
-        """,
-        "UPDATE vnp_probe_events SET measured_at = COALESCE(measured_at, now()) WHERE measured_at IS NULL",
-        "UPDATE vnp_probe_events SET created_at = COALESCE(created_at, now()) WHERE created_at IS NULL",
-        "UPDATE vnp_probe_events SET partition_key = COALESCE(partition_key, to_char(measured_at, 'YYYY-MM')) WHERE partition_key IS NULL",
-        "UPDATE vnp_probe_events SET region = COALESCE(region, 'unknown') WHERE region IS NULL",
-        "UPDATE vnp_probe_events SET worker_signature = COALESCE(worker_signature, '') WHERE worker_signature IS NULL",
-        "UPDATE vnp_probe_events SET latency_ms = COALESCE(latency_ms, 0) WHERE latency_ms IS NULL",
-        "CREATE INDEX IF NOT EXISTS idx_probe_events_api_region_measured_at ON vnp_probe_events (api_id, region, measured_at)",
-        "CREATE INDEX IF NOT EXISTS idx_vnp_node_heartbeats_node_sequence ON vnp_node_heartbeats (node_id, sequence DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_vnp_node_heartbeats_node_timestamp ON vnp_node_heartbeats (node_id, timestamp DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_vnp_observations_node_sequence ON vnp_observations (node_id, sequence DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_vnp_observations_node_created_at ON vnp_observations (node_id, created_at DESC)",
-    ]
-    try:
-        async with engine.begin() as conn:
-            for ddl in vnp_probe_event_columns:
-                await conn.execute(text(ddl))
-        print("[startup] db: vnp_probe_events compatibility migration completed")
-    except Exception as e:
-        print(f"[startup] db: vnp_probe_events migration warning: {type(e).__name__}: {e}")
-
-    vnp_regional_telemetry_columns = [
-        "ALTER TABLE vnp_regional_telemetry ADD COLUMN IF NOT EXISTS provenance_hash VARCHAR",
-        "ALTER TABLE vnp_regional_telemetry ADD COLUMN IF NOT EXISTS on_chain_anchor VARCHAR",
-    ]
-    try:
-        async with engine.begin() as conn:
-            for ddl in vnp_regional_telemetry_columns:
-                await conn.execute(text(ddl))
-        print("[startup] db: vnp_regional_telemetry compatibility migration completed")
-    except Exception as e:
-        print(f"[startup] db: vnp_regional_telemetry migration warning: {type(e).__name__}: {e}")
-
-    # Idempotent column additions for vnp_claim_requests
-    vnp_claim_requests_columns = [
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(200) DEFAULT 'public'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS api_domain VARCHAR(255) DEFAULT 'unknown.local'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS provider_name VARCHAR(255) DEFAULT 'Unknown Provider'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS api_name VARCHAR(255) DEFAULT 'Unknown API'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS base_url VARCHAR(500) DEFAULT 'https://api.unknown.com'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS health_path VARCHAR(255) DEFAULT '/health'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS company_name VARCHAR(255) DEFAULT 'Unknown Company'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255) DEFAULT 'unknown@veklom.com'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS pgl_provider_id VARCHAR(200)",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS pgl_certificate_id VARCHAR(200)",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS dns_record VARCHAR(255) DEFAULT ''",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS dns_value VARCHAR(255) DEFAULT ''",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'submitted'",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ",
-        "ALTER TABLE vnp_claim_requests ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (now() + interval '30 days')",
-        "UPDATE vnp_claim_requests SET workspace_id = COALESCE(workspace_id, 'public') WHERE workspace_id IS NULL",
-        "UPDATE vnp_claim_requests SET api_domain = COALESCE(api_domain, 'unknown.local') WHERE api_domain IS NULL",
-        "UPDATE vnp_claim_requests SET company_name = COALESCE(company_name, 'Unknown Company') WHERE company_name IS NULL",
-        "UPDATE vnp_claim_requests SET contact_email = COALESCE(contact_email, 'unknown@veklom.com') WHERE contact_email IS NULL",
-        "UPDATE vnp_claim_requests SET dns_record = COALESCE(dns_record, '') WHERE dns_record IS NULL",
-        "UPDATE vnp_claim_requests SET dns_value = COALESCE(dns_value, '') WHERE dns_value IS NULL",
-        "UPDATE vnp_claim_requests SET status = COALESCE(status, 'submitted') WHERE status IS NULL",
-        "UPDATE vnp_claim_requests SET created_at = COALESCE(created_at, now()) WHERE created_at IS NULL",
-        "UPDATE vnp_claim_requests SET expires_at = COALESCE(expires_at, now() + interval '30 days') WHERE expires_at IS NULL",
-    ]
-    try:
-        async with engine.begin() as conn:
-            for ddl in vnp_claim_requests_columns:
-                await conn.execute(text(ddl))
-        print("[startup] db: vnp_claim_requests column migration completed")
-    except Exception as e:
-        print(f"[startup] db: vnp_claim_requests migration warning: {type(e).__name__}: {e}")
-
-    # Idempotent column additions for PGL tables
-    pgl_columns = [
-        "ALTER TABLE pgl_certificates ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
-        "ALTER TABLE pgl_ledger_events ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
-        "ALTER TABLE birth_certificates ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
-        "ALTER TABLE genome_versions ADD COLUMN IF NOT EXISTS pgl_identity_id VARCHAR(36)",
-    ]
-    try:
-        async with engine.begin() as conn:
-            for ddl in pgl_columns:
-                await conn.execute(text(ddl))
-        print("[startup] db: PGL column migration completed")
-    except Exception as e:
-        print(f"[startup] db: PGL migration warning: {type(e).__name__}: {e}")
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.exception("[startup] database readiness check failed")
+        raise RuntimeError("Database is not ready; refusing to start") from exc
 
     # Seed first-class skills that should always be present in the registry.
     # Skills with is_available=False are catalogued but NOT invokable.
@@ -792,19 +551,6 @@ if has_valid_endpoint and has_valid_headers:
     FastAPIInstrumentor.instrument_app(app)
     HTTPXClientInstrumentor().instrument()
 
-# --- Middleware ---
-# allow_origin_regex lets the VEKLOM-CORE-LIVE applet (Google AI Studio / Cloud Run /
-# Firebase Hosting) and *.veklom.com call the API cross-origin, in addition to the
-# explicit CORS_ORIGINS list. Regex (not "*") keeps allow_credentials valid.
-_CORS_ORIGIN_REGEX = (
-    r"https://"
-    r"(?:"
-    r"([a-z0-9-]+\.)*veklom\.com|"                  # Veklom domains
-    r"([a-z0-9-]+\.)*(usercontent\.goog|aistudio\.google\.com)|" # AI Studio sandboxes
-    r"veklom-core-live(-[a-z0-9]+)?\.([a-z0-9-]+\.)*(run\.app|web\.app|firebaseapp\.com|vercel\.app)" # Shared hosting strictly for veklom-core-live
-    r")$"
-)
-
 from starlette.middleware.base import BaseHTTPMiddleware
 
 class X402DiscoverableMiddleware(BaseHTTPMiddleware):
@@ -847,7 +593,7 @@ def _trusted_hosts() -> list[str]:
     }
 
     allow_wildcard = "*" in host_list
-    if allow_wildcard or settings.DEBUG or os.getenv("COOLIFY_RESOURCE_UUID"):
+    if allow_wildcard and settings.APP_ENV != "production":
         return ["*"]
 
     internal_hosts = set()
@@ -887,12 +633,7 @@ app.add_middleware(X402PaymentMiddleware)
 
 # --- Exception handlers ---
 def _add_cors_headers(request: Request, response):
-    origin = request.headers.get("origin")
-    if origin:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, x-vnp-stake"
+    # Starlette CORSMiddleware owns CORS responses. Never reflect arbitrary origins.
     return response
 
 @app.exception_handler(404)
@@ -2357,11 +2098,26 @@ app.include_router(conversation_memory.router, prefix="/api/v1")
 
 # Layer 5: Ev
 
-app.add_middleware(CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_origin_regex=_CORS_ORIGIN_REGEX,
+def _cors_origins() -> list[str]:
+    configured = settings.CORS_ORIGINS
+    if isinstance(configured, str):
+        origins = [origin.strip() for origin in configured.split(",") if origin.strip()]
+    else:
+        origins = [str(origin).strip() for origin in (configured or []) if str(origin).strip()]
+    required = {
+        "https://control.veklom.com",
+        "https://veklom-control-plane.vercel.app",
+    }
+    if settings.APP_ENV != "production":
+        required.update({"http://localhost:3000", "http://testserver"})
+    return sorted(set(origins) | required)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-VNP-Stake-Result", "X-VNP-Signature", "X-Veklom-Receipt-ID"]
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Payment", "X-Payment-Proof", "X-VNP-Stake"],
+    expose_headers=["X-VNP-Stake-Result", "X-VNP-Signature", "X-Veklom-Receipt-ID"],
 )

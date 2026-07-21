@@ -55,7 +55,7 @@ jobs:
             -e SECRET_KEY="ci-test-secret-key-not-real" \
             -e ENVIRONMENT="test" \
             veklom-backend-ci:${{ github.sha }} \
-            bash -c "pip install pytest pytest-asyncio httpx && python -m pytest tests/ -v || echo 'Tests missing or skipped'"
+            bash -c "pip install --no-cache-dir pytest pytest-asyncio httpx && python -m pytest backend/tests/ -v"
 
       - name: Validate all Python imports start clean
         run: |
@@ -146,7 +146,9 @@ jobs:
           ENVFILE=/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env
 
           cd $APP
-          git pull origin main
+          git fetch origin "$SHA"
+          git checkout --detach "$SHA"
+          test "$(git rev-parse HEAD)" = "$SHA"
 
           echo "--- Building image ---"
           docker build -t "$IMAGE" -t "$COOLIFY_IMAGE" .
@@ -204,7 +206,7 @@ jobs:
           for name in "$PUBLIC_SERVICE" "$HELPER_CONTAINER"; do
             for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
               STATUS=$(docker inspect "$name" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')
-              if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "running" ]; then
+              if [ "$STATUS" = "healthy" ]; then
                 echo "$name is $STATUS"
                 break
               fi
@@ -221,7 +223,7 @@ jobs:
         run: |
           sleep 12
           for i in 1 2 3; do
-            HTTP=$(curl -sk https://api.veklom.com/health -o /dev/null -w '%{http_code}')
+            HTTP=$(curl -sk https://api.veklom.com/ready -o /dev/null -w '%{http_code}')
             if [ "$HTTP" = "200" ]; then
               echo "api.veklom.com healthy (attempt $i)"
               exit 0

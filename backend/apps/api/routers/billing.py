@@ -7,6 +7,7 @@ from typing import Optional
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user
-from backend.db.models.billing import BudgetRule, Invoice, Subscription, WalletTransaction
+from backend.db.models.billing import BudgetRule, Invoice, Subscription, WalletTransaction, WebhookReceipt
 from backend.db.models.security import KillSwitchState
 from backend.db.models.ledger import SettlementLedger
 
@@ -53,6 +54,36 @@ def _stripe_client():
 def _success_cancel_urls() -> tuple[str, str]:
     frontend = settings.FRONTEND_URL.rstrip('/')
     return f"{frontend}/control-plane-next/billing/?checkout=success", f"{frontend}/control-plane-next/billing/?checkout=cancelled"
+
+
+TOPUP_AMOUNTS_USD = (50, 100, 250, 500)
+
+
+async def require_billing_admin(user=Depends(get_current_user)):
+    role = (getattr(user, "role", "") or "").upper()
+    if role not in {"OWNER", "ADMIN", "SUPER_ADMIN"} and not getattr(user, "is_superuser", False):
+        raise HTTPException(status_code=403, detail="Billing administrator access required")
+    return user
+
+
+def _plan_amount_cents(plan_id: str) -> int:
+    plan = PLAN_AMOUNTS.get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Unknown subscription plan")
+    amount = int(plan.get("monthly") or plan.get("amount") or 0)
+    if amount < 100:
+        raise HTTPException(status_code=400, detail="Selected plan is not purchasable")
+    return amount
+
+
+def _topup_amount_cents(amount: object) -> int:
+    try:
+        amount_usd = float(amount)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid top-up amount") from exc
+    if amount_usd not in TOPUP_AMOUNTS_USD:
+        raise HTTPException(status_code=400, detail="Top-up amount is not an approved option")
+    return int(amount_usd * 100)
 
 
 def _checkout_amount(amount_usd: float | int) -> int:
@@ -120,7 +151,7 @@ async def topup_options(user=Depends(get_current_user)):
 @router.post("/wallet/topup/checkout")
 async def topup_checkout(body: dict, user=Depends(get_current_user)):
     client = _stripe_client()
-    amount = _checkout_amount(body.get("amount", 50))
+    amount = _topup_amount_cents(body.get("amount", 50))
     success_url, cancel_url = _success_cancel_urls()
     session = client.checkout.Session.create(
         mode="payment",
@@ -353,24 +384,17 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
     if plan_id == "enterprise":
         return {"url": None, "message": "Enterprise pricing is custom - contact sales@veklom.com", "plan": "enterprise"}
 
-    # Check if Stripe is configured, else fallback gracefully for demo/testing
+    if plan_id not in PLAN_AMOUNTS:
+        raise HTTPException(status_code=400, detail="Unknown subscription plan")
     if not _stripe_ready():
-        return {
-            "url": f"{settings.FRONTEND_URL.rstrip('/')}/control-plane-next/billing/?checkout=success&plan={plan_id}"
-        }
+        raise HTTPException(status_code=503, detail="Stripe billing is not configured")
 
     try:
         client = _stripe_client()
-        plan = PLAN_AMOUNTS.get(plan_id, {"amount": 24900, "monthly": 24900, "name": "Agency Plan", "description": "Agency Plan"})
-        amount = plan.get("monthly") or plan.get("amount") or 24900
-        
-        if amount == 0:
+        plan = PLAN_AMOUNTS[plan_id]
+        if not (plan.get("monthly") or plan.get("amount")):
             return {"url": None, "message": "This plan is free", "plan": plan_id}
-
-        if body.get("amount"):
-            try: amount = int(round(float(body["amount"]) * 100))
-            except: pass
-        amount = max(amount, 100)
+        amount = _plan_amount_cents(plan_id)
 
         success_url, cancel_url = _success_cancel_urls()
         session_params = dict(
@@ -393,10 +417,11 @@ async def subscription_checkout(body: dict, user=Depends(get_current_user)):
             session = client.checkout.Session.create(**session_params)
             
         return {"url": session.url}
-    except Exception:
-        return {
-            "url": f"{settings.FRONTEND_URL.rstrip('/')}/control-plane-next/billing/?checkout=success&plan_id={plan_id}"
-        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Stripe subscription checkout failed")
+        raise HTTPException(status_code=502, detail="Unable to create subscription checkout") from exc
 
 
 @router.get("/subscriptions/portal")
@@ -597,7 +622,7 @@ async def list_budget_rules(budget_type: Optional[str] = "monthly", user=Depends
 
 
 @router.post("/budget")
-async def create_budget_rule(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_budget_rule(body: dict, user=Depends(require_billing_admin), db: AsyncSession = Depends(get_db)):
     workspace_id = user.workspace_id or ""
     amount = float(body.get("amount", 150.0))
     
@@ -628,7 +653,7 @@ async def create_budget_rule(body: dict, user=Depends(get_current_user), db: Asy
 
 
 @router.delete("/budget/{rule_id}")
-async def delete_budget_rule(rule_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def delete_budget_rule(rule_id: str, user=Depends(require_billing_admin), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(BudgetRule).where(BudgetRule.id == rule_id, BudgetRule.workspace_id == (user.workspace_id or ""))
     )
@@ -807,7 +832,7 @@ async def cost_kill_switch_status(user=Depends(get_current_user), db: AsyncSessi
 
 
 @router.post("/cost/kill-switch")
-async def cost_kill_switch_toggle(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def cost_kill_switch_toggle(body: dict, user=Depends(require_billing_admin), db: AsyncSession = Depends(get_db)):
     workspace_id = user.workspace_id or "default"
     reason = body.get("reason", "Runaway usage detected")
     
@@ -843,7 +868,7 @@ async def cost_kill_switch_toggle(body: dict, user=Depends(get_current_user), db
 
 
 @router.delete("/cost/kill-switch")
-async def cost_kill_switch_disable(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def cost_kill_switch_disable(user=Depends(require_billing_admin), db: AsyncSession = Depends(get_db)):
     workspace_id = user.workspace_id or "default"
     
     result = await db.execute(
@@ -871,7 +896,7 @@ async def create_checkout(body: dict, user=Depends(get_current_user)):
 @router.post("/payments/create-intent")
 async def create_payment_intent(body: dict, user=Depends(get_current_user)):
     client = _stripe_client()
-    amount = _checkout_amount(body.get("amount", 50))
+    amount = _topup_amount_cents(body.get("amount", 50))
     intent = client.PaymentIntent.create(
         amount=amount,
         currency="usd",
@@ -884,10 +909,13 @@ async def create_payment_intent(body: dict, user=Depends(get_current_user)):
 @router.post("/webhooks/stripe")
 @router.post("/subscriptions/webhook")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """Verify and durably reconcile Stripe events exactly once."""
     import os
+
     whsec = os.getenv("STRIPE_WEBHOOK_SECRET_LIVE") or os.getenv("STRIPE_WEBHOOK_SECRET") or settings.STRIPE_WEBHOOK_SECRET
     if not _stripe_ready() or not whsec or not whsec.strip().startswith("whsec_"):
         raise HTTPException(status_code=503, detail="STRIPE_WEBHOOK_SECRET is not configured")
+
     payload = await request.body()
     signature = request.headers.get("stripe-signature", "")
     try:
@@ -897,30 +925,132 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     except stripe.SignatureVerificationError as exc:
         raise HTTPException(status_code=400, detail="Invalid Stripe signature") from exc
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        metadata = session.get("metadata", {})
-        user_id = metadata.get("user_id")
-        amount_total = session.get("amount_total") or 0
-        ws_id = metadata.get("workspace_id") or ""
-        type_ = metadata.get("type")
-        
+    event_id = event.get("id")
+    if not event_id:
+        raise HTTPException(status_code=400, detail="Stripe event id is required")
+    receipt_key = f"stripe:{event_id}"
+    existing = await db.scalar(select(WebhookReceipt).where(WebhookReceipt.idempotency_key == receipt_key))
+    if existing:
+        return {"status": "ok", "idempotent": True}
 
-        # Wallet and Subscription Logic
-    return {"status": "ok"}
+    try:
+        event_type = event.get("type", "")
+        obj = event.get("data", {}).get("object", {})
+        metadata = obj.get("metadata", {}) or {}
+        user_id = metadata.get("user_id") or ""
+        workspace_id = metadata.get("workspace_id") or ""
+
+        if event_type == "checkout.session.completed":
+            session_id = obj.get("id") or event_id
+            amount_total = float(obj.get("amount_total") or 0) / 100
+            kind = metadata.get("type")
+            if kind == "wallet_topup" and amount_total > 0:
+                existing_tx = await db.scalar(
+                    select(WalletTransaction).where(WalletTransaction.reference_id == session_id)
+                )
+                if not existing_tx:
+                    db.add(WalletTransaction(
+                        user_id=user_id,
+                        workspace_id=workspace_id,
+                        amount=amount_total,
+                        tx_type="topup",
+                        description="Stripe wallet top-up",
+                        reference_id=session_id,
+                    ))
+            elif kind == "subscription":
+                stripe_subscription_id = obj.get("subscription") or ""
+                subscription = None
+                if stripe_subscription_id:
+                    subscription = await db.scalar(
+                        select(Subscription).where(Subscription.stripe_subscription_id == stripe_subscription_id)
+                    )
+                if subscription is None:
+                    db.add(Subscription(
+                        user_id=user_id,
+                        workspace_id=workspace_id,
+                        plan=metadata.get("plan", "starter"),
+                        stripe_subscription_id=stripe_subscription_id,
+                        stripe_customer_id=obj.get("customer") or "",
+                        status="active",
+                        activation_fee_paid=True,
+                    ))
+                else:
+                    subscription.status = "active"
+                    subscription.plan = metadata.get("plan", subscription.plan)
+        elif event_type in {"customer.subscription.updated", "customer.subscription.deleted"}:
+            subscription_id = obj.get("id")
+            subscription = await db.scalar(
+                select(Subscription).where(Subscription.stripe_subscription_id == subscription_id)
+            )
+            if subscription:
+                subscription.status = "canceled" if event_type.endswith("deleted") else obj.get("status", subscription.status)
+        elif event_type in {"invoice.paid", "invoice.payment_failed"}:
+            invoice_id = obj.get("id")
+            status_value = "paid" if event_type == "invoice.paid" else "failed"
+            existing_invoice = await db.scalar(
+                select(Invoice).where(Invoice.stripe_invoice_id == invoice_id)
+            )
+            if existing_invoice:
+                existing_invoice.status = status_value
+            else:
+                db.add(Invoice(
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                    stripe_invoice_id=invoice_id or event_id,
+                    amount=float(obj.get("amount_paid") or obj.get("amount_due") or 0) / 100,
+                    status=status_value,
+                    description="Stripe invoice",
+                    pdf_url=obj.get("hosted_invoice_url") or "",
+                ))
+
+        db.add(WebhookReceipt(
+            idempotency_key=receipt_key,
+            body_sha256=__import__("hashlib").sha256(payload).hexdigest(),
+        ))
+        await db.commit()
+        return {"status": "ok", "idempotent": False}
+    except IntegrityError:
+        await db.rollback()
+        return {"status": "ok", "idempotent": True}
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Stripe webhook reconciliation failed")
+        raise HTTPException(status_code=500, detail="Stripe webhook reconciliation failed") from exc
 
 
 @router.post("/webhooks/resend")
-async def resend_webhook(request: Request):
-    """Handle Resend webhook events for email delivery tracking."""
+async def resend_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """Verify Resend delivery events before accepting them."""
+    from backend.core.security.webhook_signatures import verify_resend_signature
+
+    secret = settings.RESEND_WEBHOOK_SECRET.strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail="RESEND_WEBHOOK_SECRET is not configured")
+    body = await request.body()
+    delivery_id = request.headers.get("svix-id", "")
+    if not verify_resend_signature(
+        body,
+        secret,
+        delivery_id,
+        request.headers.get("svix-timestamp", ""),
+        request.headers.get("svix-signature", ""),
+    ):
+        raise HTTPException(status_code=401, detail="Invalid Resend webhook signature")
+    receipt_key = f"resend:{delivery_id}"
+    existing = await db.scalar(select(WebhookReceipt).where(WebhookReceipt.idempotency_key == receipt_key))
+    if existing:
+        return {"status": "ok", "idempotent": True}
     try:
-        payload = await request.json()
-        # Log the webhook event for tracking
-        logger.info(f"Resend webhook received: {payload.get('type', 'unknown')}")
-        return {"status": "ok", "message": "Resend webhook received successfully"}
-    except Exception as exc:
-        logger.error(f"Error processing Resend webhook: {exc}")
+        payload = __import__("json").loads(body)
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid Resend webhook payload") from exc
+    db.add(WebhookReceipt(
+        idempotency_key=receipt_key,
+        body_sha256=__import__("hashlib").sha256(body).hexdigest(),
+    ))
+    await db.commit()
+    logger.info("Resend webhook received: delivery_id=%s type=%s", delivery_id, payload.get("type", "unknown"))
+    return {"status": "ok", "idempotent": False}
 
 
 # --- Payouts ---

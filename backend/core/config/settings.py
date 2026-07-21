@@ -31,9 +31,7 @@ class Settings(BaseSettings):
     API_URL: str = "http://localhost:80"
     API_BASE_URL: str = "http://localhost:80"
     ADMIN_EMAIL: str = "founder@veklom.com"
-    # Platform owner gets unconditional bypass on all x402 payment gates.
-    # Defaults to ADMIN_EMAIL if not explicitly set.
-    PLATFORM_OWNER_EMAIL: str = "reprewindai@gmail.com"
+    PLATFORM_OWNER_EMAIL: str = ""
     VEKLOM_API_BASE: str = "/api/v1"
     AI_CITIZENSHIP_SECRET: str = ""
     ENABLE_MFA: bool = True
@@ -113,7 +111,7 @@ class Settings(BaseSettings):
     ACCOUNT_LOCKOUT_MINUTES: int = 30
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    JWT_AUD_ENFORCEMENT: str = "warn"
+    JWT_AUD_ENFORCEMENT: str = "strict"
     JWT_EXPECTED_AUDIENCE: str = "veklom-api"
     GLOBAL_KILL_SWITCH: bool = False
 
@@ -146,6 +144,8 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    RESEND_WEBHOOK_SECRET: str = ""
+    GITHUB_WEBHOOK_SECRET: str = ""
 
     # Storage (S3/MinIO)
     S3_ENDPOINT_URL: str = "http://minio:9000"

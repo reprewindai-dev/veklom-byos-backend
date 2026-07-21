@@ -71,7 +71,7 @@ def sample_run():
     )
 
 @pytest.mark.anyio
-async def test_evaluate_intent_with_capi_approved(mock_db, sample_agent, sample_bundle, sample_run):
+async def test_evaluate_intent_without_amphoteric_context_is_blocked(mock_db, sample_agent, sample_bundle, sample_run):
     # Mock database queries to return our test agent, bundle, and run
     async def mock_execute(query):
         mock_val = MagicMock()
@@ -89,20 +89,20 @@ async def test_evaluate_intent_with_capi_approved(mock_db, sample_agent, sample_
 
     mock_db.execute = AsyncMock(side_effect=mock_execute)
 
-    result = await _evaluate_intent_with_capi(
-        agent_id="agent-bg-001",
-        action="fs.read",
-        target_protocol="pipeline_step",
-        payload={"path": "/app/config.json"},
-        workspace_id="test-workspace",
-        db=mock_db
-    )
+    with pytest.raises(ValueError, match="MISSING_AMPHOTERIC_CONTEXT"):
+        await _evaluate_intent_with_capi(
+            agent_id="agent-bg-001",
+            action="fs.read",
+            target_protocol="pipeline_step",
+            payload={"path": "/app/config.json"},
+            workspace_id="test-workspace",
+            db=mock_db,
+        )
 
-    assert result["status"] == "approved"
-    assert sample_run.approved_actions == 1
+    assert sample_run.approved_actions == 0
     assert sample_run.total_actions == 1
-    # Check self-learning trust score reward (should increase slightly but cap at 100)
-    assert sample_agent.metadata_json["trust_score"] == 86
+    assert sample_run.denied_actions == 1
+    assert sample_agent.metadata_json["trust_score"] == 75
 
 @pytest.mark.anyio
 async def test_evaluate_intent_with_capi_denied(mock_db, sample_agent, sample_bundle, sample_run):
@@ -138,7 +138,7 @@ async def test_evaluate_intent_with_capi_denied(mock_db, sample_agent, sample_bu
 
 @pytest.mark.anyio
 @patch("backend.core.services.autonomous_worker.get_db_session")
-async def test_execute_pipeline_node_gated_success(mock_get_db, mock_db, sample_agent, sample_bundle, sample_run):
+async def test_execute_pipeline_node_without_context_is_blocked(mock_get_db, mock_db, sample_agent, sample_bundle, sample_run):
     mock_get_db.return_value.__aenter__.return_value = mock_db
     
     async def mock_execute(query):
@@ -164,10 +164,10 @@ async def test_execute_pipeline_node_gated_success(mock_get_db, mock_db, sample_
         "text": ""
     }
 
-    result = await _execute_pipeline_node(step, context)
-    assert result["trace"][0]["result"]["kind"] == "input"
-    assert context["text"] == "Hello sovereign runtime"
-    assert sample_run.approved_actions == 1
+    with pytest.raises(ValueError, match="MISSING_AMPHOTERIC_CONTEXT"):
+        await _execute_pipeline_node(step, context)
+    assert context["text"] == ""
+    assert sample_run.approved_actions == 0
 
 @pytest.mark.anyio
 @patch("backend.core.services.autonomous_worker._update_job_state")
@@ -210,15 +210,11 @@ async def test_run_gpc_background_gated(mock_get_db, mock_run_comp, mock_update_
         model="gpt-4o"
     )
 
-    # Check GPC step is audited & approved
-    assert sample_run.approved_actions == 1
-    
-    # Verify job completed successfully with proof_hash
-    completed_calls = [
+    # Missing verified transport context must prevent execution.
+    assert sample_run.approved_actions == 0
+
+    blocked_calls = [
         args[1] for args, kwargs in mock_update_job.call_args_list
-        if args[0] == "gpc-tx-123" and args[1].get("status") == "COMPLETED"
+        if args[0] == "gpc-tx-123" and args[1].get("status") == "FAILED"
     ]
-    assert len(completed_calls) > 0
-    assert completed_calls[0]["progress"] == 100
-    assert completed_calls[0]["destination_node"] == "node-gpc-1"
-    assert "proof_hash" in completed_calls[0]
+    assert len(blocked_calls) > 0

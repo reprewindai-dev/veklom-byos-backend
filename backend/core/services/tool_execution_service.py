@@ -362,21 +362,14 @@ class ToolExecutionService:
         Tactical Edge Sensor Read.
         Bridges the digital-to-physical divide per Seked principles.
         """
-        sensor_id = parameters.get("sensor_id", "default")
-
-        # Real logic would interface with hardware/industrial protocols
-        # For now, we return high-fidelity tactical data
-        import random
+        sensor_id = parameters.get("sensor_id")
+        if not isinstance(sensor_id, str) or not sensor_id.strip():
+            return {"success": False, "status": "BLOCKED", "error": "sensor_id is required."}
         return {
-            "success": True,
+            "success": False,
+            "status": "UNMEASURED",
             "sensor": sensor_id,
-            "reading": {
-                "value": round(random.uniform(20.0, 30.0), 4),
-                "unit": parameters.get("unit", "C"),
-                "gradient_seked": round(random.uniform(0.1, 0.5), 2),
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            },
-            "edge_mode": "TACTICAL_SEKED"
+            "error": "No configured sensor adapter can provide a verified reading.",
         }
 
     # Security validation methods
@@ -400,11 +393,14 @@ class ToolExecutionService:
     
     def _is_safe_sql(self, query: str) -> bool:
         """Check if SQL query is safe"""
-        if not query:
-            return True
+        if not isinstance(query, str) or not query.strip() or len(query) > 4096:
+            return False
         
         query_upper = query.upper().strip()
         
+        if ";" in query or "--" in query or "/*" in query or "*/" in query:
+            return False
+
         # Check for dangerous keywords
         dangerous_keywords = [
             "DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "REVOKE",

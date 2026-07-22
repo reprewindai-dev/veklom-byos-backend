@@ -182,6 +182,15 @@ async def get_current_user(
             role = "agent"
             is_active = True
             status = "active"
+            full_name = "Autonomous Agent"
+            is_superuser = False
+            mfa_enabled = False
+            github_username = ""
+            github_id = ""
+            github_access_token = ""
+            pgl_id = "agent_pgl"
+            created_at = datetime.now(timezone.utc)
+            last_activity = datetime.now(timezone.utc)
         return MockAgentUser()
 
     token = None

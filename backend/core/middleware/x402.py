@@ -1141,10 +1141,22 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                         return response
 
         # E. Verify X-Payment-Proof
-        if await _verify_x402_payment(request, route_cfg):
-            request.state.x402_paid = True
-            request.state.x402_verified = True
-            response = await call_next(request)
+        has_payment_header = bool(
+            request.headers.get("x-payment") or 
+            request.headers.get("X-Payment") or 
+            request.headers.get("X-PAYMENT") or 
+            request.headers.get("payment-signature") or 
+            request.headers.get("Payment-Signature") or 
+            request.headers.get("X-Payment-Proof")
+        )
+        
+        if has_payment_header:
+            if await _verify_x402_payment(request, route_cfg):
+                request.state.x402_paid = True
+                request.state.x402_verified = True
+                response = await call_next(request)
+            else:
+                return _build_402_response(path, method, route_cfg, detail=getattr(request.state, "x402_error", "payment_verification_failed"))
             
             tx_hash = (
                 request.headers.get("x-payment") or 
@@ -1166,26 +1178,32 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
                 from backend.db.models.ledger import SettlementLedger, SettlementStatus
                 import uuid
                 
-                subject_id = getattr(request.state, "x402_payer", None) or "gateway"
+                # H-05 FIX: Bind identity to authenticated principal and server-side tenancy.
+                token_payload = getattr(request.state, "token_payload", {})
+                subject_id = token_payload.get("sub") or getattr(request.state, "x402_payer", None) or "gateway"
                 
                 async with get_db_session() as db:
                     is_real_tx = tx_hash.startswith("0x") and len(tx_hash) == 66
                     is_test_proof = getattr(request.state, "test_proof_mode", False)
-                    if is_real_tx or is_test_proof:
-                        ledger_entry = SettlementLedger(
-                            id=uuid.uuid4(),
-                            tenant_id=subject_id,
-                            provider="veklom-gateway",
-                            fee_type="x402_payment",
-                            amount=int(route_cfg["price_usdc"] * 1000000),
-                            currency="USDC",
-                            status=SettlementStatus.SETTLED,
-                            idempotency_key=f"pay_{tx_hash}",
-                            settlement_tx_hash=tx_hash
-                        )
-                        db.add(ledger_entry)
-                        await db.commit()
-                        logger.info(f"[x402] Settlement Ledger recorded successfully for tenant '{subject_id}'")
+                    
+                    if not (is_real_tx or is_test_proof):
+                        logger.error(f"[x402] Invalid transaction hash provided: {tx_hash}. Failing closed.")
+                        return JSONResponse(status_code=402, content={"detail": "Invalid payment proof provided"})
+                        
+                    ledger_entry = SettlementLedger(
+                        id=uuid.uuid4(),
+                        tenant_id=subject_id,
+                        provider="veklom-gateway",
+                        fee_type="x402_payment",
+                        amount=int(route_cfg["price_usdc"] * 1000000),
+                        currency="USDC",
+                        status=SettlementStatus.SETTLED,
+                        idempotency_key=f"pay_{tx_hash}",
+                        settlement_tx_hash=tx_hash
+                    )
+                    db.add(ledger_entry)
+                    await db.commit()
+                    logger.info(f"[x402] Settlement Ledger recorded successfully for tenant '{subject_id}'")
             except Exception:
                 logger.exception("[x402] Failed to write SettlementLedger entry")
                 return JSONResponse(status_code=500, content={"detail": "Payment settlement failed"})

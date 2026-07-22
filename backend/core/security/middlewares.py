@@ -21,7 +21,7 @@ ZERO_TRUST_PUBLIC_PATHS = (
 ZERO_TRUST_PUBLIC_PREFIXES = (
     "/status", "/health", "/_ping", "/api/health", "/api/v1/auth/login", "/api/v1/auth/register",
     "/api/terminal",
-    "/api/v1/health", "/redoc",
+    "/api/v1/health", "/redoc", "/ready", "/ready/",
     "/api/v1/auth/eval-session", "/api/v1/auth/providers",
     "/api/v1/auth/signup", "/api/v1/auth/signin", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password",
     "/api/v1/auth/logout", "/api/v1/auth/verify-email", "/api/v1/auth/resend-verification",

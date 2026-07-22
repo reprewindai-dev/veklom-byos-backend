@@ -226,34 +226,24 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
     provider_breakdown = {}
 
     try:
-        # Execution metrics
-        total_execs = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
+        # Execution metrics: Combine multiple aggregations into a single query to prevent DB overhead
+        # since asyncpg cannot run them concurrently on the same session
+        stats_row = (await db.execute(
+            select(
+                func.count(ExecLog.id),
+                func.coalesce(func.sum(ExecLog.total_tokens), 0),
+                func.coalesce(func.sum(ExecLog.cost_usd), 0.0),
+                func.coalesce(func.avg(ExecLog.latency_ms), 0)
+            ).where(
                 ExecLog.workspace_id == workspace_id,
                 ExecLog.created_at >= last_24h
             )
-        ) or 0
+        )).first()
 
-        total_tokens = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
-
-        total_cost = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0.0
-
-        avg_latency = await db.scalar(
-            select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
+        total_execs = int(stats_row[0] or 0)
+        total_tokens = int(stats_row[1] or 0)
+        total_cost = float(stats_row[2] or 0.0)
+        avg_latency = float(stats_row[3] or 0.0)
 
         # Provider breakdown
         provider_rows = await db.execute(

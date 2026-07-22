@@ -461,6 +461,9 @@ async def lifespan(app: FastAPI):
     terminal_state_task = asyncio.create_task(terminal_state_manager.state_loop())
 
     revocation_listener_task = asyncio.create_task(pgl_revocation_listener())
+    
+    from backend.core.clients.capi_registration import register_with_capi
+    capi_registration_task = asyncio.create_task(register_with_capi())
 
     yield
 

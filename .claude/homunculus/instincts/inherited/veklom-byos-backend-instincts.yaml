@@ -1,0 +1,341 @@
+# Instincts generated from https://github.com/reprewindai-dev/veklom-byos-backend
+# Generated: 2026-07-23T21:05:40.304Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: veklom-byos-backend-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Commit Length
+
+## Action
+
+Write moderate-length commit messages (~84 characters)
+
+## Evidence
+
+- Average commit message length: 84 chars
+- Based on 2 commits
+
+---
+id: veklom-byos-backend-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: veklom-byos-backend-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: veklom-byos-backend-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: veklom-byos-backend-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: veklom-byos-backend-workflow-dependency-update-multi-package
+trigger: "when doing dependency update multi package"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Workflow Dependency Update Multi Package
+
+## Action
+
+Follow the dependency-update-multi-package workflow:
+1. Identify outdated dependencies in each package.
+2. Update the version numbers in package.json files.
+3. Regenerate package-lock.json files to reflect new dependency versions.
+4. Commit all changed package.json and package-lock.json files together.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: **/package.json, **/package-lock.json
+
+---
+id: veklom-byos-backend-instinct-file-naming
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct File Naming
+
+## Action
+
+Use camelCase for file names
+
+## Evidence
+
+- Pattern in namingConventions.files: camelCase
+
+---
+id: veklom-byos-backend-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Function Naming
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: veklom-byos-backend-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: veklom-byos-backend-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: veklom-byos-backend-instinct-import-style
+trigger: "When importing modules in Python files"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Import Style
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: veklom-byos-backend-instinct-export-style
+trigger: "When exporting modules or functions"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: veklom-byos-backend-instinct-test-location
+trigger: "When adding or organizing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Test Location
+
+## Action
+
+Place tests in separate directories from source code
+
+## Evidence
+
+- Pattern in architecture.testLocation: separate
+
+---
+id: veklom-byos-backend-instinct-monorepo-structure
+trigger: "When adding a new application or package"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Monorepo Structure
+
+## Action
+
+Place it in a top-level folder under the monorepo (e.g., apps/, backend/, etc.)
+
+## Evidence
+
+- Pattern in architecture.folderStructure.commonFolders
+
+---
+id: veklom-byos-backend-instinct-git-commit-prefix
+trigger: "When committing dependency updates"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Git Commit Prefix
+
+## Action
+
+Prefix commit messages with 'build(deps):'
+
+## Evidence
+
+- Seen in commit: build(deps): bump the npm_and_yarn group across 6 directories with 4 updates
+
+---
+id: veklom-byos-backend-instinct-git-merge-format
+trigger: "When merging branches (especially automated merges)"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Git Merge Format
+
+## Action
+
+Use 'Merge branch ... into ...' format for merge commits
+
+## Evidence
+
+- Seen in commit: Merge branch 'main' into dependabot/npm_and_yarn/...
+
+---
+id: veklom-byos-backend-instinct-dependency-update-workflow
+trigger: "When dependencies need to be updated across several packages or applications in the monorepo"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: reprewindai-dev/veklom-byos-backend
+---
+
+# Veklom Byos Backend Instinct Dependency Update Workflow
+
+## Action
+
+Follow the multi-package dependency update workflow: identify outdated dependencies, update package.json, regenerate package-lock.json, and commit all changes together
+
+## Evidence
+
+- Workflow: dependency-update-multi-package
+- Pattern in commits: build(deps): bump the npm_and_yarn group across 6 directories with 4 updates
+

@@ -106,6 +106,54 @@ async def _component_health(db: AsyncSession) -> dict:
     else:
         components["ai_gateway"] = {"status": "unknown", "latency_ms": None, "reason": "no_base_url"}
 
+    # CAPPO
+    t0 = _time.perf_counter()
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get("http://cappo-backend-node:8000/health")
+        ok = r.status_code < 500
+        components["cappo"] = {"status": "healthy" if ok else "degraded",
+                               "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
+    except Exception:
+        components["cappo"] = {"status": "unhealthy", "latency_ms": None, "reason": "unreachable"}
+
+    # Gnomledger
+    t0 = _time.perf_counter()
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get("http://gnomledger-api-1:8000/health")
+        ok = r.status_code < 500
+        components["gnomledger"] = {"status": "healthy" if ok else "degraded",
+                                    "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
+    except Exception:
+        components["gnomledger"] = {"status": "unhealthy", "latency_ms": None, "reason": "unreachable"}
+
+    # Lockerphycer
+    t0 = _time.perf_counter()
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get("http://lockerphycer-api:8000/health")
+        ok = r.status_code < 500
+        components["lockerphycer"] = {"status": "healthy" if ok else "degraded",
+                                      "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
+    except Exception:
+        components["lockerphycer"] = {"status": "down", "latency_ms": None, "reason": "unreachable"}
+
+    # Coolify
+    t0 = _time.perf_counter()
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0, follow_redirects=True) as client:
+            r = await client.get("http://coolify:8000/login")
+        ok = r.status_code < 500
+        components["coolify"] = {"status": "healthy" if ok else "degraded",
+                                 "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
+    except Exception:
+        components["coolify"] = {"status": "unhealthy", "latency_ms": None, "reason": "unreachable"}
+
     # Policy engine runs in-process with the API — no network hop.
     components["policy_engine"] = {"status": "healthy", "latency_ms": 0, "note": "in-process"}
     return components
@@ -496,18 +544,16 @@ def _status_history_90d(degraded_days=None, down_days=None):
 
 
 _SERVICE_DEFS = [
-    {"service": "Playground Engine", "slug": "playground", "region": "Evaluation Plane", "symbol": "shield",
-     "description": "Safe agent tests, repository review sessions, and controlled tool trials.", "component": "ai_gateway"},
-    {"service": "Governed Compiler (GPC)", "slug": "gpc", "region": "Runtime Core", "symbol": "stack",
-     "description": "Policy-aware planning, execution compile checks, and deterministic handoff.", "component": "policy_engine"},
-    {"service": "API Gateway", "slug": "api-gateway", "region": "Hetzner EU", "symbol": "globe",
-     "description": "Public API ingress, auth routing, and workspace request boundary.", "component": "database"},
-    {"service": "Policy Vault", "slug": "policy-vault", "region": "Encrypted Boundary", "symbol": "lock",
-     "description": "Key custody, rule evaluation, tenant isolation, and guarded secret access.", "component": "policy_engine"},
-    {"service": "Compliance Auditor", "slug": "compliance-auditor", "region": "Audit Plane", "symbol": "lens",
-     "description": "Signed event trails, replay records, and compliance export pipeline.", "component": "database"},
-    {"service": "Autonomous Router", "slug": "autonomous-router", "region": "Routing Mesh", "symbol": "vmark",
-     "description": "Cost, latency, policy, and capability routing for governed workloads.", "component": "ai_gateway"},
+    {"service": "BYOS Backend", "slug": "byos", "region": "Hetzner EU", "symbol": "globe",
+     "description": "Veklom API ingress, auth routing, and core persistence.", "component": "database"},
+    {"service": "CAPPO Backend", "slug": "cappo", "region": "Routing Mesh", "symbol": "vmark",
+     "description": "Autonomous planning, tool routing, and capability mesh.", "component": "cappo"},
+    {"service": "Gnomledger (PGL)", "slug": "pgl", "region": "Audit Plane", "symbol": "lens",
+     "description": "IdentityRAG, signed event trails, and compliance export.", "component": "gnomledger"},
+    {"service": "Lockerphycer (Security)", "slug": "lockerphycer", "region": "Encrypted Boundary", "symbol": "lock",
+     "description": "Zero-trust policy vault, key custody, and tenant isolation.", "component": "lockerphycer"},
+    {"service": "Coolify Dashboard", "slug": "coolify", "region": "Control Plane", "symbol": "stack",
+     "description": "Infrastructure deployment and container management.", "component": "coolify"},
 ]
 
 _STATUS_MAP = {"healthy": "up", "degraded": "degraded", "unhealthy": "down", "unknown": "degraded"}

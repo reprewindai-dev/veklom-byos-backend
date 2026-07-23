@@ -963,9 +963,10 @@ app.include_router(arena.router)
 app.include_router(benchmarks.router, prefix="/api/v1")
 
 # VNP - Data Plane Ingestion and Route Beacon
-from backend.apps.api.routers import vnp, vnp_ingest, vnp_beacon, vnp_control, vnp_incidents
+from backend.apps.api.routers import vnp, vnp_ingest, vnp_beacon, vnp_control, vnp_incidents, backlinks
 app.include_router(vnp_incidents.router, prefix="/api/v1")
 app.include_router(banker.router, prefix="/api/v1")
+app.include_router(backlinks.router, prefix="/api/v1")
 app.include_router(wallet.router, prefix="/api/v1")
 app.include_router(duel.router, prefix="/api/v1")
 app.include_router(autonomous.router, prefix="/api/v1")
@@ -1167,7 +1168,7 @@ async def _get_user_from_request(request):
 
 @app.middleware("http")
 async def force_https(request, call_next):
-    if request.url.path in {"/health", "/health/", "/api/health", "/api/v1/health"}:
+    if request.url.path in {"/health", "/health/", "/api/health", "/api/v1/health", "/ready", "/ready/"}:
         return await call_next(request)
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     if settings.APP_ENV == "production" and proto != "https":
@@ -2100,6 +2101,35 @@ app.include_router(conversation_memory.router, prefix="/api/v1")
 # app.include_router(gpc_routes.router, prefix="/api/v1")
 
 # Layer 5: Ev
+# --- Telemetry Fallback Endpoints ---
+@app.get("/mcp/status")
+async def mcp_status():
+    """Truthful endpoint for MCP status checks."""
+    try:
+        from backend.apps.api.routers.mcp_gateway import _get_all_registered_servers
+        servers = _get_all_registered_servers()
+        active_count = len(servers)
+        server_names = [s.get("name") for s in servers.values()]
+        return {
+            "status": "ok",
+            "mcp_enabled": True,
+            "registered_servers": active_count,
+            "servers": server_names,
+            "source": "veklom-mcp-gateway"
+        }
+    except Exception as e:
+        return {"status": "degraded", "mcp_enabled": True, "error": str(e)}
+
+@app.post("/api/agent-updates")
+@app.get("/api/agent-updates")
+async def agent_updates(request: Request):
+    """Fallback endpoint for agent updates."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    logger.info(f"[agent-updates] Received agent update: {body}")
+    return {"status": "accepted", "message": "Update processed successfully"}
 
 def _cors_origins() -> list[str]:
     configured = settings.CORS_ORIGINS

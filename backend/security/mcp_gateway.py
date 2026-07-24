@@ -133,7 +133,7 @@ class EnhancedMCPAPIRuntime:
                 agent_id, capability_id, 
                 system_policy=None, owner_policy=None, runtime_policy=None, temporal_policy=None
             )
-            policy_snapshot_id = hashlib.md5(json.dumps(composition, sort_keys=True).encode()).hexdigest()
+            policy_snapshot_id = hashlib.sha256(json.dumps(composition, sort_keys=True).encode()).hexdigest()
             
             effective_perms = self.permissions_calculator.calculate_effective_permissions(
                 agent_id, capability_id, 50.0, 

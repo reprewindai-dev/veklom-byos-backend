@@ -25,6 +25,15 @@ class VeklomError(Exception):
         super().__init__(f"[HTTP {status}] {body[:300]}")
 
 
+class PaymentRequiredError(VeklomError):
+    """Raised when the Veklom API returns a 402 Payment Required response."""
+
+    def __init__(self, status: int, body: str, facilitator_url: Optional[str] = None) -> None:
+        self.facilitator_url = facilitator_url
+        msg = f"[X402 PAYWALL HIT] Free tier exhausted. To continue, authorize payment to: {facilitator_url}"
+        super().__init__(status, msg + f"\n\nDetails: {body[:300]}")
+
+
 # ---------------------------------------------------------------------------
 # Sync client
 # ---------------------------------------------------------------------------
@@ -93,6 +102,8 @@ class VeklomClient:
         with httpx.Client(headers=self._headers, timeout=self.timeout) as http:
             resp = http.post(f"{self.base_url}{path}", json=body)
         if resp.status_code >= 400:
+            if resp.status_code == 402:
+                raise PaymentRequiredError(resp.status_code, resp.text, resp.headers.get('x-402-facilitator-url'))
             raise VeklomError(resp.status_code, resp.text)
         return resp.json()
 
@@ -100,6 +111,8 @@ class VeklomClient:
         with httpx.Client(headers=self._headers, timeout=self.timeout) as http:
             resp = http.get(f"{self.base_url}{path}")
         if resp.status_code >= 400:
+            if resp.status_code == 402:
+                raise PaymentRequiredError(resp.status_code, resp.text, resp.headers.get('x-402-facilitator-url'))
             raise VeklomError(resp.status_code, resp.text)
         return resp.json()
 
@@ -150,6 +163,8 @@ class VeklomClient:
             with http.stream("POST", f"{self.base_url}/ai/inference", json=body) as resp:
                 if resp.status_code >= 400:
                     resp.read()
+                    if resp.status_code == 402:
+                        raise PaymentRequiredError(resp.status_code, resp.text, resp.headers.get('x-402-facilitator-url'))
                     raise VeklomError(resp.status_code, resp.text)
                 for line in resp.iter_lines():
                     if not line:
@@ -223,6 +238,8 @@ class VeklomClient:
             base = self.base_url.replace("/api/v1", "")
             resp = http.get(f"{base}/health")
         if resp.status_code >= 400:
+            if resp.status_code == 402:
+                raise PaymentRequiredError(resp.status_code, resp.text, resp.headers.get('x-402-facilitator-url'))
             raise VeklomError(resp.status_code, resp.text)
         return resp.json()
 
@@ -301,6 +318,8 @@ class AsyncVeklomClient:
         }
         resp = await self._http().post(f"{self.base_url}/ai/complete", json=body)
         if resp.status_code >= 400:
+            if resp.status_code == 402:
+                raise PaymentRequiredError(resp.status_code, resp.text, resp.headers.get('x-402-facilitator-url'))
             raise VeklomError(resp.status_code, resp.text)
         return resp.json()
 
@@ -324,6 +343,8 @@ class AsyncVeklomClient:
         ) as resp:
             if resp.status_code >= 400:
                 await resp.aread()
+                if resp.status_code == 402:
+                    raise PaymentRequiredError(resp.status_code, resp.text, resp.headers.get('x-402-facilitator-url'))
                 raise VeklomError(resp.status_code, resp.text)
             async for line in resp.aiter_lines():
                 if not line:
@@ -369,11 +390,15 @@ class AsyncVeklomClient:
             body["session_id"] = session_id
         resp = await self._http().post(f"{self.base_url}/ai/chat", json=body)
         if resp.status_code >= 400:
+            if resp.status_code == 402:
+                raise PaymentRequiredError(resp.status_code, resp.text, resp.headers.get('x-402-facilitator-url'))
             raise VeklomError(resp.status_code, resp.text)
         return resp.json()
 
     async def models(self) -> list:
         resp = await self._http().get(f"{self.base_url}/ai/models")
         if resp.status_code >= 400:
+            if resp.status_code == 402:
+                raise PaymentRequiredError(resp.status_code, resp.text, resp.headers.get('x-402-facilitator-url'))
             raise VeklomError(resp.status_code, resp.text)
         return resp.json()

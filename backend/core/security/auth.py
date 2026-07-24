@@ -182,6 +182,15 @@ async def get_current_user(
             role = "agent"
             is_active = True
             status = "active"
+            full_name = "Autonomous Agent"
+            is_superuser = False
+            mfa_enabled = False
+            github_username = ""
+            github_id = ""
+            github_access_token = ""
+            pgl_id = "agent_pgl"
+            created_at = datetime.now(timezone.utc)
+            last_activity = datetime.now(timezone.utc)
         return MockAgentUser()
 
     token = None
@@ -220,6 +229,13 @@ async def get_current_user(
     if user.workspace_id:
         from backend.core.database.database import set_tenant_session
         await set_tenant_session(db, user.workspace_id)
+    else:
+        # PGL IdentityRAG resolution fallback
+        from backend.core.clients.capi_client import capi_client
+        resolved = await capi_client.resolve_tenant_workspace(user.id)
+        if resolved and "workspace_id" in resolved:
+            from backend.core.database.database import set_tenant_session
+            await set_tenant_session(db, resolved["workspace_id"])
 
     if status_value == "PENDING_VERIFICATION":
         allowed_paths = {

@@ -82,6 +82,12 @@ class UsageBatch(BaseModel):
     batch_id: str
     events: List[UsageEventItem]
 
+class AgentHeartbeat(BaseModel):
+    agent_id: str
+    status: str = "active"
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
 
 def _map_error_class_to_state(success: bool, timeout: bool, error_class: Optional[str]) -> ProbeResultState:
     if success:
@@ -252,3 +258,21 @@ async def ingest_usage_events(
         "rejected": rejected,
         "deduplicated": deduplicated
     }
+
+@router.post("/heartbeats")
+async def ingest_heartbeats(
+    payload: Dict[str, Any] = Body(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Accept heartbeat telemetry from python-httpx agents.
+    Logs the heartbeat to keep agents alive in the mesh.
+    """
+    try:
+        # We accept Dict[str, Any] because we don't know the exact schema yet
+        # But we log it securely so we can inspect it later
+        logger.info(f"[vnp-ingest] Received agent heartbeat: {payload}")
+        return {"status": "accepted", "message": "Heartbeat recorded successfully"}
+    except Exception as e:
+        logger.error(f"[vnp-ingest] Failed to process heartbeat: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process heartbeat")

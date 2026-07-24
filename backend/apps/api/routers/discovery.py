@@ -10,18 +10,19 @@ Provides:
   /robots.txt                   → search/agent crawler policy
 """
 
-import json
-import uuid
 import asyncio
-from datetime import datetime, timezone
-from fastapi import APIRouter, Request
+import json
+import logging as _logging
+from decimal import ROUND_HALF_UP, Decimal
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends
+
+from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.db.models.governed_run import GovernedRun
-from backend.core.config.settings import settings
 
 router = APIRouter(tags=["discovery"])
 
@@ -56,9 +57,6 @@ VEKLOM_PRICING = {
     "governed_capi":       {"price_usdc": 0.020, "unit": "per compilation", "name": "Governed cAPI 9-Phase Interceptor Compile"},
     "pgl_identity_rag":    {"price_usdc": 0.010, "unit": "per resolution", "name": "PGL Cross-Cluster Dynamic Identity RAG"},
 }
-import os
-import logging as _logging
-from decimal import Decimal, ROUND_HALF_UP
 
 _disc_log = _logging.getLogger(__name__)
 
@@ -79,7 +77,6 @@ def format_price_usdc(value) -> str:
     return text
 
 def get_treasury_address() -> str:
-    from backend.core.config.settings import settings
     raw = settings.VEKLOM_TREASURY_ADDRESS.strip()
     if not raw or raw == "0x0000000000000000000000000000000000000001":
         return ""
@@ -180,11 +177,10 @@ async def agent_json():
 async def x402_json():
     missing_config = []
     treasury = get_treasury_address()
-    from backend.core.config.settings import settings
     raw_treasury = settings.VEKLOM_TREASURY_ADDRESS.strip()
     if not raw_treasury or raw_treasury == "0x0000000000000000000000000000000000000001":
         missing_config.append("VEKLOM_TREASURY_ADDRESS")
-    
+
     is_enabled = len(missing_config) == 0
     protected_routes = [
         "/api/v1/ai/inference",
@@ -604,7 +600,7 @@ async def machine_pricing():
                 if parts[0] in ("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
                     method = parts[0]
                     path = parts[1]
-            
+
             routes_list.append({
                 "path": path,
                 "method": method,
@@ -786,12 +782,12 @@ async def sdk_examples():
     base = VEKLOM_AGENT_BASE
     api  = VEKLOM_API_BASE
     return JSONResponse({
-        "note": "Replace YOUR_TOKEN with a Bearer JWT from https://veklom.com/workspace/login or use x402 for per-call payments.",
+        "note": "Replace $VEKLOM_TOKEN with a Bearer JWT from https://veklom.com/workspace/login or use x402 for per-call payments.",
         "examples": {
             "curl_inference": {
                 "description": "Run AI inference (Ollama daily driver, auto-escalates if needed)",
                 "command": f"""curl -X POST {api}/ai/inference \\
-  -H "Authorization: Bearer YOUR_TOKEN" \\
+  -H "Authorization: Bearer $VEKLOM_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{{"messages": [{{"role": "user", "content": "Analyze this for security issues: ..."}}]}}'""",
                 "response_fields": ["response_text", "provider", "tier", "cost_usd", "policy", "audit_id"],
@@ -799,7 +795,7 @@ async def sdk_examples():
             "curl_gpc_compile": {
                 "description": "Compile agent intent into a governed plan",
                 "command": f"""curl -X POST {api}/gpc/compile \\
-  -H "Authorization: Bearer YOUR_TOKEN" \\
+  -H "Authorization: Bearer $VEKLOM_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{{"intent": "Review repository for HIPAA violations", "budget_usdc": 0.10}}'""",
             },
@@ -836,9 +832,10 @@ print(response.choices[0].message.content)
             },
             "python_native": {
                 "description": "Native Veklom API with receipts and memory",
-                "code": f"""import httpx
+                "code": f"""import os
+import httpx
 
-TOKEN = "YOUR_VEKLOM_TOKEN"
+TOKEN = os.environ.get("VEKLOM_TOKEN", "YOUR_VEKLOM_TOKEN")
 API   = "{api}"
 
 # Chat with 24h memory
@@ -855,9 +852,10 @@ print("Evidence:", r.headers.get("x-veklom-evidence-id"))""",
             },
             "python_agent_budget": {
                 "description": "Agent with budget cap and kill switch",
-                "code": f"""import httpx
+                "code": f"""import os
+import httpx
 
-TOKEN = "YOUR_VEKLOM_TOKEN"
+TOKEN = os.environ.get("VEKLOM_TOKEN", "YOUR_VEKLOM_TOKEN")
 API   = "{api}"
 
 # Check pricing first
@@ -880,7 +878,7 @@ else:
             "javascript": {
                 "description": "JavaScript / Node.js native fetch",
                 "code": f"""const API = "{api}";
-const TOKEN = "YOUR_VEKLOM_TOKEN";
+const TOKEN = process.env.VEKLOM_TOKEN || "YOUR_VEKLOM_TOKEN";
 
 const response = await fetch(`${{API}}/ai/inference`, {{
   method: "POST",
@@ -939,7 +937,7 @@ async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: i
         tenant_id = run.tenant_id
         if not tenant_id:
             continue
-            
+
         if tenant_id not in user_stats:
             # Fallback to tenant_id if agent_id isn't in pgl_identity
             agent_name = "Unknown Agent"
@@ -952,10 +950,10 @@ async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: i
                 "completedMissions": 0,
                 "agent": agent_name
             }
-            
+
         stats = user_stats[tenant_id]
         stats["completedMissions"] += 1
-        
+
         # Adjust score based on governed run state
         if run.state in ["success", "completed"]:
             stats["trustScore"] += 10
@@ -964,7 +962,7 @@ async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: i
 
     # Sort users by trustScore descending
     sorted_users = sorted(user_stats.values(), key=lambda u: u["trustScore"], reverse=True)[:limit]
-    
+
     leaderboard = []
     for i, user in enumerate(sorted_users):
         leaderboard.append({
@@ -974,6 +972,6 @@ async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: i
             "completedMissions": user["completedMissions"],
             "agent": user["agent"]
         })
-        
+
     return {"leaderboard": leaderboard}
 

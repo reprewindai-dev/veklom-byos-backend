@@ -4,6 +4,16 @@ export interface VeklomClientOptions {
   baseUrl?: string;
 }
 
+export class PaymentRequiredError extends Error {
+  public facilitatorUrl?: string;
+
+  constructor(status: number, message: string, facilitatorUrl?: string) {
+    super(`[X402 PAYWALL HIT] Free tier exhausted. To continue, authorize payment to: ${facilitatorUrl}\n\nDetails: HTTP ${status}: ${message}`);
+    this.name = 'PaymentRequiredError';
+    this.facilitatorUrl = facilitatorUrl;
+  }
+}
+
 export interface CompletionRequest {
   prompt: string;
   model?: string;
@@ -75,6 +85,9 @@ export class VeklomClient {
 
     if (!response.ok) {
       const errorText = await response.text();
+      if (response.status === 402) {
+        throw new PaymentRequiredError(response.status, errorText, response.headers.get('x-402-facilitator-url') || undefined);
+      }
       throw new Error(`Veklom API Error (${response.status}): ${errorText}`);
     }
 

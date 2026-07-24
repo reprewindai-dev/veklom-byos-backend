@@ -1,16 +1,14 @@
 """Documentation router - Local docs and DNS resolution fixes."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from backend.core.database.database import get_db
-from backend.core.security.auth import get_current_user, get_current_user_optional
-from backend.db.models.user import User
 import os
-import json
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse
+
+from backend.core.security.auth import get_current_user_optional
+from backend.db.models.user import User
 
 router = APIRouter(tags=["Documentation"])
 
@@ -28,7 +26,7 @@ async def get_docs_home(
         else:
             # Try DNS resolution first, fallback to local
             return await get_docs_with_fallback("home", user)
-            
+
     except Exception as e:
         return await get_docs_fallback_error("docs", str(e))
 
@@ -46,7 +44,7 @@ async def get_docs_path(
             return await serve_local_docs(path, format)
         else:
             return await get_docs_with_fallback(path, user, format)
-            
+
     except Exception as e:
         return await get_docs_fallback_error(f"docs/{path}", str(e))
 
@@ -63,7 +61,7 @@ async def get_api_overview(
             "version": "2.1.0",
             "base_url": "/api/v1",
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            
+
             # Core Endpoints
             "endpoints": {
                 "authority": {
@@ -97,7 +95,7 @@ async def get_api_overview(
                     "methods": ["GET", "POST", "PUT", "DELETE"]
                 }
             },
-            
+
             # Authentication
             "authentication": {
                 "type": "Bearer Token",
@@ -105,14 +103,14 @@ async def get_api_overview(
                 "login_endpoint": "/auth/login",
                 "refresh_endpoint": "/auth/refresh"
             },
-            
+
             # Rate Limiting
             "rate_limiting": {
                 "requests_per_minute": 1000,
                 "burst_limit": 100,
                 "headers": ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"]
             },
-            
+
             # Error Handling
             "error_handling": {
                 "format": "JSON",
@@ -126,12 +124,12 @@ async def get_api_overview(
                 }
             }
         }
-        
+
         if format == "json":
             return overview
         else:
             return await render_docs_html("api_overview", overview)
-            
+
     except Exception as e:
         return await get_docs_fallback_error("api/overview", str(e))
 
@@ -152,13 +150,13 @@ async def get_quickstart_guide(
                 "API key from Veklom dashboard",
                 "Basic understanding of REST APIs"
             ],
-            
+
             "steps": [
                 {
                     "step": 1,
                     "title": "Get Your API Key",
                     "description": "Navigate to the Veklom dashboard and generate an API key",
-                    "code": "export VEKLOM_API_KEY='your_api_key_here'"
+                    "code": "export VEKLOM_API_KEY=${YOUR_API_KEY}"
                 },
                 {
                     "step": 2,
@@ -187,7 +185,7 @@ async def get_quickstart_guide(
   https://api.veklom.com/api/v1/cappo/execute"""
                 }
             ],
-            
+
             "next_steps": [
                 "Read the API documentation",
                 "Explore PGL onboarding",
@@ -195,14 +193,14 @@ async def get_quickstart_guide(
                 "Set up payment gates"
             ]
         }
-        
+
         if format == "json":
             return guide
         elif format == "md":
             return await render_markdown("quickstart", guide)
         else:
             return await render_docs_html("quickstart", guide)
-            
+
     except Exception as e:
         return await get_docs_fallback_error("guides/quickstart", str(e))
 
@@ -218,13 +216,13 @@ async def get_pgl_onboarding_guide(
             "title": "PGL Onboarding Guide",
             "description": "Complete guide to Project Governance Layer onboarding",
             "estimated_time": "15 minutes",
-            
+
             "overview": {
                 "what_is_pgl": "Project Governance Layer provides birth certificates and authority for AI agents",
                 "why_needed": "Required for all agent execution in the Veklom ecosystem",
                 "benefits": ["Human oversight", "Audit trails", "Compliance", "Trust"]
             },
-            
+
             "onboarding_steps": [
                 {
                     "step": 1,
@@ -285,7 +283,7 @@ async def get_pgl_onboarding_guide(
                     }
                 }
             ],
-            
+
             "troubleshooting": {
                 "common_issues": [
                     {
@@ -299,14 +297,14 @@ async def get_pgl_onboarding_guide(
                 ]
             }
         }
-        
+
         if format == "json":
             return guide
         elif format == "md":
             return await render_markdown("pgl-onboarding", guide)
         else:
             return await render_docs_html("pgl-onboarding", guide)
-            
+
     except Exception as e:
         return await get_docs_fallback_error("guides/pgl-onboarding", str(e))
 
@@ -321,7 +319,7 @@ async def get_seked_reference(
         reference = {
             "title": "SEKED Measurement System Reference",
             "description": "Complete reference for SEKED measurements and directives",
-            
+
             "measurements": {
                 "E": {
                     "name": "Environmental",
@@ -354,13 +352,13 @@ async def get_seked_reference(
                     "calculation": "Based on vulnerability and threat assessment"
                 }
             },
-            
+
             "ratios": {
                 "E/R": "Environmental to Risk ratio",
-                "C/D": "Compliance to Decision ratio", 
+                "C/D": "Compliance to Decision ratio",
                 "S/E": "Safety to Environmental ratio"
             },
-            
+
             "directives": {
                 "operational": {
                     "type": "Constraints",
@@ -379,14 +377,14 @@ async def get_seked_reference(
                 }
             }
         }
-        
+
         if format == "json":
             return reference
         elif format == "md":
             return await render_markdown("seked-reference", reference)
         else:
             return await render_docs_html("seked-reference", reference)
-            
+
     except Exception as e:
         return await get_docs_fallback_error("reference/seked", str(e))
 
@@ -405,7 +403,6 @@ async def get_docs_health():
 
 def get_docs_dir() -> str:
     """Locate the absolute path to the docs directory dynamically."""
-    import os
     current_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = current_dir
     for _ in range(6):
@@ -423,29 +420,29 @@ def markdown_to_html(md_text: str) -> str:
     """Simple regex-based markdown to HTML converter."""
     import re
     html = md_text
-    
+
     # Escape HTML entities first for safety
     html = html.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    
+
     # Code blocks
     html = re.sub(r'```(.*?)\n(.*?)```', r'<pre><code>\2</code></pre>', html, flags=re.DOTALL)
-    
+
     # Headers
     html = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
     html = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
     html = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
-    
+
     # Bold / Italic
     html = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', html)
     html = re.sub(r'\*(.*?)\*', r'<em>\1</em>', html)
-    
+
     # Lists
     html = re.sub(r'^\s*-\s+(.*?)$', r'<li>\1</li>', html, flags=re.MULTILINE)
     html = re.sub(r'(<li>.*?</li>)+', r'<ul>\g<0></ul>', html, flags=re.DOTALL)
-    
+
     # Links
     html = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2">\1</a>', html)
-    
+
     # Paragraphs (split by double newline, wrap in <p> if not block elements)
     paragraphs = html.split("\n\n")
     for i, p in enumerate(paragraphs):
@@ -453,7 +450,7 @@ def markdown_to_html(md_text: str) -> str:
         if p and not p.startswith("<h") and not p.startswith("<pre") and not p.startswith("<ul") and not p.startswith("<li"):
             replaced_p = p.replace('\n', '<br>')
             paragraphs[i] = f"<p>{replaced_p}</p>"
-            
+
     return "\n\n".join(paragraphs)
 
 
@@ -464,13 +461,12 @@ async def search_docs(
     user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Search documentation filesystem."""
-    import os
     import re
-    
+
     try:
         docs_dir = get_docs_dir()
         results = []
-        
+
         if os.path.isdir(docs_dir):
             for root, _, files in os.walk(docs_dir):
                 for file in files:
@@ -478,31 +474,31 @@ async def search_docs(
                         abs_file_path = os.path.join(root, file)
                         rel_path = os.path.relpath(abs_file_path, docs_dir).replace("\\", "/")
                         doc_name = rel_path[:-3]
-                        
+
                         try:
                             with open(abs_file_path, "r", encoding="utf-8") as f:
                                 content = f.read()
-                                
+
                             if q.lower() in content.lower():
                                 title = doc_name.replace("-", " ").replace("_", " ").title()
                                 for line in content.splitlines():
                                     if line.startswith("# "):
                                         title = line[2:].strip()
                                         break
-                                        
+
                                 match_idx = content.lower().find(q.lower())
                                 start_idx = max(0, match_idx - 60)
                                 end_idx = min(len(content), match_idx + len(q) + 80)
                                 snippet = content[start_idx:end_idx].strip()
-                                
+
                                 if start_idx > 0:
                                     snippet = "..." + snippet
                                 if end_idx < len(content):
                                     snippet = snippet + "..."
-                                    
+
                                 occurrences = len(re.findall(re.escape(q), content, re.IGNORECASE))
                                 relevance = min(0.99, 0.5 + (occurrences * 0.05))
-                                
+
                                 results.append({
                                     "title": title,
                                     "url": f"/docs/{doc_name}",
@@ -510,11 +506,12 @@ async def search_docs(
                                     "relevance": round(relevance, 2)
                                 })
                         except Exception as file_err:
-                            logger.warning(f"Failed to read file {abs_file_path} during search: {file_err}")
-                            
+                            import logging
+                            logging.warning(f"Failed to read file {abs_file_path} during search: {file_err}")
+
         # Sort results by relevance descending
         results = sorted(results, key=lambda x: x["relevance"], reverse=True)
-        
+
         if format == "json":
             return {
                 "query": q,
@@ -523,7 +520,7 @@ async def search_docs(
             }
         else:
             return await render_docs_html("search", {"query": q, "results": results})
-            
+
     except Exception as e:
         return await get_docs_fallback_error("search", str(e))
 
@@ -537,7 +534,7 @@ async def get_docs_with_fallback(path: str, user: Optional[User], format: str = 
             return external_docs
     except Exception:
         pass
-    
+
     return await serve_local_docs(path, format)
 
 
@@ -548,11 +545,10 @@ async def fetch_external_docs(path: str, format: str):
 
 async def serve_local_docs(path: str, format: str = "html"):
     """Serve local documentation from filesystem."""
-    import os
-    
+
     docs_dir = get_docs_dir()
     clean_path = path.strip("/").replace("\\", "/")
-    
+
     if not clean_path or clean_path in ("index.html", "home"):
         files = []
         if os.path.isdir(docs_dir):
@@ -561,29 +557,29 @@ async def serve_local_docs(path: str, format: str = "html"):
                     if f.endswith(".md"):
                         rel = os.path.relpath(os.path.join(root, f), docs_dir)
                         files.append(rel.replace("\\", "/")[:-3])
-                        
+
         return await render_docs_html("index", {
             "title": "Veklom BYOS Documentation",
             "sections": sorted(files)
         })
-        
+
     md_file_path = os.path.join(docs_dir, f"{clean_path}.md")
     if not os.path.isfile(md_file_path):
         md_file_path = os.path.join(docs_dir, clean_path)
         if not os.path.isfile(md_file_path) and not clean_path.endswith(".md"):
             md_file_path = os.path.join(docs_dir, f"{clean_path}/README.md")
-            
+
     if os.path.isfile(md_file_path):
         try:
             with open(md_file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-                
+
             title = clean_path.replace("-", " ").replace("_", " ").title()
             for line in content.splitlines():
                 if line.startswith("# "):
                     title = line[2:].strip()
                     break
-                    
+
             if format == "json":
                 return {
                     "title": title,
@@ -597,7 +593,7 @@ async def serve_local_docs(path: str, format: str = "html"):
                 return await render_docs_html("document", {"title": title, "body": html_body, "raw_content": content})
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error reading documentation file: {str(e)}")
-            
+
     raise HTTPException(status_code=404, detail=f"Documentation file not found: {path}")
 
 
@@ -605,7 +601,7 @@ async def render_docs_html(template: str, data: dict):
     """Render documentation as HTML."""
     title = data.get("title", "Veklom Documentation")
     body_content = data.get("body", "")
-    
+
     if template == "index":
         sections_html = "".join(f'<li><a href="/api/v1/docs/{s}">{s.replace("/", " ➔ ").title()}</a></li>' for s in data.get("sections", []))
         body_content = f"<h2>Available Documents</h2><ul>{sections_html}</ul>"
@@ -623,7 +619,7 @@ async def render_docs_html(template: str, data: dict):
                 for r in results
             )
             body_content = f"<h2>Search Results for: <em>{query}</em></h2>{results_html}"
-            
+
     html_content = f"""
     <!DOCTYPE html>
     <html>

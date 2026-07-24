@@ -1,11 +1,10 @@
 """Admin API endpoints for billing reconciliation and webhook monitoring."""
 
-from datetime import datetime, timezone
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, desc
+from typing import List, Optional
+from datetime import datetime, timezone
 
 from backend.core.database.database import get_db
 from backend.core.security.auth import require_internal_operator
@@ -99,9 +98,8 @@ async def retry_dead_letter_entry(
     await db.commit()
 
     # Trigger actual webhook retry logic
+    from backend.apps.api.routers.webhook import process_with_idempotency, handle_webhook_payload
     import json
-
-    from backend.apps.api.routers.webhook import handle_webhook_payload, process_with_idempotency
 
     try:
         body_bytes = json.dumps(entry.payload).encode()
@@ -167,22 +165,19 @@ async def delete_dead_letter_entry(
 @router.get("/recon-summary")
 async def get_reconciliation_summary(db: AsyncSession = Depends(get_db)):
     """Get summary statistics for reconciliation findings."""
-    # ⚡ Bolt Optimization: Use DB aggregation (func.count) instead of loading all rows into memory
     # Count total findings
-    findings_query = select(func.count(ReconFinding.id))
+    findings_query = select(ReconFinding)
     findings_result = await db.execute(findings_query)
-    total_findings = findings_result.scalar_one()
+    total_findings = len(findings_result.scalars().all())
 
     # Count dead-letter entries by status
-    # ⚡ Bolt Optimization: Use GROUP BY in DB instead of Python loop for O(1) memory
-    dead_letter_query = select(WebhookDeadLetter.status, func.count(WebhookDeadLetter.id)).group_by(WebhookDeadLetter.status)
+    dead_letter_query = select(WebhookDeadLetter)
     dead_letter_result = await db.execute(dead_letter_query)
+    dead_letters = dead_letter_result.scalars().all()
 
     status_counts = {}
-    total_dead_letters = 0
-    for status, count in dead_letter_result.all():
-        status_counts[status] = count
-        total_dead_letters += count
+    for dl in dead_letters:
+        status_counts[dl.status] = status_counts.get(dl.status, 0) + 1
 
     return {
         "recon_findings": {
@@ -190,7 +185,7 @@ async def get_reconciliation_summary(db: AsyncSession = Depends(get_db)):
             "recent_count": total_findings  # Could add time-based filtering
         },
         "webhook_dead_letter": {
-            "total": total_dead_letters,
+            "total": len(dead_letters),
             "by_status": status_counts
         }
     }

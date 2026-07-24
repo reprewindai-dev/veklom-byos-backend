@@ -35,12 +35,12 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -227,9 +227,8 @@ class PGLIdentityGate:
         is governed by code, not by user registration.
         """
         import json
-
-        from backend.core.database.redis_client import redis_client
         from backend.db.models.pgl import PGLIdentity
+        from backend.core.database.redis_client import redis_client
 
         # Redis projection check
         cached_identity_str = await redis_client.get(f"veklom:pgl:identity:{actor_id}")
@@ -290,7 +289,6 @@ class PGLIdentityGate:
         # Populate projection cache
         try:
             import json
-
             from backend.core.database.redis_client import redis_client
             cache_payload = {
                 "id": identity.id,
@@ -320,11 +318,10 @@ class PGLIdentityGate:
         If the chain is broken, raise PGLIdentityNotFound.
         """
         import json
-
-        from backend.core.database.redis_client import redis_client
-        from backend.db.models.agent import Agent
-        from backend.db.models.lineage import BirthCertificate
         from backend.db.models.pgl import PGLIdentity
+        from backend.db.models.lineage import BirthCertificate
+        from backend.db.models.agent import Agent
+        from backend.core.database.redis_client import redis_client
 
         # Redis projection check
         cached_identity_str = await redis_client.get(f"veklom:pgl:identity:{actor_id}")
@@ -404,7 +401,6 @@ class PGLIdentityGate:
         if identity:
             try:
                 import json
-
                 from backend.core.database.redis_client import redis_client
                 cache_payload = {
                     "id": identity.id,
@@ -540,39 +536,38 @@ class PGLIdentityGate:
         _lifecycle_notification: dict | None = None
         try:
             from backend.core.services.pgl_identity_lifecycle import (
-                TrustLevel,
                 compute_lifecycle,
+                TrustLevel,
             )
             from backend.core.services.pgl_notifications import (
+                notify_probationary,
                 notify_active,
+                notify_renewal_due,
                 notify_grace_period,
                 notify_hard_expired,
-                notify_probationary,
-                notify_renewal_due,
             )
 
             # Fetch behavioral statistics from the DB for promotion checks
             from backend.db.models.pgl import PGLCertificate
-            # ⚡ Bolt Optimization: Use DB aggregation (func.count) instead of loading all rows into memory
             success_count_result = await db.execute(
-                select(func.count(PGLCertificate.id))
+                select(PGLCertificate)
                 .where(
                     PGLCertificate.actor_id == actor_id,
                     PGLCertificate.kind == "post",
                     PGLCertificate.status == "SUCCEEDED"
                 )
             )
-            active_attestations = success_count_result.scalar_one()
+            active_attestations = len(success_count_result.scalars().all())
 
             failure_count_result = await db.execute(
-                select(func.count(PGLCertificate.id))
+                select(PGLCertificate)
                 .where(
                     PGLCertificate.actor_id == actor_id,
                     PGLCertificate.kind == "post",
                     PGLCertificate.status.in_(["FAILED", "ROLLED_BACK"])
                 )
             )
-            active_rollbacks = failure_count_result.scalar_one()
+            active_rollbacks = len(failure_count_result.scalars().all())
 
             _lc = compute_lifecycle(
                 metadata=identity.metadata_json or {},
@@ -661,8 +656,8 @@ class PGLIdentityGate:
         # Resolve birth_cert_id if available (for registered agents)
         birth_cert_id = None
         try:
-            from backend.db.models.agent import Agent
             from backend.db.models.lineage import BirthCertificate
+            from backend.db.models.agent import Agent
             agent_res = await db.execute(
                 select(Agent).where(Agent.agent_id == actor_id)
             )
@@ -749,8 +744,8 @@ class PGLIdentityGate:
         Register a rollback in the PGL ledger after a failed execution.
         Call this in ALL failure paths so the pre-cert is never left open.
         """
-        from backend.db.models.pgl import PGLCertificate
         from backend.services.pgl_client import PGLClient
+        from backend.db.models.pgl import PGLCertificate
 
         pseudo_post_id = f"pgl_cert_post_failed_{uuid.uuid4().hex[:12]}"
         try:

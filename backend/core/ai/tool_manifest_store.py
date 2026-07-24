@@ -1,9 +1,10 @@
-import os
 import json
 import logging
+import os
 import time
-import asyncio
 from typing import Any, Dict, List, Optional
+
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,13 @@ CACHE_TTL = 300.0  # 5 minutes TTL
 
 class ToolManifestStore:
     """Stores and retrieves compiled MCP tool manifests with hot-path L1 caching."""
+
+    @classmethod
+    async def _ensure_store_async(cls):
+        os.makedirs(os.path.dirname(MANIFEST_STORE_PATH), exist_ok=True)
+        if not os.path.exists(MANIFEST_STORE_PATH):
+            async with aiofiles.open(MANIFEST_STORE_PATH, "w") as f:
+                await f.write(json.dumps({}))
 
     @classmethod
     def _ensure_store(cls):
@@ -31,11 +39,12 @@ class ToolManifestStore:
         now = time.time()
         if _LOCAL_MANIFESTS_CACHE and (now - _LOCAL_CACHE_TIME) < CACHE_TTL:
             return _LOCAL_MANIFESTS_CACHE
-            
-        cls._ensure_store()
+
+        await cls._ensure_store_async()
         try:
-            with open(MANIFEST_STORE_PATH, "r") as f:
-                data = json.load(f)
+            async with aiofiles.open(MANIFEST_STORE_PATH, "r") as f:
+                content = await f.read()
+                data = json.loads(content)
                 _LOCAL_MANIFESTS_CACHE.clear()
                 _LOCAL_MANIFESTS_CACHE.update(data)
                 _LOCAL_CACHE_TIME = now
@@ -54,15 +63,15 @@ class ToolManifestStore:
     async def save_manifests(cls, new_manifests: List[Dict[str, Any]]):
         """Save a list of new manifests to the store."""
         manifests = await cls.get_all_manifests()
-        
+
         for m in new_manifests:
             manifests[m["tool_name"]] = m
-            
-        cls._ensure_store()
+
+        await cls._ensure_store_async()
         try:
-            with open(MANIFEST_STORE_PATH, "w") as f:
-                json.dump(manifests, f, indent=2)
-            
+            async with aiofiles.open(MANIFEST_STORE_PATH, "w") as f:
+                await f.write(json.dumps(manifests, indent=2))
+
             # Invalidate/Update Cache
             global _LOCAL_CACHE_TIME
             _LOCAL_MANIFESTS_CACHE.clear()

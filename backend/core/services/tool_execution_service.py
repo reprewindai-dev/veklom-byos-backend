@@ -1,34 +1,33 @@
 """Real Tool Execution Service - Production Implementation"""
 
-import json
 import asyncio
-import subprocess
-import tempfile
+import hashlib
+import json
+import logging
 import os
 import shutil
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
-from urllib.parse import urlsplit, urlunsplit
-import httpx
 import sqlite3
-import pandas as pd
+import tempfile
 from datetime import datetime, timezone
-import logging
-import hashlib
-import secrets
+from pathlib import Path
+from typing import Any, Dict, Optional
+from urllib.parse import urlsplit, urlunsplit
+
+import httpx
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 
 class ToolExecutionService:
     """Production-ready tool execution service with real implementations"""
-    
+
     def __init__(self):
         self.temp_dir = Path(tempfile.gettempdir()) / "veklom_tools"
         self.temp_dir.mkdir(exist_ok=True)
         self.sandbox_dir = self.temp_dir / "sandbox"
         self.sandbox_dir.mkdir(exist_ok=True)
-        
+
         # Security: Define allowed operations
         self.allowed_file_operations = {
             "read", "write", "list", "exists", "size", "copy", "move", "delete"
@@ -43,14 +42,14 @@ class ToolExecutionService:
         ]
         self._abp_process: Optional[asyncio.subprocess.Process] = None
         self._abp_request_id = 0
-    
+
     async def execute_filesystem_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute real filesystem operations with security checks"""
         try:
             operation = tool_data.get("operation", "read")
             path = tool_data.get("path", "")
             content = tool_data.get("content", "")
-            
+
             # Security: Validate path
             if not self._is_safe_path(path):
                 return {
@@ -58,9 +57,9 @@ class ToolExecutionService:
                     "error": "Path traversal detected or unsafe path",
                     "operation": operation
                 }
-            
+
             full_path = self.sandbox_dir / path.lstrip("/")
-            
+
             if operation == "read":
                 return await self._read_file(full_path)
             elif operation == "write":
@@ -89,7 +88,7 @@ class ToolExecutionService:
                     "error": f"Unsupported operation: {operation}",
                     "operation": operation
                 }
-                
+
         except Exception as e:
             logger.error(f"Filesystem tool execution failed: {str(e)}")
             return {
@@ -97,13 +96,13 @@ class ToolExecutionService:
                 "error": str(e),
                 "operation": tool_data.get("operation", "unknown")
             }
-    
+
     async def execute_database_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute real database operations with security checks"""
         try:
             query = tool_data.get("query", "")
             db_type = tool_data.get("db_type", "sqlite")
-            
+
             # Security: Validate SQL
             if not self._is_safe_sql(query):
                 return {
@@ -111,7 +110,7 @@ class ToolExecutionService:
                     "error": "SQL injection detected or unsafe operation",
                     "query": query[:100] + "..." if len(query) > 100 else query
                 }
-            
+
             if db_type == "sqlite":
                 return await self._execute_sqlite(query, tool_data)
             else:
@@ -119,7 +118,7 @@ class ToolExecutionService:
                     "success": False,
                     "error": f"Unsupported database type: {db_type}"
                 }
-                
+
         except Exception as e:
             logger.error(f"Database tool execution failed: {str(e)}")
             return {
@@ -127,7 +126,7 @@ class ToolExecutionService:
                 "error": str(e),
                 "query": tool_data.get("query", "unknown")[:100]
             }
-    
+
     async def execute_api_tool(self, tool_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute real HTTP API calls with security checks"""
         try:
@@ -155,7 +154,7 @@ class ToolExecutionService:
                     "error": "Unsafe URL or blocked domain",
                     "url": str(url)
                 }
-            
+
             # Execute HTTP request
             async with httpx.AsyncClient(timeout=timeout) as client:
                 if method == "GET":
@@ -172,13 +171,13 @@ class ToolExecutionService:
                         "error": f"Unsupported HTTP method: {method}",
                         "url": safe_url
                     }
-                
+
                 # Parse response
                 try:
                     response_data = response.json()
                 except:
                     response_data = response.text
-                
+
                 return {
                     "success": True,
                     "status_code": response.status_code,
@@ -187,7 +186,7 @@ class ToolExecutionService:
                     "url": safe_url,
                     "method": method
                 }
-                
+
         except Exception as e:
             logger.error(f"API tool execution failed: {str(e)}")
             return {
@@ -243,7 +242,7 @@ class ToolExecutionService:
 
         normalized = urlunsplit((scheme, netloc, parsed.path or "/", parsed.query, ""))
         return normalized
-    
+
     async def _get_abp_process(self) -> asyncio.subprocess.Process:
         """Get or spawn the long-lived ABP MCP sidecar."""
         if self._abp_process is None or self._abp_process.returncode is not None:
@@ -329,7 +328,7 @@ class ToolExecutionService:
         try:
             tool_name = tool_data.get("tool_name", "unknown")
             parameters = tool_data.get("parameters", {})
-            
+
             # Example custom tools
             if tool_name == "calculate_hash":
                 return await self._calculate_hash(parameters)
@@ -348,7 +347,7 @@ class ToolExecutionService:
                     "error": f"Unknown custom tool: {tool_name}",
                     "tool_name": tool_name
                 }
-                
+
         except Exception as e:
             logger.error(f"Custom tool execution failed: {str(e)}")
             return {
@@ -377,27 +376,27 @@ class ToolExecutionService:
         """Check if path is safe (no traversal, within sandbox)"""
         if not path:
             return True
-        
+
         # Check for path traversal
         if ".." in path or path.startswith("/"):
             return False
-        
+
         # Check for suspicious patterns
         suspicious_patterns = ["\\x00", "\\n", "\\r", "<script", "javascript:"]
         path_lower = path.lower()
         for pattern in suspicious_patterns:
             if pattern in path_lower:
                 return False
-        
+
         return True
-    
+
     def _is_safe_sql(self, query: str) -> bool:
         """Check if SQL query is safe"""
         if not isinstance(query, str) or not query.strip() or len(query) > 4096:
             return False
-        
+
         query_upper = query.upper().strip()
-        
+
         if ";" in query or "--" in query or "/*" in query or "*/" in query:
             return False
 
@@ -406,54 +405,54 @@ class ToolExecutionService:
             "DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "REVOKE",
             "ATTACH", "DETACH", "PRAGMA", "VACUUM"
         ]
-        
+
         for keyword in dangerous_keywords:
             if keyword in query_upper:
                 return False
-        
+
         # Only allow specific operations
         allowed_operations = ["SELECT", "INSERT", "UPDATE", "DELETE"]
         if not any(query_upper.startswith(op) for op in allowed_operations):
             return False
-        
+
         return True
-    
+
     def _is_safe_url(self, url: str) -> bool:
         """Check if URL is safe"""
         if not url:
             return True
-        
+
         # Check protocol
         if not url.startswith(("http://", "https://")):
             return False
-        
+
         # Extract domain
         try:
             from urllib.parse import urlparse
             parsed = urlparse(url)
             domain = parsed.netloc.lower()
-            
+
             # Check against allowed domains
             if not any(allowed in domain for allowed in self.allowed_domains):
                 # Allow localhost for development
                 if not domain.startswith(("localhost", "127.0.0.1")):
                     return False
-            
+
             return True
-            
+
         except Exception:
             return False
-    
+
     # Filesystem implementation methods
     async def _read_file(self, path: Path) -> Dict[str, Any]:
         """Read file content"""
         try:
             if not path.exists():
                 return {"success": False, "error": "File not found"}
-            
+
             if path.stat().st_size > self.max_file_size:
                 return {"success": False, "error": "File too large"}
-            
+
             content = path.read_text(encoding='utf-8')
             return {
                 "success": True,
@@ -463,16 +462,16 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _write_file(self, path: Path, content: str) -> Dict[str, Any]:
         """Write file content"""
         try:
             if len(content) > self.max_file_size:
                 return {"success": False, "error": "Content too large"}
-            
+
             # Create parent directories if needed
             path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             path.write_text(content, encoding='utf-8')
             return {
                 "success": True,
@@ -481,16 +480,16 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _list_directory(self, path: Path) -> Dict[str, Any]:
         """List directory contents"""
         try:
             if not path.exists():
                 return {"success": False, "error": "Directory not found"}
-            
+
             if not path.is_dir():
                 return {"success": False, "error": "Not a directory"}
-            
+
             items = []
             for item in path.iterdir():
                 items.append({
@@ -499,7 +498,7 @@ class ToolExecutionService:
                     "size": item.stat().st_size if item.is_file() else 0,
                     "modified": item.stat().st_mtime
                 })
-            
+
             return {
                 "success": True,
                 "items": items,
@@ -507,7 +506,7 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _file_exists(self, path: Path) -> Dict[str, Any]:
         """Check if file exists"""
         return {
@@ -515,13 +514,13 @@ class ToolExecutionService:
             "exists": path.exists(),
             "path": str(path.relative_to(self.sandbox_dir))
         }
-    
+
     async def _get_file_size(self, path: Path) -> Dict[str, Any]:
         """Get file size"""
         try:
             if not path.exists():
                 return {"success": False, "error": "File not found"}
-            
+
             size = path.stat().st_size
             return {
                 "success": True,
@@ -530,16 +529,16 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _copy_file(self, src: Path, dst: Path) -> Dict[str, Any]:
         """Copy file"""
         try:
             if not src.exists():
                 return {"success": False, "error": "Source file not found"}
-            
+
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
-            
+
             return {
                 "success": True,
                 "source": str(src.relative_to(self.sandbox_dir)),
@@ -547,16 +546,16 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _move_file(self, src: Path, dst: Path) -> Dict[str, Any]:
         """Move file"""
         try:
             if not src.exists():
                 return {"success": False, "error": "Source file not found"}
-            
+
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(src), str(dst))
-            
+
             return {
                 "success": True,
                 "source": str(src.relative_to(self.sandbox_dir)),
@@ -564,38 +563,38 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _delete_file(self, path: Path) -> Dict[str, Any]:
         """Delete file or directory"""
         try:
             if not path.exists():
                 return {"success": False, "error": "File not found"}
-            
+
             if path.is_dir():
                 shutil.rmtree(path)
             else:
                 path.unlink()
-            
+
             return {
                 "success": True,
                 "path": str(path.relative_to(self.sandbox_dir))
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     # Database implementation methods
     async def _execute_sqlite(self, query: str, tool_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute SQLite query"""
         try:
             # Use a temporary database for safety
             db_path = self.sandbox_dir / "temp.db"
-            
+
             with sqlite3.connect(str(db_path)) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                
+
                 cursor.execute(query)
-                
+
                 if query.strip().upper().startswith("SELECT"):
                     rows = cursor.fetchall()
                     results = [dict(row) for row in rows]
@@ -612,29 +611,29 @@ class ToolExecutionService:
                         "affected_rows": cursor.rowcount,
                         "query": query
                     }
-                    
+
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
                 "query": query[:100] + "..." if len(query) > 100 else query
             }
-    
+
     # Custom tool implementations
     async def _calculate_hash(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate hash of content"""
         try:
             content = parameters.get("content", "")
             algorithm = parameters.get("algorithm", "sha256")
-            
+
             if algorithm == "sha256":
                 hash_obj = hashlib.sha256(content.encode())
             elif algorithm == "md5":
-                logger.warning("MD5 is a weak hashing algorithm and should not be used for security purposes. Consider using SHA256.")
-                hash_obj = hashlib.md5(content.encode(), usedforsecurity=False)
+                logger.warning("MD5 is a weak hashing algorithm and is no longer supported.")
+                return {"success": False, "error": "MD5 algorithm is insecure and no longer supported."}
             else:
                 return {"success": False, "error": f"Unsupported algorithm: {algorithm}"}
-            
+
             return {
                 "success": True,
                 "hash": hash_obj.hexdigest(),
@@ -643,7 +642,7 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _generate_uuid(self) -> Dict[str, Any]:
         """Generate UUID"""
         try:
@@ -655,13 +654,13 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _format_json(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Format JSON"""
         try:
             data = parameters.get("data", {})
             indent = parameters.get("indent", 2)
-            
+
             formatted = json.dumps(data, indent=indent, ensure_ascii=False)
             return {
                 "success": True,
@@ -671,17 +670,17 @@ class ToolExecutionService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def _parse_csv(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Parse CSV data"""
         try:
             csv_data = parameters.get("csv_data", "")
-            
+
             # Create temporary file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
                 f.write(csv_data)
                 temp_path = f.name
-            
+
             try:
                 df = pd.read_csv(temp_path)
                 return {
@@ -693,10 +692,10 @@ class ToolExecutionService:
                 }
             finally:
                 os.unlink(temp_path)
-                
+
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def cleanup(self):
         """Clean up temporary files"""
         try:

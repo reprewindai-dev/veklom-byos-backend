@@ -58,23 +58,23 @@ class BenchmarkAPISchema(BaseModel):
     id: str
     name: str
     category: str
-    p50: float
-    p95: float
-    p99: float
-    sla: float
-    drift: float
-    sovereignTier: int
+    p50: Optional[float] = None
+    p95: Optional[float] = None
+    p99: Optional[float] = None
+    sla: Optional[float] = None
+    drift: Optional[float] = None
+    sovereignTier: Optional[int] = None
     complianceLabels: List[str]
-    govScore: int
-    devScore: int
+    govScore: Optional[int] = None
+    devScore: Optional[int] = None
     endpointUrl: Optional[str] = None
     description: Optional[str] = None
     mcpSchema: Optional[dict] = None
     provider: Optional[str] = None
-    throughput: int = 0
-    uptime24h: float = 100.0
-    totalStaked: float = 0.0
-    status: str = "excellent"
+    throughput: Optional[int] = None
+    uptime24h: Optional[float] = None
+    totalStaked: Optional[float] = None
+    status: str = "unmeasured"
 
     class Config:
         from_attributes = True
@@ -201,51 +201,6 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
         if t.api_id not in telemetry_by_api or t.measured_at > telemetry_by_api[t.api_id].measured_at:
             telemetry_by_api[t.api_id] = t
     
-    db_seeds = {}
-    for api in vnp_apis:
-        provider_name = api.provider.legal_name if api.provider else "Veklom"
-        is_apex = api.current_composite_score >= 100.0
-        
-        t_record = telemetry_by_api.get(api.id)
-        
-        # NOTE: The following fields are synthetic placeholders derived deterministically 
-        # from the API's score and category. They are NOT measured truths. 
-        # They serve as structural stubs for the React dashboard until real metrics 
-        # (latency histograms, compliance evidence, schema compatibility, drift, audit dimensions)
-        # are fully backed by their own SQL tables in future migrations.
-        #
-        # LATENCY & UPTIME: Now using real data from `vnp_regional_telemetry` if available!
-        
-        p50 = float(t_record.p50_latency_ms) if t_record else (15.0 if is_apex else 25.0)
-        p95 = float(t_record.p95_latency_ms) if t_record else (25.0 if is_apex else 40.0)
-        p99 = float(t_record.p99_latency_ms) if t_record else (35.0 if is_apex else 55.0)
-        sla = float(t_record.uptime_percent) if t_record else (99.99 if is_apex else 99.95)
-        uptime24h = sla
-        
-        db_seeds[api.api_did] = {
-            "name": api.name,
-            "provider": provider_name,
-            "category": "Zero-Trust Infrastructure" if "Covenant" in api.name or "RAG" in api.name else "Infrastructure",
-            "tier": "Apex" if is_apex else "Sovereign",
-            "base_score": int(api.current_composite_score * 10),
-            "p50": p50,
-            "p95": p95,
-            "p99": p99,
-            "sla": sla,
-            "drift": 0.001 if is_apex else 0.005,
-            "sovereignTier": 1 if is_apex else 2,
-            "complianceLabels": ["x402-Native", "SOC2", "TLS 1.3"],
-            "govScore": 99 if is_apex else 95,
-            "devScore": 98 if is_apex else 94,
-            "endpointUrl": api.base_url,
-            "description": f"VNP governed API endpoint for {api.name}",
-            "throughput": 45000 if is_apex else 15000,
-            "uptime24h": uptime24h,
-            "totalStaked": 250000 if is_apex else 50000,
-            "status": "excellent",
-            "mcpSchema": None,
-        }
-
     all_runs = (
         await db.execute(
             select(GovernedRun)
@@ -276,34 +231,14 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
         if run.state in ["failed", "error", "law0_violation"]:
             stats["error_runs"] += 1
 
-    def _build_api_entry(provider_key: str) -> dict:
-        """Build a single leaderboard entry from db seeds + optional real data."""
-        seed = db_seeds.get(provider_key, {
-            "name": provider_key.title(),
-            "provider": provider_key.title(),
-            "category": "Reasoning Model",
-            "tier": "Unknown",
-            "base_score": 700,
-            "p50": 100.0,
-            "p95": 125.0,
-            "p99": 140.0,
-            "sla": 99.0,
-            "drift": 0.02,
-            "sovereignTier": 2,
-            "complianceLabels": ["TLS 1.3"],
-            "govScore": 85,
-            "devScore": 85,
-            "endpointUrl": None,
-            "description": None,
-            "throughput": 2000,
-            "uptime24h": 99.0,
-            "totalStaked": 10000,
-            "status": "nominal",
-            "mcpSchema": None,
-        })
-
-        stats = provider_stats.get(provider_key)
-
+    entries = []
+    for api in vnp_apis:
+        provider_name = api.provider.legal_name if api.provider else "Veklom"
+        is_apex = api.current_composite_score >= 100.0
+        
+        t_record = telemetry_by_api.get(api.id)
+        stats = provider_stats.get(provider_name)
+        
         if stats and stats["total_runs"] > 0:
             run_count = stats["total_runs"]
             avg_lat = stats["total_latency"] / run_count
@@ -318,85 +253,51 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
             real_p50 = sorted_lats[p50_idx]
             real_p95 = sorted_lats[p95_idx]
             real_p99 = sorted_lats[p99_idx]
-
-            # Blend real metrics with seed baselines:
-            # weight real data more as run_count grows (sigmoid-like ramp)
-            alpha = min(1.0, run_count / 100.0)  # 0→1 over first 100 runs
-            blended_p50 = alpha * real_p50 + (1 - alpha) * seed["p50"]
-            blended_p95 = alpha * real_p95 + (1 - alpha) * seed["p95"]
-            blended_p99 = alpha * real_p99 + (1 - alpha) * seed["p99"]
-
-            # Uptime from real error rate, blended with seed
+            
             real_uptime = round((1 - error_rate) * 100, 2)
-            blended_uptime = alpha * real_uptime + (1 - alpha) * seed["uptime24h"]
-
-            # SLA from uptime
-            blended_sla = blended_uptime
-
-            # Adjust govScore and devScore based on real reliability
             trust_pct = 1 - error_rate
             latency_penalty = min(20, int(avg_lat / 50))
-            blended_gov = max(0, int(seed["govScore"] * (alpha * trust_pct + (1 - alpha))))
-            blended_dev = max(0, int(seed["devScore"] * (alpha * trust_pct + (1 - alpha))) - latency_penalty)
+            real_gov = max(0, int(100 * trust_pct))
+            real_dev = max(0, int(100 * trust_pct) - latency_penalty)
+            real_throughput = run_count * 10
+            status = "excellent" if real_uptime >= 99.9 else "nominal" if real_uptime >= 99.0 else "degraded"
+        else:
+            real_p50 = None
+            real_p95 = None
+            real_p99 = None
+            real_uptime = None
+            real_gov = None
+            real_dev = None
+            real_throughput = None
+            status = "unmeasured"
 
-            # Throughput: blend real run count with seed baseline
-            blended_throughput = int(alpha * run_count * 10 + (1 - alpha) * seed["throughput"])
-
-            return {
-                "id": provider_key,
-                "name": seed["name"],
-                "category": seed["category"],
-                "p50": round(blended_p50, 1),
-                "p95": round(blended_p95, 1),
-                "p99": round(blended_p99, 1),
-                "sla": round(blended_sla, 2),
-                "drift": seed["drift"],
-                "sovereignTier": seed["sovereignTier"],
-                "complianceLabels": seed["complianceLabels"],
-                "govScore": blended_gov,
-                "devScore": blended_dev,
-                "endpointUrl": seed["endpointUrl"],
-                "description": seed["description"],
-                "mcpSchema": seed["mcpSchema"],
-                "provider": seed["provider"],
-                "throughput": blended_throughput,
-                "uptime24h": round(blended_uptime, 2),
-                "totalStaked": seed["totalStaked"],
-                "status": "excellent" if blended_uptime >= 99.9 else "nominal" if blended_uptime >= 99.0 else "degraded",
-            }
-
-        # No real runs — return seed baselines directly
-        return {
-            "id": provider_key,
-            "name": seed["name"],
-            "category": seed["category"],
-            "p50": seed["p50"],
-            "p95": seed["p95"],
-            "p99": seed["p99"],
-            "sla": seed["sla"],
-            "drift": seed["drift"],
-            "sovereignTier": seed["sovereignTier"],
-            "complianceLabels": seed["complianceLabels"],
-            "govScore": seed["govScore"],
-            "devScore": seed["devScore"],
-            "endpointUrl": seed["endpointUrl"],
-            "description": seed["description"],
-            "mcpSchema": seed["mcpSchema"],
-            "provider": seed["provider"],
-            "throughput": seed["throughput"],
-            "uptime24h": seed["uptime24h"],
-            "totalStaked": seed["totalStaked"],
-            "status": seed["status"],
-        }
-
-    # Build entries for all known providers (real + seed)
-    all_keys = set(list(provider_stats.keys()) + list(db_seeds.keys()))
-    entries = [_build_api_entry(k) for k in all_keys]
+        entries.append({
+            "id": api.api_did,
+            "name": api.name,
+            "category": "Zero-Trust Infrastructure" if "Covenant" in api.name or "RAG" in api.name else "Infrastructure",
+            "p50": round(real_p50, 1) if real_p50 is not None else None,
+            "p95": round(real_p95, 1) if real_p95 is not None else None,
+            "p99": round(real_p99, 1) if real_p99 is not None else None,
+            "sla": round(real_uptime, 2) if real_uptime is not None else None,
+            "drift": None,
+            "sovereignTier": 1 if is_apex else 2,
+            "complianceLabels": ["x402-Native", "SOC2", "TLS 1.3"] if real_uptime is not None else [],
+            "govScore": real_gov,
+            "devScore": real_dev,
+            "endpointUrl": api.base_url,
+            "description": f"VNP governed API endpoint for {api.name}",
+            "mcpSchema": None,
+            "provider": provider_name,
+            "throughput": real_throughput,
+            "uptime24h": round(real_uptime, 2) if real_uptime is not None else None,
+            "totalStaked": 250000 if is_apex else 50000,
+            "status": status,
+        })
 
     # Sort by a composite trust signal (govScore + devScore + compliance depth)
     def _sort_key(item: dict) -> float:
-        security = item["govScore"]
-        performance = item["devScore"]
+        security = item["govScore"] or 0
+        performance = item["devScore"] or 0
         compliance = len(item["complianceLabels"]) * 5
         return security + performance + compliance
 
@@ -1045,23 +946,23 @@ async def compile_api(
         id="comp-" + str(random.randint(1000, 9999)),
         name=compiled_result.get("apiName", normalized_name),
         category=compiled_result.get("category", normalized_category),
-        p50=compiled_result.get("syntheticVerificationResult", {}).get("latencyMs", 40),
-        p95=compiled_result.get("syntheticVerificationResult", {}).get("latencyMs", 40) + 15,
-        p99=compiled_result.get("syntheticVerificationResult", {}).get("latencyMs", 40) + 40,
-        sla=99.9,
-        drift=compiled_result.get("syntheticVerificationResult", {}).get("driftScore", 5),
+        p50=None,
+        p95=None,
+        p99=None,
+        sla=None,
+        drift=None,
         sovereign_tier=1,
         compliance_labels=["NIST SP 800-53", "Sovereign compiled"],
-        gov_score=compiled_result.get("syntheticVerificationResult", {}).get("comprehensionScore", 85),
-        dev_score=100 - compiled_result.get("syntheticVerificationResult", {}).get("driftScore", 5),
+        gov_score=None,
+        dev_score=None,
         endpoint_url=compiled_result.get("restEndpoint", "/api/v1/dynamic-endpoint"),
         description=compiled_result.get("syntheticVerificationResult", {}).get("aiFeedback", "Compiled schema verification completed."),
         mcp_schema=compiled_result.get("mcpToolDefinition", {}),
         provider="Self-Published Source",
-        throughput=150,
-        uptime_24h=99.9,
+        throughput=None,
+        uptime_24h=None,
         total_staked=0.0,
-        status="excellent"
+        status="unmeasured"
     )
     db.add(new_api)
     

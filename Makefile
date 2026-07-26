@@ -45,8 +45,8 @@ rollback:
 	@echo "  docker build -t veklom-local:latest ."
 	@echo "  docker stop n13gp1nhrcdp0hvazvbnlxru-083606963671 || true"
 	@echo "  docker rm n13gp1nhrcdp0hvazvbnlxru-083606963671 || true"
-	@echo "  docker run -d --name n13gp1nhrcdp0hvazvbnlxru-083606963671 --network coolify --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env --restart unless-stopped -p 80:80 veklom-local:latest"
-	@echo "  curl -s http://localhost:80/health"
+	@echo "  docker run -d --name n13gp1nhrcdp0hvazvbnlxru-083606963671 --network coolify --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env --restart unless-stopped -p 8088:8088 veklom-local:latest"
+	@echo "  curl -s http://localhost:8088/health"
 	@echo "  curl -sk -H 'Host: veklom.com' https://localhost/health"
 
 health-check:
@@ -63,4 +63,3 @@ reconcile:
 	@echo "=== Running Payments & Ledger Reconciliation ==="
 	chmod +x ./scripts/reconcile.sh
 	./scripts/reconcile.sh
-

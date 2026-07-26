@@ -39,7 +39,7 @@ CELERY_RESULT_BACKEND=redis://:YOUR_REDIS_PASSWORD@YOUR_EXTERNAL_REDIS_HOST:6379
 APP_NAME=Veklom Sovereign AI Hub
 VERSION=1.0.0
 APP_ENV=production
-PORT=80
+PORT=8088
 DEBUG=false
 LOG_LEVEL=INFO
 LOG_FORMAT=json
@@ -51,6 +51,11 @@ FRONTEND_URL=https://veklom.com
 API_URL=https://veklom.com
 ADMIN_EMAIL=founder@veklom.com
 VEKLOM_API_BASE=/api/v1
+CAPI_BACKEND_URL=https://capi.veklom.com
+CAPI_REGISTRY_TOKEN=YOUR_CAPI_REGISTRY_TOKEN
+CAPPO_BACKEND_URL=https://cappo.veklom.com
+PGL_LEDGER_URL=https://pgl.veklom.com
+LOCKERPHYCER_URL=
 ```
 
 ### Security

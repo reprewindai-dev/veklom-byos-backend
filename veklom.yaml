@@ -24,4 +24,4 @@ http:
     veklom-control:
       loadBalancer:
         servers:
-          - url: "http://tvxcsezs2ypd8tjuj6ic9gih-230135676493:3002"
+          - url: "http://tvxcsezs2ypd8tjuj6ic9gih-230135676493:3003"

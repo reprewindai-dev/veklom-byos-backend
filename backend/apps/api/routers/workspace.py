@@ -287,7 +287,7 @@ async def audit_logs(limit: int = 20, offset: int = 0, user=Depends(get_current_
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"http://localhost:8000/v1/audit/ledger/traces?limit={limit}&offset={offset}",
+                f"http://localhost:8001/v1/audit/ledger/traces?limit={limit}&offset={offset}",
                 timeout=10.0
             )
             resp.raise_for_status()

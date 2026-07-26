@@ -35,7 +35,7 @@ No password. Key-only auth. This always works.
 | Docker image | `veklom-local:latest` |
 | Docker network | `coolify` |
 | Env file | `/data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env` |
-| Traefik config | Coolify Auto-Generated (Routes `api.veklom.com` to port `80`) |
+| Traefik config | Coolify Auto-Generated (Routes `api.veklom.com` to port `8088`) |
 
 ---
 
@@ -67,7 +67,7 @@ docker run -d \
 
 **Step 3 — Verify:**
 ```bash
-curl -s http://localhost:80/health
+curl -s http://localhost:8088/health
 curl -sk https://localhost/health -H "Host: veklom.com"
 ```
 
@@ -104,7 +104,7 @@ http:
     veklom:
       loadBalancer:
         servers:
-          - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:80"
+          - url: "http://n13gp1nhrcdp0hvazvbnlxru-213557155694:8088"
 EOF
 
 # Traefik auto-reloads. Verify:
@@ -142,7 +142,7 @@ sleep 3 && curl -sk -H "Host: veklom.com" https://localhost/health
 ## Backend
 
 - **Entry point:** `backend/apps/api/main.py` (FastAPI)
-- **Run command:** `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 80`
+- **Run command:** `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port 8088`
 - **All API routes:** prefixed `/api/v1/`
 - **Static mounts:** `/command-center`, `/irongrid`, `/terminal`, `/gpc-engine` (Note: the `veklom-control-plane` is NOT mounted here, it runs separately).
 

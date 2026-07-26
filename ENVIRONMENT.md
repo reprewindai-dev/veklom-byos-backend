@@ -13,7 +13,7 @@ Never commit real secrets to any repository.
 | `APP_NAME` | Application name | `Veklom Sovereign AI Hub` |
 | `VERSION` | Application version | `1.0.0` |
 | `APP_ENV` | Runtime environment | `production` or `development` |
-| `PORT` | Server port | `80` |
+| `PORT` | Server port | `8088` |
 | `DEBUG` | Debug mode | `false` |
 | `LOG_LEVEL` | Logging level | `INFO` |
 | `LOG_FORMAT` | Log format | `json` |

@@ -15,7 +15,7 @@ ssh_command = [
       --network coolify \
       --env-file /data/coolify/applications/n13gp1nhrcdp0hvazvbnlxru/.env \
       --restart unless-stopped \
-      -p 80:80 \
+      -p 8088:8088 \
       veklom-local:latest
     """
 ]

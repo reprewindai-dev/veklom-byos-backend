@@ -38,6 +38,7 @@ from backend.core.security.middlewares import (
 
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine, get_db
+from backend.core.services.capi_registration import register_with_capi
 from backend.core.plugins.manager import plugin_manager
 from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
@@ -274,6 +275,7 @@ from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
 async def lifespan(app: FastAPI):
     # Enforce security configurations
     settings.validate_production()
+    capi_registration_task = asyncio.create_task(register_with_capi())
 
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
@@ -589,6 +591,8 @@ async def lifespan(app: FastAPI):
     yield
 
     terminal_state_manager.is_running = False
+    if not capi_registration_task.done():
+        capi_registration_task.cancel()
 
     # Graceful shutdown of plugins and operator workforce
     await plugin_manager.shutdown_all()
@@ -884,6 +888,9 @@ app.include_router(discovery.router)
 
 # Health & status (no prefix)
 app.include_router(health.router)
+from backend.apps.api.routers import health_dependencies, protocol
+app.include_router(health_dependencies.router)
+app.include_router(protocol.router)
 
 # Auth - restore /api/v1 prefix
 app.include_router(auth.router, prefix="/api/v1")

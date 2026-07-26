@@ -29,7 +29,7 @@ docker build -t veklom-byos-backend .
 ```bash
 docker run -d \
   --name veklom-api \
-  -p 80:80 \
+  -p 8088:8088 \
   --env-file .env.production \
   veklom-byos-backend
 ```
@@ -53,7 +53,7 @@ Coolify will use the Dockerfile at the root of this repository. The runtime is c
 - **Base Image**: `python:3.11-slim`
 - **Port**: `80` (exposed for Coolify's reverse proxy)
 - **Health Check**: `/health` endpoint
-- **Command**: `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port ${PORT:-80}`
+- **Command**: `uvicorn backend.apps.api.main:app --host 0.0.0.0 --port ${PORT:-8088}`
 - **Worker User**: Non-root user `veklom` (UID 1000) for security
 
 ### Deployment Steps
@@ -134,7 +134,7 @@ cloudflared tunnel create veklom-api
 cloudflared tunnel route dns veklom-api api.yourdomain.com
 
 # Run
-cloudflared tunnel run --url http://localhost:80 veklom-api
+cloudflared tunnel run --url http://localhost:8088 veklom-api
 ```
 
 This gives your backend a public HTTPS URL without opening firewall ports.

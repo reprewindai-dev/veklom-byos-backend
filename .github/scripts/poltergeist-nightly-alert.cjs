@@ -34,8 +34,15 @@ function evaluateAudit({
   }
 
   const diskPercent = parseDiskPercent(diskUsed);
+  const requestedThreshold = Number(diskAlertThreshold);
+  const threshold =
+    Number.isFinite(requestedThreshold) &&
+    requestedThreshold >= 0 &&
+    requestedThreshold <= 100
+      ? requestedThreshold
+      : 88;
   const diskProbeFailed = diskProbeStatus !== "ok" || diskPercent === null;
-  const diskHigh = !diskProbeFailed && diskPercent >= diskAlertThreshold;
+  const diskHigh = !diskProbeFailed && diskPercent >= threshold;
   const pruneFailed = pruneStatus === "failed";
 
   return {
@@ -45,7 +52,7 @@ function evaluateAudit({
     diskProbeFailed,
     diskProbeMessage,
     diskHigh,
-    diskAlertThreshold,
+    diskAlertThreshold: threshold,
     pruneStatus,
     pruneFailed,
     unhealthy:

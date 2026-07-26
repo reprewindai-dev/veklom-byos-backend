@@ -269,6 +269,8 @@ jobs:
     steps:
       - name: Checkout Alert Reconciler
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Check All Endpoints
         id: audit
@@ -279,8 +281,15 @@ jobs:
             local url=$3
             local expected_code=${4:-200}
             local http
-            http=$(curl -sk "$url" -o /dev/null -w '%{http_code}' \
-              --connect-timeout 10 --max-time 15 || true)
+            local attempt
+            for attempt in 1 2 3; do
+              http=$(curl -sk "$url" -o /dev/null -w '%{http_code}' \
+                --connect-timeout 10 --max-time 15 || true)
+              [ "$http" = "$expected_code" ] && break
+              if [ "$attempt" -lt 3 ]; then
+                sleep 5
+              fi
+            done
             if [ "$http" = "$expected_code" ]; then
               echo "✅ $label → HTTP $http"
               echo "${key}_status=ok" >> "$GITHUB_OUTPUT"
@@ -344,6 +353,14 @@ jobs:
           DISK=$(ssh "${SSH_ARGS[@]}" \
             "df -P / | tail -1 | tr -s ' ' | cut -d ' ' -f 5 | tr -d '%'" \
             2>/dev/null)
+          SSH_STATUS=$?
+
+          if [ "$SSH_STATUS" -ne 0 ]; then
+            DISK=""
+            PROBE_MESSAGE="SSH disk probe failed (exit ${SSH_STATUS})."
+            emit_results
+            exit 0
+          fi
 
           if ! [[ "$DISK" =~ ^[0-9]{1,3}$ ]] || [ "$DISK" -gt 100 ]; then
             DISK=""
@@ -359,19 +376,28 @@ jobs:
           if [ "$DISK" -ge "$DISK_PRUNE_THRESHOLD_PCT" ]; then
             case "${POLTERGEIST_AUTO_PRUNE,,}" in
               1|true|yes|on)
+                # `image prune -a` removes all images not referenced by a
+                # container, including tagged old releases. A rollback may
+                # therefore need to re-pull or rebuild an image.
                 ssh "${SSH_ARGS[@]}" \
                   "docker image prune -af --filter until=1440h && docker builder prune -af --filter until=1440h" \
                   >/tmp/poltergeist-prune.log 2>&1
                 if [ "$?" -eq 0 ]; then
                   PRUNE_STATUS="succeeded"
-                  DISK=$(ssh "${SSH_ARGS[@]}" \
+                  FOLLOW_UP_DISK=$(ssh "${SSH_ARGS[@]}" \
                     "df -P / | tail -1 | tr -s ' ' | cut -d ' ' -f 5 | tr -d '%'" \
                     2>/dev/null)
-                  if ! [[ "$DISK" =~ ^[0-9]{1,3}$ ]] || [ "$DISK" -gt 100 ]; then
+                  SSH_STATUS=$?
+                  if [ "$SSH_STATUS" -ne 0 ]; then
                     DISK=""
                     PROBE_STATUS="failed"
-                    PROBE_MESSAGE="Cleanup succeeded, but the follow-up disk probe was invalid."
+                    PROBE_MESSAGE="Cleanup succeeded, but the follow-up SSH probe failed (exit ${SSH_STATUS})."
+                  elif ! [[ "$FOLLOW_UP_DISK" =~ ^[0-9]{1,3}$ ]] || [ "$FOLLOW_UP_DISK" -gt 100 ]; then
+                    DISK=""
+                    PROBE_STATUS="failed"
+                    PROBE_MESSAGE="Cleanup succeeded, but the follow-up disk percentage was invalid."
                   else
+                    DISK="$FOLLOW_UP_DISK"
                     echo "Disk usage after cleanup: ${DISK}%"
                   fi
                 else
@@ -389,6 +415,7 @@ jobs:
           emit_results
 
       - name: Reconcile Nightly Alert
+        if: always()
         uses: actions/github-script@v7
         env:
           API_HEALTH_STATUS: ${{ steps.audit.outputs.api_health_status }}

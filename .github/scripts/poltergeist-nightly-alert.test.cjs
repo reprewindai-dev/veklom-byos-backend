@@ -83,6 +83,33 @@ test("evaluateAudit uses the post-cleanup measurement and preserves cleanup fail
   assert.equal(cleanupFailed.pruneFailed, true);
 });
 
+test("evaluateAudit pins disk threshold boundaries and rejects invalid thresholds", () => {
+  const below = evaluateAudit({
+    checks: healthyChecks,
+    diskUsed: "89",
+    diskProbeStatus: "ok",
+    diskAlertThreshold: 90,
+  });
+  const boundary = evaluateAudit({
+    checks: healthyChecks,
+    diskUsed: "90",
+    diskProbeStatus: "ok",
+    diskAlertThreshold: 90,
+  });
+  const invalidThreshold = evaluateAudit({
+    checks: healthyChecks,
+    diskUsed: "88",
+    diskProbeStatus: "ok",
+    diskAlertThreshold: Number.NaN,
+  });
+
+  assert.equal(below.unhealthy, false);
+  assert.equal(boundary.diskHigh, true);
+  assert.equal(boundary.unhealthy, true);
+  assert.equal(invalidThreshold.diskAlertThreshold, 88);
+  assert.equal(invalidThreshold.diskHigh, true);
+});
+
 test("reconcileNightlyAlert creates one canonical alert", async () => {
   const { calls, github } = createGithub();
 

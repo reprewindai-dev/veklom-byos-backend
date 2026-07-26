@@ -85,6 +85,29 @@ class PoltergeistDiskWatchdogTests(unittest.IsolatedAsyncioTestCase):
         to_thread.assert_not_called()
         self.assertIn("no Docker daemon endpoint", "\n".join(logs.output))
 
+    async def test_enabled_prune_requires_the_docker_cli(self):
+        env = {
+            "SENTINEL_DISK_PATH": "/data",
+            "SENTINEL_DOCKER_PRUNE_ENABLED": "true",
+        }
+
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("backend.ops.disk_watchdog.os.path.exists", return_value=True),
+            patch(
+                "backend.ops.disk_watchdog.shutil.disk_usage",
+                return_value=disk_usage(91),
+            ),
+            patch("backend.ops.disk_watchdog.shutil.which", return_value=None),
+            patch("backend.ops.disk_watchdog.asyncio.to_thread") as to_thread,
+            self.assertLogs("poltergeist_daemon", level="ERROR") as logs,
+        ):
+            is_degraded = await inspect_and_prune_disk(90)
+
+        self.assertTrue(is_degraded)
+        to_thread.assert_not_called()
+        self.assertIn("docker CLI is unavailable", "\n".join(logs.output))
+
     async def test_failed_prune_stays_degraded_and_reports_exit_code(self):
         env = {
             "DOCKER_HOST": "unix:///approved/docker.sock",

@@ -129,7 +129,12 @@ async def main():
             print(f"Successfully recorded {len(probe_events)} probe events.")
 
             for event in probe_events:
-                print(f"  - API {event.api_id}: status={event.status_code}, latency={event.latency_ms:.2f}ms")
+                latency = (
+                    f"{event.latency_ms:.2f}ms"
+                    if event.latency_ms is not None
+                    else "UNAVAILABLE"
+                )
+                print(f"  - API {event.api_id}: status={event.status_code}, latency={latency}")
 
 if __name__ == "__main__":
     asyncio.run(main())

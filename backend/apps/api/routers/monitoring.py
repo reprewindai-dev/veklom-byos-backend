@@ -8,15 +8,15 @@ import uuid as _uuid_mod
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse, StreamingResponse
-from sqlalchemy import select, func, case, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
-from backend.core.services.redis_cache import redis_cache
 from backend.core.security.auth import get_current_user
+from backend.core.services.redis_cache import redis_cache
 from backend.db.models.ai import ExecutionLog, IncidentLog
 
 router = APIRouter(tags=["Monitoring"])
@@ -91,68 +91,37 @@ async def _component_health(db: AsyncSession) -> dict:
     except Exception:
         components["redis"] = {"status": "unknown", "latency_ms": None, "reason": "ping_failed"}
 
-    t0 = _time.perf_counter()
-    base = getattr(settings, "LLM_BASE_URL", None) or getattr(settings, "OLLAMA_BASE_URL", None)
-    if base:
+    import asyncio
+
+    import httpx
+
+    async def _check_http(key: str, url: str, follow_redirects: bool = False, down_status: str = "unhealthy", degraded_status: str = "degraded") -> tuple[str, dict]:
+        t0_http = _time.perf_counter()
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                r = await client.get(f"{base.rstrip('/')}/api/tags")
+            async with httpx.AsyncClient(timeout=2.0, follow_redirects=follow_redirects) as client:
+                r = await client.get(url)
             ok = r.status_code < 500
-            components["ai_gateway"] = {"status": "healthy" if ok else "degraded",
-                                        "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
+            return key, {"status": "healthy" if ok else degraded_status, "latency_ms": round((_time.perf_counter() - t0_http) * 1000, 1)}
         except Exception:
-            components["ai_gateway"] = {"status": "unknown", "latency_ms": None, "reason": "unreachable"}
-    else:
-        components["ai_gateway"] = {"status": "unknown", "latency_ms": None, "reason": "no_base_url"}
+            return key, {"status": down_status, "latency_ms": None, "reason": "unreachable"}
 
-    # CAPPO
-    t0 = _time.perf_counter()
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get("http://cappo-backend-node:8000/health")
-        ok = r.status_code < 500
-        components["cappo"] = {"status": "healthy" if ok else "degraded",
-                               "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
-    except Exception:
-        components["cappo"] = {"status": "unhealthy", "latency_ms": None, "reason": "unreachable"}
+    async def _check_ai_gateway():
+        base = getattr(settings, "LLM_BASE_URL", None) or getattr(settings, "OLLAMA_BASE_URL", None)
+        if not base:
+            return "ai_gateway", {"status": "unknown", "latency_ms": None, "reason": "no_base_url"}
+        return await _check_http("ai_gateway", f"{base.rstrip('/')}/api/tags", down_status="unknown")
 
-    # Gnomledger
-    t0 = _time.perf_counter()
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get("http://gnomledger-api-1:8000/health")
-        ok = r.status_code < 500
-        components["gnomledger"] = {"status": "healthy" if ok else "degraded",
-                                    "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
-    except Exception:
-        components["gnomledger"] = {"status": "unhealthy", "latency_ms": None, "reason": "unreachable"}
+    # Run all network health checks concurrently
+    http_results = await asyncio.gather(
+        _check_ai_gateway(),
+        _check_http("cappo", "http://cappo-backend-node:8000/health"),
+        _check_http("gnomledger", "http://gnomledger-api-1:8000/health"),
+        _check_http("lockerphycer", "http://lockerphycer-api:8000/health", down_status="down"),
+        _check_http("coolify", "http://coolify:8000/login", follow_redirects=True)
+    )
 
-    # Lockerphycer
-    t0 = _time.perf_counter()
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get("http://lockerphycer-api:8000/health")
-        ok = r.status_code < 500
-        components["lockerphycer"] = {"status": "healthy" if ok else "degraded",
-                                      "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
-    except Exception:
-        components["lockerphycer"] = {"status": "down", "latency_ms": None, "reason": "unreachable"}
-
-    # Coolify
-    t0 = _time.perf_counter()
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=2.0, follow_redirects=True) as client:
-            r = await client.get("http://coolify:8000/login")
-        ok = r.status_code < 500
-        components["coolify"] = {"status": "healthy" if ok else "degraded",
-                                 "latency_ms": round((_time.perf_counter() - t0) * 1000, 1)}
-    except Exception:
-        components["coolify"] = {"status": "unhealthy", "latency_ms": None, "reason": "unreachable"}
+    for key, result in http_results:
+        components[key] = result
 
     # Policy engine runs in-process with the API — no network hop.
     components["policy_engine"] = {"status": "healthy", "latency_ms": 0, "note": "in-process"}
@@ -455,8 +424,8 @@ async def monitoring_audit_export(
         f"# Workspace: {ws}",
         f"# Generated by: {user.email}",
         f"# Generated at: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        f"# Hash algorithm: SHA-256",
-        f"# Chain integrity: VERIFIED",
+        "# Hash algorithm: SHA-256",
+        "# Chain integrity: VERIFIED",
         "",
         "---",
         "",
@@ -479,13 +448,13 @@ async def monitoring_audit_export(
         "",
         "## Chain Verification",
         "",
-        f"| Property | Value |",
-        f"|---|---|",
+        "| Property | Value |",
+        "|---|---|",
         f"| Final chain hash | {chain_hash} |",
         f"| Total entries | {len(logs)} |",
-        f"| Chain status | ✓ INTACT |",
-        f"| Storage encryption | AES-256-GCM |",
-        f"| Transport | TLS 1.3 |",
+        "| Chain status | ✓ INTACT |",
+        "| Storage encryption | AES-256-GCM |",
+        "| Transport | TLS 1.3 |",
         f"| Export ID | aexp_{now.strftime('%Y%m%d%H%M%S')}_{ws[:8]} |",
         "",
         "_All entries are cryptographically sealed. Contact compliance@veklom.com to verify._",
@@ -504,9 +473,8 @@ async def monitoring_audit_export(
 @router.get("/platform/pulse")
 async def platform_pulse(db: AsyncSession = Depends(get_db)):
     """Real platform counts from the database (no hardcoded vanity numbers)."""
-    from backend.db.models.workspace import Workspace
-
     from backend.db.models.run import VeklomRun
+    from backend.db.models.workspace import Workspace
 
     async def _count(model) -> int:
         try:
@@ -672,10 +640,10 @@ async def pulse_stream(user=Depends(get_current_user), db: AsyncSession = Depend
                 select(func.count(), func.avg(ExecutionLog.latency_ms))
                 .where(ExecutionLog.workspace_id == ws, ExecutionLog.created_at >= cutoff)
             )).fetchone()
-            
+
             active_reqs = rows[0] if rows and rows[0] else 0
             avg_lat = int(rows[1]) if rows and rows[1] else 0
-            
+
             data = {
                 "event": "pulse",
                 "data": {
@@ -708,21 +676,21 @@ async def insights_summary(user=Depends(get_current_user), db: AsyncSession = De
         .where(ExecutionLog.workspace_id == ws)
         .group_by(ExecutionLog.provider)
     )).all()
-    
+
     total_calls = sum(int(n or 0) for _, _, n, _ in rows)
     total_cost = sum(float(c or 0) for _, c, _, _ in rows)
-    
+
     avg_latency = 0
     if total_calls > 0:
         avg_latency = int(sum(float(l or 0) * int(n or 0) for _, _, n, l in rows) / total_calls)
-    
+
     provider_split = {}
     top_models_dict = {}
     for p, c, n, l in rows:
         provider = p or "unknown"
         provider_split[provider] = round(int(n or 0) / total_calls, 4) if total_calls else 0
         top_models_dict[provider] = int(n or 0)
-        
+
     top_models = [{"model": p, "calls": c} for p, c in sorted(top_models_dict.items(), key=lambda x: x[1], reverse=True)]
 
     # For empty state honesty:
@@ -771,13 +739,13 @@ async def insights_savings(user=Depends(get_current_user), db: AsyncSession = De
         select(func.sum(ExecutionLog.total_tokens), func.sum(ExecutionLog.cost))
         .where(ExecutionLog.workspace_id == ws)
     )).fetchone()
-    
+
     total_tokens = int(rows[0]) if rows and rows[0] else 0
     actual_cost = float(rows[1]) if rows and rows[1] else 0.0
-    
+
     baseline_cost = (total_tokens / 1000.0) * 0.03 # $0.03/1k baseline
     savings = max(0, baseline_cost - actual_cost)
-    
+
     result = {
         "total_saved_usd": round(savings, 2),
         "routing_savings": round(savings * 0.8, 2),
@@ -864,10 +832,10 @@ async def performance_metrics(user=Depends(get_current_user), db: AsyncSession =
         select(func.count(), func.avg(ExecutionLog.latency_ms))
         .where(ExecutionLog.workspace_id == ws)
     )).fetchone()
-    
+
     count = int(rows[0]) if rows and rows[0] else 0
     avg_lat = int(rows[1]) if rows and rows[1] else 0
-    
+
     if count == 0:
         result = {
             "p50_ms": 0,
@@ -961,20 +929,20 @@ async def list_suggestions(user=Depends(get_current_user), db: AsyncSession = De
         .where(ExecutionLog.workspace_id == ws)
         .group_by(ExecutionLog.provider)
     )).all()
-    
+
     total = sum(int(n or 0) for _, n in rows)
     suggestions = []
-    
+
     if total > 0:
         groq_count = sum(int(n or 0) for p, n in rows if p == "groq")
         if groq_count > 0:
             suggestions.append({
-                "id": "s1", 
-                "type": "circuit_breaker", 
-                "title": f"Circuit breaker engaged; traffic gracefully fell back to Groq for {groq_count} requests.", 
+                "id": "s1",
+                "type": "circuit_breaker",
+                "title": f"Circuit breaker engaged; traffic gracefully fell back to Groq for {groq_count} requests.",
                 "impact": "high"
             })
-            
+
     # Empty-state honest
     return suggestions
 

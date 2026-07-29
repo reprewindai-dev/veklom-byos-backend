@@ -3,7 +3,9 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from veklom_amphoteric import AmphotericRouter, create_mcp_endpoints, WebMCPSchemaInjector
-
+from apps.gpc.routes import router as gpc_router, initialize_gpc
+from backend.gpc.orchestrator import BuilderOrchestrator
+import asyncio
 app = FastAPI(title="Veklom BYOS Backend 2 - Amphoteric Node")
 amphoteric = AmphotericRouter()
 
@@ -26,6 +28,19 @@ def query_data_lake(query: str, limit: int = 10):
 
 app.include_router(amphoteric.router)
 create_mcp_endpoints(app, amphoteric, prefix="/mcp")
+
+# Register GPC routes
+app.include_router(gpc_router)
+
+@app.on_event("startup")
+async def start_gpc_services():
+    # Initialize GPC compiler and watchers
+    await initialize_gpc()
+    
+    # Start the orchestrator background task
+    print("[GPC] Starting Builder Orchestrator...")
+    orchestrator = BuilderOrchestrator()
+    app.orchestrator_task = asyncio.create_task(orchestrator.start())
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_landing(request: Request):

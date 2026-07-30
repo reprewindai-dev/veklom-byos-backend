@@ -47,6 +47,7 @@ COPY frontend/ ./frontend/
 COPY agents/ ./agents/
 COPY scripts/ ./scripts/
 COPY backend/tests/ ./backend/tests/
+COPY migrations/ ./migrations/
 
 RUN mkdir -p /app/logs && chown -R veklom:veklom /app
 USER veklom

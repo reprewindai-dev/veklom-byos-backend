@@ -146,9 +146,12 @@ class InfrastructureSentinel:
             import re
             versions_dir = os.path.join(
                 os.path.dirname(__file__),
-                "..", "..", "db", "migrations", "versions"
+                "..", "..", "migrations", "versions"
             )
             versions_dir = os.path.normpath(versions_dir)
+            if not os.path.exists(versions_dir):
+                logger.warning(f"[sentinel][migration-guard] directory missing: {versions_dir}")
+                return set()
             heads: Set[str] = set()
             for fname in os.listdir(versions_dir):
                 if not fname.endswith(".py"):

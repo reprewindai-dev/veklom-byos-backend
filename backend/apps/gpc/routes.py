@@ -23,11 +23,16 @@ from typing import Optional, List, Dict, Any
 import asyncio
 
 from backend.apps.gpc.schemas import (
-    GPCPipelineGraph, PipelineCompilationRequest, PipelineCompilationResult,
+    GPCPipelineGraph, PipelineCompilationRequest, PipelineCompilationResult, PipelineExecutionRequest,
     NLToGraphRequest, NLToGraphResult, PipelineExecutionTrace,
     GPCComponentDefinition, PortType
 )
 from backend.apps.gpc.compiler import GPCCompiler, DEFAULT_COMPONENTS, TopologicalSortError
+from backend.core.security.auth import get_current_user
+from backend.core.database.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.db.models.pipelines import PipelineRun
+from backend.core.services.autonomous_worker import run_pipeline_background
 
 logger = logging.getLogger("gpc")
 
@@ -38,20 +43,26 @@ router = APIRouter(prefix="/api/v1/gpc", tags=["gpc"])
 # DEPENDENCIES & AUTH
 # ============================================================================
 
-async def get_tenant_id(authorization: str = None) -> str:
-    """Extract tenant_id from JWT bearer token."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-    
-    # In production: validate JWT, extract tenant_id
-    # For now: mock implementation
-    try:
-        token = authorization.replace("Bearer ", "")
-        # Parse JWT and extract tenant_id claim
-        # This is a placeholder; use PyJWT in production
-        return "tenant_" + token[:16]
-    except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid token")
+async def get_tenant_id(user=Depends(get_current_user)) -> str:
+    """Return the authenticated workspace as the GPC tenant identity."""
+    tenant_id = getattr(user, "workspace_id", None)
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Authenticated user has no tenant workspace")
+    return str(tenant_id)
+
+
+
+def validate_gpc_request(request: PipelineCompilationRequest, authenticated_tenant_id: str) -> None:
+    """Validate client-supplied graph identity before compilation."""
+    if request.tenant_id != authenticated_tenant_id:
+        raise ValueError("tenant_id does not match the authenticated workspace")
+    if request.graph is not None:
+        if request.graph.tenant_id != authenticated_tenant_id:
+            raise ValueError("graph tenant_id does not match the authenticated workspace")
+        if request.graph.pipeline_id != request.pipeline_id:
+            raise ValueError("graph pipeline_id does not match the request")
+        if not request.graph.nodes:
+            raise ValueError("graph must contain at least one node")
 
 
 # ============================================================================
@@ -74,12 +85,10 @@ async def compile_pipeline(
         Compilation result with Python code, execution order, parallel levels
     """
     try:
-        # In production: load pipeline from database
-        # For now: mock load
-        pipeline_graph = GPCPipelineGraph(
-            pipeline_id=request.pipeline_id,
-            tenant_id=tenant_id
-        )
+        validate_gpc_request(request, tenant_id)
+        if request.graph is None:
+            raise HTTPException(status_code=422, detail="graph is required for GPC compilation")
+        pipeline_graph = request.graph
         
         compiler = GPCCompiler(component_registry=DEFAULT_COMPONENTS)
         result = compiler.compile(pipeline_graph)
@@ -103,7 +112,9 @@ async def compile_pipeline(
             node_count=0,
             execution_order=[],
             parallel_levels=[],
-            warnings=[str(e)]
+            warnings=[str(e)],
+            pipeline_id=request.pipeline_id,
+            tenant_id=tenant_id,
         )
     
     except Exception as e:
@@ -114,7 +125,9 @@ async def compile_pipeline(
             node_count=0,
             execution_order=[],
             parallel_levels=[],
-            warnings=[f"Compilation error: {str(e)}"]
+            warnings=[f"Compilation error: {str(e)}"],
+            pipeline_id=request.pipeline_id,
+            tenant_id=tenant_id,
         )
 
 
@@ -139,117 +152,10 @@ async def generate_pipeline_from_intent(
     Returns:
         Generated pipeline graph + reasoning
     """
-    try:
-        # In production: call vLLM + XGrammar or Claude API with structured output
-        # Placeholder: mock LLM response
-        intent_lower = request.user_intent.lower()
-        
-        # Mock logic: detect CSV input → parsing → output
-        has_csv_input = "csv" in intent_lower or "file" in intent_lower
-        has_filter = "filter" in intent_lower or "where" in intent_lower
-        has_output = "save" in intent_lower or "export" in intent_lower or "parquet" in intent_lower
-        
-        nodes = []
-        edges = []
-        node_id_counter = 0
-        
-        # Input node
-        if has_csv_input:
-            input_node_id = f"node_{node_id_counter}"
-            node_id_counter += 1
-            nodes.append({
-                "id": input_node_id,
-                "node_type": "CsvFileInput",
-                "label": "Load CSV",
-                "config": {"filePath": "input.csv", "sep": ","},
-                "output_ports": [{"id": "out", "port_type": "pandas_df", "label": "DataFrame"}]
-            })
-        
-        # Filter node
-        prev_node_id = input_node_id if has_csv_input else None
-        if has_filter and prev_node_id:
-            filter_node_id = f"node_{node_id_counter}"
-            node_id_counter += 1
-            nodes.append({
-                "id": filter_node_id,
-                "node_type": "FilterRows",
-                "label": "Filter Rows",
-                "config": {"column": "status", "value": "active"},
-                "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input DataFrame"}],
-                "output_ports": [{"id": "out", "port_type": "pandas_df", "label": "Filtered DataFrame"}]
-            })
-            edges.append({
-                "id": f"edge_{len(edges)}",
-                "source_node_id": prev_node_id,
-                "source_port_id": "out",
-                "target_node_id": filter_node_id,
-                "target_port_id": "in"
-            })
-            prev_node_id = filter_node_id
-        
-        # Output node
-        if has_output and prev_node_id:
-            output_node_id = f"node_{node_id_counter}"
-            nodes.append({
-                "id": output_node_id,
-                "node_type": "ParquetOutput",
-                "label": "Export Parquet",
-                "config": {"outputPath": "output.parquet"},
-                "input_ports": [{"id": "in", "port_type": "pandas_df", "label": "Input DataFrame"}]
-            })
-            edges.append({
-                "id": f"edge_{len(edges)}",
-                "source_node_id": prev_node_id,
-                "source_port_id": "out",
-                "target_node_id": output_node_id,
-                "target_port_id": "in"
-            })
-        
-        # Construct graph
-        graph_dict = {
-            "pipeline_id": f"pipeline_{tenant_id[:8]}_{datetime.utcnow().timestamp()}",
-            "tenant_id": tenant_id,
-            "nodes": nodes,
-            "edges": edges,
-            "data_residency_region": request.data_residency_region,
-            "prompt_version": "gpc-v1-mock"
-        }
-        
-        pipeline_graph = GPCPipelineGraph(**graph_dict)
-        
-        # Log generation event
-        logger.info(
-            f"Pipeline generated from intent",
-            extra={
-                "tenant_id": tenant_id,
-                "nodes": len(nodes),
-                "intent_length": len(request.user_intent)
-            }
-        )
-        
-        return NLToGraphResult(
-            success=True,
-            pipeline_graph=pipeline_graph,
-            reasoning="Generated nodes for CSV input, filtering, and Parquet export based on intent analysis",
-            retry_count=0,
-            confidence_score=0.85
-        )
-    
-    except ValidationError as e:
-        return NLToGraphResult(
-            success=False,
-            pipeline_graph=None,
-            reasoning="",
-            errors=[str(e)]
-        )
-    except Exception as e:
-        logger.exception(f"Pipeline generation failed for tenant {tenant_id}")
-        return NLToGraphResult(
-            success=False,
-            pipeline_graph=None,
-            reasoning="",
-            errors=[f"Generation error: {str(e)}"]
-        )
+    raise HTTPException(
+        status_code=501,
+        detail="GPC natural-language generation is unavailable: no approved generation provider is configured",
+    )
 
 
 # ============================================================================
@@ -258,73 +164,53 @@ async def generate_pipeline_from_intent(
 
 @router.post("/execute")
 async def execute_pipeline(
-    pipeline_id: str,
+    request: PipelineExecutionRequest,
     tenant_id: str = Depends(get_tenant_id),
-    background_tasks: BackgroundTasks = BackgroundTasks()
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Execute a compiled pipeline in isolated sandbox.
-    
-    Streams execution status + preview data via Server-Sent Events.
-    """
-    
-    async def event_generator():
-        try:
-            # Load pipeline
-            pipeline_graph = GPCPipelineGraph(
-                pipeline_id=pipeline_id,
-                tenant_id=tenant_id
-            )
-            
-            # Compile
-            compiler = GPCCompiler()
-            compilation = compiler.compile(pipeline_graph)
-            
-            if not compilation.success:
-                yield f"data: {json.dumps({'error': 'Compilation failed', 'warnings': compilation.warnings})}\n\n"
-                return
-            
-            # Emit start event
-            yield f"data: {json.dumps({'event': 'start', 'node_count': compilation.node_count})}\n\n"
-            
-            # Execute nodes in order (mock)
-            for i, node_id in enumerate(compilation.execution_order):
-                yield f"data: {json.dumps({'event': 'node_start', 'node_id': node_id, 'index': i})}\n\n"
-                
-                # Mock: sleep to simulate execution
-                await asyncio.sleep(0.5)
-                
-                # Mock preview data
-                preview = {
-                    "rows": 100 + i * 50,
-                    "columns": ["id", "name", "value"],
-                    "sample": [[i, f"row_{i}", f"val_{i}"] for i in range(3)]
-                }
-                
-                yield f"data: {json.dumps({'event': 'node_complete', 'node_id': node_id, 'preview': preview})}\n\n"
-            
-            # Emit completion
-            yield f"data: {json.dumps({'event': 'complete', 'success': True})}\n\n"
-            
-            # Log execution trace
-            trace = PipelineExecutionTrace(
-                tenant_id=tenant_id,
-                pipeline_id=pipeline_id,
-                user_id="system",
-                execution_status="success",
-                data_residency_region="ca-central-1",
-                schema_version="1.0"
-            )
-            logger.info(f"Pipeline execution completed", extra=trace.model_dump())
-        
-        except Exception as e:
-            logger.exception(f"Pipeline execution failed: {e}")
-            yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
-    
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream"
+    """Queue the compiled graph through the existing governed pipeline worker."""
+    if request.tenant_id != tenant_id or request.graph.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="tenant_id does not match the authenticated workspace")
+    if request.graph.pipeline_id != request.pipeline_id:
+        raise HTTPException(status_code=422, detail="graph pipeline_id does not match the request")
+    if not request.graph.nodes:
+        raise HTTPException(status_code=422, detail="graph must contain at least one node")
+
+    compilation = GPCCompiler(component_registry=DEFAULT_COMPONENTS).compile(request.graph)
+    if not compilation.success:
+        raise HTTPException(status_code=422, detail={"message": "Compilation failed", "warnings": compilation.warnings})
+
+    run_id = str(uuid.uuid4())
+    steps = {"graph": request.graph.model_dump(mode="json")}
+    run = PipelineRun(
+        id=run_id,
+        pipeline_id=request.pipeline_id,
+        workspace_id=tenant_id,
+        user_id=str(user.id),
+        status="queued",
+        progress=0.0,
+        steps=steps,
     )
+    db.add(run)
+    await db.commit()
+    asyncio.create_task(run_pipeline_background(run_id, steps, tenant_id, str(user.id)))
+
+    async def event_generator():
+        yield f"data: {json.dumps({'event': 'start', 'pipeline_id': request.pipeline_id, 'tenant_id': tenant_id, 'run_id': run_id, 'node_count': compilation.node_count})}\n\n"
+        yield f"data: {json.dumps({'event': 'queued', 'run_id': run_id, 'status': 'queued'})}\n\n"
+        for _ in range(120):
+            await asyncio.sleep(0.5)
+            await db.refresh(run)
+            if run.status in {"completed", "success"}:
+                yield f"data: {json.dumps({'event': 'complete', 'success': True, 'run_id': run_id, 'pipeline_id': request.pipeline_id, 'tenant_id': tenant_id})}\n\n"
+                return
+            if run.status in {"failed", "failure", "error"}:
+                yield f"data: {json.dumps({'event': 'error', 'success': False, 'run_id': run_id, 'message': run.error or 'Governed execution failed'})}\n\n"
+                return
+        yield f"data: {json.dumps({'event': 'error', 'success': False, 'run_id': run_id, 'message': 'Execution status timeout'})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # ============================================================================
@@ -341,7 +227,7 @@ async def list_components(
     """
     components = []
     
-    # Mock component definitions
+    # Canonical component catalog exposed by the compiler registry
     base_components = [
         {
             "node_type": "CsvFileInput",
@@ -419,31 +305,7 @@ async def query_audit_log(
         - user_id: Specific user
         - days: Lookback window (default 7)
     """
-    # In production: query audit log database
-    # Mock response
-    start_date = datetime.utcnow() - timedelta(days=days)
-    
-    events = [
-        {
-            "trace_id": f"trace_{i}",
-            "tenant_id": tenant_id,
-            "pipeline_id": pipeline_id or f"pipeline_{i}",
-            "user_id": user_id or f"user_{i}",
-            "execution_status": "success" if i % 2 == 0 else "failure",
-            "started_at": (start_date + timedelta(hours=i)).isoformat(),
-            "duration_ms": 1000 + i * 100,
-            "nodes_executed": 5,
-            "data_residency_region": "ca-central-1"
-        }
-        for i in range(10)
-    ]
-    
-    return {
-        "total": len(events),
-        "events": events,
-        "query_date": datetime.utcnow().isoformat(),
-        "tenant_id": tenant_id
-    }
+    raise HTTPException(status_code=501, detail="GPC audit storage is not configured")
 
 
 # ============================================================================
@@ -457,16 +319,4 @@ async def get_gpc_statistics(
     """
     Get GPC system statistics for dashboard.
     """
-    # In production: query metrics database
-    # Mock response
-    return {
-        "plans_total": 42,
-        "runs_total": 156,
-        "decisions": {
-            "approved": 148,
-            "blocked": 8
-        },
-        "avg_compile_time_ms": 234,
-        "avg_execution_time_ms": 2890,
-        "success_rate": 0.945
-    }
+    raise HTTPException(status_code=501, detail="GPC statistics storage is not configured")

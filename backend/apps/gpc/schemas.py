@@ -171,7 +171,18 @@ class PipelineCompilationRequest(BaseModel):
     """Request to compile a pipeline graph into Python code."""
     pipeline_id: str = Field(..., description="Pipeline to compile")
     tenant_id: str = Field(..., description="Executing tenant")
+    graph: Optional[GPCPipelineGraph] = Field(
+        default=None,
+        description="Active graph from the editor; when omitted, the persisted pipeline graph is loaded",
+    )
     target_node_id: Optional[str] = Field(default=None, description="If set, compile only this node and ancestors")
+
+
+class PipelineExecutionRequest(BaseModel):
+    """Request to queue a governed execution of the active graph."""
+    pipeline_id: str = Field(..., description="Pipeline to execute")
+    tenant_id: str = Field(..., description="Executing tenant")
+    graph: GPCPipelineGraph = Field(..., description="Active graph that was compiled")
 
 
 class PipelineCompilationResult(BaseModel):
@@ -181,6 +192,8 @@ class PipelineCompilationResult(BaseModel):
     node_count: int = Field(..., description="Number of nodes in compiled pipeline")
     execution_order: List[str] = Field(..., description="Node IDs in topological sort order")
     parallel_levels: List[List[str]] = Field(..., description="Parallel execution levels")
+    pipeline_id: Optional[str] = Field(default=None, description="Compiled pipeline identity")
+    tenant_id: Optional[str] = Field(default=None, description="Authenticated tenant identity")
     compilation_timestamp: datetime = Field(default_factory=datetime.utcnow)
     warnings: List[str] = Field(default_factory=list, description="Non-fatal warnings")
 

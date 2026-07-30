@@ -5,6 +5,7 @@ from backend.apps.gpc.schemas import (
     GPCNode,
     GPCPipelineGraph,
     PipelineCompilationRequest,
+    PipelineExecutionRequest,
 )
 
 
@@ -56,3 +57,13 @@ def test_gpc_request_rejects_empty_graph_instead_of_compiling_successfully():
 
     with pytest.raises(ValueError, match="at least one node"):
         validate_gpc_request(request, authenticated_tenant_id="workspace-1")
+
+
+def test_execution_request_has_one_graph_contract():
+    request = PipelineExecutionRequest(
+        pipeline_id="pipeline-1",
+        tenant_id="workspace-1",
+        graph=_graph(),
+    )
+    assert request.graph.pipeline_id == request.pipeline_id
+    assert "pipeline_graph" not in PipelineExecutionRequest.model_fields

@@ -176,15 +176,6 @@ class PipelineCompilationRequest(BaseModel):
         description="Active graph from the editor; when omitted, the persisted pipeline graph is loaded",
     )
     target_node_id: Optional[str] = Field(default=None, description="If set, compile only this node and ancestors")
-    pipeline_graph: Optional[Dict[str, Any]] = Field(default=None, description="For testing: inject the graph directly")
-
-class PipelineExecutionRequest(BaseModel):
-    """Request to execute a pipeline."""
-    pipeline_id: str = Field(...)
-    tenant_id: str = Field(...)
-    pipeline_graph: Optional[Dict[str, Any]] = Field(default=None)
-
-
 class PipelineExecutionRequest(BaseModel):
     """Request to queue a governed execution of the active graph."""
     pipeline_id: str = Field(..., description="Pipeline to execute")

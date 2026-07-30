@@ -752,7 +752,6 @@ from backend.apps.api.routers import (
 )
 from backend.services.uacp.http import router as uacp_http_router
 from backend.apps.api.routers import admin_billing
-from backend.apps.gpc.routes import router as gpc_router
 from backend.apps.api.routers import openai_compat
 from backend.apps.api.routers import protocol as veklom_protocol
 from backend.apps.api.routers import asyncapi_schema
@@ -768,7 +767,6 @@ from backend.apps.ledger.routes import router as x402_ledger_router
 
 # Machine-readable discovery (no prefix — serves /.well-known/*, /llms.txt, /robots.txt, /mcp/*)
 app.include_router(discovery.router)
-app.include_router(gpc_router)
 
 # OpenAI-compatible gateway — serves /v1/chat/completions and /v1/models
 # This is the real endpoint advertised in the openapi.json schema.
@@ -909,7 +907,6 @@ app.include_router(admin_billing.router, prefix="/api/v1")
 app.include_router(upload.router, prefix="/api/v1")
 
 # GPC (Governed Plan Compiler) + Decision Frames
-app.include_router(gpc.router, prefix="/api/v1")
 from backend.apps.gpc import routes as gpc_pipeline_routes
 app.include_router(gpc_pipeline_routes.router)
 app.include_router(decision_frames.router, prefix="/api/v1")

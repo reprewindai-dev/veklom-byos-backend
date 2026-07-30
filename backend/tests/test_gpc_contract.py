@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+
 import pytest
 
 from backend.apps.gpc.routes import validate_gpc_request

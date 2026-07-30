@@ -67,3 +67,28 @@ def test_execution_request_has_one_graph_contract():
     )
     assert request.graph.pipeline_id == request.pipeline_id
     assert "pipeline_graph" not in PipelineExecutionRequest.model_fields
+@pytest.mark.asyncio
+async def test_compile_validation_errors_are_http_errors():
+    from backend.apps.gpc.routes import compile_pipeline
+
+    with pytest.raises(HTTPException) as missing_graph:
+        await compile_pipeline(
+            PipelineCompilationRequest(
+                pipeline_id="pipeline-1",
+                tenant_id="workspace-1",
+                graph=None,
+            ),
+            tenant_id="workspace-1",
+        )
+    assert missing_graph.value.status_code == 422
+
+    with pytest.raises(HTTPException) as mismatched_identity:
+        await compile_pipeline(
+            PipelineCompilationRequest(
+                pipeline_id="pipeline-1",
+                tenant_id="workspace-2",
+                graph=_graph(tenant_id="workspace-2"),
+            ),
+            tenant_id="workspace-1",
+        )
+    assert mismatched_identity.value.status_code == 422

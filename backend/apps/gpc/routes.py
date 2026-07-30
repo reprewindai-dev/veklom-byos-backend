@@ -104,7 +104,13 @@ async def compile_pipeline(
         
         return result
     
-    except HTTPException:`r`n        raise`r`n`r`n    except ValueError as e:`r`n        raise HTTPException(status_code=422, detail=str(e)) from e`r`n`r`n    except TopologicalSortError as e:
+    except HTTPException:
+        raise
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    except TopologicalSortError as e:
         logger.error(f"Cycle detected in pipeline {request.pipeline_id}: {e}")
         return PipelineCompilationResult(
             success=False,

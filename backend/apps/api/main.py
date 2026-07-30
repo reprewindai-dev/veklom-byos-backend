@@ -2094,8 +2094,6 @@ app.include_router(agent_memory.router, prefix="/api/v1")
 app.include_router(conversation_memory.router, prefix="/api/v1")
 
 # Generative Pipeline Compiler (GPC)
-# from backend.apps.gpc import routes as gpc_routes
-# app.include_router(gpc_routes.router, prefix="/api/v1")
 
 # Layer 5: Ev
 # --- Telemetry Fallback Endpoints ---

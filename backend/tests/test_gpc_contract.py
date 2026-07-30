@@ -1,11 +1,13 @@
 from fastapi import HTTPException
 
+import json
 import pytest
 
-from backend.apps.gpc.routes import validate_gpc_request
+from backend.apps.gpc.routes import _build_generated_result, validate_gpc_request
 from backend.apps.gpc.schemas import (
     GPCNode,
     GPCPipelineGraph,
+    NLToGraphRequest,
     PipelineCompilationRequest,
     PipelineExecutionRequest,
 )
@@ -94,3 +96,30 @@ async def test_compile_validation_errors_are_http_errors():
             tenant_id="workspace-1",
         )
     assert mismatched_identity.value.status_code == 422
+
+def test_generation_output_is_compiled_and_backend_owns_identity():
+    result = _build_generated_result(
+        json.dumps({
+            "pipeline_graph": {
+                "nodes": [{"id": "input", "node_type": "CsvFileInput"}],
+                "edges": [],
+            },
+            "reasoning": "Selected the available CSV input component.",
+            "confidence_score": 0.8,
+        }),
+        NLToGraphRequest(
+            tenant_id="workspace-1",
+            user_intent="load a CSV",
+            available_components=["CsvFileInput"],
+        ),
+        "workspace-1",
+    )
+
+    assert result.success is True
+    assert result.pipeline_graph.tenant_id == "workspace-1"
+    assert result.pipeline_graph.pipeline_id.startswith("gpc_")
+
+
+def test_generation_rejects_non_json_provider_output():
+    with pytest.raises(ValueError, match="JSON object"):
+        _build_generated_result("not json", NLToGraphRequest(tenant_id="workspace-1", user_intent="load data"), "workspace-1")

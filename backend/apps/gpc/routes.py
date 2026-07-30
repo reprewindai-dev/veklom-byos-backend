@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import asyncio
+from uuid import uuid4
 
 from backend.apps.gpc.schemas import (
     GPCPipelineGraph, PipelineCompilationRequest, PipelineCompilationResult, PipelineExecutionRequest,
@@ -33,6 +34,7 @@ from backend.core.database.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models.pipelines import PipelineRun
 from backend.core.services.autonomous_worker import run_pipeline_background
+from backend.core.services.provider_routing_service import execute_governed_inference
 
 logger = logging.getLogger("gpc")
 
@@ -64,6 +66,63 @@ def validate_gpc_request(request: PipelineCompilationRequest, authenticated_tena
         if not request.graph.nodes:
             raise ValueError("graph must contain at least one node")
 
+
+
+def _extract_json_object(content: str) -> Dict[str, Any]:
+    """Extract one JSON object from a provider response, including fenced JSON."""
+    text = content.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3].rstrip()
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(text):
+        if character != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(text[index:])
+            if isinstance(value, dict):
+                return value
+        except json.JSONDecodeError:
+            continue
+    raise ValueError("generation provider did not return a JSON object")
+
+
+def _build_generated_result(content: str, request: NLToGraphRequest, tenant_id: str) -> NLToGraphResult:
+    """Validate provider output as a real GPC graph before returning it to the client."""
+    payload = _extract_json_object(content)
+    graph_data = payload.get("pipeline_graph") or payload.get("graph")
+    if not isinstance(graph_data, dict):
+        raise ValueError("generation response did not contain pipeline_graph")
+
+    graph_data = dict(graph_data)
+    graph_data["tenant_id"] = tenant_id
+    graph_data["pipeline_id"] = f"gpc_{uuid4().hex}"
+    graph_data["data_residency_region"] = request.data_residency_region
+    graph = GPCPipelineGraph.model_validate(graph_data)
+    if not graph.nodes:
+        raise ValueError("generation response produced an empty graph")
+
+    allowed = set(request.available_components or DEFAULT_COMPONENTS.keys())
+    unsupported = sorted({node.node_type for node in graph.nodes} - allowed)
+    if unsupported:
+        raise ValueError(f"generation response used unsupported components: {', '.join(unsupported)}")
+    GPCCompiler(component_registry=DEFAULT_COMPONENTS).compile(graph)
+
+    reasoning = payload.get("reasoning")
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        raise ValueError("generation response did not contain reasoning")
+    confidence = payload.get("confidence_score", 0.0)
+    if not isinstance(confidence, (int, float)):
+        confidence = 0.0
+    return NLToGraphResult(
+        success=True,
+        pipeline_graph=graph,
+        reasoning=reasoning,
+        retry_count=int(payload.get("retry_count", 0) or 0),
+        confidence_score=max(0.0, min(1.0, float(confidence))),
+        errors=[],
+    )
 
 # ============================================================================
 # COMPILATION ENDPOINT
@@ -145,24 +204,52 @@ async def compile_pipeline(
 async def generate_pipeline_from_intent(
     request: NLToGraphRequest,
     tenant_id: str = Depends(get_tenant_id),
-    background_tasks: BackgroundTasks = BackgroundTasks()
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> NLToGraphResult:
-    """
-    Convert natural language intent into a pipeline graph using LLM.
-    
-    Expects:
-        - user_intent: Messy natural language description
-        - available_components: Optional list of component types to use
-        - data_residency_region: Where data will be processed (ca-central-1, ca-west-1, on-premise)
-    
-    Returns:
-        Generated pipeline graph + reasoning
-    """
-    raise HTTPException(
-        status_code=501,
-        detail="GPC natural-language generation is unavailable: no approved generation provider is configured",
-    )
-
+    """Generate and validate a GPC graph through the existing governed provider router."""
+    if request.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="tenant_id does not match the authenticated workspace")
+    components = sorted(request.available_components or DEFAULT_COMPONENTS.keys())
+    prompt = {
+        "role": "system",
+        "content": (
+            "You generate GPC pipeline graphs. Return only JSON with keys "
+            "pipeline_graph, reasoning, confidence_score, retry_count. The graph must "
+            "contain nodes and edges using only these component types: " + ", ".join(components) + ". "
+            "Do not invent component types, tenant IDs, or pipeline IDs. "
+            "Each node must include id and node_type; each edge must reference existing node IDs."
+        ),
+    }
+    user_message = {
+        "role": "user",
+        "content": json.dumps({
+            "intent": request.user_intent,
+            "data_residency_region": request.data_residency_region,
+            "available_components": components,
+        }),
+    }
+    try:
+        result, _, _, _ = await execute_governed_inference(
+            db,
+            tenant_id,
+            str(user.id),
+            {
+                "model": "llama3.2:latest",
+                "messages": [prompt, user_message],
+                "temperature": 0.1,
+                "max_tokens": 4096,
+            },
+        )
+        content = result.payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return _build_generated_result(content, request, tenant_id)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("GPC generation provider failed")
+        raise HTTPException(status_code=502, detail="GPC generation provider unavailable") from exc
 
 # ============================================================================
 # EXECUTION ENDPOINT

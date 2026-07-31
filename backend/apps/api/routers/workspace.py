@@ -593,10 +593,46 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         for row in recent_rows
     ]
 
-    recent_24h = (await db.execute(select(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h))).scalars().all()
-    routing_history = _routing_history(recent_24h, now)
-    hetzner_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "hetzner")
-    aws_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "aws-burst")
+    # Bolt: Group by hour and provider to avoid fetching all 24h of logs into memory.
+    provider_hour_counts = await db.execute(
+        select(
+            func.extract('hour', ExecLog.created_at).label('hr'),
+            ExecLog.provider,
+            func.count().label('cnt')
+        ).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_24h
+        ).group_by(
+            func.extract('hour', ExecLog.created_at),
+            ExecLog.provider
+        )
+    )
+
+    # Sort hours starting from (now.hour + 1) % 24 to now.hour
+    # So chronologically: 24h ago up to current hour
+    current_hour = now.hour
+    hour_sequence = [(current_hour - i) % 24 for i in range(23, -1, -1)]
+
+    # Initialize buckets
+    buckets = {
+        hour: {"hour": f"{hour:02d}", "hetzner": 0, "aws": 0}
+        for hour in hour_sequence
+    }
+
+    hetzner_count = 0
+    aws_count = 0
+
+    for hr, provider, cnt in provider_hour_counts:
+        hr_int = int(hr)
+        if hr_int in buckets:
+            if _route_for_provider(provider) == "aws-burst":
+                buckets[hr_int]["aws"] += cnt
+                aws_count += cnt
+            else:
+                buckets[hr_int]["hetzner"] += cnt
+                hetzner_count += cnt
+
+    routing_history = [buckets[hr] for hr in hour_sequence]
     routed_total = hetzner_count + aws_count
     hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0

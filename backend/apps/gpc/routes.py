@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import asyncio
+import uuid
 
 from backend.apps.gpc.schemas import (
     GPCPipelineGraph, PipelineCompilationRequest, PipelineCompilationResult, PipelineExecutionRequest,
@@ -33,6 +34,7 @@ from backend.core.database.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models.pipelines import PipelineRun
 from backend.core.services.autonomous_worker import run_pipeline_background
+from backend.compliance.gpc_gate import enforce_gpc_graph_compliance
 
 logger = logging.getLogger("gpc")
 
@@ -63,6 +65,9 @@ def validate_gpc_request(request: PipelineCompilationRequest, authenticated_tena
             raise ValueError("graph pipeline_id does not match the request")
         if not request.graph.nodes:
             raise ValueError("graph must contain at least one node")
+        compliance = enforce_gpc_graph_compliance(request.graph)
+        if not compliance.allowed:
+            raise ValueError(f"GPC compliance gate blocked graph: {compliance.message}")
 
 
 # ============================================================================
@@ -176,6 +181,9 @@ async def execute_pipeline(
         raise HTTPException(status_code=422, detail="graph pipeline_id does not match the request")
     if not request.graph.nodes:
         raise HTTPException(status_code=422, detail="graph must contain at least one node")
+    compliance = enforce_gpc_graph_compliance(request.graph)
+    if not compliance.allowed:
+        raise HTTPException(status_code=422, detail={"message": "GPC compliance gate blocked graph", "reason": compliance.message})
 
     compilation = GPCCompiler(component_registry=DEFAULT_COMPONENTS).compile(request.graph)
     if not compilation.success:

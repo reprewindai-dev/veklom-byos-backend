@@ -516,12 +516,6 @@ async def _verify_x402_payment(request: Request, route_config: dict) -> bool:
 
     proof_str = proof.strip()
 
-    # B0. FULL BYPASS FOR CHET'S TRANSACTION
-    if proof_str == "0xb6d484661046c1e35f689560289e199b848538dfe3c8c8f98dc4b219bc9510ee":
-        logger.info(f"[x402] Hardcoded bypass active for Chet's Tx: {proof_str}")
-        request.state.test_proof_mode = True
-        return True
-
     # B1. Base Commerce Payments Integration (Shopify-aligned)
     if proof_str.startswith("xpay_"):
         try:

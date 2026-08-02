@@ -13,3 +13,7 @@
 ## 2025-02-27 - [Resolve N+1 bottlenecks in HRM telemetry and audit]
 **Learning:** Looping through SQL rows and doing aggregate queries (`COUNT`, `ORDER BY DESC LIMIT 1`) inside the loop creates severe $O(N)$ database query inflation, known as the N+1 query problem. In endpoints like `hrm_sync_telemetry`, this causes massive performance degradation on larger agent task forces. Similarly, in `hrm_audit`, firing two unbounded full-group-by table scans (one for `COUNT`, one for `MAX(created_at)`) on `LedgerEvent` doubles the execution overhead.
 **Action:** Use a single bulk group-by SQL query and `DISTINCT ON` block (where applicable, due to Postgres DB backing) to fetch metrics up front outside of the loop. Combine queries that iterate over the exact same tables and group definitions (e.g. `func.count(id)` and `func.max(created_at)`). By pre-fetching values into hash maps using `.in_()`, we drop runtime from $O(N)$ back to $O(1)$.
+
+## 2025-02-28 - [Push Admin Billing Aggregations to DB]
+**Learning:** Endpoints like `admin_billing/recon-summary` previously fetched all rows from `ReconFinding` and `WebhookDeadLetter` into Python memory using `.scalars().all()` simply to perform `len()` or simple for-loop group counting, causing O(N) memory/bandwidth issues on large tables.
+**Action:** Use SQLAlchemy's `func.count()` and `.group_by()` within the SQL query directly. This pushes the compute down to PostgreSQL natively, which is highly optimized for aggregations, drastically reducing network I/O and RAM overhead on the Python runtime.

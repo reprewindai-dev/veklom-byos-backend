@@ -1556,6 +1556,7 @@ async def github_login(request: Request, token: Optional[str] = None, next: Opti
         "client_id": oauth_values["client_id"],
         "scope": "user:email read:user",
         "state": state,
+        "redirect_uri": _github_redirect_uri(request),
     }
     redirect_url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
     

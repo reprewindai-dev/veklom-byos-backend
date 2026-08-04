@@ -595,16 +595,20 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
 
     routing_agg_rows = (await db.execute(
         select(
-            func.extract("hour", ExecLog.created_at).label("hour"),
+            func.date_trunc("hour", ExecLog.created_at).label("hour"),
             ExecLog.provider,
             func.count().label("cnt"),
         )
         .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
-        .group_by(func.extract("hour", ExecLog.created_at), ExecLog.provider)
+        .group_by(func.date_trunc("hour", ExecLog.created_at), ExecLog.provider)
     )).all()
 
     buckets = {
-        (now.hour - i) % 24: {"hour": f"{(now.hour - i) % 24:02d}", "hetzner": 0, "aws": 0}
+        (now - timedelta(hours=i)).replace(minute=0, second=0, microsecond=0): {
+            "hour": f"{(now.hour - i) % 24:02d}",
+            "hetzner": 0,
+            "aws": 0
+        }
         for i in range(23, -1, -1)
     }
 
@@ -612,14 +616,20 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     aws_count = 0
 
     for row in routing_agg_rows:
-        hr = int(row.hour)
-        if hr in buckets:
+        dt = row.hour
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        # Round the row time to exactly the hour for bucket matching
+        bucket_key = dt.replace(minute=0, second=0, microsecond=0)
+
+        if bucket_key in buckets:
             cnt = int(row.cnt)
             if _route_for_provider(row.provider) == "aws-burst":
-                buckets[hr]["aws"] += cnt
+                buckets[bucket_key]["aws"] += cnt
                 aws_count += cnt
             else:
-                buckets[hr]["hetzner"] += cnt
+                buckets[bucket_key]["hetzner"] += cnt
                 hetzner_count += cnt
 
     routing_history = list(buckets.values())

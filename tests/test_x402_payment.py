@@ -1,5 +1,5 @@
 import os
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///test_temp_x402.db"
 os.environ["REDIS_ENABLED"] = "False"
 
 import pytest
@@ -25,11 +25,18 @@ async def test_x402_comprehensive():
     if not original_treasury or original_treasury == "0x0000000000000000000000000000000000000001":
         os.environ["VEKLOM_TREASURY_ADDRESS"] = "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d"
 
+    try:
+        if os.path.exists("test_temp_x402.db"):
+            os.remove("test_temp_x402.db")
+    except:
+        pass
+
+    from backend.db.models.ledger import SettlementLedger
     # Ensure tables are initialized for testing receipts
     async with engine.begin() as conn:
         await conn.run_sync(lambda sync_conn: Base.metadata.create_all(
             bind=sync_conn,
-            tables=[AuditLog.__table__]
+            tables=[AuditLog.__table__, SettlementLedger.__table__]
         ))
 
     client = TestClient(app)
@@ -197,6 +204,8 @@ async def test_x402_comprehensive():
         )
         assert verify_resp.status_code == 200
         verify_data = verify_resp.json()
+        if not verify_data.get("valid"):
+            print("VERIFY_DATA_FAIL:", verify_data)
         assert verify_data["valid"] is True
         assert verify_data["verification_status"] == "verified"
         assert verify_data["evidence_hash_match"] is True
@@ -240,6 +249,11 @@ async def test_x402_comprehensive():
         settings.X402_TEST_PROOF_MODE = original_mode
         if original_treasury:
             os.environ["VEKLOM_TREASURY_ADDRESS"] = original_treasury
+        try:
+            if os.path.exists("test_temp_x402.db"):
+                os.remove("test_temp_x402.db")
+        except:
+            pass
 
 
 @pytest.mark.asyncio
@@ -248,6 +262,20 @@ async def test_payapi_dynamic_registration_and_parameterized_matching():
     original_mode = settings.X402_TEST_PROOF_MODE
     settings.X402_TEST_PROOF_MODE = True
     try:
+        try:
+            if os.path.exists("test_temp_x402.db"):
+                os.remove("test_temp_x402.db")
+        except:
+            pass
+
+        from backend.db.models.ledger import SettlementLedger
+        # Ensure tables are initialized for testing
+        async with engine.begin() as conn:
+            await conn.run_sync(lambda sync_conn: Base.metadata.create_all(
+                bind=sync_conn,
+                tables=[AuditLog.__table__, SettlementLedger.__table__]
+            ))
+
         # 1. Dynamic Route Registration
         register_payload = {
             "name": "Dynamic Niche API",
@@ -314,4 +342,9 @@ async def test_payapi_dynamic_registration_and_parameterized_matching():
         assert pricing_v1_resp.json() == pricing_data
     finally:
         settings.X402_TEST_PROOF_MODE = original_mode
+        try:
+            if os.path.exists("test_temp_x402.db"):
+                os.remove("test_temp_x402.db")
+        except:
+            pass
 

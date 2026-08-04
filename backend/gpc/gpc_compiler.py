@@ -1,9 +1,22 @@
+"""
+GPC Python Compiler
+Compiles GPCPipelineGraph → Executable Python script using AST.
+
+Core algorithm:
+1. Topological sort (Kahn's, cycle detection)
+2. Per-node AST emission (no string templates)
+3. Dependency wiring (output vars to input vars)
+4. Final assembly via ast.unparse()
+
+Generated for: veklom-byos-backend/backend/gpc/
+"""
+
 import ast
 import graphlib
 from typing import Dict, List, Tuple, Optional, Any, Type
 from dataclasses import dataclass
 from datetime import datetime
-from backend.gpc.gpc_schemas import (
+from gpc_schemas import (
     GPCPipelineGraph, GPCNode, GPCEdge, GPCComponentDefinition, 
     PipelineCompilationResult
 )
@@ -204,13 +217,8 @@ class DuckDBQueryGenerator(BaseComponentCodeGenerator):
         input_var = list(input_vars.values())[0]
         sql = node.config.get("sqlQuery", "SELECT * FROM df")
         
-        # Assign the input variable to a local variable named 'df'
-        # so duckdb's auto-lookup can find it without using an f-string.
+        # result = duckdb.query(f"SELECT * FROM {df_input}").to_df()
         return [
-            ast.Assign(
-                targets=[ast.Name(id='df', ctx=ast.Store())],
-                value=ast.Name(id=input_var, ctx=ast.Load())
-            ),
             ast.Assign(
                 targets=[ast.Name(id=output_var, ctx=ast.Store())],
                 value=ast.Call(
@@ -220,7 +228,9 @@ class DuckDBQueryGenerator(BaseComponentCodeGenerator):
                                 value=ast.Name(id='duckdb', ctx=ast.Load()),
                                 attr='query'
                             ),
-                            args=[ast.Constant(value=sql)],
+                            args=[ast.JoinedStr(values=[
+                                ast.Constant(value=sql)
+                            ])],
                             keywords=[]
                         ),
                         attr='to_df'
@@ -384,14 +394,12 @@ class GPCCompiler:
                 if not component_class:
                     raise ValueError(f"Unknown component type: {node.node_type}")
                 
-                req_imports = ["import duckdb"] if node.node_type == "DuckDBQuery" else ["import pandas as pd"]
                 component = component_class(
                     GPCComponentDefinition(
                         node_type=node.node_type,
                         display_name=node.label or node.node_type,
                         category="transform",
-                        code_generator_class=component_class.__name__,
-                        required_imports=req_imports
+                        code_generator_class=component_class.__name__
                     )
                 )
                 

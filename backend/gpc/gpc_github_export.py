@@ -412,8 +412,77 @@ class GitHubWorkflowExporter:
 
 
 # ============================================================================
-# FASTAPI ROUTE REFERENCE
+# FASTAPI ROUTE: Export to GitHub
 # ============================================================================
-# The route export_to_github is designed to be registered directly in gpc_routes.py
-# using the active APIRouter instance.
 
+# Add to gpc_routes.py:
+
+@router.post("/export-github")
+async def export_to_github(
+    pipeline_id: str,
+    repo_owner: str,
+    repo_name: str,
+    github_token: str,
+    tenant_id: str = Depends(get_tenant_id),
+    schedule: Optional[str] = None  # cron format
+):
+    """
+    Export compiled pipeline as GitHub Actions workflow.
+    
+    Args:
+        pipeline_id: Pipeline to export
+        repo_owner: GitHub username/org
+        repo_name: Repository name
+        github_token: GitHub personal access token
+        schedule: Optional cron schedule for execution
+    
+    Returns:
+        Workflow export result with commit details
+    """
+    try:
+        # Load and compile pipeline
+        compiler = GPCCompiler()
+        pipeline_graph = GPCPipelineGraph(
+            pipeline_id=pipeline_id,
+            tenant_id=tenant_id
+        )
+        
+        compilation = compiler.compile(pipeline_graph)
+        if not compilation.success:
+            raise ValueError("Pipeline compilation failed")
+        
+        # Create workflow
+        workflow = GitHubActionsWorkflow(
+            pipeline_id=pipeline_id,
+            pipeline_name=pipeline_graph.name or f"Pipeline {pipeline_id[:8]}",
+            python_code=compilation.python_code,
+            execution_order=compilation.execution_order,
+            execution_schedule=schedule
+        )
+        
+        # Export to GitHub
+        exporter = GitHubWorkflowExporter(github_token)
+        result = await exporter.export_to_github(
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            workflow=workflow
+        )
+        
+        if result["status"] == "success":
+            logger.info(
+                f"Pipeline exported to GitHub",
+                extra={
+                    "tenant_id": tenant_id,
+                    "pipeline_id": pipeline_id,
+                    "repo": f"{repo_owner}/{repo_name}"
+                }
+            )
+        
+        return result
+    
+    except Exception as e:
+        logger.exception(f"GitHub export failed: {e}")
+        return {
+            "status": "failed",
+            "error": str(e)
+        }

@@ -16,7 +16,7 @@ from backend.core.llm.circuit_breaker import CircuitBreaker
 router = APIRouter(tags=["Health"])
 logger = logging.getLogger(__name__)
 _PROCESS_START_MONOTONIC = time.monotonic()
-_DEPENDENCY_TIMEOUT_SECONDS = 2.0
+_DEPENDENCY_TIMEOUT_SECONDS = 5.0
 
 
 async def _check_database() -> tuple[bool, float | None]:

@@ -109,3 +109,7 @@ scratch/remote_run2.sh
 setup.sql
 
 scratch/
+
+scratch_*.py
+scratch_*.ps1
+setpw.sh

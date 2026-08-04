@@ -75,22 +75,6 @@ def _safe_github_redirect(next_url: str | None) -> str:
     return fallback
 
 
-def _github_bridge_html(next_url: str | None = None) -> str:
-    """Render a token-free bridge; authentication is delivered via HttpOnly cookies."""
-    redirect_url = _safe_github_redirect(next_url)
-    encoded = json.dumps({"redirect_url": redirect_url}, separators=(",", ":"))
-    return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Completing Veklom sign-in</title></head>
-<body>
-  <p>Sign-in complete. Redirecting to Veklom.</p>
-  <script>
-    const payload = {encoded};
-    window.location.replace(payload.redirect_url);
-  </script>
-</body>
-</html>"""
-
 def _verify_mfa_code(secret: str, code: str) -> bool:
     if not secret or not code or len(code) != 6 or not code.isdigit():
         return False
@@ -1715,7 +1699,8 @@ async def github_callback(
 
     if request.method == "GET":
         final_url = _safe_github_redirect(next_url)
-        response = HTMLResponse(content=_github_bridge_html(final_url))
+        bridge_html = _github_bridge_html(app_access_token, app_refresh_token, user, final_url)
+        response = HTMLResponse(content=bridge_html)
         cookie_kwargs = {"httponly": True, "samesite": "lax", "secure": True, "path": "/"}
         response.set_cookie(
             key="access_token",

@@ -1,3 +1,11 @@
+"""
+GPC Pipeline System — Core Schemas
+Pydantic models for all GPC data structures.
+Production-ready, schema-versioned, tenant-isolated.
+
+Generated for: veklom-byos-backend/backend/gpc/
+"""
+
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Literal, Optional, Any, Dict, List, Set
 from enum import Enum
@@ -57,8 +65,8 @@ class GPCNode(BaseModel):
     @field_validator('id')
     @classmethod
     def validate_id(cls, v):
-        if not v or len(v) < 1:
-            raise ValueError("Node ID must be at least 1 character")
+        if not v or len(v) < 3:
+            raise ValueError("Node ID must be at least 3 characters")
         return v
 
 
@@ -162,7 +170,7 @@ class GPCComponentDefinition(BaseModel):
 class PipelineCompilationRequest(BaseModel):
     """Request to compile a pipeline graph into Python code."""
     pipeline_id: str = Field(..., description="Pipeline to compile")
-    tenant_id: Optional[str] = Field(default=None, description="Executing tenant")
+    tenant_id: str = Field(..., description="Executing tenant")
     target_node_id: Optional[str] = Field(default=None, description="If set, compile only this node and ancestors")
 
 
@@ -211,7 +219,7 @@ class PipelineExecutionTrace(BaseModel):
     
     # Compliance metadata
     error_details: Optional[str] = Field(default=None, description="Failure reason if applicable")
-    compliance_checks: Dict[str, Any] = Field(
+    compliance_checks: Dict[str, bool] = Field(
         default_factory=dict,
         description="PIPEDA/Law25 checks: {pipeda_consent: True, law25_pia_reference: ...}"
     )
@@ -225,7 +233,7 @@ class PipelineExecutionTrace(BaseModel):
 
 class NLToGraphRequest(BaseModel):
     """Request to convert natural language to a pipeline graph."""
-    tenant_id: Optional[str] = Field(default=None, description="Tenant making request")
+    tenant_id: str = Field(..., description="Tenant making request")
     user_intent: str = Field(..., description="Messy natural language description of intent")
     available_components: Optional[List[str]] = Field(
         default=None,

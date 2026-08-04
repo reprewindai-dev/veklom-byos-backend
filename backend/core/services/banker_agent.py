@@ -208,13 +208,16 @@ class BankerAgentService:
         """
         Step 1 of the payment flow.
 
-        Validates idempotency and creates a `pending` Payment row.
+        Validates idempotency, enforces daily spending limits, calls PGL Gate,
+        and creates a `pending` Payment row with the pre-execution certificate ID.
         Returns the payment record so the frontend knows the payment_id
         and can proceed to call the Base Account wallet provider.
 
         Raises BankerAgentDuplicatePaymentError if this job was already paid.
         """
         from backend.db.models.payment import Payment
+        from backend.core.services.banker_pgl_guard import BankerAgentPGLGuard
+        from datetime import timedelta
 
         treasury = BankerAgentService.get_treasury_address()
         checked_to_address = _normalize_address(to_address)
@@ -245,7 +248,43 @@ class BankerAgentService:
                 )
                 return existing.to_dict()
 
-        # Create new pending row
+        # Enforce daily spending cap (from environment or default 100.0 USDC)
+        daily_limit = float(os.environ.get("BANKER_AGENT_DAILY_LIMIT_USDC", "100.0"))
+        one_day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+        tot_res = await db.execute(
+            select(func.sum(Payment.amount)).where(
+                Payment.from_address == treasury,
+                Payment.status == "confirmed",
+                Payment.settled_at >= one_day_ago
+            )
+        )
+        # Import func dynamically in case it's not present globally
+        from sqlalchemy import func
+        settled_sum = Decimal(str((await db.execute(
+            select(func.sum(Payment.amount)).where(
+                Payment.from_address == treasury,
+                Payment.status == "confirmed",
+                Payment.settled_at >= one_day_ago
+            )
+        )).scalar() or "0.0"))
+
+        if float(settled_sum) + amount > daily_limit:
+            raise BankerAgentError(
+                f"Daily spending limit of {daily_limit} USDC exceeded. "
+                f"Already spent in last 24h: {settled_sum} USDC, attempting: {amount} USDC."
+            )
+
+        # Call PGL Gate — issues pre-execution certificate
+        pgl_ctx = await BankerAgentPGLGuard.require(
+            db=db,
+            route=f"{payment_object_type}:{payment_object_id}",
+            amount_usdc=amount,
+            to_address=checked_to_address,
+            purpose="banker_payment"
+        )
+        pre_cert_id = pgl_ctx.pre_execution_cert_id
+
+        # Create new pending row with certificate ID
         new_payment = Payment(
             payment_object_type=payment_object_type,
             payment_object_id=payment_object_id,
@@ -254,6 +293,7 @@ class BankerAgentService:
             asset=checked_asset,
             amount=Decimal(str(amount)),
             status="pending",
+            pre_execution_cert_id=pre_cert_id,
         )
         db.add(new_payment)
         try:
@@ -268,7 +308,7 @@ class BankerAgentService:
 
         logger.info(
             f"[BankerAgent] Created pending payment id={new_payment.id} "
-            f"| {amount} {asset} → {to_address}"
+            f"| PGL Cert: {pre_cert_id} | {amount} {asset} → {to_address}"
         )
         return new_payment.to_dict()
 
@@ -293,6 +333,13 @@ class BankerAgentService:
         marks the payment as confirmed.
         """
         from backend.db.models.payment import Payment
+        from backend.core.services.banker_pgl_guard import BankerAgentPGLGuard, BankerPGLContext
+        from backend.core.services.banker_pgl_guard import (
+            BANKER_AGENT_WORKSPACE,
+            BANKER_AGENT_ACTOR_ID,
+            BANKER_GENOME_HASH,
+            BANKER_CONSTITUTION_HASH,
+        )
 
         result = await db.execute(
             select(Payment).where(
@@ -325,7 +372,28 @@ class BankerAgentService:
                 f"payment id={tx_payment.id}."
             )
 
-        proof = await _verify_payment_receipt(payment, checked_tx_hash, chain_id)
+        # Reconstruct the PGL Context for attestation
+        pgl_ctx = BankerPGLContext(
+            pgl_identity_id=payment.pre_execution_cert_id or "",
+            workspace_id=BANKER_AGENT_WORKSPACE,
+            actor_id=BANKER_AGENT_ACTOR_ID,
+            pre_execution_cert_id=payment.pre_execution_cert_id or "",
+            genome_hash=BANKER_GENOME_HASH,
+            constitution_hash=BANKER_CONSTITUTION_HASH,
+            intent_hash=BankerAgentPGLGuard._build_intent_hash(
+                route=f"{payment_object_type}:{payment_object_id}",
+                amount_usdc=float(payment.amount),
+                to_address=payment.to_address,
+            )
+        )
+
+        try:
+            proof = await _verify_payment_receipt(payment, checked_tx_hash, chain_id)
+        except Exception as exc:
+            # If verification fails, attest failure to PGL and re-raise
+            if payment.pre_execution_cert_id:
+                await BankerAgentPGLGuard.attest_failure(db, pgl_ctx, str(exc))
+            raise
 
         payment.tx_hash = proof["tx_hash"]
         payment.chain_id = proof["chain_id"]
@@ -335,6 +403,15 @@ class BankerAgentService:
         payment.to_address = proof["transfer"]["to"]
         payment.settled_at = datetime.now(timezone.utc)
         payment.status = "confirmed"
+
+        # Attest success to PGL
+        if payment.pre_execution_cert_id:
+            await BankerAgentPGLGuard.attest_success(
+                db=db,
+                pgl_ctx=pgl_ctx,
+                tx_hash=proof["tx_hash"],
+                block_number=proof["block_number"]
+            )
 
         await db.commit()
         await db.refresh(payment)

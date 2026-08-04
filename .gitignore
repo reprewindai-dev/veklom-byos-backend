@@ -100,3 +100,12 @@ pyo3-irongrid-api/
 py03-irongrid/
 py03-irongrid-api/
 .vercel
+
+remote_run.sh
+remote_run2.sh
+scratch/remote_run.sh
+scratch/remote_run2.sh
+
+setup.sql
+
+scratch/

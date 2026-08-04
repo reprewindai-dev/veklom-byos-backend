@@ -291,6 +291,7 @@ async def verify_x402_evidence(
     
     evidence_match = (stored_evidence == body.evidence_hash)
     proof_match = (stored_proof == body.proof_hash)
+    print("DEBUG VERIFY: body.proof_hash=", body.proof_hash, "stored_proof=", stored_proof, "proof_match=", proof_match)
 
     # Reconstruct expected signatures for cryptographic verification
     expected_sig_secure = f"sig_{hashlib.sha256((body.receipt_id + body.evidence_hash + settings.SECRET_KEY).encode()).hexdigest()[:24]}"

@@ -159,7 +159,7 @@ async def stream_events(event_generator):
 async def generate_from_intent(request: GenerateRequest):
     """
     Generate a pipeline from natural language intent.
-    
+
     Uses LLM (Claude + constrained decoding) to convert intent to GPCPipelineGraph.
     Poltergeist watcher watches the graph and emits capability requirements.
     """
@@ -192,7 +192,7 @@ async def generate_from_intent(request: GenerateRequest):
                 position={"x": 600, "y": 0},
             ),
         ]
-        
+
         edges = [
             GPCEdge(
                 id="e1",
@@ -209,14 +209,14 @@ async def generate_from_intent(request: GenerateRequest):
                 target_port_id="in",
             ),
         ]
-        
+
         graph = GPCPipelineGraph(
             pipeline_id="pipeline_" + str(int(datetime.utcnow().timestamp())),
             tenant_id=request.tenant_id,
             nodes=nodes,
             edges=edges,
         )
-        
+
         # Notify watcher of new graph
         if watcher:
             await watcher.on_graph_change(
@@ -233,7 +233,7 @@ async def generate_from_intent(request: GenerateRequest):
             "reasoning": "Generated pipeline with input → filter → output",
             "confidence_score": 0.95,
         }
-    
+
     except Exception as e:
         print(f"Generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

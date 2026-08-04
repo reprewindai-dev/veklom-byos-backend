@@ -31,10 +31,16 @@ if settings.APP_ENV != "test" and (not db_url or not db_url.strip() or "sqlite" 
     )
 
 try:
+    connect_args = {}
+    if "sqlite" in db_url:
+        connect_args = {"timeout": 3}
+    else:
+        connect_args = {"timeout": 3, "command_timeout": 5}
+
     engine_options = {
         "echo": settings.DEBUG,
         "future": True,
-        "connect_args": {"timeout": 3, "command_timeout": 5},
+        "connect_args": connect_args,
     }
     if settings.APP_ENV == "test":
         # asyncpg connections are tied to their event loop; pytest creates several.

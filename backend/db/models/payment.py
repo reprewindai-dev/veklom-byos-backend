@@ -24,6 +24,8 @@ class Payment(Base):
     gas_used            = Column(BigInteger, nullable=True)
     settled_at          = Column(DateTime(timezone=True), nullable=True)
     
+    pre_execution_cert_id = Column(String(255), nullable=True)
+
     status              = Column(String(32), nullable=False, default='pending')
 
     created_at          = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -47,6 +49,7 @@ class Payment(Base):
             "block_number": self.block_number,
             "gas_used": self.gas_used,
             "settled_at": self.settled_at.isoformat() if self.settled_at else None,
+            "pre_execution_cert_id": self.pre_execution_cert_id,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

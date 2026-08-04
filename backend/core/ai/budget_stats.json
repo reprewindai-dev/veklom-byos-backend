@@ -1,5 +1,9 @@
 {
   "daily_spend": 0.0,
   "monthly_spend": 0.0,
-  "last_updated": "2026-08-02 09:46:35"
+<<<<<<< HEAD
+  "last_updated": "2026-08-02 23:29:22"
+=======
+  "last_updated": "2026-08-04 12:16:49"
+>>>>>>> 2c131d9 (Address PR review feedback for time series grouping logic)
 }

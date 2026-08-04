@@ -21,8 +21,9 @@ import logging
 import re
 from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Optional, Any
 import asyncio
+import httpx
 from backend.core.services.settlement_service import SettlementService
 
 async def _persist_vnp_stake_async(workspace_id: str, path: str, stake_amount: float, latency: float, result: str):

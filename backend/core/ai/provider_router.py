@@ -69,13 +69,13 @@ def _model_for(provider: str, body: dict) -> str:
     if explicit:
         return str(explicit).strip().strip('"')
     defaults = {
+        "ollama": settings.OLLAMA_MODEL or "llama3.2:1b",
         "openai": "gpt-4o-mini",
         "groq": settings.GROQ_MODEL,
         "huggingface": settings.HF_MODEL,
         "gemini": settings.GEMINI_MODEL,
-        "ollama": settings.OLLAMA_MODEL,
     }
-    return defaults.get(provider, "gpt-4o-mini").strip().strip('"')
+    return defaults.get(provider, settings.OLLAMA_MODEL or "llama3.2:1b").strip().strip('"')
 
 
 def _openai_payload(body: dict, provider: str, stream: bool) -> dict:

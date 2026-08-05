@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,11 +10,38 @@ from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_user_optional
 from backend.core.security.jwt_keys import key_manager
 from backend.db.models.user import User
+from backend.schemas.capability_contract import CapabilityManifest, CapabilityContract
 import uuid
 import json
 
 router = APIRouter(prefix="/.well-known", tags=["Well-Known"])
 
+@router.get("/capabilities.json", response_model=CapabilityManifest)
+async def get_capabilities_manifest():
+    """Exposes the governance contracts for all capabilities on this backend."""
+    return CapabilityManifest(
+        service_name="veklom-byos-backend",
+        capabilities=[
+            CapabilityContract(
+                capability_id="blueprint.generate",
+                description="Generates an architectural blueprint based on repository context.",
+                requires=["tenant", "repository"],
+                allows_pii=["github_username"],
+                denies_pii=["email", "phone", "address", "ssn"],
+                secret_injections=["github_pat"],
+                outputs=["blueprint"]
+            ),
+            CapabilityContract(
+                capability_id="repository.health",
+                description="Analyzes the health and structure of a governed repository.",
+                requires=["tenant", "repository"],
+                allows_pii=[],
+                denies_pii=["email", "phone", "address", "ssn"],
+                secret_injections=["github_pat"],
+                outputs=["health_report"]
+            )
+        ]
+    )
 
 @router.get("/security.txt", response_class=JSONResponse)
 async def security_txt():

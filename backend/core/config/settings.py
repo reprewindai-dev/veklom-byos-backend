@@ -247,7 +247,7 @@ class Settings(BaseSettings):
     GNOMLEDGER_API_KEY: str = ""
 
     # cAPI (Universal USB Integration)
-    CAPI_BACKEND_URL: str = "http://capi-container:3002"
+    CAPI_BACKEND_URL: str = "https://capi.veklom.com"
     CAPI_API_KEY: str = ""
 
     # Coinbase Developer Platform (CDP) / Paid Gateway

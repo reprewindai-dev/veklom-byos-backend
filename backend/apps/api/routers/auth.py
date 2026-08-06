@@ -1130,7 +1130,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         value=access_token,
         max_age=cookie_max_age,
         httponly=True,
-        samesite="lax",
+        samesite="none",
         secure=True,
     )
     resp.set_cookie(
@@ -1138,7 +1138,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         value=refresh_token,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         httponly=True,
-        samesite="lax",
+        samesite="none",
         secure=True,
     )
     return resp

@@ -16,7 +16,7 @@ async def update_api_composite_score(session: AsyncSession, api_id: str) -> floa
     # Calculate avg latency and success rate
     stmt = (
         select(
-            func.avg(ProbeEvent.total_ms).label("avg_latency"),
+            func.avg(ProbeEvent.latency_ms).label("avg_latency"),
             func.avg(func.cast(ProbeEvent.success, func.integer())).label("success_rate")
         )
         .where(

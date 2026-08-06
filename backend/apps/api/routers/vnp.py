@@ -218,6 +218,7 @@ async def ingest_probe_metric(
         worker_signature=x_vnp_signature,
         latency_ms=float(payload.latency_ms),
         status_code=payload.http_status_code,
+        success=payload.success,
         measured_at=datetime.now(timezone.utc)
     )
     db.add(metric)

@@ -191,6 +191,7 @@ class ProbeEvent(Base):
     http_version = Column(String(10))
     tls_version = Column(String(20))
     error_reason = Column(String)
+    success = Column(Boolean)
     measured_at = Column(DateTime(timezone=True), nullable=False, index=True)
     evidence_hash = Column(String)
     provenance_hash = Column(String)

@@ -22,7 +22,7 @@ async def update_api_composite_score(session: AsyncSession, api_id: str) -> floa
         .where(
             and_(
                 ProbeEvent.api_id == api_id,
-                ProbeEvent.received_at >= lookback
+                ProbeEvent.measured_at >= lookback
             )
         )
     )

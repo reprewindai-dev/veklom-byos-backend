@@ -772,6 +772,8 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
+from backend.apps.api.routers.archive import pgl_onboarding
+app.include_router(pgl_onboarding.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(vnp.router, prefix="/api/v1")
 app.include_router(x402.router, prefix="/api/v1")

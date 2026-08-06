@@ -130,7 +130,7 @@ async def ai_plugin_json():
             "url": f"{VEKLOM_AGENT_BASE}/openapi.json",
             "is_user_authenticated": False
         },
-        "logo_url": f"{VEKLOM_BASE_URL}/static/branding/veklom-wordmark.png",
+        "logo_url": f"{VEKLOM_BASE_URL}/favicon.ico",
         "contact_email": "api@veklom.com",
         "legal_info_url": f"{VEKLOM_BASE_URL}/legal/terms",
     }, headers={"Access-Control-Allow-Origin": "*"})
@@ -150,19 +150,6 @@ async def agent_json():
         "payment": {
             "protocol": "x402",
             "config_url": "https://api.veklom.com/.well-known/x402.json"
-        },
-        "commerce": {
-            "protocol": "acp",
-            "description": "Agentic Commerce Protocol storefront — discover and buy every Veklom revenue product (marketplace packs, governed runs, subscriptions, reserve credits).",
-            "product_feed_url": "https://api.veklom.com/api/v1/agentic_commerce/product_feed",
-            "catalog_feed_csv": "https://api.veklom.com/api/v1/agentic_commerce/feed.csv",
-            "checkout_url": "https://api.veklom.com/api/v1/agentic_commerce/checkout_sessions",
-            "payment_rails": ["x402_usdc", "stripe"],
-            "auth": "x402_or_bearer_jwt_or_api_key"
-        },
-        "receipts": {
-            "schema_url": "https://api.veklom.com/schemas/receipt.json",
-            "verify_url": "https://api.veklom.com/api/v1/evidence/verify"
         },
         "auth": {
             "developer": "bearer_jwt",

@@ -8,6 +8,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
     
     async def dispatch(self, request: Request, call_next):
+        # Extract environment boundary (default to sandbox for safety)
+        env = request.headers.get("x-veklom-environment", "sandbox").lower()
+        if env not in ("sandbox", "production"):
+            env = "sandbox"
+        request.state.environment = env
+
         response = await call_next(request)
         
         # Content Security Policy

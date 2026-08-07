@@ -49,7 +49,7 @@ async def check_api():
         import httpx
         api_url = os.getenv("API_URL", "http://localhost:80")
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{api_url}/health", timeout=5.0)
+            response = await client.get(f"{api_url}/health", timeout=2.0)
             if response.status_code == 200:
                 return True, f"API: OK (status {response.status_code})"
             return False, f"API: FAILED (status {response.status_code})"

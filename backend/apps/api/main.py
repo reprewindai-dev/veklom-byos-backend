@@ -283,19 +283,6 @@ async def lifespan(app: FastAPI):
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-            # Dynamic migration check to add pre_execution_cert_id column to banker_payments table
-            try:
-                dialect = engine.dialect.name
-                if dialect == "sqlite":
-                    res = await conn.execute(text("PRAGMA table_info(banker_payments)"))
-                    columns = [row[1] for row in res.fetchall()]
-                    if "pre_execution_cert_id" not in columns:
-                        await conn.execute(text("ALTER TABLE banker_payments ADD COLUMN pre_execution_cert_id VARCHAR(255)"))
-                else:
-                    await conn.execute(text("ALTER TABLE banker_payments ADD COLUMN IF NOT EXISTS pre_execution_cert_id VARCHAR(255)"))
-                logger.info("[startup] Banker payments schema verified dynamically (pre_execution_cert_id verified)")
-            except Exception as schema_exc:
-                logger.warning(f"[startup] Failed to verify/migrate banker_payments schema: {schema_exc}")
     except Exception as exc:
         logger.exception("[startup] database readiness check failed")
         raise RuntimeError("Database is not ready; refusing to start") from exc

@@ -985,7 +985,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
                 payload = {
                     "text": "🚨 *Veklom Sovereign AI Hub - Integration Test*\nSlack integration successfully verified."
                 }
-                response = httpx.post(webhook_url, json=payload, timeout=5.0)
+                response = httpx.post(webhook_url, json=payload, timeout=2.0)
                 if response.status_code != 200:
                     success = False
                     message = f"Slack webhook returned status code {response.status_code}"
@@ -1020,7 +1020,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
                         "class": "connection-test"
                     }
                 }
-                response = httpx.post("https://events.pagerduty.com/v2/enqueue", json=payload, timeout=5.0)
+                response = httpx.post("https://events.pagerduty.com/v2/enqueue", json=payload, timeout=2.0)
                 if response.status_code not in (200, 202):
                     success = False
                     message = f"PagerDuty Events API returned status code {response.status_code}"
@@ -1041,7 +1041,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
             import httpx
             try:
                 headers = {"Authorization": f"token {token}", "User-Agent": "Veklom-Sovereign-Hub"}
-                response = httpx.get("https://api.github.com/user", headers=headers, timeout=5.0)
+                response = httpx.get("https://api.github.com/user", headers=headers, timeout=2.0)
                 if response.status_code != 200:
                     success = False
                     message = f"GitHub API returned status code {response.status_code}"
@@ -1063,7 +1063,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
             import httpx
             try:
                 headers = {"Authorization": f"Bearer {token}"}
-                response = httpx.get("https://api.vercel.com/v2/user", headers=headers, timeout=5.0)
+                response = httpx.get("https://api.vercel.com/v2/user", headers=headers, timeout=2.0)
                 if response.status_code != 200:
                     success = False
                     message = f"Vercel API returned status code {response.status_code}"

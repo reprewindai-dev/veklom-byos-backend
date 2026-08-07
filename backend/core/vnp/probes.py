@@ -128,7 +128,7 @@ async def ping_target(client: httpx.AsyncClient, target: dict) -> tuple[str, int
     is_up = False
 
     try:
-        response = await client.get(target["url"], timeout=5.0)
+        response = await client.get(target["url"], timeout=2.0)
         is_up = response.status_code in (200, 401, 403)
     except Exception as exc:
         logger.warning("[VNP Probe] Failed to ping %s: %s", target["id"], exc)

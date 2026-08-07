@@ -103,7 +103,6 @@ class ExportGitHubRequest(BaseModel):
     pipeline_id: str
     tenant_id: str = "default"
     github_repo: str  # owner/repository
-    github_token: str
     nodes: List[dict]
     edges: List[dict]
 
@@ -163,80 +162,7 @@ async def generate_from_intent(request: GenerateRequest):
     Uses LLM (Claude + constrained decoding) to convert intent to GPCPipelineGraph.
     Poltergeist watcher watches the graph and emits capability requirements.
     """
-    try:
-        # TODO: Call LLM (Claude API or vLLM + XGrammar)
-        # For now, return mock
-        from backend.gpc.schemas import PortType
-        
-        # Mock: simple CSV → Filter → Export pipeline
-        nodes = [
-            GPCNode(
-                id="node_1",
-                node_type="CsvFileInput",
-                label="Load Data",
-                config={"filePath": "data.csv", "nameId": "df_input"},
-                position={"x": 0, "y": 0},
-            ),
-            GPCNode(
-                id="node_2",
-                node_type="FilterRows",
-                label="Filter",
-                config={"condition": "column != null", "nameId": "df_filtered"},
-                position={"x": 300, "y": 0},
-            ),
-            GPCNode(
-                id="node_3",
-                node_type="ParquetOutput",
-                label="Save",
-                config={"filePath": "results.parquet", "nameId": "results"},
-                position={"x": 600, "y": 0},
-            ),
-        ]
-        
-        edges = [
-            GPCEdge(
-                id="e1",
-                source_node_id="node_1",
-                source_port_id="out",
-                target_node_id="node_2",
-                target_port_id="in",
-            ),
-            GPCEdge(
-                id="e2",
-                source_node_id="node_2",
-                source_port_id="out",
-                target_node_id="node_3",
-                target_port_id="in",
-            ),
-        ]
-        
-        graph = GPCPipelineGraph(
-            pipeline_id="pipeline_" + str(int(datetime.utcnow().timestamp())),
-            tenant_id=request.tenant_id,
-            nodes=nodes,
-            edges=edges,
-        )
-        
-        # Notify watcher of new graph
-        if watcher:
-            await watcher.on_graph_change(
-                tenant_id=request.tenant_id,
-                pipeline_id=graph.pipeline_id,
-                graph_revision=1,
-                nodes=[n.model_dump() for n in graph.nodes],
-                edges=[e.model_dump() for e in graph.edges],
-            )
-        
-        return {
-            "success": True,
-            "pipeline_graph": graph.model_dump(),
-            "reasoning": "Generated pipeline with input → filter → output",
-            "confidence_score": 0.95,
-        }
-    
-    except Exception as e:
-        print(f"Generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")
 
 
 @router.post("/compile")
@@ -277,7 +203,7 @@ async def compile_pipeline(request: CompileRequest):
     
     except Exception as e:
         print(f"Compilation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/execute")
@@ -285,45 +211,7 @@ async def execute_pipeline(request: ExecuteRequest):
     """
     Execute a pipeline with SSE streaming of execution events.
     """
-    async def generate():
-        try:
-            if not test_executor:
-                raise Exception("Executor not initialized")
-            
-            # First compile
-            compile_req = CompileRequest(
-                pipeline_id=request.pipeline_id,
-                tenant_id=request.tenant_id,
-                nodes=request.nodes,
-                edges=request.edges,
-                target_node_id=request.target_node_id,
-            )
-            compile_result = await compile_pipeline(compile_req)
-            
-            if not compile_result["success"]:
-                raise Exception("Compilation failed")
-            
-            # Execute in sandbox
-            nodes = convert_dict_to_gpc_nodes(request.nodes)
-            edges = convert_dict_to_gpc_edges(request.edges)
-            
-            graph = GPCPipelineGraph(
-                pipeline_id=request.pipeline_id,
-                tenant_id=request.tenant_id,
-                nodes=nodes,
-                edges=edges,
-            )
-            
-            # Stream execution events
-            for i, node in enumerate(nodes):
-                yield f"data: {json.dumps({'node_id': node.id, 'status': 'running'})}\n\n"
-                await asyncio.sleep(0.5)
-                yield f"data: {json.dumps({'node_id': node.id, 'status': 'success'})}\n\n"
-        
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")
 
 
 @router.post("/test")
@@ -331,43 +219,7 @@ async def test_pipeline(request: TestRequest):
     """
     Test a pipeline on sample data with SSE streaming.
     """
-    async def generate():
-        try:
-            if not test_executor:
-                raise Exception("Executor not initialized")
-            
-            # First compile
-            compile_req = CompileRequest(
-                pipeline_id=request.pipeline_id,
-                tenant_id=request.tenant_id,
-                nodes=request.nodes,
-                edges=request.edges,
-            )
-            compile_result = await compile_pipeline(compile_req)
-            
-            if not compile_result["success"]:
-                raise Exception("Compilation failed")
-            
-            # Test execute
-            nodes = convert_dict_to_gpc_nodes(request.nodes)
-            
-            # Stream test results
-            for i, node in enumerate(nodes):
-                yield f"data: {json.dumps({'node_id': node.id, 'status': 'running'})}\n\n"
-                await asyncio.sleep(0.3)
-                payload = {
-                    'node_id': node.id,
-                    'status': 'success',
-                    'rows': 100,
-                    'columns': ['col1', 'col2', 'col3'],
-                    'sample': [['a', 'b', 'c'], ['d', 'e', 'f']]
-                }
-                yield f"data: {json.dumps(payload)}\n\n"
-        
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")
 
 
 @router.post("/export-github")
@@ -375,32 +227,7 @@ async def export_to_github(request: ExportGitHubRequest):
     """
     Export pipeline as GitHub Actions workflow.
     """
-    try:
-        if not github_exporter:
-            raise HTTPException(status_code=500, detail="GitHub exporter not initialized")
-        
-        # First compile
-        compile_req = CompileRequest(
-            pipeline_id=request.pipeline_id,
-            tenant_id=request.tenant_id,
-            nodes=request.nodes,
-            edges=request.edges,
-        )
-        compile_result = await compile_pipeline(compile_req)
-        
-        if not compile_result["success"]:
-            raise Exception("Compilation failed")
-        
-        # Mock export
-        return {
-            "success": True,
-            "workflow_url": f"https://github.com/{request.github_repo}/blob/main/.github/workflows/gpc-{request.pipeline_id}.yml",
-            "message": "Pipeline exported to GitHub Actions",
-        }
-    
-    except Exception as e:
-        print(f"GitHub export error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")
 
 
 @router.get("/components")

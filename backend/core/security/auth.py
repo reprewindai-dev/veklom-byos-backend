@@ -211,6 +211,13 @@ async def get_current_user(
 
     from backend.db.models.user import User
 
+    if jwt_workspace_id:
+        from backend.core.database.database import set_tenant_session
+        await set_tenant_session(db, jwt_workspace_id)
+    else:
+        from sqlalchemy import text
+        await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:

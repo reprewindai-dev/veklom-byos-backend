@@ -821,6 +821,7 @@ def _cors_origins() -> list[str]:
     required = {
         "https://control.veklom.com",
         "https://veklom-control-plane.vercel.app",
+        "https://abide.veklom.com",
     }
     if settings.APP_ENV != "production":
         required.update({"http://localhost:3000", "http://testserver"})

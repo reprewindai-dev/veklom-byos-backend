@@ -664,7 +664,6 @@ async def not_found(request: Request, exc):
             from fastapi.responses import FileResponse
             return FileResponse(str(GPC_DIR / "index.html"))
         else:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"detail": "GPC frontend not built"})
 
     if request.url.path.startswith("/api/"):

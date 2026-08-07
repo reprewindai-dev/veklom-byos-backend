@@ -190,15 +190,16 @@ async def ingest_probe_metric(
     Receives latency/status telemetry from decentralized VNP probes.
     Cryptographically verifies the submission using the Validator's registered public key.
     """
-    # 1. Validate UUIDs to prevent DB driver errors
+    # 1. Validate UUIDs to prevent DB driver errors for api_id
     try:
-        uuid.UUID(payload.validator_id)
         uuid.UUID(payload.api_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid UUID format")
+        raise HTTPException(status_code=400, detail="Invalid API UUID format")
 
-    # 2. Look up validator to get public key
-    validator = await db.get(Validator, payload.validator_id)
+    # 2. Look up validator by name (edge probes send string names like 'vnp-edge-eu-central-01')
+    stmt = select(Validator).where(Validator.name == payload.validator_id)
+    result = await db.execute(stmt)
+    validator = result.scalar_one_or_none()
     if not validator or not validator.is_active:
         raise HTTPException(status_code=403, detail="Invalid or inactive validator")
 

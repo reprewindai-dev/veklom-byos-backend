@@ -2,11 +2,10 @@
 
 import json
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, cast, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models.vnp import Api, ProbeEvent
 from backend.core.services.redis_cache import redis_cache
-
 
 async def update_api_composite_score(session: AsyncSession, api_id: str) -> float:
     """Calculate the moving average composite score and update the API."""
@@ -17,7 +16,7 @@ async def update_api_composite_score(session: AsyncSession, api_id: str) -> floa
     stmt = (
         select(
             func.avg(ProbeEvent.latency_ms).label("avg_latency"),
-            func.avg(func.cast(ProbeEvent.success, func.integer())).label("success_rate")
+            func.avg(cast(ProbeEvent.success, Integer)).label("success_rate")
         )
         .where(
             and_(

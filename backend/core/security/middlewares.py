@@ -54,9 +54,8 @@ ZERO_TRUST_PUBLIC_PREFIXES = (
     "/api/v1/playground/tools", "/api/v1/playground/prompts",
     "/api/v1/agentic_commerce/product_feed", "/api/v1/agentic_commerce/feed.csv",
     "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback",
-    # VNP public read-only endpoints — the ingestion endpoint (/api/v1/vnp/ingestion) is
-    # intentionally NOT listed here; it requires cryptographic Ed25519 signature validation.
-    "/api/v1/vnp/methodology", "/api/v1/vnp/beacon", "/api/v1/vnp/metrics",
+    # VNP endpoints use Ed25519 signature validation in the router, so they must bypass JWT middleware
+    "/api/v1/vnp/ingestion", "/api/v1/vnp/methodology", "/api/v1/vnp/beacon", "/api/v1/vnp/metrics",
     "/api/v1/vnp/validators", "/api/v1/vnp/status", "/api/v1/vnp/edge-observations",
     "/api/v1/amphoteric/discover", "/api/v1/amphoteric/call",
     "/api/v1/onboarding", "/onboarding-dashboard", "/api/v1/banker/self-prove",

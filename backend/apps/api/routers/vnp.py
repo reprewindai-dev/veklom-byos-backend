@@ -190,7 +190,14 @@ async def ingest_probe_metric(
     Receives latency/status telemetry from decentralized VNP probes.
     Cryptographically verifies the submission using the Validator's registered public key.
     """
-    # 1. Look up validator to get public key
+    # 1. Validate UUIDs to prevent DB driver errors
+    try:
+        uuid.UUID(payload.validator_id)
+        uuid.UUID(payload.api_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+
+    # 2. Look up validator to get public key
     validator = await db.get(Validator, payload.validator_id)
     if not validator or not validator.is_active:
         raise HTTPException(status_code=403, detail="Invalid or inactive validator")

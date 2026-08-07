@@ -453,6 +453,11 @@ async def lifespan(app: FastAPI):
     # Start the new physical edge probes
     from backend.core.vnp.probes import run_vnp_probes
     if _env_enabled("VNP_INPROCESS_PROBES_ENABLED"):
+        if not os.getenv("VNP_HUB_SECRET_KEY") and not os.getenv("HUB_SECRET_KEY"):
+            print("="*60, flush=True)
+            print("WARNING: VNP_HUB_SECRET_KEY is missing from environment.", flush=True)
+            print("Physical edge node measurements will be skipped.", flush=True)
+            print("="*60, flush=True)
         physical_probes_task = asyncio.create_task(run_vnp_probes())
     else:
         print("[startup] vnp in-process probes disabled by VNP_INPROCESS_PROBES_ENABLED=false")

@@ -282,12 +282,18 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
 # --- Audit Logs ---
 @router.get("/audit/logs")
 async def audit_logs(limit: int = 20, offset: int = 0, user=Depends(get_current_user)):
-    """Paginated audit logs for the workspace, proxied to PGL ledger."""
+    """Paginated audit logs for the workspace, proxied to PGL ledger.
+
+    Internal routing: gnomledger-api-1:8001 (Docker network, per Golden Bible).
+    DO NOT use localhost:8000 — that port is reserved by the Coolify orchestrator.
+    """
     import httpx
+    import os
+    gnomledger_url = os.getenv("GNOMLEDGER_INTERNAL_URL", "http://gnomledger-api-1:8001")
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"http://localhost:8000/v1/audit/ledger/traces?limit={limit}&offset={offset}",
+                f"{gnomledger_url}/v1/audit/ledger/traces?limit={limit}&offset={offset}",
                 timeout=10.0
             )
             resp.raise_for_status()

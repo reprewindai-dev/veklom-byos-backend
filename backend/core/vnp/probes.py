@@ -82,6 +82,7 @@ VNP_EDGE_DEFAULT_TARGET = "https://api.veklom.com/health"
 def configured_edge_nodes() -> list[dict]:
     raw = os.getenv("VNP_EDGE_PROBES_JSON")
     if not raw:
+        logger.warning("[VNP Probe Swarm] VNP_EDGE_PROBES_JSON is not configured, falling back to defaults")
         return VNP_EDGE_NODES
     try:
         nodes = json.loads(raw)

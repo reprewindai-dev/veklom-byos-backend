@@ -149,78 +149,7 @@ class IssueCertificateRequest(BaseModel):
     safety_rules: list[str] = ["no_secrets"]
 
 
-class OnboardingStatusResponse(BaseModel):
-    mode: str
-    mode_display: str
-    has_pgl_profile: bool
-    requires_onboarding: bool
-    profile: Optional[dict[str, Any]] = None
 
-
-# ---------------------------------------------------------------------------
-# GET /pgl/status  — the gate check called on every app mount
-# ---------------------------------------------------------------------------
-
-
-@router.get("/status", response_model=dict[str, Any])
-async def get_onboarding_status(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Return onboarding status for THIS user's workspace only.
-
-    Queries pgl_certificates for an active 'birth' certificate scoped to
-    current_user.workspace_id. Returns has_pgl_profile=True only when a
-    real DB record exists for this specific workspace.
-    """
-    workspace_id = str(current_user.workspace_id)
-
-    # A workspace has completed onboarding when it has at least one active
-    # PGLCertificate of kind='birth' in the DB.
-    result = await db.execute(
-        select(PGLCertificate)
-        .where(
-            PGLCertificate.workspace_id == workspace_id,
-            PGLCertificate.kind == "birth",
-            PGLCertificate.status == "active",
-        )
-        .order_by(PGLCertificate.created_at.desc())
-        .limit(1)
-    )
-    cert: Optional[PGLCertificate] = result.scalar_one_or_none()
-
-    has_profile = cert is not None
-
-    # Pull ledger history count for this workspace
-    ledger_result = await db.execute(
-        select(PGLLedgerEvent)
-        .where(PGLLedgerEvent.workspace_id == workspace_id)
-        .order_by(PGLLedgerEvent.id.asc())
-    )
-    events = ledger_result.scalars().all()
-
-    snapshot = None
-    if has_profile and cert is not None:
-        snapshot = {
-            "certificate_id": cert.certificate_id,
-            "actor_id": cert.actor_id,
-            "genome_hash": cert.genome_hash,
-            "constitution_hash": cert.constitution_hash,
-            "status": cert.status,
-            "created_at": cert.created_at.isoformat() if cert.created_at else None,
-            "ledger_event_count": len(events),
-            "chain_head": events[-1].event_hash if events else None,
-        }
-
-    return {
-        "mode": "live",
-        "mode_display": "🟢 Live PGL",
-        "has_pgl_profile": has_profile,
-        "requires_onboarding": not has_profile,
-        "profile": snapshot,
-        "workspace_id": workspace_id,
-        "message": "PGL status for workspace " + workspace_id,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -840,45 +769,7 @@ async def complete_alias(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/identity/status")
-async def get_identity_lifecycle_status(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Return the full lifecycle status of the current user's PGL identity.
 
-    Tells you:
-    - Are you PROBATIONARY, ACTIVE, RENEWAL_DUE, or EXPIRED?
-    - When does probation end?
-    - When is renewal due?
-    - Can you execute right now?
-    """
-    if not current_user.pgl_id:
-        raise HTTPException(
-            status_code=404,
-            detail="No PGL identity found. Complete onboarding at POST /api/v1/pgl/onboarding/operator-identity.",
-        )
-
-    result = await db.execute(
-        select(PGLIdentity).where(PGLIdentity.id == current_user.pgl_id)
-    )
-    identity = result.scalar_one_or_none()
-    if not identity:
-        raise HTTPException(status_code=404, detail=f"PGL identity {current_user.pgl_id} not found in ledger.")
-
-    lifecycle = compute_lifecycle(
-        metadata=identity.metadata_json or {},
-        created_at=identity.created_at,
-    )
-
-    return {
-        "pgl_id":        identity.id,
-        "workspace_id":  str(current_user.workspace_id),
-        "human_id":      identity.metadata_json.get("human_id") if identity.metadata_json else None,
-        "lifecycle":     lifecycle.to_dict(),
-        "can_execute":   lifecycle.can_execute,
-        "warning":       lifecycle.warning,
-    }
 
 
 # ---------------------------------------------------------------------------

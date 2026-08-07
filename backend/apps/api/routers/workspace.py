@@ -593,10 +593,25 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         for row in recent_rows
     ]
 
-    recent_24h = (await db.execute(select(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h))).scalars().all()
+    # Fetch lightweight tuples instead of pulling all raw ORM rows
+    routing_stmt = select(
+        ExecLog.provider,
+        ExecLog.created_at
+    ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
+    recent_24h = (await db.execute(routing_stmt)).all()
+
     routing_history = _routing_history(recent_24h, now)
-    hetzner_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "hetzner")
-    aws_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "aws-burst")
+
+    # Calculate counts in Python since the lightweight tuples are already in memory, avoiding a second query
+    hetzner_count = 0
+    aws_count = 0
+    for row in recent_24h:
+        provider = row.provider if hasattr(row, "provider") else row[0]
+        route = _route_for_provider(provider)
+        if route == "hetzner":
+            hetzner_count += 1
+        elif route == "aws-burst":
+            aws_count += 1
     routed_total = hetzner_count + aws_count
     hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
@@ -1753,13 +1768,14 @@ def _relative_time(value: datetime | None, now: datetime) -> str:
     return f"{hours // 24}d ago"
 
 
-def _routing_history(rows: list[ExecLog], now: datetime) -> list[dict]:
+def _routing_history(rows: list, now: datetime) -> list[dict]:
     buckets = {
         hour: {"hour": f"{hour:02d}", "hetzner": 0, "aws": 0}
         for hour in range(24)
     }
     for row in rows:
-        created_at = row.created_at
+        created_at = row.created_at if hasattr(row, "created_at") else row[1]
+        provider = row.provider if hasattr(row, "provider") else row[0]
         if not created_at:
             continue
         if created_at.tzinfo is None:
@@ -1768,7 +1784,7 @@ def _routing_history(rows: list[ExecLog], now: datetime) -> list[dict]:
         if hour_age < 0 or hour_age > 23:
             continue
         bucket = buckets[created_at.hour]
-        if _route_for_provider(row.provider) == "aws-burst":
+        if _route_for_provider(provider) == "aws-burst":
             bucket["aws"] += 1
         else:
             bucket["hetzner"] += 1
@@ -1882,7 +1898,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     encrypted_token = user.github_access_token
     if not encrypted_token:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="No GitHub access token configured for this user. Please connect your GitHub account in integrations settings."
         )
 
@@ -1924,7 +1940,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
                             pipeline_files.append(normalized_path)
             else:
                 raise HTTPException(
-                    status_code=400, 
+                    status_code=400,
                     detail=f"GitHub API returned error status {resp.status_code} during tree fetch: {resp.text}"
                 )
     except HTTPException:
@@ -1932,8 +1948,9 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch GitHub repository tree: {str(e)}")
 
-    import yaml
     import json
+
+    import yaml
 
     synced_agents_count = 0
     synced_pipelines_count = 0
@@ -1945,7 +1962,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
                 "Accept": "application/vnd.github.v3+json",
                 "User-Agent": "Veklom-BYOS"
             }
-            
+
             # Fetch and parse agents
             for path in agent_files:
                 try:
@@ -2018,7 +2035,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     if synced_agents_count == 0 and synced_pipelines_count == 0:
         repo_name = repo.split('/')[-1] if repo else "repository"
         default_name = repo_name.replace("-", " ").replace("_", " ").title()
-        
+
         agent_id = f"ag_{uuid.uuid4().hex[:12]}"
         new_agent = Agent(
             id=agent_id,
@@ -2029,7 +2046,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
         )
         db.add(new_agent)
         synced_agents_count = 1
-        
+
         pipe_id = f"pipe_{uuid.uuid4().hex[:12]}"
         new_pipe = Pipeline(
             id=pipe_id,

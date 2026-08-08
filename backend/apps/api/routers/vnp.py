@@ -40,6 +40,10 @@ class ProbeMetricPayload(BaseModel):
     latency_ms: int
     http_status_code: int
     success: bool
+    event_id: str
+    timestamp: int
+    nonce: str
+    schema_version: str
 
 
 async def get_vnp_evidence_counts(db: AsyncSession) -> dict:
@@ -204,9 +208,13 @@ async def ingest_probe_metric(
         raise HTTPException(status_code=403, detail="Invalid or inactive validator")
 
     # 2. Verify Cryptographic Signature
+    current_time = datetime.now(timezone.utc).timestamp()
+    if abs(current_time - payload.timestamp) > 300:
+        raise HTTPException(status_code=400, detail="Payload timestamp is too old or too far in the future")
+
     # Construct the deterministic message string that the prober should have signed
-    # Format: {api_id}:{validator_id}:{region}:{latency_ms}:{http_status_code}:{success}
-    message = f"{payload.api_id}:{payload.validator_id}:{payload.region}:{payload.latency_ms}:{payload.http_status_code}:{int(payload.success)}".encode("utf-8")
+    # Format: {validator_id}:{event_id}:{api_id}:{timestamp}:{nonce}:{schema_version}:{region}:{latency_ms}:{http_status_code}:{success}
+    message = f"{payload.validator_id}:{payload.event_id}:{payload.api_id}:{payload.timestamp}:{payload.nonce}:{payload.schema_version}:{payload.region}:{payload.latency_ms}:{payload.http_status_code}:{int(payload.success)}".encode("utf-8")
 
     try:
         verify_key = nacl.signing.VerifyKey(validator.public_key, encoder=HexEncoder)
@@ -218,7 +226,7 @@ async def ingest_probe_metric(
 
     # 3. Save metric
     metric = ProbeEvent(
-        event_id=str(uuid.uuid4()),
+        event_id=payload.event_id,
         partition_key=datetime.now(timezone.utc).strftime("%Y-%m"),
         api_id=payload.api_id,
         region=payload.region,

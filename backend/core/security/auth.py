@@ -221,6 +221,8 @@ async def get_current_user(
 
     from backend.db.models.user import User
     from backend.core.database.database import set_tenant_session
+    from sqlalchemy import text
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'off', true)"))
     await set_tenant_session(db, jwt_workspace_id)
 
     result = await db.execute(select(User).where(User.id == user_id))
@@ -242,12 +244,7 @@ async def get_current_user(
         from backend.core.database.database import set_tenant_session
         await set_tenant_session(db, user.workspace_id)
     else:
-        # PGL IdentityRAG resolution fallback
-        from backend.core.clients.capi_client import capi_client
-        resolved = await capi_client.resolve_tenant_workspace(user.id)
-        if resolved and "workspace_id" in resolved:
-            from backend.core.database.database import set_tenant_session
-            await set_tenant_session(db, resolved["workspace_id"])
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is missing a workspace assignment.")
 
     if status_value == "PENDING_VERIFICATION":
         allowed_paths = {

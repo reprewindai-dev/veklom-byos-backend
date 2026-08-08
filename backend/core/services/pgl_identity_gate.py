@@ -35,12 +35,12 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class PGLIdentityError(Exception):
     """
     Raised when the PGL gate blocks execution.
     This is a HARD BLOCK — the calling code must NOT proceed.
-    
+
     Catching this and ignoring it is a governance violation.
     """
     def __init__(self, actor_id: str, reason: str):
@@ -156,11 +156,11 @@ class PGLIdentityExpired(PGLIdentityError):
 class PGLExecutionContext:
     """
     Proof that an agent has been cleared through the PGL gate.
-    
+
     Carry this across the entire lifecycle of an agent's action:
     - Pass it to attest_success() after completion
     - Pass it to attest_failure() if the action fails
-    
+
     Never discard this without closing the certificate chain.
     """
     actor_id:              str
@@ -202,7 +202,7 @@ def _intent_hash(action: str, payload: dict) -> str:
 class PGLIdentityGate:
     """
     Universal PGL identity enforcement gate.
-    
+
     Usage:
         ctx = await PGLIdentityGate.require(
             db        = db,
@@ -227,9 +227,10 @@ class PGLIdentityGate:
         is governed by code, not by user registration.
         """
         import json
-        from backend.db.models.pgl import PGLIdentity
+
         from backend.core.database.redis_client import redis_client
-        
+        from backend.db.models.pgl import PGLIdentity
+
         # Redis projection check
         cached_identity_str = await redis_client.get(f"veklom:pgl:identity:{actor_id}")
         if cached_identity_str:
@@ -285,10 +286,11 @@ class PGLIdentityGate:
             db.add(identity)
             await db.flush()
             logger.info(f"[PGLGate] ✅ System agent identity seeded: {actor_id}")
-            
+
         # Populate projection cache
         try:
             import json
+
             from backend.core.database.redis_client import redis_client
             cache_payload = {
                 "id": identity.id,
@@ -298,7 +300,7 @@ class PGLIdentityGate:
                 "metadata": identity.metadata_json
             }
             await redis_client.set(
-                f"veklom:pgl:identity:{identity.id}", 
+                f"veklom:pgl:identity:{identity.id}",
                 json.dumps(cache_payload),
                 ex=3600
             )
@@ -318,10 +320,11 @@ class PGLIdentityGate:
         If the chain is broken, raise PGLIdentityNotFound.
         """
         import json
-        from backend.db.models.pgl import PGLIdentity
-        from backend.db.models.lineage import BirthCertificate
-        from backend.db.models.agent import Agent
+
         from backend.core.database.redis_client import redis_client
+        from backend.db.models.agent import Agent
+        from backend.db.models.lineage import BirthCertificate
+        from backend.db.models.pgl import PGLIdentity
 
         # Redis projection check
         cached_identity_str = await redis_client.get(f"veklom:pgl:identity:{actor_id}")
@@ -354,7 +357,7 @@ class PGLIdentityGate:
                     "metadata": identity.metadata_json
                 }
                 await redis_client.set(
-                    f"veklom:pgl:identity:{identity.id}", 
+                    f"veklom:pgl:identity:{identity.id}",
                     json.dumps(cache_payload),
                     ex=3600
                 )
@@ -397,10 +400,11 @@ class PGLIdentityGate:
             select(PGLIdentity).where(PGLIdentity.id == cert.pgl_identity_id)
         )
         identity = result.scalar_one_or_none()
-        
+
         if identity:
             try:
                 import json
+
                 from backend.core.database.redis_client import redis_client
                 cache_payload = {
                     "id": identity.id,
@@ -410,14 +414,14 @@ class PGLIdentityGate:
                     "metadata": identity.metadata_json
                 }
                 await redis_client.set(
-                    f"veklom:pgl:identity:{identity.id}", 
+                    f"veklom:pgl:identity:{identity.id}",
                     json.dumps(cache_payload),
                     ex=3600
                 )
                 # We also want to map the actor_id directly to this identity
                 if actor_id != identity.id:
                     await redis_client.set(
-                        f"veklom:pgl:identity:{actor_id}", 
+                        f"veklom:pgl:identity:{actor_id}",
                         json.dumps(cache_payload),
                         ex=3600
                     )
@@ -536,15 +540,15 @@ class PGLIdentityGate:
         _lifecycle_notification: dict | None = None
         try:
             from backend.core.services.pgl_identity_lifecycle import (
-                compute_lifecycle,
                 TrustLevel,
+                compute_lifecycle,
             )
             from backend.core.services.pgl_notifications import (
-                notify_probationary,
                 notify_active,
-                notify_renewal_due,
                 notify_grace_period,
                 notify_hard_expired,
+                notify_probationary,
+                notify_renewal_due,
             )
 
             # Fetch behavioral statistics from the DB for promotion checks
@@ -656,8 +660,8 @@ class PGLIdentityGate:
         # Resolve birth_cert_id if available (for registered agents)
         birth_cert_id = None
         try:
-            from backend.db.models.lineage import BirthCertificate
             from backend.db.models.agent import Agent
+            from backend.db.models.lineage import BirthCertificate
             agent_res = await db.execute(
                 select(Agent).where(Agent.agent_id == actor_id)
             )
@@ -671,8 +675,8 @@ class PGLIdentityGate:
                 cert_row = cert_res.scalar_one_or_none()
                 if cert_row:
                     birth_cert_id = cert_row.certificate_id
-        except Exception:
-            pass  # Birth cert is supplemental metadata, not a gate requirement
+        except Exception as exc:
+            logger.warning(f"[PGLGate] Could not resolve birth certificate for actor '{actor_id}': {exc}")
 
         return PGLExecutionContext(
             actor_id              = actor_id,
@@ -744,8 +748,8 @@ class PGLIdentityGate:
         Register a rollback in the PGL ledger after a failed execution.
         Call this in ALL failure paths so the pre-cert is never left open.
         """
-        from backend.services.pgl_client import PGLClient
         from backend.db.models.pgl import PGLCertificate
+        from backend.services.pgl_client import PGLClient
 
         pseudo_post_id = f"pgl_cert_post_failed_{uuid.uuid4().hex[:12]}"
         try:

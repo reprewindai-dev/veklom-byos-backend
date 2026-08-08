@@ -209,14 +209,19 @@ async def get_current_user(
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
-    from backend.db.models.user import User
+    # Zero-trust: every JWT must carry a workspace_id claim.
+    # Tokens without workspace_id cannot be given a tenant context, so we reject
+    # them here rather than enabling bypass_rls which would allow cross-tenant
+    # data access across all RLS-protected tables.
+    if not jwt_workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing workspace_id claim. Re-authenticate to obtain a scoped token."
+        )
 
-    if jwt_workspace_id:
-        from backend.core.database.database import set_tenant_session
-        await set_tenant_session(db, jwt_workspace_id)
-    else:
-        from sqlalchemy import text
-        await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
+    from backend.db.models.user import User
+    from backend.core.database.database import set_tenant_session
+    await set_tenant_session(db, jwt_workspace_id)
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()

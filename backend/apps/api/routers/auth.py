@@ -507,10 +507,12 @@ async def create_eval_session(body: dict = None, db: AsyncSession = Depends(get_
     fingerprint = (body.get("fingerprint") or "anonymous")[:64]
     user = await _get_or_create_eval_user(db, fingerprint=fingerprint)
 
-    access_token = create_access_token(data={"sub": user.id})
+    access_token = create_access_token(data={"sub": user.id, "workspace_id": user.workspace_id})
     refresh_token = create_access_token(
-        data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        data={"sub": user.id, "workspace_id": user.workspace_id},
+        expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
+
     db.add(Session(
         user_id=user.id,
         session_token=access_token,
@@ -637,9 +639,10 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         await db.flush()
         db.add(WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role="owner", invited_by=user.id))
 
-        access_token = create_access_token(data={"sub": user.id})
+        access_token = create_access_token(data={"sub": user.id, "workspace_id": user.workspace_id})
         refresh_token = create_access_token(
-            data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            data={"sub": user.id, "workspace_id": user.workspace_id},
+            expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         )
         db.add(Session(
             user_id=user.id,
@@ -1078,9 +1081,10 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     user.last_login = datetime.utcnow()
     user.last_activity = datetime.utcnow()
 
-    access_token = create_access_token(data={"sub": user.id})
+    access_token = create_access_token(data={"sub": user.id, "workspace_id": user.workspace_id})
     refresh_token = create_access_token(
-        data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        data={"sub": user.id, "workspace_id": user.workspace_id},
+        expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
 
     session = Session(
@@ -1221,9 +1225,10 @@ async def refresh(body: dict, db: AsyncSession = Depends(get_db)):
     if session is None:
         raise HTTPException(status_code=401, detail="Refresh session revoked or expired")
 
-    access_token = create_access_token(data={"sub": user.id})
+    access_token = create_access_token(data={"sub": user.id, "workspace_id": user.workspace_id})
     new_refresh = create_access_token(
-        data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        data={"sub": user.id, "workspace_id": user.workspace_id},
+        expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     session.session_token = access_token
     session.refresh_token = new_refresh
@@ -1678,9 +1683,10 @@ async def github_callback(
         user.last_activity = datetime.utcnow()
         await db.commit()
 
-    app_access_token = create_access_token(data={"sub": user.id})
+    app_access_token = create_access_token(data={"sub": user.id, "workspace_id": user.workspace_id})
     app_refresh_token = create_access_token(
-        data={"sub": user.id}, expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        data={"sub": user.id, "workspace_id": user.workspace_id},
+        expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
 
     session = Session(

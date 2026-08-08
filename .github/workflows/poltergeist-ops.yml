@@ -262,87 +262,195 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
+    env:
+      DISK_ALERT_THRESHOLD_PCT: "88"
+      DISK_PRUNE_THRESHOLD_PCT: "90"
 
     steps:
+      - name: Checkout Alert Reconciler
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Check All Endpoints
         id: audit
         run: |
           check_endpoint() {
-            local label=$1
-            local url=$2
-            local expected_code=${3:-200}
-            HTTP=$(curl -sk "$url" -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 15)
-            if [ "$HTTP" = "$expected_code" ]; then
-              echo "✅ $label → HTTP $HTTP"
-              echo "${label}_status=ok" >> $GITHUB_OUTPUT
+            local key=$1
+            local label=$2
+            local url=$3
+            local expected_code=${4:-200}
+            local http
+            local attempt
+            for attempt in 1 2 3; do
+              http=$(curl -sk "$url" -o /dev/null -w '%{http_code}' \
+                --connect-timeout 10 --max-time 15 || true)
+              [ "$http" = "$expected_code" ] && break
+              if [ "$attempt" -lt 3 ]; then
+                sleep 5
+              fi
+            done
+            if [ "$http" = "$expected_code" ]; then
+              echo "✅ $label → HTTP $http"
+              echo "${key}_status=ok" >> "$GITHUB_OUTPUT"
             else
-              echo "❌ $label → HTTP $HTTP (expected $expected_code)"
-              echo "${label}_status=fail" >> $GITHUB_OUTPUT
+              echo "❌ $label → HTTP ${http:-no-response} (expected $expected_code)"
+              echo "${key}_status=fail" >> "$GITHUB_OUTPUT"
             fi
           }
 
-          check_endpoint "API Health" "https://api.veklom.com/health"
-          check_endpoint "Agent Discovery" "https://api.veklom.com/.well-known/agent.json"
-          check_endpoint "Status Page" "https://status.veklom.com"
-          check_endpoint "Control Plane" "https://control.veklom.com"
+          check_endpoint "api_health" "API Health" "https://api.veklom.com/health"
+          check_endpoint "agent_discovery" "Agent Discovery" "https://api.veklom.com/.well-known/agent.json"
+          check_endpoint "status_page" "Status Page" "https://status.veklom.com"
+          check_endpoint "control_plane" "Control Plane" "https://control.veklom.com"
 
       - name: Disk Usage Check via SSH
         id: disk
+        env:
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+          # Set this repository variable to "false" to disable guarded cleanup.
+          POLTERGEIST_AUTO_PRUNE: ${{ vars.POLTERGEIST_AUTO_PRUNE || 'true' }}
         run: |
+          set +e
+
+          DISK=""
+          PROBE_STATUS="failed"
+          PROBE_MESSAGE="Disk probe did not complete."
+          PRUNE_STATUS="not-needed"
+          KEY_PATH="$HOME/.ssh/veklom-deploy"
+
+          emit_results() {
+            echo "disk_used=$DISK" >> "$GITHUB_OUTPUT"
+            echo "probe_status=$PROBE_STATUS" >> "$GITHUB_OUTPUT"
+            echo "probe_message=$PROBE_MESSAGE" >> "$GITHUB_OUTPUT"
+            echo "prune_status=$PRUNE_STATUS" >> "$GITHUB_OUTPUT"
+          }
+
           mkdir -p ~/.ssh
-          echo "${{ secrets.HETZNER_SSH_KEY }}" > ~/.ssh/veklom-deploy
-          chmod 600 ~/.ssh/veklom-deploy
-          ssh-keyscan -H 5.78.135.11 >> ~/.ssh/known_hosts 2>/dev/null
+          trap 'rm -f "$KEY_PATH"' EXIT
 
-          DISK=$(ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 "df -h / | tail -1 | awk '{print \$5}'" 2>/dev/null)
-          echo "disk_used=$DISK" >> $GITHUB_OUTPUT
-          echo "Disk usage: $DISK"
+          if [ -z "$HETZNER_SSH_KEY" ]; then
+            PROBE_MESSAGE="HETZNER_SSH_KEY is not configured."
+            emit_results
+            exit 0
+          fi
 
-      - name: Open Issue if Anything is Down
+          printf '%s\n' "$HETZNER_SSH_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+          if ! ssh-keyscan -H 5.78.135.11 >> ~/.ssh/known_hosts 2>/dev/null; then
+            PROBE_MESSAGE="Could not obtain the server SSH host key."
+            emit_results
+            exit 0
+          fi
+
+          SSH_ARGS=(
+            -i "$KEY_PATH"
+            -o BatchMode=yes
+            -o ConnectTimeout=15
+            root@5.78.135.11
+          )
+          DISK=$(ssh "${SSH_ARGS[@]}" \
+            "df -P / | tail -1 | tr -s ' ' | cut -d ' ' -f 5 | tr -d '%'" \
+            2>/dev/null)
+          SSH_STATUS=$?
+
+          if [ "$SSH_STATUS" -ne 0 ]; then
+            DISK=""
+            PROBE_MESSAGE="SSH disk probe failed (exit ${SSH_STATUS})."
+            emit_results
+            exit 0
+          fi
+
+          if ! [[ "$DISK" =~ ^[0-9]{1,3}$ ]] || [ "$DISK" -gt 100 ]; then
+            DISK=""
+            PROBE_MESSAGE="SSH succeeded, but df returned an invalid disk percentage."
+            emit_results
+            exit 0
+          fi
+
+          PROBE_STATUS="ok"
+          PROBE_MESSAGE="Disk usage measured successfully."
+          echo "Disk usage before cleanup: ${DISK}%"
+
+          if [ "$DISK" -ge "$DISK_PRUNE_THRESHOLD_PCT" ]; then
+            case "${POLTERGEIST_AUTO_PRUNE,,}" in
+              1|true|yes|on)
+                # `image prune -a` removes all images not referenced by a
+                # container, including tagged old releases. A rollback may
+                # therefore need to re-pull or rebuild an image.
+                ssh "${SSH_ARGS[@]}" \
+                  "docker image prune -af --filter until=1440h && docker builder prune -af --filter until=1440h" \
+                  >/tmp/poltergeist-prune.log 2>&1
+                if [ "$?" -eq 0 ]; then
+                  PRUNE_STATUS="succeeded"
+                  FOLLOW_UP_DISK=$(ssh "${SSH_ARGS[@]}" \
+                    "df -P / | tail -1 | tr -s ' ' | cut -d ' ' -f 5 | tr -d '%'" \
+                    2>/dev/null)
+                  SSH_STATUS=$?
+                  if [ "$SSH_STATUS" -ne 0 ]; then
+                    DISK=""
+                    PROBE_STATUS="failed"
+                    PROBE_MESSAGE="Cleanup succeeded, but the follow-up SSH probe failed (exit ${SSH_STATUS})."
+                  elif ! [[ "$FOLLOW_UP_DISK" =~ ^[0-9]{1,3}$ ]] || [ "$FOLLOW_UP_DISK" -gt 100 ]; then
+                    DISK=""
+                    PROBE_STATUS="failed"
+                    PROBE_MESSAGE="Cleanup succeeded, but the follow-up disk percentage was invalid."
+                  else
+                    DISK="$FOLLOW_UP_DISK"
+                    echo "Disk usage after cleanup: ${DISK}%"
+                  fi
+                else
+                  PRUNE_STATUS="failed"
+                  echo "Automatic Docker cleanup failed:"
+                  tail -n 20 /tmp/poltergeist-prune.log
+                fi
+                ;;
+              *)
+                PRUNE_STATUS="disabled"
+                ;;
+            esac
+          fi
+
+          emit_results
+
+      - name: Reconcile Nightly Alert
+        if: always()
         uses: actions/github-script@v7
+        env:
+          API_HEALTH_STATUS: ${{ steps.audit.outputs.api_health_status }}
+          AGENT_DISCOVERY_STATUS: ${{ steps.audit.outputs.agent_discovery_status }}
+          STATUS_PAGE_STATUS: ${{ steps.audit.outputs.status_page_status }}
+          CONTROL_PLANE_STATUS: ${{ steps.audit.outputs.control_plane_status }}
+          DISK_USED: ${{ steps.disk.outputs.disk_used }}
+          DISK_PROBE_STATUS: ${{ steps.disk.outputs.probe_status }}
+          DISK_PROBE_MESSAGE: ${{ steps.disk.outputs.probe_message }}
+          DISK_PRUNE_STATUS: ${{ steps.disk.outputs.prune_status }}
         with:
           script: |
-            const diskUsed = '${{ steps.disk.outputs.disk_used }}';
+            const path = require('node:path');
+            const reconcilerPath = path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github',
+              'scripts',
+              'poltergeist-nightly-alert.cjs'
+            );
+            const { reconcileNightlyAlert } = require(reconcilerPath);
             const checks = {
-              'API Health':        '${{ steps.audit.outputs.API_Health_status }}',
-              'Agent Discovery':   '${{ steps.audit.outputs.Agent_Discovery_status }}',
-              'Status Page':       '${{ steps.audit.outputs.Status_Page_status }}',
-              'Control Plane':     '${{ steps.audit.outputs.Control_Plane_status }}',
+              'API Health': process.env.API_HEALTH_STATUS,
+              'Agent Discovery': process.env.AGENT_DISCOVERY_STATUS,
+              'Status Page': process.env.STATUS_PAGE_STATUS,
+              'Control Plane': process.env.CONTROL_PLANE_STATUS,
             };
 
-            const failed = Object.entries(checks).filter(([k,v]) => v === 'fail').map(([k]) => k);
-            const diskPct = parseInt(diskUsed);
-            const diskHigh = diskPct >= 88;
-
-            if (failed.length === 0 && !diskHigh) {
-              console.log('All systems healthy. No issue needed.');
-              return;
-            }
-
-            const title = `👻 Poltergeist Nightly Alert — ${new Date().toISOString().slice(0,10)}`;
-            const body = `## 👻 Poltergeist Nightly Audit Alert
-
-            ${failed.length > 0 ? `### ❌ Down Endpoints\n${failed.map(f => `- **${f}**`).join('\n')}` : ''}
-            ${diskHigh ? `\n### ⚠️ Disk Usage High\nServer disk at **${diskUsed}**. Poltergeist DiskWatchdog should auto-prune, but manual review may be needed.` : ''}
-
-            > 👻 _Poltergeist raised this issue at ${new Date().toUTCString()}._`;
-
-            // Check if a Poltergeist issue is already open for today
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'poltergeist-alert',
+            const result = await reconcileNightlyAlert({
+              github,
+              context,
+              checks,
+              diskUsed: process.env.DISK_USED,
+              diskProbeStatus: process.env.DISK_PROBE_STATUS,
+              diskProbeMessage: process.env.DISK_PROBE_MESSAGE,
+              pruneStatus: process.env.DISK_PRUNE_STATUS,
+              diskAlertThreshold: Number(process.env.DISK_ALERT_THRESHOLD_PCT),
             });
-
-            const todayIssue = issues.find(i => i.title.includes(new Date().toISOString().slice(0,10)));
-
-            if (!todayIssue) {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels: ['poltergeist-alert', 'ops'],
-              });
-            }
+            core.info(`Nightly alert reconciliation: ${result.action}`);

@@ -3,30 +3,28 @@
 Manages the anticipatory build queue (Deduplicating Build Queue) and the Freshness Gate
 for GPC Pipeline capabilities.
 
-Also runs a self-healing InfrastructureSentinel that monitors:
+Also runs an InfrastructureSentinel that monitors:
   - Alembic migration head validity (auto-stamps stale heads)
   - Backend health endpoint (restarts container on sustained failure)
-  - Disk usage (prunes Docker caches when disk exceeds 90%)
+  - Disk usage (optionally prunes Docker caches when disk exceeds 90%)
 """
 
 import asyncio
-import traceback
 import logging
 import os
-import shutil
-import subprocess
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any, Set
-from sqlalchemy import select, update, text
+import traceback
+from typing import Any, Dict, Optional, Set
+
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
-logger = logging.getLogger("poltergeist_daemon")
-
 from backend.core.database.database import async_session
-from backend.db.models.poltergeist import CapabilityHauntState, CapabilityGhost
-from backend.core.services.poltergeist_registry import poltergeist_registry
 from backend.core.services.local_storage import local_storage
+from backend.core.services.poltergeist_registry import poltergeist_registry
+from backend.db.models.poltergeist import CapabilityGhost, CapabilityHauntState
+from backend.ops.disk_watchdog import inspect_and_prune_disk
 
+logger = logging.getLogger("poltergeist_daemon")
 
 # ---------------------------------------------------------------------------
 # Infrastructure Sentinel — self-healing background worker
@@ -35,16 +33,16 @@ from backend.core.services.local_storage import local_storage
 class InfrastructureSentinel:
     """
     Runs autonomously alongside the GPC build daemon.
-    Catches and recovers from infrastructure failures so the operator
-    never has to SSH in to unblock deployments.
+    Catches infrastructure failures and performs explicitly enabled
+    recovery actions.
 
     Jobs (every 60 s unless a failure requires immediate action):
     1. Migration Guard   — stamps stale alembic_version heads so the
                            container can start after a bad migration push.
     2. Health Sentinel   — pings /health; auto-restarts the container on
                            sustained failure (> 90 s dark).
-    3. Disk Watchdog     — prunes Docker build-cache + dangling images when
-                           disk usage exceeds 90 %.
+    3. Disk Watchdog     — reports high disk usage and, when explicitly
+                           enabled, prunes old Docker resources.
     """
 
     # The set of revision IDs that actually exist in the codebase.
@@ -227,45 +225,10 @@ class InfrastructureSentinel:
     # ------------------------------------------------------------------
 
     async def _disk_watchdog(self):
-        """
-        Checks disk usage on /. If above threshold, prunes Docker build
-        cache and dangling images to recover space.
-        """
-        try:
-            target_path = os.environ.get("SENTINEL_DISK_PATH", "/")
-            if not os.path.exists(target_path):
-                logger.info(f"[sentinel][disk] path {target_path} not accessible, skipping watchdog")
-                return
-
-            usage = shutil.disk_usage(target_path)
-            pct = (usage.used / usage.total) * 100
-            if pct < self.DISK_PRUNE_THRESHOLD_PCT:
-                self.is_degraded = False
-                return
-
-            logger.warning(
-                f"[sentinel][disk] disk at {pct:.1f}% — pruning Docker caches"
-            )
-            self.is_degraded = True
-            loop = asyncio.get_event_loop()
-            # Run in thread pool so we don't block the event loop
-            await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    ["docker", "system", "prune", "-f", "--filter", "until=1440h"],
-                    capture_output=True, timeout=120
-                )
-            )
-            new_usage = shutil.disk_usage(target_path)
-            new_pct = (new_usage.used / new_usage.total) * 100
-            self.is_degraded = new_pct >= self.DISK_PRUNE_THRESHOLD_PCT
-            logger.info(
-                f"[sentinel][disk] after prune: {new_pct:.1f}% "
-                f"(freed {(usage.used - new_usage.used) / 1e9:.2f} GB)"
-            )
-        except Exception as exc:
-            logger.error(f"[sentinel][disk] disk watchdog error: {exc}")
-            self.is_degraded = True
+        """Update the public degraded flag from the disk watchdog result."""
+        self.is_degraded = await inspect_and_prune_disk(
+            self.DISK_PRUNE_THRESHOLD_PCT
+        )
 
 
 # Singleton

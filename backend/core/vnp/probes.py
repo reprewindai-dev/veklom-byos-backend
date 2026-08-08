@@ -82,16 +82,16 @@ VNP_EDGE_DEFAULT_TARGET = "https://api.veklom.com/health"
 def configured_edge_nodes() -> list[dict]:
     raw = os.getenv("VNP_EDGE_PROBES_JSON")
     if not raw:
-        logger.warning("[VNP Probe Swarm] VNP_EDGE_PROBES_JSON is not configured, falling back to defaults")
-        return VNP_EDGE_NODES
+        logger.warning("[VNP Probe Swarm] VNP_EDGE_PROBES_JSON is not configured, skipping edge probes (no fallback)")
+        return []
     try:
         nodes = json.loads(raw)
     except json.JSONDecodeError as exc:
-        logger.warning("[VNP Probe Swarm] invalid VNP_EDGE_PROBES_JSON: %s", exc)
-        return VNP_EDGE_NODES
+        logger.warning("[VNP Probe Swarm] invalid VNP_EDGE_PROBES_JSON: %s, skipping edge probes (no fallback)", exc)
+        return []
     if not isinstance(nodes, list):
-        logger.warning("[VNP Probe Swarm] VNP_EDGE_PROBES_JSON must be a list")
-        return VNP_EDGE_NODES
+        logger.warning("[VNP Probe Swarm] VNP_EDGE_PROBES_JSON must be a list, skipping edge probes (no fallback)")
+        return []
     return nodes
 
 

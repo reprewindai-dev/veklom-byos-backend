@@ -29,7 +29,7 @@ async def update_api_composite_score(session: AsyncSession, api_id: str) -> floa
     row = result.first()
     
     if not row or row.avg_latency is None or row.success_rate is None:
-        return 100.0  # Default perfect score if no metrics
+        return None  # No telemetry data available
     
     avg_latency = float(row.avg_latency)
     success_rate = float(row.success_rate)
@@ -66,12 +66,12 @@ async def update_api_composite_score(session: AsyncSession, api_id: str) -> floa
 
 
 async def get_cached_api_score(api_id: str) -> dict:
-    """Get the latest cached score for an API, falling back to default."""
+    """Get the latest cached score for an API, falling back to None if no data."""
     cache_key = f"vnp:api:score:{api_id}"
     cached = await redis_cache.get(cache_key)
     if cached:
         return json.loads(cached)
-    return {"score": 100.0, "rating": "Unknown", "updated_at": None}
+    return {"score": None, "rating": "Unknown", "updated_at": None}
 
 
 async def update_agent_governance_score(session: AsyncSession, agent_id: str) -> float:

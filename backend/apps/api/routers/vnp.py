@@ -263,7 +263,7 @@ async def get_route_beacon(
         if mode == "governed":
             return {
                 "api_id": api_id,
-                "trust_score": score_data.get("score", 100.0),
+                "trust_score": score_data.get("score"),
                 "stability_rating": score_data.get("rating", "Unknown"),
                 "timestamp": score_data.get("updated_at"),
                 "capi_url": f"{settings.VEKLOM_API_BASE}/capi/execute",
@@ -274,7 +274,7 @@ async def get_route_beacon(
         else:
             return {
                 "api_id": api_id,
-                "composite_score": score_data.get("score", 100.0),
+                "composite_score": score_data.get("score"),
                 "stability_rating": score_data.get("rating", "Unknown"),
                 "timestamp": score_data.get("updated_at")
             }

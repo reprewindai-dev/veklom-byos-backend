@@ -1,72 +1,47 @@
-# Paying Veklom governed runs with x402 (USDC on Base)
+# Paying Veklom governed capabilities with x402
 
-Use this for pay-per-call governed AI. No Veklom account is required — you only
-need a wallet that can send USDC on Base (e.g. via the `bankr` skill).
+> Status: **TRANSITIONING TO CANONICAL CAPABILITY VERIFICATION**
+>
+> Do not use this document as proof that every historical paid route is current or externally verified. The old PayAPI catalog-era surface is being retired. External verification should target one canonical governed capability with payment, execution, output, evidence, and replay protection bound together.
 
-## The flow
+## Verification rule
 
-1. **Call the paid route normally.** Example — execute a GPC plan:
+A successful x402 settlement is necessary for a paid capability, but it is not sufficient evidence that the capability worked.
 
-   ```bash
-   curl -s -X POST https://veklom.com/api/v1/gpc/runs \
-     -H "Content-Type: application/json" \
-     -d '{"plan_id":"..."}'
-   ```
+The externally verifiable flow is:
 
-2. **Receive HTTP 402** with payment instructions. Headers:
+1. discover the capability contract and live payment terms;
+2. call the capability and receive an HTTP 402 challenge;
+3. submit a valid payment proof;
+4. retry the same logical request with a stable idempotency key;
+5. execute only after governance authorization succeeds;
+6. validate the returned output against the capability contract;
+7. return a durable receipt/evidence reference binding payment, capability/version, request, output hash, and execution evidence;
+8. reject payment-proof replay and idempotency conflicts.
 
-   - `X-Payment-Price-USDC` — amount to pay (e.g. `0.020`)
-   - `X-Payment-Network` — `base`
-   - `X-Payment-Asset` — USDC contract `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
-   - `X-Payment-Address` — treasury address to pay (**read this live, do not hardcode**)
-   - `X-Payment-Scheme` — `x402`
+## Current implementation note
 
-   Body also includes `price`, `payment.config_url`, and
-   `retry.idempotency_key_required: true`.
+The repository still contains historical route-level x402 middleware and pricing entries. Those entries are **not** the canonical external verification surface by themselves. See GitHub issues #173 and #174 for the replacement paid-execution verification suite and canonical capability selection.
 
-   Full config any time: `curl -s https://veklom.com/.well-known/x402.json`
+Until #174 is complete, do not add new external PayAPI listings by expanding the historical route catalog or by using runtime in-memory route registration as a source of truth.
 
-3. **Send USDC on Base** to `X-Payment-Address` for at least `X-Payment-Price-USDC`.
-   With the `bankr` skill this is a USDC transfer on Base. Capture the
-   transaction hash (`0x...`, 66 chars).
+## Discovery
 
-4. **Retry the exact same request** with the proof and a stable idempotency key:
+Clients should read live x402 configuration/discovery data from the deployed service rather than hard-coding treasury addresses, prices, or network metadata.
 
-   ```bash
-   curl -s -X POST https://veklom.com/api/v1/gpc/runs \
-     -H "Content-Type: application/json" \
-     -H "X-Payment-Proof: 0x<tx_hash>" \
-     -H "Idempotency-Key: <stable-uuid-for-this-call>" \
-     -d '{"plan_id":"..."}'
-   ```
+## Required evidence contract
 
-   Veklom verifies the transaction on Base (correct USDC amount, correct
-   destination, not previously used), then executes the call and returns the
-   result plus a signed receipt (`request_id`, `evidence_id`, `receipt_url`).
+A successful externally verified paid execution should expose, directly or through a receipt lookup:
 
-## Notes
+- capability id and version;
+- payment transaction/proof reference;
+- request/idempotency identifier;
+- governance decision/authority reference;
+- execution identifier;
+- output hash;
+- evidence/receipt identifier;
+- verification status/signature data sufficient to detect tampering and replay.
 
-- Each tx hash is single-use (replay-protected). Pay once per call.
-- Reuse the **same** `Idempotency-Key` if a retry is needed for one logical call.
-- Some routes have a small free daily quota (see `free_daily` in the feed); those
-  succeed without payment until the quota is exhausted, then return 402.
-- Alternative to per-call USDC: buy a `wallet_credit` pack via ACP checkout
-  (see `acp-checkout.md`) to prepay a reserve that funds governed usage.
+## Historical note
 
-## Paid routes (price in USDC, per call)
-
-| Route | USDC | Free/day |
-|---|---|---|
-| `POST /api/v1/ai/inference` | 0.008 | 5 |
-| `POST /api/v1/ai/chat` | 0.005 | 5 |
-| `POST /api/v1/gpc/compile` | 0.015 | 3 |
-| `POST /api/v1/gpc/intent-to-plan` | 0.010 | 3 |
-| `POST /api/v1/gpc/runs` | 0.020 | 0 |
-| `POST /api/v1/pipelines/trigger` | 0.025 | 0 |
-| `POST /api/v1/runtime/jobs` | 0.020 | 0 |
-| `POST /api/v1/evidence/export` | 0.005 | 2 |
-| `POST /api/v1/compliance/report` | 0.010 | 1 |
-| `POST /api/v1/marketplace/acquire` | 0.050 | 0 |
-| `POST /api/v1/audit/verify` | 0.003 | 5 |
-
-Prices are authoritative in the live feed / `/.well-known/x402.json`.
+Older documentation listed many route-specific prices and described those routes as the public x402 product surface. That model is deprecated for external verification. Route pricing may remain internally while the platform converges on a capability-centric registry, but route presence or settlement alone must not be presented as proof of delivery.

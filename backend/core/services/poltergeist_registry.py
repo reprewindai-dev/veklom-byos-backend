@@ -49,4 +49,20 @@ class PoltergeistRegistry:
             return json.loads(data)
         return None
 
+    async def enqueue_manufacturing_job(self, job_id: str):
+        """Enqueue a manufacturing job ID for the workers."""
+        if not self.client:
+            return
+        await self.client.rpush("poltergeist:queue:manufacturing", job_id)
+
+    async def pop_manufacturing_job(self, timeout_seconds: int = 2) -> Optional[str]:
+        """Pop a manufacturing job ID from the queue."""
+        if not self.client:
+            return None
+        # BLPOP returns a tuple (queue_name, item) or None
+        result = await self.client.blpop("poltergeist:queue:manufacturing", timeout_seconds)
+        if result:
+            return result[1].decode("utf-8") if isinstance(result[1], bytes) else result[1]
+        return None
+
 poltergeist_registry = PoltergeistRegistry()

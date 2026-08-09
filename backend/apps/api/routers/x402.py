@@ -635,6 +635,7 @@ class AuthorizePaymentRequest(BaseModel):
 class CapturePaymentRequest(BaseModel):
     payment_id: str = Field(..., description="Target authorized payment ID (prefixed xpay_auth_)")
     amount: Optional[float] = Field(None, description="Amount to capture (must be <= authorized amount)")
+    tx_hash: str = Field(..., description="On-chain capture transaction hash")
 
 
 class ChargePaymentRequest(BaseModel):
@@ -763,7 +764,7 @@ async def capture_payment(
     now = datetime.now(timezone.utc)
     details["status"] = "captured"
     details["amount"] = capture_amount
-    details["tx_hash"] = f"0x_mock_capture_{uuid.uuid4().hex[:16]}"
+    details["tx_hash"] = body.tx_hash
     details["updated_at"] = now.isoformat()
     
     log_entry.details = details
@@ -1180,17 +1181,33 @@ async def place_stake(body: Dict[str, Any], db: AsyncSession = Depends(get_db)):
     market_id = body.get("market_id")
     amount = float(body.get("amount", 0))
     outcome = body.get("outcome")
+    workspace_id = body.get("workspace_id", "default_workspace")
     
     if not market_id or amount <= 0 or outcome not in ["YES", "NO"]:
         raise HTTPException(status_code=400, detail="Invalid stake parameters")
         
-    # Mock successful stake
+    from backend.db.models.security import VnpStakeLog
+    import uuid
+    
+    stake_log = VnpStakeLog(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace_id,
+        api_route=market_id,
+        stake_amount_usdc=amount,
+        latency_ms=0.0,
+        sla_threshold_ms=800.0,
+        result="yield" if outcome == "YES" else "slashed"
+    )
+    db.add(stake_log)
+    await db.commit()
+    
     return {
         "success": True,
         "new_balance": 1000 - amount,
         "volume": 45000 + amount,
         "yesPrice": 0.25 if outcome == "YES" else 0.26,
-        "noPrice": 0.75 if outcome == "NO" else 0.74
+        "noPrice": 0.75 if outcome == "NO" else 0.74,
+        "stake_id": stake_log.id
     }
 
 @router.post("/staking/register-verifier")
@@ -1273,8 +1290,15 @@ async def predict_yield(
     allowing an agent swarm to calculate the optimal yield or cost-routing path
     for executing a large task against this provider.
     """
-    # Mocking real-world yield calculations for the specified duration and API
-    yield_rate = max(0.01, 15.5 - (compute_duration_hours * 0.1))
+    from backend.db.models.security import VnpStakeLog
+    from sqlalchemy import select, func
+    
+    stmt = select(func.sum(VnpStakeLog.stake_amount_usdc)).where(VnpStakeLog.api_route == target_api_id)
+    res = await db.execute(stmt)
+    total_staked = res.scalar() or 0.0
+    
+    base_yield = 15.5
+    yield_rate = max(0.01, base_yield - (total_staked * 0.001) - (compute_duration_hours * 0.1))
     
     return {
         "status": "success",
@@ -1282,6 +1306,7 @@ async def predict_yield(
         "predicted_yield_apr": yield_rate,
         "optimal_routing_path": f"path_vnp_relay_{target_api_id[:8]}",
         "estimated_gas_cost_usdc": 0.15 * compute_duration_hours,
+        "total_network_stake": total_staked,
         "recommendation": "EXECUTE" if yield_rate > 10.0 else "WAIT"
     }
 

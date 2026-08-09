@@ -231,6 +231,8 @@ class GPCCompiler:
             name_id = node.config.get('nameId')
             
             if name_id:
+                if not name_id.isidentifier():
+                    raise ValueError(f"Invalid nameId '{name_id}': Must be a valid Python identifier.")
                 output_vars[node.id] = name_id
             else:
                 # Generate name from node type and ID (first 8 chars)
@@ -385,6 +387,28 @@ class FilterRowsGenerator(BaseNodeGenerator):
         # Parse condition as Python expression
         try:
             condition_ast = ast.parse(condition, mode='eval').body
+            
+            # Enforce strict AST allowlist to prevent RCE
+            class AllowlistVisitor(ast.NodeVisitor):
+                def generic_visit(self, node):
+                    allowed_types = (
+                        ast.Expression, ast.BinOp, ast.UnaryOp, ast.Compare,
+                        ast.Num, ast.Str, ast.Constant, ast.Name, ast.Load,
+                        ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod,
+                        ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+                        ast.Is, ast.IsNot, ast.In, ast.NotIn,
+                        ast.And, ast.Or, ast.Not, ast.BoolOp,
+                        ast.Subscript, ast.Index, ast.Slice, ast.ExtSlice,
+                        ast.List, ast.Tuple, ast.Set, ast.Dict,
+                        ast.BitAnd, ast.BitOr, ast.BitXor, ast.Invert
+                    )
+                    if not isinstance(node, allowed_types):
+                        raise ValueError(f"Disallowed AST node type: {type(node).__name__}")
+
+                    super().generic_visit(node)
+                    
+            AllowlistVisitor().visit(condition_ast)
+            
         except SyntaxError:
             raise ValueError(f"Invalid filter condition: {condition}")
         
@@ -451,6 +475,10 @@ class AggregateDataGenerator(BaseNodeGenerator):
         input_var = input_vars[0]
         group_by = config.get('groupBy', [])
         agg_func = config.get('aggregation', 'sum')
+        
+        ALLOWED_AGGREGATIONS = {'sum', 'mean', 'count', 'min', 'max', 'std', 'var', 'first', 'last'}
+        if agg_func not in ALLOWED_AGGREGATIONS:
+            raise ValueError(f"Disallowed aggregation function: {agg_func}")
         
         # df.groupby(['col']).sum()
         return [

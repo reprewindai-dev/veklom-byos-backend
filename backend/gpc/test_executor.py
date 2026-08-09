@@ -23,6 +23,10 @@ import pandas as pd
 
 from backend.gpc.schemas import GPCPipelineGraph
 
+class SecureExecutionBoundaryUnavailable(Exception):
+    """Exception raised when local execution is disabled for security reasons."""
+    pass
+
 
 class TestExecutionMode(str, Enum):
     """Test execution modes"""
@@ -91,6 +95,11 @@ class PipelineTestExecutor:
                     "message": "Dry run complete (validation only)",
                 }
                 return
+            
+            if mode in (TestExecutionMode.SAMPLE, TestExecutionMode.FULL):
+                raise SecureExecutionBoundaryUnavailable(
+                    f"Local execution mode '{mode.value}' is disabled for security reasons."
+                )
             
             # Phase 2: Prepare instrumented code
             yield {
@@ -254,79 +263,16 @@ def _capture_df(name, df):
         Returns:
             Dict with success flag and captured data
         """
-        try:
-            # Write code to temp file
-            with tempfile.NamedTemporaryFile(
-                mode='w',
-                suffix='.py',
-                delete=False
-            ) as f:
-                f.write(code)
-                temp_file = f.name
-            
-            try:
-                # Run subprocess with timeout
-                proc = await asyncio.create_subprocess_exec(
-                    'python',
-                    temp_file,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                
-                try:
-                    stdout, stderr = await asyncio.wait_for(
-                        proc.communicate(),
-                        timeout=timeout
-                    )
-                except asyncio.TimeoutError:
-                    proc.kill()
-                    return {
-                        "success": False,
-                        "error": f"Execution timeout ({timeout}s exceeded)"
-                    }
-                
-                # Check for errors
-                if proc.returncode != 0:
-                    error_msg = stderr.decode('utf-8', errors='replace')
-                    return {
-                        "success": False,
-                        "error": f"Execution failed: {error_msg}"
-                    }
-                
-                # Parse output
-                output = stdout.decode('utf-8', errors='replace').strip()
-                
-                # Last line should be JSON with captured data
-                lines = output.split('\n')
-                for line in reversed(lines):
-                    try:
-                        data = json.loads(line)
-                        return {
-                            "success": True,
-                            "dataframes": data.get("captured_dataframes", {})
-                        }
-                    except json.JSONDecodeError:
-                        continue
-                
-                # No JSON found
-                return {
-                    "success": True,
-                    "dataframes": {},
-                    "output": output
-                }
-            
-            finally:
-                # Clean up temp file
-                try:
-                    os.unlink(temp_file)
-                except:
-                    pass
+        # SECURITY HARDENING: The legacy local subprocess execution using 
+        # asyncio.create_subprocess_exec("python", ...) has been removed because it 
+        # is a severe security risk and not a true isolation boundary.
+        # This executor is currently dormant until the containerized execution 
+        # boundary is fully integrated.
         
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Sandbox error: {str(e)}"
-            }
+        return {
+            "success": False,
+            "error": "Execution failed: Secure execution boundary is currently disabled for hardening. Local subprocess execution is prohibited."
+        }
 
 
 # ============================================================================

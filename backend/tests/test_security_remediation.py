@@ -10,7 +10,7 @@ import pytest
 from fastapi import HTTPException, Request
 from jose import jwt
 
-from backend.apps.api.routers import auth, billing
+from backend.apps.api.routers import auth  # billing router removed; import pruned
 from backend.core.config.settings import settings
 from backend.core.security.auth import verify_token
 from backend.core.security.payment_proof import require_payment_proof

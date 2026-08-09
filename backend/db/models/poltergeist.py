@@ -53,3 +53,50 @@ class CapabilityGhost(Base):
     evidence_pointer = Column(String(1024), default="")
     
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+import enum
+from sqlalchemy import Enum
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import relationship
+import uuid
+
+class JobStatus(str, enum.Enum):
+    DETECTED = "DETECTED"
+    QUEUED = "QUEUED"
+    IN_PROGRESS = "IN_PROGRESS"
+    VALIDATED = "VALIDATED"
+    BOUND = "BOUND"
+    FAILED = "FAILED"
+
+class ManufacturingJob(Base):
+    __tablename__ = "manufacturing_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    target_repository = Column(String, nullable=False, index=True)
+    target_commit = Column(String, nullable=False)
+    status = Column(Enum(JobStatus, native_enum=False), nullable=False, default=JobStatus.DETECTED, index=True)
+    metadata_ = Column("metadata", JSONB, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    transitions = relationship(
+        "ManufacturingTransition",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="ManufacturingTransition.created_at"
+    )
+
+class ManufacturingTransition(Base):
+    __tablename__ = "manufacturing_transitions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("manufacturing_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_status = Column(String, nullable=True)
+    to_status = Column(String, nullable=False)
+    reason = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    job = relationship("ManufacturingJob", back_populates="transitions")

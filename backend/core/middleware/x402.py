@@ -683,8 +683,6 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
 
         # Validate transaction hash format
         if not (proof_str.startswith("0x") and len(proof_str) == 66):
-            if proof_str.startswith("eip3009_"):
-                return True, f"0x_settled_{uuid.uuid4().hex[:32]}", ""
             return False, "", "invalid_authorization_format"
 
         tx_hash = proof_str.lower()

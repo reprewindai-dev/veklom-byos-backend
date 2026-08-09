@@ -62,7 +62,7 @@ from backend.db.models.mission_lock import (
     CoordinationLog, RecoveryEvent, DNAAudit, AgentRuntimeState, AgentActionTrace,
     IdempotencyKey, RecoverySnapshot, MetricsCache, TenantRole, AuthzLog
 )
-from backend.db.models.poltergeist import CapabilityHauntState, CapabilityGhost
+from backend.db.models.poltergeist import CapabilityHauntState, CapabilityGhost, ManufacturingJob, ManufacturingTransition
 
 __all__ = [
     # Mission Lock
@@ -116,7 +116,7 @@ __all__ = [
     # Session Mesh Layer
     "VeklomAgentSession", "VeklomSessionTransition", "VeklomMeshIncident", "VeklomLedgerEntry",
     # Poltergeist
-    "CapabilityHauntState", "CapabilityGhost",
+    "CapabilityHauntState", "CapabilityGhost", "ManufacturingJob", "ManufacturingTransition",
     # Banker Agent — idempotent payment ledger
     "Payment",
     "GpcPipelineAudit",

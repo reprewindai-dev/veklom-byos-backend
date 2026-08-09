@@ -16,6 +16,8 @@ from backend.db.models.agent import AgentIdentity
 from backend.core.amphoteric.parser import W3CTraceContext, AmphotericTransportContext
 from backend.core.services.trust_connection_factory import TrustConnectionFactory
 from backend.core.schemas.trust.identity import ExecutionIdentity, IdentityKind
+from backend.compliance.jurisdiction_detector import JurisdictionDetector, DataClassification
+from backend.core.privacy.pii import detect as detect_pii
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +212,31 @@ async def evaluate_intent_governed(
         effective_trust = current_trust * degradation_factor
         phase_results["current_trust"] = int(effective_trust)
         phase_results["delegation_hops"] = hop_count
+
+    # -----------------------------------------------------------------
+    # Sovereign & PII Governance Check
+    # -----------------------------------------------------------------
+    detector = JurisdictionDetector()
+    client_ip = intent.payload.get("client_ip", "0.0.0.0")
+    classification = DataClassification.RESTRICTED if intent.payload.get("contains_pii") else DataClassification.INTERNAL
+    
+    # Detect PII actively
+    pii_entities = detect_pii(json.dumps(intent.payload))
+    if len(pii_entities) > 0:
+        classification = DataClassification.RESTRICTED_QUEBEC # Default highest protection for detected PII
+        phase_results["detected_pii"] = list(set([e["type"] for e in pii_entities]))
+        
+    jurisdiction_res = detector.detect_jurisdiction(
+        endpoint_ip=client_ip,
+        data_classification=classification,
+        affected_data_types=["pii"] if len(pii_entities) > 0 else []
+    )
+    
+    if len(pii_entities) > 0 and jurisdiction_res.primary_jurisdiction.value == "quebec" and jurisdiction_res.requires_explicit_consent:
+        if not intent.payload.get("explicit_consent_provided"):
+            logger.error("[CAPPO] VETO: PII detected but explicit consent not provided for Quebec jurisdiction.")
+            phase_results["2"] = "FAILED: PII_CONSENT_REQUIRED_LAW25"
+            return False, "PII_CONSENT_REQUIRED_LAW25", 2, phase_results
 
     phase_results["2"] = "PASSED"
 

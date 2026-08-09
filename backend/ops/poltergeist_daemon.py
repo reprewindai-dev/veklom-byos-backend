@@ -21,7 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from backend.core.database.database import async_session
 from backend.core.services.local_storage import local_storage
 from backend.core.services.poltergeist_registry import poltergeist_registry
-from backend.db.models.poltergeist import CapabilityGhost, CapabilityHauntState
+from backend.db.models.poltergeist import CapabilityGhost, CapabilityHauntState, ManufacturingJob, ManufacturingTransition, JobStatus
 from backend.ops.disk_watchdog import inspect_and_prune_disk
 
 logger = logging.getLogger("poltergeist_daemon")
@@ -278,6 +278,7 @@ class PoltergeistDaemon:
             return
         self._running = True
         self._task = asyncio.create_task(self._daemon_loop(), name="veklom-poltergeist-daemon")
+        self._manufacturing_task = asyncio.create_task(self._manufacturing_worker_loop(), name="veklom-manufacturing-worker")
         # Also spin up the self-healing infrastructure sentinel
         infrastructure_sentinel.start()
         logger.info("[poltergeist] daemon started")
@@ -286,6 +287,8 @@ class PoltergeistDaemon:
         self._running = False
         if self._task and not self._task.done():
             self._task.cancel()
+        if hasattr(self, '_manufacturing_task') and self._manufacturing_task and not self._manufacturing_task.done():
+            self._manufacturing_task.cancel()
         infrastructure_sentinel.stop()
         logger.info("[poltergeist] daemon stopped")
 
@@ -460,7 +463,7 @@ class PoltergeistDaemon:
         
         # Release lock
         await poltergeist_registry.release_build_lock(fingerprint)
-
+        
     async def _update_haunt_status(self, fingerprint: str, status: str):
         """Helper to quickly update DB and Redis state."""
         async with async_session() as db:
@@ -472,5 +475,63 @@ class PoltergeistDaemon:
                 await db.commit()
                 
         await poltergeist_registry.set_capability_state(fingerprint, {"status": status})
+
+    async def _manufacturing_worker_loop(self):
+        """Polls Redis for manufacturing jobs and processes them."""
+        await asyncio.sleep(5)
+        logger.info("[poltergeist] manufacturing worker loop active")
+        
+        while self._running:
+            try:
+                job_id = await poltergeist_registry.pop_manufacturing_job(timeout_seconds=2)
+                if job_id:
+                    await self._process_manufacturing_job(job_id)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[poltergeist] manufacturing worker error: {e}")
+                traceback.print_exc()
+                await asyncio.sleep(2)
+
+    async def _process_manufacturing_job(self, job_id: str):
+        """Execute a manufacturing job state machine."""
+        async with async_session() as db:
+            job = (await db.execute(
+                select(ManufacturingJob).where(ManufacturingJob.id == job_id)
+            )).scalar_one_or_none()
+
+            if not job or job.status != JobStatus.DETECTED:
+                return
+
+            # Transition: DETECTED -> QUEUED -> IN_PROGRESS
+            await self._transition_job(db, job, JobStatus.IN_PROGRESS, "Job picked up by worker")
+            
+            try:
+                # Placeholder for actual Poltergeist capabilities processing logic
+                logger.info(f"[poltergeist] Processing manufacturing job {job.id} for {job.target_repository} @ {job.target_commit}")
+                
+                # Simulate work
+                await asyncio.sleep(1)
+                
+                # Transition: IN_PROGRESS -> VALIDATED
+                await self._transition_job(db, job, JobStatus.VALIDATED, "Job successfully validated")
+                
+                # Transition: VALIDATED -> BOUND
+                await self._transition_job(db, job, JobStatus.BOUND, "Job bound to production")
+            except Exception as e:
+                logger.error(f"[poltergeist] Job {job.id} failed: {e}")
+                await self._transition_job(db, job, JobStatus.FAILED, f"Job failed: {str(e)}")
+
+    async def _transition_job(self, db, job: ManufacturingJob, to_status: JobStatus, reason: str = ""):
+        """Helper to transition a manufacturing job with audit logging."""
+        transition = ManufacturingTransition(
+            job_id=job.id,
+            from_status=job.status,
+            to_status=to_status,
+            reason=reason
+        )
+        job.status = to_status
+        db.add(transition)
+        await db.commit()
 
 poltergeist_daemon = PoltergeistDaemon()

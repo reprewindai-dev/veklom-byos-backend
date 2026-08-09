@@ -425,16 +425,9 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User, next_
     else:
         frontend_workspace_url = f"{CONTROL_PLANE_URL}/dashboard/"
         
-    # Append tokens to URL so the frontend can read them across domains
-    separator = "&" if "?" in frontend_workspace_url else "?"
-    redirect_with_tokens = f"{frontend_workspace_url}{separator}veklom_token={access_token}&veklom_refresh_token={refresh_token}"
-    
     payload = {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
         "user": _user_dict(user),
         "frontend_workspace_url": frontend_workspace_url,
-        "redirect_with_tokens": redirect_with_tokens,
     }
     encoded = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     return f"""<!doctype html>
@@ -481,12 +474,10 @@ def _github_bridge_html(access_token: str, refresh_token: str, user: User, next_
   </div>
   <script>
     const payload = {encoded};
-    // Attempt local storage for same-domain setups
-    localStorage.setItem("veklom_token", payload.access_token);
-    localStorage.setItem("veklom_refresh_token", payload.refresh_token);
+    // Attempt local storage for user profile
     localStorage.setItem("veklom_user", JSON.stringify(payload.user));
-    // Redirect using URL parameters for cross-domain auth handoff
-    window.location.replace(payload.redirect_with_tokens);
+    // Redirect without tokens in URL
+    window.location.replace(payload.frontend_workspace_url);
   </script>
 </body>
 </html>"""
@@ -1129,21 +1120,25 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         "user": _user_dict(user),
     })
     cookie_max_age = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    domain = ".veklom.com" if not settings.APP_ENV == "development" else None
+    
     resp.set_cookie(
         key="access_token",
         value=access_token,
         max_age=cookie_max_age,
         httponly=True,
-        samesite="none",
+        samesite="lax",
         secure=True,
+        domain=domain,
     )
     resp.set_cookie(
         key="refresh_token",
         value=refresh_token,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         httponly=True,
-        samesite="none",
+        samesite="lax",
         secure=True,
+        domain=domain,
     )
     return resp
 
@@ -1707,7 +1702,8 @@ async def github_callback(
         final_url = _safe_github_redirect(next_url)
         bridge_html = _github_bridge_html(app_access_token, app_refresh_token, user, final_url)
         response = HTMLResponse(content=bridge_html)
-        cookie_kwargs = {"httponly": True, "samesite": "lax", "secure": True, "path": "/"}
+        domain = ".veklom.com" if not settings.APP_ENV == "development" else None
+        cookie_kwargs = {"httponly": True, "samesite": "lax", "secure": True, "path": "/", "domain": domain}
         response.set_cookie(
             key="access_token",
             value=app_access_token,

@@ -29,6 +29,20 @@ async def update_api_composite_score(session: AsyncSession, api_id: str) -> floa
     row = result.first()
     
     if not row or row.avg_latency is None or row.success_rate is None:
+        api = await session.get(Api, api_id)
+        if api:
+            if hasattr(api, 'current_composite_score'):
+                api.current_composite_score = None
+            if hasattr(api, 'stability_rating'):
+                api.stability_rating = "Unmeasured"
+            await session.commit()
+            cache_key = f"vnp:api:score:{api_id}"
+            cache_data = {
+                "score": None,
+                "rating": "Unmeasured",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            await redis_cache.set(cache_key, json.dumps(cache_data), ttl=300)
         return None  # No telemetry data available
     
     avg_latency = float(row.avg_latency)

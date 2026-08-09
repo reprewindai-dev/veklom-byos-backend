@@ -94,8 +94,8 @@ class Api(TimestampMixin, Base):
     auth_scheme = Column(String(50), nullable=False)
     x402_ready = Column(Boolean, nullable=False, default=False)
     pricing_model = Column(String(50), nullable=False, default="metered")
-    current_composite_score = Column(Float, nullable=False, default=100.0)
-    stability_rating = Column(String(50), nullable=False, default="Stable")
+    current_composite_score = Column(Float, nullable=True, default=None)
+    stability_rating = Column(String(50), nullable=False, default="Unmeasured")
     status = Column(Enum(ApiStatus, name="api_status_enum", create_type=False), nullable=False, default=ApiStatus.active)
     
     provider = relationship("Provider", back_populates="apis")

@@ -16,13 +16,6 @@ from backend.core.security.vnp_security import VNPEventVerifier, VNPSecurityErro
 from backend.db.models.vnp import Api, VnpMetric, VnpNode, VnpNodeHeartbeat, VnpNodeKey, VnpObservation
 
 logger = logging.getLogger(__name__)
-
-VNP_TARGETS = [
-    {"id": "openai", "url": "https://api.openai.com/v1/models"},
-    {"id": "anthropic", "url": "https://api.anthropic.com/v1/models"},
-    {"id": "stripe", "url": "https://api.stripe.com/v1/charges"},
-]
-
 VNP_EDGE_NODES = [
     {
         "name": "Ashburn Node",
@@ -122,21 +115,6 @@ def signed_payload_is_valid(payload: dict) -> bool:
         return True
     except VNPSecurityError:
         return False
-
-
-async def ping_target(client: httpx.AsyncClient, target: dict) -> tuple[str, int, bool]:
-    start_time = time.monotonic()
-    is_up = False
-
-    try:
-        response = await client.get(target["url"], timeout=2.0)
-        is_up = response.status_code in (200, 401, 403)
-    except Exception as exc:
-        logger.warning("[VNP Probe] Failed to ping %s: %s", target["id"], exc)
-
-    latency_ms = int((time.monotonic() - start_time) * 1000)
-    return target["id"], latency_ms, is_up
-
 
 async def ping_edge_node(client: httpx.AsyncClient, edge: dict, hub_secret: str, target_url: str) -> dict:
     started_at = datetime.now(timezone.utc)
@@ -396,7 +374,6 @@ async def run_vnp_probes() -> None:
                 await lock_db.commit()
 
     async def _run_locked_cycle(client: httpx.AsyncClient) -> None:
-        tasks = [ping_target(client, target) for target in VNP_TARGETS]
         edge_secret = os.getenv("VNP_HUB_SECRET_KEY") or os.getenv("HUB_SECRET_KEY")
         edge_tasks = []
         if edge_secret:
@@ -412,36 +389,18 @@ async def run_vnp_probes() -> None:
                 "VNP_HUB_SECRET_KEY is not configured"
             )
 
-        results = await asyncio.gather(*tasks)
         edge_results = await asyncio.gather(*edge_tasks) if edge_tasks else []
 
-        now = datetime.now(timezone.utc)
-        async with async_session() as db:
-            for api_name, latency_ms, is_up in results:
-                db.add(
-                    VnpMetric(
-                        api_name=api_name,
-                        latency_ms=latency_ms,
-                        is_up=is_up,
-                        measured_at=now,
-                    )
-                )
-            cutoff = now - timedelta(days=retention_days)
-            await db.execute(delete(VnpMetric).where(VnpMetric.measured_at < cutoff))
-            await db.commit()
         if edge_secret:
             await upsert_edge_observations(edge_results, edge_secret)
 
-        summary = ", ".join(
-            f"{api_name}={latency_ms}ms/{'up' if is_up else 'down'}"
-            for api_name, latency_ms, is_up in results
-        )
+        summary = ""
         if edge_results:
             edge_summary = ", ".join(
                 f"{r['edge']['region_code']}={r['total_ms']}ms/{'up' if r['is_up'] else 'down'}"
                 for r in edge_results
             )
-            summary = f"{summary}; edges: {edge_summary}"
+            summary = f"edges: {edge_summary}"
         logger.info("[VNP Probe Swarm] recorded physical probes: %s", summary)
         print(f"[VNP Probe Swarm] recorded physical probes: {summary}", flush=True)
 

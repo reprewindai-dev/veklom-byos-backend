@@ -1568,6 +1568,13 @@ async def github_callback(
 
     code = code or request.query_params.get("code")
     state = state or request.query_params.get("state")
+    
+    # Handle GitHub App Installation redirects
+    installation_id = request.query_params.get("installation_id")
+    setup_action = request.query_params.get("setup_action")
+    if installation_id:
+        frontend_url = "https://control.veklom.com/settings/github" if "api.veklom.com" in str(request.url) else "http://localhost:3000/settings/github"
+        return RedirectResponse(url=f"{frontend_url}?installation_success=true&installation_id={installation_id}")
 
     if not _github_oauth_configured():
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")

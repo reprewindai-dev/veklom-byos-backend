@@ -222,6 +222,15 @@ async def get_onboarding_status(
             if has_profile
             else "No local PGL state present"
         ),
+        "events": [
+            {
+                "hash": e.event_hash[:12] + "..." + e.event_hash[-4:] if e.event_hash else "unknown",
+                "event": e.event_type,
+                "tenant": e.actor_id,
+                "time": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in events
+        ],
         "gnomledger_verification": NOT_VERIFIED,
         "has_pgl_profile": has_profile,
         "requires_onboarding": not has_profile,

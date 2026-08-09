@@ -1,6 +1,6 @@
 # Archived Veklom architecture/alignment documents — 2026-08-09
 
-These files were superseded by the canonical Veklom Bible at repository root: [`../../00_VEKLOM_BIBLE.md`](../../00_VEKLOM_BIBLE.md).
+These files were superseded by the canonical Veklom Bible at repository root: [`../../../00_VEKLOM_BIBLE.md`](../../../00_VEKLOM_BIBLE.md).
 
 The exact previous content remains available in Git history and should be treated as historical evidence only:
 

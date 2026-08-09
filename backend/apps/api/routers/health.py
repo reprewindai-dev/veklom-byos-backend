@@ -84,9 +84,11 @@ def _uptime_seconds() -> int:
 
 @router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
-    """Shallow health check for SLA-gated E2E monitors."""
+    """Shallow liveness check; does not assert dependency or runtime verification."""
     return {
-        "status": "healthy",
+        "status": "alive",
+        "verification_scope": "PROCESS_ONLY",
+        "dependencies": "NOT_VERIFIED",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": settings.VERSION,
         "service": settings.APP_NAME,
@@ -121,10 +123,12 @@ async def health_check_v1():
     """Alias for /health — keeps API consistency for clients that call /api/v1/health."""
     return await health_check()
 
+
 @router.api_route("/api/health", methods=["GET", "HEAD"])
 async def health_check_api():
     """Alias for /health — explicitly requested by observability script."""
     return await health_check()
+
 
 @router.get("/health/detailed")
 async def detailed_health():
@@ -186,9 +190,9 @@ async def platform_status():
             "state": cb_state,
             "failures": cb_failures,
             "threshold": threshold,
-            "cooldown_seconds": cooldown
+            "cooldown_seconds": cooldown,
         },
-        "uptime_seconds": _uptime_seconds()
+        "uptime_seconds": _uptime_seconds(),
     }
 
 

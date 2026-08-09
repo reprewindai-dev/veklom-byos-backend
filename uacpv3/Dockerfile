@@ -12,9 +12,10 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Expose the port the app runs on (assumed default for Vite/Express setup, typically 3000 or 5173, but we'll map whatever is needed. Render defaults to 10000 or 3000)
-ENV PORT=3000
-EXPOSE 3000
+# This vendored UACP/GPC runtime follows the canonical root runtime port contract.
+# Production/root deployments must not fall back to forbidden ports 3000 or 8000.
+ENV PORT=3010
+EXPOSE 3010
 
 # Start command
 CMD ["npm", "run", "start"]

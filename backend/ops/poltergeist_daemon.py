@@ -191,7 +191,8 @@ class InfrastructureSentinel:
             if resp.status_code < 400:
                 self._health_dark_since = None  # reset — we're healthy
                 return
-        except Exception:
+        except Exception as exc:
+            logger.error(f"[sentinel][health] Exception checking health: {exc}")
             pass  # connection error also counts as dark
 
         now = asyncio.get_event_loop().time()
@@ -214,9 +215,9 @@ class InfrastructureSentinel:
             try:
                 # Inside the container: send SIGHUP to uvicorn (PID 1 or main worker)
                 # Uvicorn treats SIGHUP as a reload signal.
-                os.kill(1, 1)  # signal.SIGHUP = 1
+                # os.kill(1, 1)  # signal.SIGHUP = 1  # TEMPORARY FIX: Disable aggressive restart to stop 502 loop
                 self._health_dark_since = None
-                logger.info("[sentinel][health] SIGHUP sent to PID 1 — reloading")
+                logger.info("[sentinel][health] SIGHUP would be sent to PID 1 — but aggressive restart is temporarily disabled")
             except Exception as exc:
                 logger.error(f"[sentinel][health] could not send SIGHUP: {exc}")
 

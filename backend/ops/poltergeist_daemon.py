@@ -49,7 +49,7 @@ class InfrastructureSentinel:
     # Loaded lazily from alembic's script directory.
     _KNOWN_HEADS: Optional[Set[str]] = None
 
-    HEALTH_URL = "http://127.0.0.1/health"
+    HEALTH_URL = "http://127.0.0.1:8088/health"
     HEALTH_DARK_THRESHOLD_S = 90   # seconds before we restart the container
     DISK_PRUNE_THRESHOLD_PCT = 90  # %
     POLL_INTERVAL_S = 60

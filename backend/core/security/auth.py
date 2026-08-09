@@ -117,8 +117,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
                 None,
                 token[:8],
                 last_err,
-                ue,
-                exc_info=ue,
+                ue
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

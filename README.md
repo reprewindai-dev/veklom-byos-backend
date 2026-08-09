@@ -35,7 +35,7 @@ alembic upgrade head
 uvicorn backend.apps.api.main:app --reload
 ```
 
-Health check: `GET http://localhost:80/health`
+Health check: `GET http://localhost:8088/health`
 
 ### Login & Registration
 

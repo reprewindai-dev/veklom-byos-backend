@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Veklom BYOS AI"
     VERSION: str = "1.0.0"
     APP_ENV: str = "development"
-    PORT: int = 80
+    PORT: int = 8088
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
@@ -28,10 +28,9 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: Union[str, List[str]] = "veklom.com,www.veklom.com,api.veklom.com,localhost,127.0.0.1,0.0.0.0,testserver"
     MAX_WORKERS: int = 4
     FRONTEND_URL: str = "http://localhost:3000"
-    API_URL: str = "http://localhost:80"
-    API_BASE_URL: str = "http://localhost:80"
+    API_URL: str = "http://localhost:8088"
+    API_BASE_URL: str = "http://localhost:8088"
     ADMIN_EMAIL: str = "founder@veklom.com"
-    PLATFORM_OWNER_EMAIL: str = ""
     VEKLOM_API_BASE: str = "/api/v1"
     AI_CITIZENSHIP_SECRET: str = ""
     ENABLE_MFA: bool = True
@@ -111,7 +110,7 @@ class Settings(BaseSettings):
     ACCOUNT_LOCKOUT_MINUTES: int = 30
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    JWT_AUD_ENFORCEMENT: str = "strict"
+    JWT_AUD_ENFORCEMENT: str = "warn"
     JWT_EXPECTED_AUDIENCE: str = "veklom-api"
     GLOBAL_KILL_SWITCH: bool = False
 
@@ -144,8 +143,6 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    RESEND_WEBHOOK_SECRET: str = ""
-    GITHUB_WEBHOOK_SECRET: str = ""
 
     # Storage (S3/MinIO)
     S3_ENDPOINT_URL: str = "http://minio:9000"
@@ -185,9 +182,7 @@ class Settings(BaseSettings):
     RELAYER_URL: str = ""
     CHAIN_ID: int = 1
     USDC_ADDRESS: str = ""
-    VEKLOM_TREASURY_ADDRESS: str = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-    VEKLOM_TREASURY_PRIVATE_KEY: str = ""
-    VNP_L2_REGISTRY_ADDRESS: str = ""
+    VEKLOM_TREASURY_ADDRESS: str = "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
     
     # Edge Ingestion
     EDGE_API_KEY: str = "veklom_edge_dev_key"
@@ -243,12 +238,15 @@ class Settings(BaseSettings):
     UACPV4_TIMEOUT_MS: int = 15000
 
     # GnomLedger (Real PGL System)
-    GNOMLEDGER_URL: str = "http://localhost:8090"  # GnomLedger runs on port 8090
+    GNOMLEDGER_URL: str = "http://localhost:8001"
     GNOMLEDGER_API_KEY: str = ""
 
-    # cAPI (Universal USB Integration)
-    CAPI_BACKEND_URL: str = "https://capi.veklom.com"
-    CAPI_API_KEY: str = ""
+    # Governed service integration
+    CAPI_BACKEND_URL: str = ""
+    CAPI_REGISTRY_TOKEN: str = ""
+    CAPPO_BACKEND_URL: str = ""
+    PGL_LEDGER_URL: str = ""
+    LOCKERPHYCER_URL: str = ""
 
     # Coinbase Developer Platform (CDP) / Paid Gateway
     # These values are required for the paid gateway and CDP wallet integration.

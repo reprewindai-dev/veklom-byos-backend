@@ -1,10 +1,11 @@
 """Workspace / tenant routes."""
 
 from datetime import datetime, timedelta, timezone
+from typing import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import Row, String, cast, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1754,7 +1755,7 @@ def _relative_time(value: datetime | None, now: datetime) -> str:
     return f"{hours // 24}d ago"
 
 
-def _routing_history(rows: list, now: datetime) -> list[dict]:
+def _routing_history(rows: Sequence[Row], now: datetime) -> list[dict]:
     buckets = {
         hour: {"hour": f"{hour:02d}", "hetzner": 0, "aws": 0}
         for hour in range(24)

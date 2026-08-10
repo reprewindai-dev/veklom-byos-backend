@@ -272,6 +272,30 @@ class SafeRedisClient:
             self.is_fallback = True
             return await self.fallback_db.publish(channel, message)
 
+    async def rpush(self, name: str, *values):
+        if self.is_fallback or not self.real_redis:
+            return 1
+        try:
+            return await self.real_redis.rpush(name, *values)
+        except Exception as e:
+            logger.warning(f"Redis rpush failed, falling back to in-memory: {e}")
+            self.is_fallback = True
+            return 1
+
+    async def blpop(self, keys, timeout: int = 0):
+        if self.is_fallback or not self.real_redis:
+            import asyncio
+            await asyncio.sleep(timeout)
+            return None
+        try:
+            return await self.real_redis.blpop(keys, timeout=timeout)
+        except Exception as e:
+            logger.warning(f"Redis blpop failed, falling back to in-memory: {e}")
+            self.is_fallback = True
+            import asyncio
+            await asyncio.sleep(timeout)
+            return None
+
 
 class RedisLockManager:
     """High-speed server-side atomic distributed lock manager using compiled Redis Lua scripts."""

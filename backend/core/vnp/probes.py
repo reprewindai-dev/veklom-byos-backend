@@ -254,6 +254,7 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
             heartbeat_signature = identity_sig.get("sig") or probe_sig.get("sig") or ""
             db.add(
                 VnpNodeHeartbeat(
+                    heartbeat_id=probe_payload.get("heartbeat_id") or uuid.uuid4().hex,
                     node_id=node.id,
                     timestamp=result["completed_at"],
                     software_version=node.software_version or EDGE_SOFTWARE_VERSION,

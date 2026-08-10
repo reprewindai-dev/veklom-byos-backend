@@ -46,8 +46,18 @@ def test_budget_limit_denies_invalid_negative_or_non_numeric_values():
     for policy_frame, context, expected_reason in (
         ({"estimated_cost": -1}, {"budget_remaining": 100}, "estimated_cost_invalid"),
         ({"estimated_cost": "50"}, {"budget_remaining": 100}, "estimated_cost_invalid"),
+        ({"estimated_cost": True}, {"budget_remaining": 100}, "estimated_cost_invalid"),
+        ({"estimated_cost": False}, {"budget_remaining": 100}, "estimated_cost_invalid"),
+        ({"estimated_cost": float("inf")}, {"budget_remaining": 100}, "estimated_cost_invalid"),
+        ({"estimated_cost": float("-inf")}, {"budget_remaining": 100}, "estimated_cost_invalid"),
+        ({"estimated_cost": float("nan")}, {"budget_remaining": 100}, "estimated_cost_invalid"),
         ({"estimated_cost": 50}, {"budget_remaining": -1}, "budget_remaining_invalid"),
         ({"estimated_cost": 50}, {"budget_remaining": "100"}, "budget_remaining_invalid"),
+        ({"estimated_cost": 50}, {"budget_remaining": True}, "budget_remaining_invalid"),
+        ({"estimated_cost": 50}, {"budget_remaining": False}, "budget_remaining_invalid"),
+        ({"estimated_cost": 50}, {"budget_remaining": float("inf")}, "budget_remaining_invalid"),
+        ({"estimated_cost": 50}, {"budget_remaining": float("-inf")}, "budget_remaining_invalid"),
+        ({"estimated_cost": 50}, {"budget_remaining": float("nan")}, "budget_remaining_invalid"),
     ):
         passed, details = kernel._check_budget_limit(policy_frame, context, "test-workspace")
         assert passed is False

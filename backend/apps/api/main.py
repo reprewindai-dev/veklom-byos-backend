@@ -289,171 +289,162 @@ async def lifespan(app: FastAPI):
         logger.exception("[startup] database readiness check failed")
         raise RuntimeError("Database is not ready; refusing to start") from exc
 
-    # Seed first-class skills that should always be present in the registry.
-    # Skills with is_available=False are catalogued but NOT invokable.
-    # Add to this list when a new skill's spec is defined; flip is_available
-    # to True only when the backend implementation exists.
-    from backend.db.models.agent import AgentSkill
-    _SEED_SKILLS = [
-        {
-            "skill_id": "passive-income-engine",
-            "name": "Passive Income Engine",
-            "version": "0.1",
-            "description": (
-                "Finds high-demand, legally usable RAG dataset opportunities and "
-                "creates draft Veklom discovery listings. Does NOT publish without "
-                "explicit operator approval. Rule: if invoked without implementation, "
-                "returns SKILL_MISSING."
-            ),
-            "is_available": False,
-            "missing_reason": (
-                "SKILL_MISSING — no backend implementation yet. "
-                "The skill is catalogued per spec. "
-                "To implement: create a route that calls a real dataset-discovery "
-                "API, checks license suitability, and POSTs draft listings to "
-                "/api/v1/discovery/listings with status=draft. "
-                "Do not publish or upload datasets without license verification."
-            ),
-            "input_schema": {
-                "opportunity_types": ["rag_dataset", "workflow_pack", "compliance_pack"],
-                "max_results": 3,
-                "license_filter": ["MIT", "Apache-2.0", "CC-BY-4.0", "Public Domain"],
-                "exclude_types": ["scraped", "restricted", "PHI", "PII", "private"],
+    async def run_non_critical_startup_tasks():
+        # Seed first-class skills that should always be present in the registry.
+        # Skills with is_available=False are catalogued but NOT invokable.
+        # Add to this list when a new skill's spec is defined; flip is_available
+        # to True only when the backend implementation exists.
+        from backend.db.models.agent import AgentSkill
+        _SEED_SKILLS = [
+            {
+                "skill_id": "passive-income-engine",
+                "name": "Passive Income Engine",
+                "version": "0.1",
+                "description": (
+                    "Finds high-demand, legally usable RAG dataset opportunities and "
+                    "creates draft Veklom discovery listings. Does NOT publish without "
+                    "explicit operator approval. Rule: if invoked without implementation, "
+                    "returns SKILL_MISSING."
+                ),
+                "is_available": False,
+                "missing_reason": (
+                    "SKILL_MISSING — no backend implementation yet. "
+                    "The skill is catalogued per spec. "
+                    "To implement: create a route that calls a real dataset-discovery "
+                    "API, checks license suitability, and POSTs draft listings to "
+                    "/api/v1/discovery/listings with status=draft. "
+                    "Do not publish or upload datasets without license verification."
+                ),
+                "input_schema": {
+                    "opportunity_types": ["rag_dataset", "workflow_pack", "compliance_pack"],
+                    "max_results": 3,
+                    "license_filter": ["MIT", "Apache-2.0", "CC-BY-4.0", "Public Domain"],
+                    "exclude_types": ["scraped", "restricted", "PHI", "PII", "private"],
+                },
+                "output_schema": {
+                    "listings": [
+                        {
+                            "name": "string",
+                            "source_url": "string",
+                            "license": "string",
+                            "why_trending": "string",
+                            "rag_use_case": "string",
+                            "target_buyer": "string",
+                            "veklom_category": "string",
+                            "listing_type": "string",
+                            "ingestion_plan": "string",
+                            "chunking_strategy": "string",
+                            "gpc_template_idea": "string",
+                            "evidence_requirements": "string",
+                            "risks": "string",
+                            "approval_status": "draft",
+                        }
+                    ]
+                },
             },
-            "output_schema": {
-                "listings": [
-                    {
-                        "name": "string",
-                        "source_url": "string",
-                        "license": "string",
-                        "why_trending": "string",
-                        "rag_use_case": "string",
-                        "target_buyer": "string",
-                        "veklom_category": "string",
-                        "listing_type": "string",
-                        "ingestion_plan": "string",
-                        "chunking_strategy": "string",
-                        "gpc_template_idea": "string",
-                        "evidence_requirements": "string",
-                        "risks": "string",
-                        "approval_status": "draft",
-                    }
-                ]
-            },
-        },
-    ]
-    try:
-        from backend.core.database.database import async_session
-        async with async_session() as seed_session:
-            for skill_def in _SEED_SKILLS:
-                existing = (await seed_session.execute(
-                    select(AgentSkill).where(AgentSkill.skill_id == skill_def["skill_id"])
-                )).scalar_one_or_none()
-                if not existing:
-                    seed_session.add(AgentSkill(**skill_def))
-            await seed_session.commit()
-        print(f"[startup] skills: seeded {len(_SEED_SKILLS)} first-class skills")
-    except Exception as e:
-        print(f"[startup] skills: seed warning: {type(e).__name__}: {e}")
+        ]
+        try:
+            from backend.core.database.database import async_session
+            async with async_session() as seed_session:
+                for skill_def in _SEED_SKILLS:
+                    existing = (await seed_session.execute(
+                        select(AgentSkill).where(AgentSkill.skill_id == skill_def["skill_id"])
+                    )).scalar_one_or_none()
+                    if not existing:
+                        seed_session.add(AgentSkill(**skill_def))
+                await seed_session.commit()
+            print(f"[startup] skills: seeded {len(_SEED_SKILLS)} first-class skills")
+        except Exception as e:
+            print(f"[startup] skills: seed warning: {type(e).__name__}: {e}")
 
-    # Seed initial Demo API for VNP Probing if none exist
-    try:
-        from backend.db.models.vnp import Api, ApiRegion
-        from backend.core.database.database import async_session
-        async with async_session() as seed_db:
-            existing_api = (await seed_db.execute(select(Api).limit(1))).scalar_one_or_none()
-            if not existing_api:
-                demo_api = Api(
-                    id="api_demo_veklom_1",
-                    provider_id="veklom",
-                    name="Veklom Sovereign API",
-                    endpoint_url="https://api.veklom.com",
-                    health_path="/health",
-                    pricing_model="metered",
-                    x402_ready=True,
-                    stability_rating="Stable",
-                    current_composite_score=99.9
-                )
-                seed_db.add(demo_api)
-                demo_region = ApiRegion(
-                    api_id=demo_api.id,
-                    region_code="global",
-                    endpoint_url="https://api.veklom.com",
-                    active=True
-                )
-                seed_db.add(demo_region)
+        # Seed initial Demo API for VNP Probing if none exist
+        try:
+            from backend.db.models.vnp import Api, ApiRegion
+            from backend.core.database.database import async_session
+            async with async_session() as seed_db:
+                existing_api = (await seed_db.execute(select(Api).limit(1))).scalar_one_or_none()
+                if not existing_api:
+                    demo_api = Api(
+                        id="api_demo_veklom_1",
+                        provider_id="veklom",
+                        name="Veklom Sovereign API",
+                        endpoint_url="https://api.veklom.com",
+                        health_path="/health",
+                        pricing_model="metered",
+                        x402_ready=True,
+                        stability_rating="Stable",
+                        current_composite_score=99.9
+                    )
+                    seed_db.add(demo_api)
+                    demo_region = ApiRegion(
+                        api_id=demo_api.id,
+                        region_code="global",
+                        endpoint_url="https://api.veklom.com",
+                        active=True
+                    )
+                    seed_db.add(demo_region)
+                    await seed_db.commit()
+                    print("[startup] vnp: seeded demo API (api.veklom.com) for edge probing")
+        except Exception as e:
+            print(f"[startup] vnp: seed warning: {type(e).__name__}: {e}")
+
+        # Seed default budget caps for minimum live operator set.
+        # These are conservative defaults — adjust per operator via the API.
+        _OPERATOR_BUDGETS = [
+            {"worker_id": "gauge",    "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+            {"worker_id": "ledger",   "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+            {"worker_id": "sentinel", "daily_cap_usd": 0.10, "monthly_cap_usd": 3.0},
+            {"worker_id": "mirror",   "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
+            {"worker_id": "pulse",    "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
+            {"worker_id": "sheriff",  "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+            {"worker_id": "polish",   "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
+            {"worker_id": "signal",   "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+            {"worker_id": "oracle",   "daily_cap_usd": 1.00, "monthly_cap_usd": 20.0},
+            {"worker_id": "welcome",  "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
+            {"worker_id": "harvest",  "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+            {"worker_id": "scout",    "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
+        ]
+        try:
+            from backend.db.models.internal_operators import InternalOperatorBudget
+            from backend.core.database.database import async_session
+            async with async_session() as seed_db:
+                for b in _OPERATOR_BUDGETS:
+                    existing = (await seed_db.execute(
+                        select(InternalOperatorBudget).where(InternalOperatorBudget.worker_id == b["worker_id"])
+                    )).scalar_one_or_none()
+                    if not existing:
+                        seed_db.add(InternalOperatorBudget(
+                            worker_id=b["worker_id"],
+                            daily_cap_usd=b["daily_cap_usd"],
+                            monthly_cap_usd=b["monthly_cap_usd"],
+                            daily_spent_usd=0.0,
+                            monthly_spent_usd=0.0
+                        ))
                 await seed_db.commit()
-                print("[startup] vnp: seeded demo API (api.veklom.com) for edge probing")
-    except Exception as e:
-        print(f"[startup] vnp: seed warning: {type(e).__name__}: {e}")
+            print(f"[startup] operator budgets: seeded {len(_OPERATOR_BUDGETS)} default budget caps")
+        except Exception as e:
+            print(f"[startup] operator budgets: seed warning: {type(e).__name__}: {e}")
 
-    # Seed default budget caps for minimum live operator set.
-    # These are conservative defaults — adjust per operator via the API.
-    _OPERATOR_BUDGETS = [
-        {"worker_id": "gauge",    "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
-        {"worker_id": "ledger",   "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
-        {"worker_id": "sentinel", "daily_cap_usd": 0.10, "monthly_cap_usd": 3.0},
-        {"worker_id": "mirror",   "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
-        {"worker_id": "pulse",    "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
-        {"worker_id": "sheriff",  "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
-        {"worker_id": "polish",   "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
-        {"worker_id": "signal",   "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
-        {"worker_id": "oracle",   "daily_cap_usd": 1.00, "monthly_cap_usd": 20.0},
-        {"worker_id": "welcome",  "daily_cap_usd": 0.25, "monthly_cap_usd": 5.0},
-        {"worker_id": "harvest",  "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
-        {"worker_id": "scout",    "daily_cap_usd": 0.50, "monthly_cap_usd": 10.0},
-    ]
-    try:
-        from backend.db.models.internal_operators import InternalOperatorBudget
-        from backend.core.database.database import async_session
-        async with async_session() as seed_db:
-            for b in _OPERATOR_BUDGETS:
-                existing = (await seed_db.execute(
-                    select(InternalOperatorBudget).where(InternalOperatorBudget.worker_id == b["worker_id"])
-                )).scalar_one_or_none()
-                if not existing:
-                    seed_db.add(InternalOperatorBudget(
-                        worker_id=b["worker_id"],
-                        daily_cap_usd=b["daily_cap_usd"],
-                        monthly_cap_usd=b["monthly_cap_usd"],
-                        daily_spent_usd=0.0,
-                        monthly_spent_usd=0.0
-                    ))
-            await seed_db.commit()
-        print(f"[startup] operator budgets: seeded {len(_OPERATOR_BUDGETS)} default budget caps")
-    except Exception as e:
-        print(f"[startup] operator budgets: seed warning: {type(e).__name__}: {e}")
+        # Start the governed operator workforce scheduler.
+        # Runs the "First 12" internal operators on real autonomous tasks.
+        # Kill switch: set OPERATOR_ENGINE_ENABLED=false in .env to disable.
+        try:
+            from backend.ops.operator_engine import engine as operator_engine
+            operator_engine.start()
+            print("[startup] operator engine: governed workforce started")
+        except Exception as e:
+            import traceback
+            print(f"[startup] operator engine: WARNING — failed to start: {type(e).__name__}: {e}")
+            traceback.print_exc()
 
-    # Start the governed operator workforce scheduler.
-    # Runs the "First 12" internal operators on real autonomous tasks.
-    # Kill switch: set OPERATOR_ENGINE_ENABLED=false in .env to disable.
-    try:
-        from backend.ops.operator_engine import engine as operator_engine
-        operator_engine.start()
-        print("[startup] operator engine: governed workforce started")
-    except Exception as e:
-        import traceback
-        print(f"[startup] operator engine: WARNING — failed to start: {type(e).__name__}: {e}")
-        traceback.print_exc()
+        # Start Poltergeist Daemon
+        try:
+            from backend.ops.poltergeist_daemon import poltergeist_daemon
+            poltergeist_daemon.start()
+        except Exception as e:
+            print(f"[startup] poltergeist daemon: WARNING — failed to start: {type(e).__name__}: {e}")
 
-    # Start VNP background indexers and scoring engine.
-    # These in-process loops remain enabled by default while the distributed
-    # VNP probe deployment is rolled out; each has an explicit kill switch.
-    if _env_enabled("VNP_BACKGROUND_INDEXER_ENABLED"):
-        vnp_task = asyncio.create_task(vnp_background_indexer())
-    else:
-        print("[startup] vnp background indexer disabled by VNP_BACKGROUND_INDEXER_ENABLED=false")
-    if _env_enabled("VNP_SCORING_ENGINE_ENABLED"):
-        scoring_engine_task = asyncio.create_task(VNPScoringEngine.run_loop())
-    else:
-        print("[startup] vnp scoring engine disabled by VNP_SCORING_ENGINE_ENABLED=false")
-    
-    # Start Poltergeist Daemon
-    try:
-        from backend.ops.poltergeist_daemon import poltergeist_daemon
-        poltergeist_daemon.start()
-    except Exception as e:
-        print(f"[startup] poltergeist daemon: WARNING — failed to start: {type(e).__name__}: {e}")
+    asyncio.create_task(run_non_critical_startup_tasks())
 
     
     # Start the new physical edge probes

@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import math
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -165,9 +166,9 @@ class UACPDecisionKernel:
 
         cost = policy_frame.get("estimated_cost")
         budget = context.get("budget_remaining")
-        if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0:
+        if isinstance(cost, bool) or not isinstance(cost, (int, float)) or not math.isfinite(cost) or cost < 0:
             return False, {"cost": cost, "budget": budget, "reason": "estimated_cost_invalid"}
-        if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget < 0:
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not math.isfinite(budget) or budget < 0:
             return False, {"cost": cost, "budget": budget, "reason": "budget_remaining_invalid"}
 
         passed = cost <= budget

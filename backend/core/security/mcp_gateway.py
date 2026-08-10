@@ -18,14 +18,7 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-# Registry Hashes for version pinning (SHA-256 mock registry)
-_REGISTRY_HASHES = {
-    "veklom_gpc_compile": "sha256:f123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "veklom_ai_inference": "sha256:a789bcdef0123456789abcdef0123456789abcdef0123456789abcdef012345",
-    "veklom_evidence_export": "sha256:c0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc",
-    "veklom_compliance_report": "sha256:d123456789abcdef0123456789abcdef0123456789abcdef0123456789abc",
-    "veklom_kill_switch": "sha256:e123456789abcdef0123456789abcdef0123456789abcdef0123456789abc"
-}
+# Registry Hashes are now validated dynamically from the database.
 
 # Rate limit memory cache
 _tool_rate_limits: Dict[str, list] = {}
@@ -83,13 +76,18 @@ class MCPGateway:
             )
 
     @classmethod
-    def validate_tool_integrity(cls, tool_id: str, current_hash: str, description_version: str):
+    async def validate_tool_integrity(cls, tool_id: str, current_hash: str, description_version: str, db_session):
         """
         Validates tool_id against Registry_Hash and locks tool descriptions.
         Prevents dynamic 'Rug Pull' attacks.
         """
-        expected_hash = _REGISTRY_HASHES.get(tool_id)
-        if not expected_hash:
+        from backend.db.models.agent_stack import MCPTool
+        from sqlalchemy import select
+        
+        result = await db_session.execute(select(MCPTool).where(MCPTool.name == tool_id))
+        tool = result.scalar_one_or_none()
+        
+        if not tool or not tool.registry_hash:
             # Unregistered tool, block execution
             logger.error(f"[MCP Security Gateway] Tool '{tool_id}' is not registered in the Registry.")
             raise HTTPException(
@@ -97,6 +95,7 @@ class MCPGateway:
                 detail="Registry_Hash mismatch: Unregistered tool blocked."
             )
 
+        expected_hash = tool.registry_hash
         if current_hash != expected_hash:
             logger.error(f"[MCP Security Gateway] Tool '{tool_id}' hash mismatch! 'Rug Pull' alert triggered.")
             raise HTTPException(

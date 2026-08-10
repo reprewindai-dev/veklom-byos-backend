@@ -433,7 +433,7 @@ class BankerAgentService:
         from backend.db.models.payment import Payment
         from sqlalchemy import select, func, desc
 
-        q = select(Payment).order_by(desc(Payment.created_at))
+        q = select(Payment).order_by(desc(Payment.id))
         if status_filter:
             q = q.where(Payment.status == status_filter)
 

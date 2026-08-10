@@ -168,8 +168,8 @@ async def get_x402_spend_history(
     limit: int = Query(10, ge=1, le=50)
 ):
     """Get recent x402 micropayments."""
-    # Fetch recent payments, ordering by creation date descending
-    stmt = select(Payment).order_by(Payment.created_at.desc()).limit(limit)
+    # Fetch recent payments, ordering by id descending (proxy for creation date to avoid missing created_at column error)
+    stmt = select(Payment).order_by(Payment.id.desc()).limit(limit)
     result = await db.execute(stmt)
     payments = result.scalars().all()
     

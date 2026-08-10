@@ -6,11 +6,14 @@ Gnomledger acceptance, cryptographic verification, containment, or settlement.
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import httpx
 
+from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.core.security.auth import get_current_admin, get_current_user
 from backend.core.services.pgl_identity_lifecycle import compute_lifecycle
@@ -288,3 +291,37 @@ async def get_identity_lifecycle_status(
         "verification_status": NOT_VERIFIED,
         "warning": lifecycle.warning,
     }
+
+
+@router.api_route("/proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def pgl_proxy(
+    request: Request,
+    path: str,
+    user: User = Depends(get_current_user)
+):
+    """Proxy requests to PGL, injecting the server-side API key."""
+    if not settings.GNOMLEDGER_URL:
+        raise HTTPException(status_code=500, detail="GNOMLEDGER_URL not configured")
+        
+    url = f"{settings.GNOMLEDGER_URL.rstrip('/')}/{path}"
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers["x-api-key"] = settings.GNOMLEDGER_API_KEY
+    
+    body = await request.body()
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.request(
+                method=request.method,
+                url=url,
+                headers=headers,
+                content=body,
+                params=request.query_params
+            )
+            return JSONResponse(
+                content=response.json() if response.content else None,
+                status_code=response.status_code
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Bad Gateway: {str(e)}")

@@ -254,7 +254,7 @@ async def ai_inference(body: AIInferenceRequest, user=Depends(get_current_user),
     # 3. Cache miss — route to best provider for this tier
     override_body = {**payload_dict, "messages": messages}
     result, key_source, reason, latency_ms = await execute_governed_inference(
-        db, workspace_id, user.id, override_body, exec_log_id=log.id
+        db, workspace_id, user.id, override_body
     )
     content = _content_from_openai_response(result.payload)
     used_model = result.payload.get("model", model)

@@ -42,27 +42,20 @@ ZERO_TRUST_PUBLIC_PREFIXES = (
     "/v1/chat/completions", "/v1/models",
     # Veklom Protocol manifest and introspection — public, enables AI agent self-discovery
     "/protocol.json", "/protocol/introspect", "/protocol",
-    "/api/v1/copilot/registry", "/api/v1/copilot/recent-decisions",
-    "/api/v1/workspace/overview/live", "/api/v1/integrations/pagerduty",
-    "/api/v1/pgl/registry", "/api/v1/capi/execute",
-    "/api/v1/receipts", "/api/v1/evidence/verify",
-    "/api/v1/ai/inference", "/api/v1/ai/chat", "/api/v1/gpc/compile", "/api/v1/gpc/execute",
-    "/api/v1/gpc/intent-to-plan", "/api/v1/gpc/runs", "/api/v1/gpc/components", "/api/v1/pipelines/trigger",
-    "/api/v1/runtime/jobs", "/api/v1/evidence/export", "/api/v1/compliance/report",
-    "/api/v1/marketplace/acquire", "/api/v1/audit/verify", "/api/v1/webhook", "/api/v1/subscriptions/webhook", "/api/v1/x402",
-    "/api/v1/ai/complete", "/api/v1/playground/inference", "/api/v1/playground/sessions",
-    "/api/v1/playground/tools", "/api/v1/playground/prompts",
+    "/api/v1/webhook", "/api/v1/subscriptions/webhook",
     "/api/v1/agentic_commerce/product_feed", "/api/v1/agentic_commerce/feed.csv",
     "/api/v1/connectors/fax", "/api/v1/contact", "/api/v1/feedback",
     # VNP endpoints use Ed25519 signature validation in the router, so they must bypass JWT middleware
     "/api/v1/vnp/ingestion", "/api/v1/vnp/methodology", "/api/v1/vnp/beacon", "/api/v1/vnp/metrics",
     "/api/v1/vnp/validators", "/api/v1/vnp/status", "/api/v1/vnp/edge-observations",
+    "/v1/vnp/leaderboard", "/api/v1/vnp/leaderboard",
     "/api/v1/amphoteric/discover", "/api/v1/amphoteric/call",
     "/api/v1/onboarding", "/onboarding-dashboard", "/api/v1/banker/self-prove",
     "/api/v1/duel",
     "/api/v1/beacon", "/api/v1/auth/.well-known",
     "/api/v1/benchmarks/leaderboard", "/api/v1/benchmarks/card/", "/api/benchmarks/card/",
-    "/api/v1/benchmarks/staking/state"
+    "/api/v1/benchmarks/staking/state",
+    "/.well-known/capability-beacon-keys"
 )
 
 _INTERNAL_OPERATOR_PATH_PREFIX = "/api/v1/internal/"

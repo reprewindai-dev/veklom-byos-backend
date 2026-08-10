@@ -62,7 +62,7 @@ SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        send_default_pii=True,
+        send_default_pii=False,
         traces_sample_rate=0.1,
         environment=os.getenv("ENVIRONMENT", "production"),
         release=os.getenv("APP_VERSION", "1.0.0"),
@@ -449,8 +449,12 @@ async def lifespan(app: FastAPI):
         print("[startup] vnp scoring engine disabled by VNP_SCORING_ENGINE_ENABLED=false")
     
     # Start Poltergeist Daemon
-    from backend.ops.poltergeist_daemon import poltergeist_daemon
-    poltergeist_daemon.start()
+    try:
+        from backend.ops.poltergeist_daemon import poltergeist_daemon
+        poltergeist_daemon.start()
+    except Exception as e:
+        print(f"[startup] poltergeist daemon: WARNING — failed to start: {type(e).__name__}: {e}")
+
     
     # Start the new physical edge probes
     from backend.core.vnp.probes import run_vnp_probes

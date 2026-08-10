@@ -159,7 +159,7 @@ async def register_operator(body: dict, user=Depends(get_current_admin)):
 
 
 @router.get("/source-of-truth/snapshot")
-async def sot_snapshot(user=Depends(get_sot_proxy_user)):
+async def sot_snapshot(user=Depends(get_sot_proxy_user), db: AsyncSession = Depends(get_db)):
     """
     Returns the real-time governed telemetry snapshot of the Veklom system.
     This replaces the old placeholder demo endpoint.
@@ -189,7 +189,7 @@ async def sot_snapshot(user=Depends(get_sot_proxy_user)):
     
     # Retrieve dynamic state from VNP and Ledger modules
     active_stakes = VNPService.get_all_active_stakes()
-    recent_receipts = LedgerService.get_recent_receipts()
+    recent_receipts = await LedgerService.get_recent_receipts(db)
     
     # Generate base payload
     payload = {

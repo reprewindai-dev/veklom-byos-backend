@@ -39,7 +39,7 @@ VNP_EDGE_NODES = [
         "macro_region": "North America",
         "jurisdiction": "US",
         "gdpr_zone": False,
-        "url": "http://10.0.0.1:8002/probe/ping",
+        "url": "http://vnp-probe-us-hillsboro:8000/probe/ping",
     },
     {
         "name": "Nuremberg Node",

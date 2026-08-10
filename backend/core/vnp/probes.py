@@ -39,7 +39,7 @@ VNP_EDGE_NODES = [
         "macro_region": "North America",
         "jurisdiction": "US",
         "gdpr_zone": False,
-        "url": "http://vnp-probe-us-hillsboro:8000/probe/ping",
+        "url": "http://j13zuoqfdlhu8j8iko7amraz:8000/probe/ping",
     },
     {
         "name": "Nuremberg Node",
@@ -249,6 +249,12 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
                     existing_key.active = True
                     existing_key.revoked_at = None
 
+            sequence = (
+                await db.execute(
+                    select(func.count(VnpObservation.id)).where(VnpObservation.node_id == node.id)
+                )
+            ).scalar_one() + 1
+            
             probe_payload = result.get("probe_payload") or {}
             probe_sig = probe_payload.get("signature") or {}
             heartbeat_signature = identity_sig.get("sig") or probe_sig.get("sig") or ""
@@ -258,17 +264,13 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
                     node_id=node.id,
                     timestamp=result["completed_at"],
                     software_version=node.software_version or EDGE_SOFTWARE_VERSION,
+                    sequence=int(sequence),
                     signature_key_id=signature_key_id,
                     signature=heartbeat_signature,
+                    payload_digest=probe_payload.get("payload_digest") or hashlib.sha256(heartbeat_signature.encode("utf-8")).hexdigest(),
                     created_at=now,
                 )
             )
-
-            sequence = (
-                await db.execute(
-                    select(func.count(VnpObservation.id)).where(VnpObservation.node_id == node.id)
-                )
-            ).scalar_one() + 1
             previous_signature = (
                 await db.execute(
                     select(VnpObservation.signature)

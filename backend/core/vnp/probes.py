@@ -286,6 +286,7 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
                     observation_id=observation_id,
                     node_id=node.id,
                     region=region_code,
+                    site_code=region_code,
                     physical_location=edge["physical_location"],
                     target_id=probe_payload.get("target_url") or "https://api.veklom.com/health",
                     measurement_profile="edge-target-http",

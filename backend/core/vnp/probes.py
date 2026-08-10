@@ -301,6 +301,7 @@ async def upsert_edge_observations(edge_results: list[dict], hub_secret: str) ->
                     previous_observation_hash=previous_signature,
                     signature_key_id=signature_key_id,
                     signature=probe_sig.get("sig") or "",
+                    payload_digest=probe_payload.get("payload_digest") or hashlib.sha256((probe_sig.get("sig") or "").encode("utf-8")).hexdigest(),
                     created_at=now,
                 )
             )

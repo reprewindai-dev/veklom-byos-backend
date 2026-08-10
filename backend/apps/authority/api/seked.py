@@ -1,7 +1,9 @@
 """SEKED API endpoints integrated with Veklom Authority system."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from typing import Any, Dict, Optional
 
 from backend.core.security.auth import get_current_user
@@ -11,6 +13,32 @@ from backend.db.models.authority import AuthorityDecision, AuthorityRun
 from backend.db.models.user import User
 
 router = APIRouter(prefix="/seked", tags=["SEKED"])
+
+@router.get("/agents")
+async def get_seked_agents(
+    db: AsyncSession = Depends(get_db),
+    # Optional: in a real system we would filter by current_user.workspace_id
+    # current_user: User = Depends(get_current_user)
+):
+    """Get active agents and their SEKED states for the console."""
+    # We query AuthorityRun to get recent agents
+    stmt = select(AuthorityRun).order_by(AuthorityRun.created_at.desc()).limit(10)
+    result = await db.execute(stmt)
+    runs = result.scalars().all()
+    
+    agents = []
+    for run in runs:
+        agents.append({
+            "agent_id": run.agent_id,
+            "name": f"Agent-{run.agent_id[:6]}",
+            "ratios": {
+                "sigma": run.seked_final_directive.get("sigma", 0) if run.seked_final_directive else 0,
+            },
+            "status": run.status,
+            "directive": run.seked_final_directive or {"action_type": "MONITORING"}
+        })
+        
+    return agents
 
 
 @router.post("/calculate")

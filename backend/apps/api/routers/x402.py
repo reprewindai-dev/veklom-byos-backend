@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.config.settings import settings
 from backend.core.database.database import get_db
 from backend.db.models.security import AuditLog
+from backend.db.models.payment import Payment
 from backend.core.utils.idempotency import idempotent_request
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,30 @@ class ApiRegistrationResponse(BaseModel):
     registered_path: str = Field(..., description="The protected path registered")
     price_usdc: float = Field(..., description="The registered price in USDC")
     details: Dict[str, Any] = Field(..., description="The registered route configuration")
+
+
+@router.get("/spend")
+async def get_x402_spend_history(
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(10, ge=1, le=50)
+):
+    """Get recent x402 micropayments."""
+    # Fetch recent payments, ordering by creation date descending
+    stmt = select(Payment).order_by(Payment.created_at.desc()).limit(limit)
+    result = await db.execute(stmt)
+    payments = result.scalars().all()
+    
+    runs = []
+    for p in payments:
+        runs.append({
+            "run": str(p.id),
+            "agent": p.from_address[:8] + "..." + p.from_address[-4:] if p.from_address else "Unknown",
+            "route": p.payment_object_type,
+            "cost": f"${float(p.amount):.4f}",
+            "status": p.status.capitalize()
+        })
+        
+    return {"runs": runs}
 
 
 @router.get("/config", response_model=X402ConfigResponse)

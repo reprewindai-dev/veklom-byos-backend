@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from backend.core.config.settings import settings
-from backend.core.database.database import engine
+from backend.core.database.database import engine, reset_tenant_session, set_tenant_session
 
 pytestmark = pytest.mark.asyncio
 
@@ -18,10 +18,7 @@ RLS_TEST_PASSWORD = "ci-rls-test-password"
 
 
 async def _set_workspace(db_session: AsyncSession, workspace_id: str) -> None:
-    await db_session.execute(
-        text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
-        {"workspace_id": workspace_id},
-    )
+    await set_tenant_session(db_session, workspace_id)
 
 
 async def _seed_cost_predictions(*workspace_ids: str) -> None:
@@ -166,13 +163,13 @@ async def test_rls_tenant_isolation_writes(db_session: AsyncSession):
 
 async def test_rls_no_context_returns_zero_rows(db_session: AsyncSession):
     await _seed_cost_predictions(str(uuid.uuid4()))
-    await db_session.execute(text("RESET app.workspace_id"))
+    await reset_tenant_session(db_session)
 
     result = await db_session.execute(text("SELECT * FROM cost_predictions"))
     assert result.fetchall() == []
 
 
 async def test_rls_global_tables_accessible_without_context(db_session: AsyncSession):
-    await db_session.execute(text("RESET app.workspace_id"))
+    await reset_tenant_session(db_session)
     result = await db_session.execute(text("SELECT * FROM system_health LIMIT 1"))
     result.fetchall()

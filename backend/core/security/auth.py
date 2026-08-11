@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
-from backend.core.database.database import get_db
+from backend.core.database.database import get_db, reset_tenant_session, set_tenant_session
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security_scheme = HTTPBearer(auto_error=False)
@@ -91,7 +91,7 @@ def verify_token(token: str, enforce_replay: bool = False) -> dict:
             unverified = jwt.get_unverified_claims(token)
             jti = unverified.get("jti")
             sub = unverified.get("sub")
-            
+
             try:
                 unverified_header = jwt.get_unverified_header(token)
                 alg = unverified_header.get("alg")
@@ -219,59 +219,63 @@ async def get_current_user(
         )
 
     from backend.db.models.user import User
-    from backend.core.database.database import set_tenant_session
-    from sqlalchemy import text
-    await db.execute(text("SELECT set_config('app.bypass_rls', 'off', true)"))
+
+    # The JWT claim is only a provisional scope used to locate the account under
+    # RLS. It must never survive a failed authentication decision.
     await set_tenant_session(db, jwt_workspace_id)
+    try:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        if await _get_active_session(db, user_id, token) is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked or expired")
 
-    if await _get_active_session(db, user_id, token) is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked or expired")
-        
-    if jwt_workspace_id and jwt_workspace_id != user.workspace_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace claim does not match account")
+        if not user.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is missing a workspace assignment.",
+            )
+        if jwt_workspace_id != user.workspace_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace claim does not match account")
 
-    status_value = (user.status or "").upper()
-    if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
+        status_value = (user.status or "").upper()
+        if status_value in {"LOCKED", "SUSPENDED", "INACTIVE"} or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account inactive")
 
-    if user.workspace_id:
-        from backend.core.database.database import set_tenant_session
-        await set_tenant_session(db, user.workspace_id)
-    else:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is missing a workspace assignment.")
+        if status_value == "PENDING_VERIFICATION":
+            allowed_paths = {
+                "/api/v1/auth/me",
+                "/api/v1/auth/resend-verification",
+                "/api/v1/auth/verify-email",
+                "/api/v1/auth/logout",
+                "/api/v1/workspace/onboarding/vertical",
+                "/api/v1/workspace/config",
+            }
+            if request.url.path not in allowed_paths:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
 
-    if status_value == "PENDING_VERIFICATION":
-        allowed_paths = {
-            "/api/v1/auth/me",
-            "/api/v1/auth/resend-verification",
-            "/api/v1/auth/verify-email",
-            "/api/v1/auth/logout",
-            "/api/v1/workspace/onboarding/vertical",
-            "/api/v1/workspace/config",
-        }
-        if request.url.path not in allowed_paths:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_verification_required")
+        now_utc = datetime.utcnow()
+        needs_commit = False
 
-    now_utc = datetime.utcnow()
-    needs_commit = False
+        # Ensure naive datetime is compared, as user.last_activity is usually naive
+        last_activity = user.last_activity
+        if last_activity and last_activity.tzinfo is not None:
+            last_activity = last_activity.replace(tzinfo=None)
 
-    # Ensure naive datetime is compared, as user.last_activity is usually naive
-    last_activity = user.last_activity
-    if last_activity and last_activity.tzinfo is not None:
-        last_activity = last_activity.replace(tzinfo=None)
+        # Throttle last_activity updates to max once per 5 minutes to reduce DB write contention
+        if not last_activity or (now_utc - last_activity).total_seconds() > 300:
+            user.last_activity = now_utc
+            needs_commit = True
 
-    # Throttle last_activity updates to max once per 5 minutes to reduce DB write contention
-    if not last_activity or (now_utc - last_activity).total_seconds() > 300:
-        user.last_activity = now_utc
-        needs_commit = True
+        if needs_commit:
+            await db.commit()
+    finally:
+        await reset_tenant_session(db)
 
-    if needs_commit:
-        await db.commit()
+    # Only the database-backed workspace survives successful authentication.
+    await set_tenant_session(db, user.workspace_id)
     # Expunge the user from this internal session before it closes.
     # After commit(), SQLAlchemy expires all attributes; if any route accesses
     # a relationship on the returned user, it would trigger a lazy-load inside
@@ -399,7 +403,7 @@ async def get_current_user_optional(
 
     user_id: Optional[str] = payload.get("sub")
     jwt_workspace_id: Optional[str] = payload.get("workspace_id")
-    
+
     if user_id is None:
         return _GUEST_USER
 
@@ -412,7 +416,7 @@ async def get_current_user_optional(
 
     if await _get_active_session(db, user_id, token) is None:
         return _GUEST_USER
-        
+
     if jwt_workspace_id and jwt_workspace_id != user.workspace_id:
         return _GUEST_USER
 
@@ -538,6 +542,6 @@ async def get_rls_db(
     finally:
         # Prevent connection pool leakage
         try:
-            await db.execute(text("RESET app.workspace_id"))
+            await reset_tenant_session(db)
         except Exception:
             pass

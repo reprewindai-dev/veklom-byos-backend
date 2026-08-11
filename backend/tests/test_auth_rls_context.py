@@ -26,6 +26,7 @@ class _TrackingSession:
         self.calls = []
         self.workspace_context = None
         self.expunge_calls = []
+        self.commit_calls = 0
 
     async def execute(self, statement, params=None):
         sql = str(statement)
@@ -46,7 +47,9 @@ class _TrackingSession:
         return _ScalarResult()
 
     async def commit(self):
-        return None
+        self.commit_calls += 1
+        # set_config(..., true) is transaction-local in PostgreSQL.
+        self.workspace_context = None
 
     def expunge(self, value):
         self.expunge_calls.append(value)
@@ -71,13 +74,17 @@ def _credentials(token="test-token"):
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
 
-def _user(workspace_id):
+def _user(workspace_id, **overrides):
+    values = {
+        "id": "user-1",
+        "workspace_id": workspace_id,
+        "status": "active",
+        "is_active": True,
+        "last_activity": datetime.utcnow(),
+    }
+    values.update(overrides)
     return SimpleNamespace(
-        id="user-1",
-        workspace_id=workspace_id,
-        status="active",
-        is_active=True,
-        last_activity=datetime.utcnow(),
+        **values,
     )
 
 
@@ -120,6 +127,27 @@ async def test_workspace_jwt_binds_only_the_claimed_account_tenant(monkeypatch):
     ]
     assert authenticated_user is user
     assert tenant_bindings == [workspace_id, workspace_id]
+    assert "reset app.workspace_id" in [" ".join(sql.lower().split()) for sql, _ in db.calls]
+    assert db.workspace_context == workspace_id
+    assert db.expunge_calls == [user]
+    _assert_no_rls_bypass(db)
+
+
+@pytest.mark.asyncio
+async def test_workspace_jwt_rebinds_authoritative_tenant_after_activity_commit(monkeypatch):
+    workspace_id = "workspace-a"
+    user = _user(workspace_id, last_activity=None)
+    db = _TrackingSession(user=user, active_session=object())
+    monkeypatch.setattr(
+        auth,
+        "verify_token",
+        lambda _token: {"sub": user.id, "workspace_id": workspace_id},
+    )
+
+    authenticated_user = await auth.get_current_user(_request(), _credentials(), db)
+
+    assert authenticated_user is user
+    assert db.commit_calls == 1
     assert db.workspace_context == workspace_id
     assert db.expunge_calls == [user]
     _assert_no_rls_bypass(db)
@@ -149,7 +177,107 @@ async def test_workspace_jwt_rejects_account_tenant_mismatch(monkeypatch):
     assert exc_info.value.detail == "Workspace claim does not match account"
     assert tenant_bindings == [claimed_workspace]
     assert account_workspace not in tenant_bindings
+    assert db.workspace_context is None
     assert db.expunge_calls == []
+    _assert_no_rls_bypass(db)
+
+
+@pytest.mark.asyncio
+async def test_workspace_jwt_clears_tenant_when_user_is_not_found(monkeypatch):
+    claimed_workspace = "workspace-claimed"
+    db = _TrackingSession(user=None, active_session=object())
+    monkeypatch.setattr(
+        auth,
+        "verify_token",
+        lambda _token: {"sub": "missing-user", "workspace_id": claimed_workspace},
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(_request(), _credentials(), db)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "User not found"
+    assert db.workspace_context is None
+    _assert_no_rls_bypass(db)
+
+
+@pytest.mark.asyncio
+async def test_workspace_jwt_clears_tenant_when_session_is_inactive(monkeypatch):
+    claimed_workspace = "workspace-claimed"
+    user = _user(claimed_workspace)
+    db = _TrackingSession(user=user, active_session=None)
+    monkeypatch.setattr(
+        auth,
+        "verify_token",
+        lambda _token: {"sub": user.id, "workspace_id": claimed_workspace},
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(_request(), _credentials(), db)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Session revoked or expired"
+    assert db.workspace_context is None
+    _assert_no_rls_bypass(db)
+
+
+@pytest.mark.asyncio
+async def test_workspace_jwt_clears_tenant_when_account_is_inactive(monkeypatch):
+    workspace_id = "workspace-a"
+    user = _user(workspace_id, status="suspended", is_active=False)
+    db = _TrackingSession(user=user, active_session=object())
+    monkeypatch.setattr(
+        auth,
+        "verify_token",
+        lambda _token: {"sub": user.id, "workspace_id": workspace_id},
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(_request(), _credentials(), db)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Account inactive"
+    assert db.workspace_context is None
+    _assert_no_rls_bypass(db)
+
+
+@pytest.mark.asyncio
+async def test_workspace_jwt_clears_tenant_when_account_has_no_workspace(monkeypatch):
+    claimed_workspace = "workspace-claimed"
+    user = _user(None)
+    db = _TrackingSession(user=user, active_session=object())
+    monkeypatch.setattr(
+        auth,
+        "verify_token",
+        lambda _token: {"sub": user.id, "workspace_id": claimed_workspace},
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(_request(), _credentials(), db)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "User account is missing a workspace assignment."
+    assert db.workspace_context is None
+    _assert_no_rls_bypass(db)
+
+
+@pytest.mark.asyncio
+async def test_workspace_jwt_clears_tenant_when_verification_is_required(monkeypatch):
+    workspace_id = "workspace-a"
+    user = _user(workspace_id, status="pending_verification")
+    db = _TrackingSession(user=user, active_session=object())
+    monkeypatch.setattr(
+        auth,
+        "verify_token",
+        lambda _token: {"sub": user.id, "workspace_id": workspace_id},
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(_request("/api/v1/protected"), _credentials(), db)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "email_verification_required"
+    assert db.workspace_context is None
     _assert_no_rls_bypass(db)
 
 

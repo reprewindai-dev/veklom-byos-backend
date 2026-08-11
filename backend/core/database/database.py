@@ -88,6 +88,10 @@ async def set_tenant_session(db: AsyncSession, workspace_id: str) -> None:
     )
 
 
+async def reset_tenant_session(db: AsyncSession) -> None:
+    """Clear the request-scoped PostgreSQL RLS workspace context."""
+    await db.execute(text("RESET app.workspace_id"))
+
 
 @asynccontextmanager
 async def get_db_session():

@@ -1,99 +1,134 @@
 import os
-import psutil
-from fastapi import APIRouter, Depends
 from datetime import datetime, timezone
-import httpx
 
-router = APIRouter(prefix="/security", tags=["Security Force Field"])
+import httpx
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/security", tags=["Security Posture"])
+
+NOT_VERIFIED = "NOT_VERIFIED"
+OBSERVED = "OBSERVED"
+UNAVAILABLE = "UNAVAILABLE"
+UNCONFIGURED = "UNCONFIGURED"
+REACHABLE_NOT_VERIFIED = "REACHABLE_NOT_VERIFIED"
+
 
 def get_kernel_isolation_status() -> dict:
-    # In a real environment, we check for gVisor or unprivileged container flags.
-    # For now, we verify we are running in an unprivileged Docker environment.
-    is_privileged = False
+    """Report only the Linux capability state observable in this process.
+
+    Effective capabilities are not proof of gVisor, seccomp, namespace isolation,
+    kernel-patch level, or mitigation of a named vulnerability.
+    """
     try:
-        with open("/proc/self/status", "r") as f:
-            for line in f:
+        with open("/proc/self/status", "r", encoding="utf-8") as status_file:
+            for line in status_file:
                 if line.startswith("CapEff:"):
-                    # 0000000000000000 typically means no capabilities (unprivileged)
-                    val = line.split(":")[1].strip()
-                    if val != "0000000000000000":
-                        is_privileged = True
-    except Exception:
+                    cap_eff = line.split(":", 1)[1].strip()
+                    return {
+                        "status": OBSERVED,
+                        "cap_eff_hex": cap_eff,
+                        "zero_effective_capabilities": cap_eff == "0000000000000000",
+                        "isolation_runtime": NOT_VERIFIED,
+                        "threat_mitigation": NOT_VERIFIED,
+                    }
+    except OSError:
         pass
-        
+
     return {
-        "status": "Isolated",
-        "privileged": is_privileged,
-        "mechanism": "Docker Unprivileged / gVisor",
-        "threat_mitigated": "Linux Kernel Privilege Escalation (CopyFail / Dirty Pipe)"
+        "status": UNAVAILABLE,
+        "cap_eff_hex": None,
+        "zero_effective_capabilities": None,
+        "isolation_runtime": NOT_VERIFIED,
+        "threat_mitigation": NOT_VERIFIED,
     }
+
 
 def get_proxy_status() -> dict:
-    # Verifies we are using Traefik and NOT NGINX.
+    """Do not infer the live ingress/proxy from application source."""
     return {
-        "status": "Protected",
-        "active_proxy": "Traefik",
-        "vulnerable_to_nginx_desync": False,
-        "threat_mitigated": "NGINX Proxy Cracks and Request Desyncs"
+        "status": NOT_VERIFIED,
+        "active_proxy": None,
+        "traefik_routing_verified": False,
+        "request_desync_mitigation": NOT_VERIFIED,
+        "evidence_required": "live ingress configuration and routed HTTP verification",
     }
+
 
 def get_supply_chain_status() -> dict:
-    # Verifies AST analysis (RepoGate) is active and eval() is blocked.
+    """Source presence alone does not prove CI/security controls executed."""
     return {
-        "status": "Protected",
-        "ast_scanning_active": True,
-        "dynamic_eval_blocked": True,
-        "threat_mitigated": "npm/PyPI Supply Chain Attacks (Mini Shai-Hulud)"
+        "status": NOT_VERIFIED,
+        "ast_scanning_active": None,
+        "dynamic_eval_blocked": None,
+        "dependency_scan_verified": False,
+        "secret_scan_verified": False,
+        "codeql_verified": False,
+        "evidence_required": "current-head security workflow results",
     }
 
-async def get_ollama_sanitization_status() -> dict:
-    # In cappo-backend, we will inject keep_alive: 0. This endpoint reports the intent.
+
+def get_ollama_sanitization_status() -> dict:
+    """Describe intended configuration without claiming downstream enforcement."""
     return {
-        "status": "Protected",
-        "middleware": "OllamaSanitizer",
-        "context_retention": "Flushed (keep_alive=0)",
-        "threat_mitigated": "Bleeding Llama Memory Leak"
+        "status": NOT_VERIFIED,
+        "middleware": None,
+        "context_retention": NOT_VERIFIED,
+        "keep_alive_zero_verified": False,
+        "evidence_required": "deployed CAPPO request/response evidence",
     }
 
-async def check_lockerphycer_mcp() -> dict:
-    # Ping the cAPI router to ensure LockerPhycer IDS is accessible
-    status = "Connected"
+
+async def check_lockerphycer_health() -> dict:
+    """Perform a bounded reachability probe without promoting security claims."""
+    base_url = os.getenv("LOCKERPHYCER_URL")
+    if not base_url:
+        return {
+            "status": UNCONFIGURED,
+            "reachable": False,
+            "http_status": None,
+            "protocol_identity_verified": False,
+            "ids_active": NOT_VERIFIED,
+        }
+
     try:
-        async with httpx.AsyncClient() as client:
-            # We assume cAPI is running on port 3003
-            # If not reachable, it'll fail, but we'll return a graceful response.
-            resp = await client.get("http://capi-container:3003/health", timeout=1.0)
-            if resp.status_code != 200:
-                status = "Degraded"
-    except Exception:
-        status = "Unknown (Probe Failed)"
-        
-    return {
-        "status": status,
-        "perimeter": "LockerPhycer Enterprise Ready",
-        "mcp_bridge_active": True,
-        "ids_active": True
-    }
+        async with httpx.AsyncClient(timeout=1.0, follow_redirects=False) as client:
+            response = await client.get(f"{base_url.rstrip('/')}/health")
+        return {
+            "status": REACHABLE_NOT_VERIFIED if response.is_success else UNAVAILABLE,
+            "reachable": response.is_success,
+            "http_status": response.status_code,
+            "protocol_identity_verified": False,
+            "ids_active": NOT_VERIFIED,
+        }
+    except httpx.HTTPError:
+        return {
+            "status": UNAVAILABLE,
+            "reachable": False,
+            "http_status": None,
+            "protocol_identity_verified": False,
+            "ids_active": NOT_VERIFIED,
+        }
+
 
 @router.get("/posture")
 async def get_security_posture():
-    """
-    Returns the real-time M2M JSON audit trail of the Security Force Field.
-    """
-    kernel = get_kernel_isolation_status()
-    proxy = get_proxy_status()
-    supply_chain = get_supply_chain_status()
-    ollama = await get_ollama_sanitization_status()
-    lockerphycer = await check_lockerphycer_mcp()
-    
+    """Return observed evidence and explicit verification gaps only."""
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "overall_status": "Secure",
-        "mitigations": {
-            "kernel_isolation": kernel,
-            "proxy_security": proxy,
-            "supply_chain_defense": supply_chain,
-            "ollama_memory_leak": ollama,
-            "lockerphycer_perimeter": lockerphycer
-        }
+        "overall_status": NOT_VERIFIED,
+        "verified_runtime_state": {},
+        "unverified_claims": [
+            "container isolation runtime",
+            "Traefik routing",
+            "supply-chain security workflow execution",
+            "Ollama context sanitization",
+            "Lockerphycer protocol identity and IDS state",
+        ],
+        "observations": {
+            "kernel_capabilities": get_kernel_isolation_status(),
+            "proxy_security": get_proxy_status(),
+            "supply_chain_defense": get_supply_chain_status(),
+            "ollama_context": get_ollama_sanitization_status(),
+            "lockerphycer": await check_lockerphycer_health(),
+        },
     }

@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import math
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -157,9 +158,19 @@ class UACPDecisionKernel:
     # Policy evaluation functions
     
     def _check_budget_limit(self, policy_frame: Dict, context: Dict, workspace_id: str) -> tuple:
-        """Check if operation exceeds budget limits."""
-        cost = policy_frame.get("estimated_cost", 0)
-        budget = context.get("budget_remaining", float('inf'))
+        """Fail closed unless both estimated cost and remaining budget are valid."""
+        if "estimated_cost" not in policy_frame:
+            return False, {"cost": None, "budget": context.get("budget_remaining"), "reason": "estimated_cost_missing"}
+        if "budget_remaining" not in context:
+            return False, {"cost": policy_frame.get("estimated_cost"), "budget": None, "reason": "budget_remaining_missing"}
+
+        cost = policy_frame.get("estimated_cost")
+        budget = context.get("budget_remaining")
+        if isinstance(cost, bool) or not isinstance(cost, (int, float)) or not math.isfinite(cost) or cost < 0:
+            return False, {"cost": cost, "budget": budget, "reason": "estimated_cost_invalid"}
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not math.isfinite(budget) or budget < 0:
+            return False, {"cost": cost, "budget": budget, "reason": "budget_remaining_invalid"}
+
         passed = cost <= budget
         return passed, {"cost": cost, "budget": budget}
     

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, and_, case, cast, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -557,11 +557,27 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     last_24h = now - timedelta(hours=24)
     elapsed_minutes = max(1, int((now - today_start).total_seconds() / 60))
 
-    total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
-    requests_per_min = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_minute)) or 0
-    total_tokens = await db.scalar(select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
-    spend_today = await db.scalar(select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0.0
-    avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
+    # ⚡ Bolt: Batching aggregate queries to avoid N+1 roundtrips.
+    # Concurrent asyncio.gather queries on the same SQLAlchemy asyncpg session cause a RuntimeError,
+    # so we use conditional aggregations in a single query.
+    # Ensure we include records since last_minute even if it crosses into yesterday
+    since_time = min(today_start, last_minute)
+
+    overview_stats = (await db.execute(
+        select(
+            func.sum(case((ExecLog.created_at >= today_start, 1), else_=0)).label("total_requests"),
+            func.sum(case((ExecLog.created_at >= last_minute, 1), else_=0)).label("requests_per_min"),
+            func.coalesce(func.sum(case((ExecLog.created_at >= today_start, ExecLog.total_tokens), else_=0)), 0).label("total_tokens"),
+            func.coalesce(func.sum(case((ExecLog.created_at >= today_start, ExecLog.cost_usd), else_=0.0)), 0.0).label("spend_today"),
+            func.coalesce(func.avg(case((ExecLog.created_at >= today_start, ExecLog.latency_ms))), 0).label("avg_latency")
+        ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= since_time)
+    )).fetchone()
+
+    total_requests = overview_stats.total_requests or 0
+    requests_per_min = int(overview_stats.requests_per_min or 0)
+    total_tokens = overview_stats.total_tokens or 0
+    spend_today = overview_stats.spend_today or 0.0
+    avg_latency = overview_stats.avg_latency or 0
     audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
     budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
 
@@ -740,23 +756,30 @@ async def workspace_observability(user=Depends(get_current_user), db: AsyncSessi
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Get real metrics from database
-    total_requests = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
-    error_count = await db.scalar(select(func.count()).select_from(ExecLog).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start, ExecLog.status == "failed")) or 0
+    # ⚡ Bolt: Batching aggregate queries to avoid N+1 roundtrips.
+    # Concurrent asyncio.gather queries on the same SQLAlchemy asyncpg session cause a RuntimeError,
+    # so we use conditional aggregations in a single query.
+    obs_stats = (await db.execute(
+        select(
+            func.count().label("total_requests"),
+            func.coalesce(func.sum(case((ExecLog.status == "failed", 1), else_=0)), 0).label("error_count"),
+            func.coalesce(func.avg(ExecLog.latency_ms), 0).label("avg_latency"),
+            func.coalesce(func.sum(case((
+                and_(
+                    cast(ExecLog.policy_flags, String) != '[]',
+                    cast(ExecLog.policy_flags, String) != 'null',
+                    ExecLog.policy_flags.is_not(None)
+                ), 1
+            ), else_=0)), 0).label("policy_flagged_count")
+        ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)
+    )).fetchone()
+
+    total_requests = obs_stats.total_requests or 0
+    error_count = int(obs_stats.error_count or 0)
+    avg_latency = obs_stats.avg_latency or 0
+    policy_flagged_count = int(obs_stats.policy_flagged_count or 0)
+
     error_rate = (error_count / total_requests) if total_requests > 0 else 0.0
-
-    avg_latency = await db.scalar(select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)) or 0
-
-    policy_flagged_count = await db.scalar(
-        select(func.count())
-        .select_from(ExecLog)
-        .where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= today_start,
-            cast(ExecLog.policy_flags, String) != '[]',
-            cast(ExecLog.policy_flags, String) != 'null',
-            ExecLog.policy_flags.is_not(None)
-        )
-    ) or 0
     policy_pass_rate = 1.0 - (policy_flagged_count / total_requests) if total_requests > 0 else 1.0
 
     # Get active routes from recent executions

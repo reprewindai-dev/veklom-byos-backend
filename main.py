@@ -27,6 +27,52 @@ def query_data_lake(query: str, limit: int = 10):
 app.include_router(amphoteric.router)
 create_mcp_endpoints(app, amphoteric, prefix="/mcp")
 
+@app.get("/veklom-discovery.json")
+async def get_veklom_discovery():
+    return {
+        "schema_version": "2",
+        "name": "Veklom",
+        "description": "Governed AI execution platform",
+        "endpoints": {
+            "mcp": "https://cappo.veklom.com/mcp",
+            "api": "https://api.veklom.com",
+            "governance": "https://cappo.veklom.com"
+        },
+        "discovery": {
+            "agent_card": "https://veklom.com/.well-known/agent-card.json",
+            "mcp_discovery": "https://cappo.veklom.com/mcp (POST, Mcp-Method: server/discover)",
+            "mcp_convenience": "https://veklom.com/.well-known/mcp.json"
+        },
+        "pricing": {
+            "model": "pay-per-call",
+            "currency": "USDC",
+            "discovery": "free",
+            "tiers": [
+                {"tier": "micro", "price_usd": "0.001", "description": "Status/discovery reads"},
+                {"tier": "read", "price_usd": "0.005", "description": "Governed data reads"},
+                {"tier": "action", "price_usd": "0.05", "description": "State mutations"},
+                {"tier": "compute", "price_usd": "0.50", "description": "Agent execution + PGL evidence"}
+            ],
+            "payment_schemes": ["x402", "mpp"],
+            "pricing_detail_url": "https://cappo.veklom.com/api/v1/x402/config"
+        },
+        "authentication": {
+            "type": "oauth2",
+            "authorization_server": "https://veklom.com/.well-known/oauth-authorization-server"
+        },
+        "extensions": {
+            "pgl": {
+                "specification": "https://pgl.veklom.com/spec/v0.1",
+                "a2a_extension": "https://pgl.veklom.com/a2a/v1",
+                "evidence_verification": "https://pgl.veklom.com/verify"
+            }
+        },
+        "agentic_market": {
+            "listed": True,
+            "listing_url": "https://agentic.market/veklom"
+        }
+    }
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_landing(request: Request):
     try:

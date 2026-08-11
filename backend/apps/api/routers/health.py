@@ -12,10 +12,6 @@ from sqlalchemy import text
 from backend.core.config.settings import settings
 from backend.core.database.redis_client import redis_client
 from backend.core.llm.circuit_breaker import CircuitBreaker
-from backend.core.database.database import get_db
-from backend.db.models.authority import AuthorityRun
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import APIRouter, Depends
 
 router = APIRouter(tags=["Health"])
 logger = logging.getLogger(__name__)
@@ -88,9 +84,11 @@ def _uptime_seconds() -> int:
 
 @router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
-    """Shallow health check for SLA-gated E2E monitors."""
+    """Shallow liveness check; does not assert dependency or runtime verification."""
     return {
-        "status": "healthy",
+        "status": "alive",
+        "verification_scope": "PROCESS_ONLY",
+        "dependencies": "NOT_VERIFIED",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": settings.VERSION,
         "service": settings.APP_NAME,
@@ -102,91 +100,6 @@ async def ping_check():
     """Alias for shallow health check."""
     return await health_check()
 
-
-@router.get("/api/quantum-metrics")
-async def get_quantum_metrics(db: AsyncSession = Depends(get_db)):
-    """Quantum UI telemetry derived from real system state."""
-    db_ok, latency = await _check_database()
-    
-    # Let's derive fidelity from the database latency (e.g. fast latency = 99% fidelity)
-    fidelity = 99.99
-    if latency and latency > 100:
-        fidelity = max(80.0, 99.99 - (latency / 100))
-        
-    return {
-        "fidelity": fidelity,
-        "leakage_rate": 0.001 if db_ok else 1.0,
-        "zeno_cycles": _uptime_seconds() // 60,
-        "coherence_time_ms": latency or 0.0,
-        "status": "stable" if db_ok else "unstable"
-    }
-
-
-@router.get("/api/uacp/hub/metrics")
-async def get_hub_metrics(db: AsyncSession = Depends(get_db)):
-    """UACP Hub telemetry derived from real system state."""
-    db_ok, latency = await _check_database()
-    
-    stmt = text("SELECT COUNT(*) FROM authority_runs WHERE status = 'active'")
-    result = await db.execute(stmt)
-    active_runs = result.scalar() or 0
-    
-    return {
-        "determinism_ratio": 99.9,
-        "certainty_index": 0.98,
-        "latency": latency or 0.0,
-        "active_agents_consensus": active_runs,
-        "operational_plane_locked": False
-    }
-
-@router.get("/api/agents/task-force")
-async def get_task_force(db: AsyncSession = Depends(get_db)):
-    """Return task force agents from authority runs."""
-    stmt = text("SELECT id, status FROM authority_runs LIMIT 5")
-    result = await db.execute(stmt)
-    rows = result.fetchall()
-    
-    agents = []
-    for i, row in enumerate(rows):
-        agents.append({
-            "id": i,
-            "role": f"Agent {row.id[:8]}",
-            "status": row.status,
-            "progress": 100 if row.status == "completed" else 50
-        })
-    
-    if not agents:
-        agents = [
-            { "id": 1, "role": "Observer", "status": "idle", "progress": 0 }
-        ]
-        
-    return agents
-
-@router.get("/api/pgl/genome")
-async def get_pgl_genome():
-    return { "status": "active", "version": "1.0.0", "lineage": "verified" }
-
-@router.get("/api/pgl/ledger")
-async def get_pgl_ledger():
-    return { "blocks": 14502, "sync": True, "last_hash": "0x4f...9a" }
-
-from pydantic import BaseModel
-class OrchestrateRequest(BaseModel):
-    prompt: str
-    provider: str
-
-@router.post("/api/cognitive/orchestrate")
-async def cognitive_orchestrate(request: OrchestrateRequest):
-    return {
-        "action_plan": {
-            "steps": [
-                f"Acknowledged intent: {request.prompt}",
-                f"Routing to provider: {request.provider}",
-                "Synthesizing optimal trajectory...",
-                "Orchestration complete."
-            ]
-        }
-    }
 
 @router.api_route("/healthz", methods=["GET", "HEAD"])
 async def deep_health_check():
@@ -210,15 +123,18 @@ async def health_check_v1():
     """Alias for /health — keeps API consistency for clients that call /api/v1/health."""
     return await health_check()
 
+
 @router.api_route("/api/health", methods=["GET", "HEAD"])
 async def health_check_api():
     """Alias for /health — explicitly requested by observability script."""
     return await health_check()
 
+
 @router.api_route("/api/v1/sys/health", methods=["GET", "HEAD"])
 async def health_check_sys():
     """Alias for /health — explicitly requested by frontend observability components."""
     return await health_check()
+
 
 @router.get("/health/detailed")
 async def detailed_health():
@@ -253,10 +169,8 @@ async def detailed_health():
 async def platform_status():
     db_ok, _ = await _check_database()
     redis_ok, _ = await _check_redis()
-
     llm_ok, _, llm_models = await _check_llm()
 
-    # Get Circuit Breaker State
     cb = CircuitBreaker("ollama")
     cb_state = await cb.get_state()
     cb_failures = 0
@@ -275,14 +189,16 @@ async def platform_status():
         "llm_ok": llm_ok,
         "llm_model": getattr(settings, "LLM_MODEL_DEFAULT", "qwen2.5:3b"),
         "llm_models_available": llm_models or [],
-        "groq_fallback_enabled": bool(getattr(settings, "LLM_FALLBACK", "groq") == "groq" and settings.GROQ_API_KEY),
+        "groq_fallback_enabled": bool(
+            getattr(settings, "LLM_FALLBACK", "groq") == "groq" and settings.GROQ_API_KEY
+        ),
         "circuit_breaker": {
             "state": cb_state,
             "failures": cb_failures,
             "threshold": threshold,
-            "cooldown_seconds": cooldown
+            "cooldown_seconds": cooldown,
         },
-        "uptime_seconds": _uptime_seconds()
+        "uptime_seconds": _uptime_seconds(),
     }
 
 

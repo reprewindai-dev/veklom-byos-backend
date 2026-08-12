@@ -86,15 +86,20 @@ async def test_require_lifecycle_failure_raises_exception(mock_redis):
             mock_check_status.return_value = None
 
             from backend.core.services.pgl_identity_gate import PGLIdentityError
-            with pytest.raises(PGLIdentityError) as exc_info:
-                await PGLIdentityGate.require(
-                    db=session,
-                    actor_id="test-actor",
-                    action="test-action",
-                    payload={"key": "val"},
-                    kind=AgentKind.REGISTERED,
-                    scope="test-scope"
-                )
+            with patch("backend.services.pgl_client.PGLClient.commit_intent", new_callable=AsyncMock) as mock_commit_intent:
+                with pytest.raises(PGLIdentityError) as exc_info:
+                    await PGLIdentityGate.require(
+                        db=session,
+                        actor_id="test-actor",
+                        action="test-action",
+                        payload={"key": "val"},
+                        kind=AgentKind.REGISTERED,
+                        scope="test-scope"
+                    )
+                # Assert commit_intent is not reached when lifecycle fails
+                mock_commit_intent.assert_not_called()
 
     assert exc_info.value.actor_id == "test-actor"
-    assert "Failed to evaluate identity lifecycle: Simulated DB failure" in exc_info.value.reason
+    # Assert the internal error is NOT leaked to the caller
+    assert "Simulated DB failure" not in exc_info.value.reason
+    assert "Identity lifecycle evaluation unavailable" in exc_info.value.reason

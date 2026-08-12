@@ -626,7 +626,7 @@ class PGLIdentityGate:
             logger.error(f"[PGLGate] Lifecycle check failed for '{actor_id}': {_lc_exc}")
             raise PGLIdentityError(
                 actor_id=actor_id,
-                reason=f"Failed to evaluate identity lifecycle: {_lc_exc}"
+                reason="Identity lifecycle evaluation unavailable"
             ) from _lc_exc
 
         # ── 3. Build intent hash ──────────────────────────────────────────────────

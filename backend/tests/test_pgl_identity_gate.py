@@ -57,3 +57,44 @@ async def test_require_hard_expired_identity_raises_exception(mock_redis):
     # Verify the exception is raised due to hard expiration
     assert exc_info.value.actor_id == "test-actor"
     assert "Identity is hard-blocked and must be re-registered" in exc_info.value.reason or "expired" in exc_info.value.reason.lower()
+
+@pytest.mark.asyncio
+@patch("backend.core.database.redis_client.redis_client", new_callable=AsyncMock)
+async def test_require_lifecycle_failure_raises_exception(mock_redis):
+    # Ensures a generic exception inside the lifecycle block raises PGLIdentityError
+    session = AsyncMock()
+
+    mock_identity = PGLIdentity(
+        id="test-pgl-id",
+        tenant_id="test-actor",
+        primary_public_key="key",
+        created_at=datetime.now(timezone.utc),
+        metadata_json={}
+    )
+
+    MockResult = namedtuple("MockResult", ["scalar_one_or_none", "one_or_none", "scalars"])
+
+    async def mock_execute(*args, **kwargs):
+        raise ValueError("Simulated DB failure inside stats fetching")
+
+    session.execute = mock_execute
+
+    with patch("backend.core.services.pgl_identity_gate.PGLIdentityGate._resolve_registered_agent", new_callable=AsyncMock) as mock_resolve:
+        mock_resolve.return_value = mock_identity
+
+        with patch("backend.core.services.pgl_identity_gate.PGLIdentityGate._check_status", new_callable=MagicMock) as mock_check_status:
+            mock_check_status.return_value = None
+
+            from backend.core.services.pgl_identity_gate import PGLIdentityError
+            with pytest.raises(PGLIdentityError) as exc_info:
+                await PGLIdentityGate.require(
+                    db=session,
+                    actor_id="test-actor",
+                    action="test-action",
+                    payload={"key": "val"},
+                    kind=AgentKind.REGISTERED,
+                    scope="test-scope"
+                )
+
+    assert exc_info.value.actor_id == "test-actor"
+    assert "Failed to evaluate identity lifecycle: Simulated DB failure" in exc_info.value.reason

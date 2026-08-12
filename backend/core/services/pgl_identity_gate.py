@@ -622,8 +622,12 @@ class PGLIdentityGate:
         except PGLIdentityError:
             raise   # already well-formed
         except Exception as _lc_exc:
-            # Lifecycle module failure is non-fatal for now — log and continue
-            logger.warning(f"[PGLGate] Lifecycle check skipped for '{actor_id}': {_lc_exc}")
+            # Lifecycle module failure MUST be fatal to prevent unauthorized execution.
+            logger.error(f"[PGLGate] Lifecycle check failed for '{actor_id}': {_lc_exc}")
+            raise PGLIdentityError(
+                actor_id=actor_id,
+                reason=f"Failed to evaluate identity lifecycle: {_lc_exc}"
+            ) from _lc_exc
 
         # ── 3. Build intent hash ──────────────────────────────────────────────────
         intent_h = _intent_hash(action, payload)

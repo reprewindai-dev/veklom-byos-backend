@@ -16,3 +16,6 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+## 2024-05-19 - [Optimize multiple count aggregations into a single query]
+**Learning:** Using `func.count().filter(...)` in SQLAlchemy 2.0+ enables combining multiple condition-specific counts into a single database query, instead of firing separate queries for each count.
+**Action:** When calculating multiple statistics on the same table with different `where` conditions (like counting succeeded vs. failed records), use a single `.select()` with multiple `func.count(id).filter(condition)` aggregates instead of sequential queries or iterative `.all()` in Python memory.

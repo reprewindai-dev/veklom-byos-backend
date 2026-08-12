@@ -39,7 +39,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -553,22 +553,25 @@ class PGLIdentityGate:
 
             # Fetch behavioral statistics from the DB for promotion checks
             from backend.db.models.pgl import PGLCertificate
-            # Optimize: Use a single query with filter aggregations to fetch both counts
-            stats_result = await db.execute(
-                select(
-                    func.count(PGLCertificate.id).filter(PGLCertificate.status == "SUCCEEDED"),
-                    func.count(PGLCertificate.id).filter(PGLCertificate.status.in_(["FAILED", "ROLLED_BACK"]))
-                )
+            success_count_result = await db.execute(
+                select(PGLCertificate)
                 .where(
                     PGLCertificate.actor_id == actor_id,
                     PGLCertificate.kind == "post",
+                    PGLCertificate.status == "SUCCEEDED"
                 )
             )
-            stats_row = stats_result.one_or_none()
-            if stats_row:
-                active_attestations, active_rollbacks = stats_row
-            else:
-                active_attestations, active_rollbacks = 0, 0
+            active_attestations = len(success_count_result.scalars().all())
+
+            failure_count_result = await db.execute(
+                select(PGLCertificate)
+                .where(
+                    PGLCertificate.actor_id == actor_id,
+                    PGLCertificate.kind == "post",
+                    PGLCertificate.status.in_(["FAILED", "ROLLED_BACK"])
+                )
+            )
+            active_rollbacks = len(failure_count_result.scalars().all())
 
             _lc = compute_lifecycle(
                 metadata=identity.metadata_json or {},

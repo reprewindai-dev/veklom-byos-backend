@@ -87,9 +87,7 @@ class InfrastructureSentinel:
             try:
                 await asyncio.gather(
                     self._migration_guard(),
-                    self._health_sentinel(),
-                    self._disk_watchdog(),
-                    return_exceptions=True,  # one failure must not kill the others
+                    return_exceptions=True,
                 )
             except asyncio.CancelledError:
                 break
@@ -164,73 +162,6 @@ class InfrastructureSentinel:
         except Exception as exc:
             logger.warning(f"[sentinel][migration-guard] could not load known heads: {exc}")
             return set()
-
-    # ------------------------------------------------------------------
-    # Job 2 — Health Sentinel
-    # ------------------------------------------------------------------
-
-    async def _health_sentinel(self):
-        """
-        Pings /health. If the endpoint is dark for > HEALTH_DARK_THRESHOLD_S
-        seconds we attempt a container self-restart via supervisord/uvicorn
-        signal, BUT ONLY if the database is healthy (to avoid restart loops
-        when DB is down).
-        """
-        db_healthy = False
-        try:
-            from backend.core.database.database import get_db_status
-            status = await get_db_status()
-            db_healthy = status.get("status") == "healthy"
-        except Exception:
-            pass
-
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as http:
-                resp = await http.get(self.HEALTH_URL)
-            if resp.status_code < 400:
-                self._health_dark_since = None  # reset — we're healthy
-                return
-        except Exception as exc:
-            logger.error(f"[sentinel][health] Exception checking health: {exc}")
-            pass  # connection error also counts as dark
-
-        now = asyncio.get_event_loop().time()
-        if self._health_dark_since is None:
-            self._health_dark_since = now
-            logger.warning("[sentinel][health] /health is dark — watching...")
-            return
-
-        dark_for = now - self._health_dark_since
-        logger.warning(f"[sentinel][health] /health dark for {dark_for:.0f}s")
-
-        if dark_for >= self.HEALTH_DARK_THRESHOLD_S:
-            if not db_healthy:
-                logger.warning("[sentinel][health] threshold exceeded, but DB is down. Waiting instead of restarting.")
-                return
-                
-            logger.error(
-                "[sentinel][health] threshold exceeded and DB is healthy — attempting graceful restart"
-            )
-            try:
-                # Inside the container: send SIGHUP to uvicorn (PID 1 or main worker)
-                # Uvicorn treats SIGHUP as a reload signal.
-                # os.kill(1, 1)  # signal.SIGHUP = 1  # TEMPORARY FIX: Disable aggressive restart to stop 502 loop
-                self._health_dark_since = None
-                logger.info("[sentinel][health] SIGHUP would be sent to PID 1 — but aggressive restart is temporarily disabled")
-            except Exception as exc:
-                logger.error(f"[sentinel][health] could not send SIGHUP: {exc}")
-
-    # ------------------------------------------------------------------
-    # Job 3 — Disk Watchdog
-    # ------------------------------------------------------------------
-
-    async def _disk_watchdog(self):
-        """Update the public degraded flag from the disk watchdog result."""
-        self.is_degraded = await inspect_and_prune_disk(
-            self.DISK_PRUNE_THRESHOLD_PCT
-        )
-
 
 # Singleton
 infrastructure_sentinel = InfrastructureSentinel()

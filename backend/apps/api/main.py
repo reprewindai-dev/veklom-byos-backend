@@ -636,6 +636,11 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts())
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(X402PaymentMiddleware)
 
+# --- Static Directories ---
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent.parent / "frontend"
+LANDING_DIR = FRONTEND_DIR / "landing"
+GPC_DIR = FRONTEND_DIR / "gpc"
+WORKSPACE_DIR = FRONTEND_DIR / "workspace"
 
 # --- Exception handlers ---
 def _add_cors_headers(request: Request, response):
@@ -655,6 +660,14 @@ async def not_found(request: Request, exc):
             return FileResponse(str(GPC_DIR / "index.html"))
         else:
             return JSONResponse(status_code=404, content={"detail": "GPC frontend not built"})
+
+    # Check if the requested path maps to a static file in LANDING_DIR
+    req_path = request.url.path.strip("/")
+    if req_path and not ".." in req_path:
+        target_file = LANDING_DIR / req_path
+        if target_file.is_file():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(target_file))
 
     if request.url.path.startswith("/api/"):
         return _add_cors_headers(request, JSONResponse(status_code=404, content={"detail": "Not found"}))
@@ -706,6 +719,15 @@ async def not_found(request: Request, exc):
     query_str = f"?{request.url.query}" if request.url.query else ""
     return RedirectResponse(url=f"https://control.veklom.com{request.url.path}{query_str}", status_code=302)
 
+@app.get("/", include_in_schema=False)
+async def api_root():
+    """Serve the landing page at root."""
+    index_path = LANDING_DIR / "index.html"
+    if index_path.exists():
+        from fastapi.responses import FileResponse
+        return FileResponse(str(index_path))
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="https://control.veklom.com/")
 
 from backend.core.security.sanitizer import InProcessErrorSanitizer
 global_error_sanitizer = InProcessErrorSanitizer()
@@ -775,6 +797,8 @@ app.include_router(duel.router, prefix="/api/v1")
 app.include_router(security_posture.router, prefix="/api/v1")
 
 # Generative Pipeline Compiler (GPC)
+from backend.apps.gpc.gpc_routes import router as gpc_router
+app.include_router(gpc_router)
 
 # Layer 5: Ev
 # --- Telemetry Fallback Endpoints ---
@@ -815,7 +839,6 @@ def _cors_origins() -> list[str]:
         origins = [str(origin).strip() for origin in (configured or []) if str(origin).strip()]
     required = {
         "https://control.veklom.com",
-        "https://veklom-control-plane.vercel.app",
         "https://abide.veklom.com",
     }
     if settings.APP_ENV != "production":

@@ -10,8 +10,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: veklom-api
-    ports:
-      - "8088:8088"
+    expose:
+      - "8088"
     env_file:
       - .env.production
     environment:
@@ -35,8 +35,6 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: veklom-postgres
-    ports:
-      - "5432:5432"
     environment:
       - POSTGRES_USER=veklom
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be provided by deployment configuration}
@@ -54,8 +52,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: veklom-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -105,8 +101,6 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: veklom-ollama
-    ports:
-      - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped

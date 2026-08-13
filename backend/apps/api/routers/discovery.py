@@ -46,17 +46,8 @@ VEKLOM_PRICING = {
     "x402_governance":     {"price_usdc": 2.50,  "unit": "per request",  "name": "Machine Governance"},
     "x402_score":          {"price_usdc": 1.50,  "unit": "per request",  "name": "Machine Score"},
     "x402_verify":         {"price_usdc": 0.002, "unit": "per request",  "name": "Machine Verify"},
-    # Specialized Sovereign Agentic Security & Settlement APIs (Niche Catalog)
-    "forensics_replay":    {"price_usdc": 0.020, "unit": "per replay",   "name": "Sovereign Forensics Replay (Time-Travel Audit)"},
-    "simulate_policy":     {"price_usdc": 0.015, "unit": "per simulation", "name": "Active Policy Simulation"},
-    "pgl_quarantine":      {"price_usdc": 0.010, "unit": "per quarantine", "name": "PGL Dynamic Decoy Quarantine Hub"},
-    "x402_flash_loan":     {"price_usdc": 0.050, "unit": "per loan",     "name": "E2E x402 Micropayment Flash Loan"},
-    "diplomacy_treaty":    {"price_usdc": 0.050, "unit": "per treaty",   "name": "Multi-Agent Diplomacy Treaty Negotiation"},
-    "vnp_bounty_submit":   {"price_usdc": 0.010, "unit": "per submission", "name": "VNP SLA Real-Time Performance Bond"},
-    "pgl_genealogy":       {"price_usdc": 0.010, "unit": "per lookup",   "name": "Merkle Genealogy DNA Ancestry Lineage Proof"},
-    "governed_capi":       {"price_usdc": 0.020, "unit": "per compilation", "name": "Governed cAPI 9-Phase Interceptor Compile"},
-    "pgl_identity_rag":    {"price_usdc": 0.010, "unit": "per resolution", "name": "PGL Cross-Cluster Dynamic Identity RAG"},
 }
+
 
 _disc_log = _logging.getLogger(__name__)
 

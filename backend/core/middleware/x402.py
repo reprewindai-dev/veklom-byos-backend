@@ -52,9 +52,10 @@ from backend.core.config.settings import settings
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Pricing table (mirrors discovery.py — kept in sync)
+# Canonical Capability Pricing Registry
+# Single source of truth for both x402 challenge enforcement and discovery manifests.
 # ---------------------------------------------------------------------------
-_PAID_ROUTES: dict[str, dict] = {
+CAPABILITY_PRICING_REGISTRY: dict[str, dict] = {
     # --- Standard / Backward Compatible Fallbacks ---
     "/api/v1/ai/inference":        {"price_usdc": 0.008, "name": "AI Inference",       "free_daily": 5},
     "/api/v1/ai/chat":             {"price_usdc": 0.005, "name": "AI Chat",            "free_daily": 5},
@@ -67,12 +68,6 @@ _PAID_ROUTES: dict[str, dict] = {
     "/api/v1/compliance/report":   {"price_usdc": 0.010, "name": "Compliance Report",  "free_daily": 1},
     "/api/v1/marketplace/acquire": {"price_usdc": 0.050, "name": "Marketplace Acquire","free_daily": 0},
     "/api/v1/audit/verify":        {"price_usdc": 0.003, "name": "Audit Verify",       "free_daily": 5},
-    "/api/v1/x402/protected-test": {"price_usdc": 0.025, "name": "Protected Test Route", "free_daily": 0, "category": "E", "unit": "per request"},
-    "/api/v1/x402/search":         {"price_usdc": 0.50,  "name": "Machine Search",       "free_daily": 0, "category": "E", "unit": "per request"},
-    "/api/v1/x402/evaluate":       {"price_usdc": 1.00,  "name": "Machine Evaluate",     "free_daily": 0, "category": "E", "unit": "per request"},
-    "/api/v1/x402/governance":     {"price_usdc": 2.50,  "name": "Machine Governance",   "free_daily": 0, "category": "E", "unit": "per request"},
-    "/api/v1/x402/score":          {"price_usdc": 1.50,  "name": "Machine Score",        "free_daily": 0, "category": "E", "unit": "per request"},
-    "/api/v1/x402/verify":         {"price_usdc": 0.002, "name": "Machine Verify",       "free_daily": 0, "category": "E", "unit": "per request"},
 
     # --- Method-Aware Niche Compliance APIs (PayAPI Catalog) ---
     
@@ -115,6 +110,8 @@ _PAID_ROUTES: dict[str, dict] = {
     "POST:/api/v1/execution/authorize":                 {"price_usdc": 1.00, "name": "Decision and Authorization Hashes", "free_daily": 0, "category": "3", "unit": "per authorization"},
     "POST:/v1/exec":                                    {"price_usdc": 1.50, "name": "Execution Response and Execution ID", "free_daily": 0, "category": "3", "unit": "per execution"},
 }
+
+_PAID_ROUTES = CAPABILITY_PRICING_REGISTRY
 
 _FREE_ROUTES_PREFIX = (
     "/health", "/_ping", "/status", "/openapi.json", "/.well-known",
@@ -570,9 +567,6 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         buffered_response.headers["X-Veklom-Receipt-URL"] = f"{VEKLOM_API_BASE}/receipts/{receipt['receipt_id']}"
         buffered_response.headers["X-Payment-Verified"] = "facilitator"
         
-        if getattr(request.state, "test_proof_mode", False):
-            buffered_response.headers["X-Payment-Test-Mode"] = "true"
-
         # VNP Stakes Engine Execution
         if vnp_stake:
             latency_ms = (time.perf_counter() - vnp_start_time) * 1000
@@ -602,27 +596,6 @@ class X402PaymentMiddleware(BaseHTTPMiddleware):
         """
         proof_str = proof.strip()
         
-        # Test Proof Mode
-        if settings.X402_TEST_PROOF_MODE and proof_str.startswith("test_proof_"):
-            if "invalid" in proof_str or "fail" in proof_str:
-                return False, "", "invalid_transaction"
-                
-            from backend.core.database.redis_client import redis_client
-            redis_key = f"x402_tx:{proof_str}"
-            if settings.APP_ENV == "production" and redis_client.is_fallback:
-                return False, "", "replay_storage_unavailable"
-                
-            already_used = await redis_client.get(redis_key)
-            if already_used:
-                return False, "", "replay_detected"
-                
-            claimed = await redis_client.set(redis_key, "used", ex=300, nx=True)
-            if not claimed:
-                return False, "", "replay_detected"
-                
-            request.state.test_proof_mode = True
-            return True, proof_str, ""
-
         # Validate transaction hash format
         if not (proof_str.startswith("0x") and len(proof_str) == 66):
             return False, "", "invalid_authorization_format"

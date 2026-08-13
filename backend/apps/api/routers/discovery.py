@@ -26,27 +26,12 @@ from backend.db.models.governed_run import GovernedRun
 
 router = APIRouter(tags=["discovery"])
 
+from backend.core.middleware.x402 import CAPABILITY_PRICING_REGISTRY
+
+
 # ---------------------------------------------------------------------------
 # Pricing table — single source of truth referenced by x402 + manifests
 # ---------------------------------------------------------------------------
-VEKLOM_PRICING = {
-    "ai_inference":        {"price_usdc": 0.008, "unit": "per request",  "name": "AI Inference"},
-    "ai_chat":             {"price_usdc": 0.005, "unit": "per request",  "name": "AI Chat Completion"},
-    "gpc_compile":         {"price_usdc": 0.015, "unit": "per compile",  "name": "GPC Governed Compile"},
-    "gpc_intent_to_plan":  {"price_usdc": 0.010, "unit": "per plan",     "name": "GPC Intent-to-Plan"},
-    "gpc_run":             {"price_usdc": 0.020, "unit": "per run",      "name": "GPC Plan Execution"},
-    "pipeline_trigger":    {"price_usdc": 0.025, "unit": "per trigger",  "name": "Pipeline Trigger"},
-    "runtime_job":         {"price_usdc": 0.020, "unit": "per job",      "name": "Runtime Job"},
-    "evidence_export":     {"price_usdc": 0.005, "unit": "per export",   "name": "Evidence Export"},
-    "compliance_report":   {"price_usdc": 0.010, "unit": "per report",   "name": "Compliance Report"},
-    "marketplace_acquire": {"price_usdc": 0.050, "unit": "per acquire",  "name": "Marketplace Acquire"},
-    "audit_verify":        {"price_usdc": 0.003, "unit": "per verify",   "name": "Audit Verification"},
-    "x402_search":         {"price_usdc": 0.50,  "unit": "per request",  "name": "Machine Search"},
-    "x402_evaluate":       {"price_usdc": 1.00,  "unit": "per request",  "name": "Machine Evaluate"},
-    "x402_governance":     {"price_usdc": 2.50,  "unit": "per request",  "name": "Machine Governance"},
-    "x402_score":          {"price_usdc": 1.50,  "unit": "per request",  "name": "Machine Score"},
-    "x402_verify":         {"price_usdc": 0.002, "unit": "per request",  "name": "Machine Verify"},
-}
 
 
 _disc_log = _logging.getLogger(__name__)
@@ -419,7 +404,7 @@ async def mcp_sse(request: Request):
                 },
                 "required": ["intent"],
             },
-            "price_usdc": 0.015,
+            "price_usdc": CAPABILITY_PRICING_REGISTRY.get("POST:/api/v1/gpc/compile", CAPABILITY_PRICING_REGISTRY.get("GET:/api/v1/gpc/compile", CAPABILITY_PRICING_REGISTRY.get("/api/v1/gpc/compile", {"price_usdc": 0.02})))["price_usdc"],
             "endpoint": f"{VEKLOM_API_BASE}/gpc/compile",
         },
         {
@@ -437,7 +422,7 @@ async def mcp_sse(request: Request):
                 },
                 "required": ["agent_id", "pgl_id", "target_protocol", "action", "payload"],
             },
-            "price_usdc": 0.020,
+            "price_usdc": CAPABILITY_PRICING_REGISTRY.get("POST:/api/v1/capi/execute", CAPABILITY_PRICING_REGISTRY.get("GET:/api/v1/capi/execute", CAPABILITY_PRICING_REGISTRY.get("/api/v1/capi/execute", {"price_usdc": 0.02})))["price_usdc"],
             "endpoint": f"{VEKLOM_API_BASE}/capi/execute",
         },
         {
@@ -448,7 +433,7 @@ async def mcp_sse(request: Request):
                 "properties": {},
                 "required": [],
             },
-            "price_usdc": 0.005,
+            "price_usdc": CAPABILITY_PRICING_REGISTRY.get("POST:/api/v1/capi/state", CAPABILITY_PRICING_REGISTRY.get("GET:/api/v1/capi/state", CAPABILITY_PRICING_REGISTRY.get("/api/v1/capi/state", {"price_usdc": 0.02})))["price_usdc"],
             "endpoint": f"{VEKLOM_API_BASE}/capi/state",
         },
         {
@@ -462,7 +447,7 @@ async def mcp_sse(request: Request):
                 },
                 "required": ["agent_id", "capability_id"],
             },
-            "price_usdc": 0.005,
+            "price_usdc": CAPABILITY_PRICING_REGISTRY.get("POST:/api/v1/capi/compose", CAPABILITY_PRICING_REGISTRY.get("GET:/api/v1/capi/compose", CAPABILITY_PRICING_REGISTRY.get("/api/v1/capi/compose", {"price_usdc": 0.02})))["price_usdc"],
             "endpoint": f"{VEKLOM_API_BASE}/capi/compose",
         },
         {
@@ -477,7 +462,7 @@ async def mcp_sse(request: Request):
                 },
                 "required": ["messages"],
             },
-            "price_usdc": 0.008,
+            "price_usdc": CAPABILITY_PRICING_REGISTRY.get("POST:/api/v1/ai/inference", CAPABILITY_PRICING_REGISTRY.get("GET:/api/v1/ai/inference", CAPABILITY_PRICING_REGISTRY.get("/api/v1/ai/inference", {"price_usdc": 0.02})))["price_usdc"],
             "endpoint": f"{VEKLOM_API_BASE}/ai/inference",
         },
         {
@@ -490,7 +475,7 @@ async def mcp_sse(request: Request):
                 },
                 "required": ["evidence_id"],
             },
-            "price_usdc": 0.005,
+            "price_usdc": CAPABILITY_PRICING_REGISTRY.get("POST:/api/v1/evidence/export", CAPABILITY_PRICING_REGISTRY.get("GET:/api/v1/evidence/export", CAPABILITY_PRICING_REGISTRY.get("/api/v1/evidence/export", {"price_usdc": 0.02})))["price_usdc"],
             "endpoint": f"{VEKLOM_API_BASE}/evidence/export",
         },
         {
@@ -504,7 +489,7 @@ async def mcp_sse(request: Request):
                 },
                 "required": [],
             },
-            "price_usdc": 0.010,
+            "price_usdc": CAPABILITY_PRICING_REGISTRY.get("POST:/api/v1/compliance/report", CAPABILITY_PRICING_REGISTRY.get("GET:/api/v1/compliance/report", CAPABILITY_PRICING_REGISTRY.get("/api/v1/compliance/report", {"price_usdc": 0.02})))["price_usdc"],
             "endpoint": f"{VEKLOM_API_BASE}/compliance/report",
         },
         {
@@ -518,7 +503,7 @@ async def mcp_sse(request: Request):
                 },
                 "required": ["level"],
             },
-            "price_usdc": 0.0,
+            "price_usdc": CAPABILITY_PRICING_REGISTRY.get("POST:/api/v1/kill-switch/activate", CAPABILITY_PRICING_REGISTRY.get("GET:/api/v1/kill-switch/activate", CAPABILITY_PRICING_REGISTRY.get("/api/v1/kill-switch/activate", {"price_usdc": 0.02})))["price_usdc"],
             "endpoint": f"{VEKLOM_API_BASE}/kill-switch/activate",
         },
     ]
@@ -567,9 +552,9 @@ async def machine_pricing():
     """
     Machine-readable pricing for every governed operation.
     """
-    from backend.core.middleware.x402 import _PAID_ROUTES
+    
     routes_list = []
-    for key, cfg in _PAID_ROUTES.items():
+    for key, cfg in CAPABILITY_PRICING_REGISTRY.items():
         if "category" in cfg:
             method = "POST"
             path = key

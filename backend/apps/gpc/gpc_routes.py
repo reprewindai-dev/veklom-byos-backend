@@ -355,13 +355,14 @@ async def test_pipeline(request: TestRequest):
             for i, node in enumerate(nodes):
                 yield f"data: {json.dumps({'node_id': node.id, 'status': 'running'})}\n\n"
                 await asyncio.sleep(0.3)
-                yield f"data: {json.dumps({
+                event = {
                     'node_id': node.id,
                     'status': 'success',
                     'rows': 100,
                     'columns': ['col1', 'col2', 'col3'],
                     'sample': [['a', 'b', 'c'], ['d', 'e', 'f']]
-                })}\n\n"
+                }
+                yield f"data: {json.dumps(event)}\n\n"
         
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"

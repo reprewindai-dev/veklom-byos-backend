@@ -676,18 +676,23 @@ async def agent_updates(request: Request):
     return {"status": "accepted", "message": "Update processed successfully"}
 
 def _cors_origins() -> list[str]:
+    canonical_production_origins = {
+        "https://veklom.com",
+        "https://app.veklom.com",
+    }
+    if settings.APP_ENV == "production":
+        return sorted(canonical_production_origins)
+
     configured = settings.CORS_ORIGINS
     if isinstance(configured, str):
         origins = [origin.strip() for origin in configured.split(",") if origin.strip()]
     else:
         origins = [str(origin).strip() for origin in (configured or []) if str(origin).strip()]
-    required = {
-        "https://control.veklom.com",
-        "https://abide.veklom.com",
-    }
-    if settings.APP_ENV != "production":
-        required.update({"http://localhost:3000", "http://testserver"})
-    return sorted(set(origins) | required)
+    return sorted(
+        set(origins)
+        | canonical_production_origins
+        | {"http://localhost:3000", "http://testserver"}
+    )
 
 
 app.add_middleware(

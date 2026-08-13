@@ -6,6 +6,7 @@ import uvicorn
 async def _serve() -> None:
     port = int(os.getenv("PORT", "80"))
     workers = int(os.getenv("MAX_WORKERS", multiprocessing.cpu_count() * 2 + 1))
+    forwarded_allow_ips = os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1")
 
     config = uvicorn.Config(
         "backend.apps.api.main:app",
@@ -13,7 +14,7 @@ async def _serve() -> None:
         port=port,
         workers=workers,
         proxy_headers=True,
-        forwarded_allow_ips="*"
+        forwarded_allow_ips=forwarded_allow_ips,
     )
     server = uvicorn.Server(config)
     await server.serve()

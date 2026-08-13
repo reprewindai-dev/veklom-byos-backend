@@ -39,7 +39,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -553,25 +553,26 @@ class PGLIdentityGate:
 
             # Fetch behavioral statistics from the DB for promotion checks
             from backend.db.models.pgl import PGLCertificate
+            # ⚡ Bolt Optimization: Use func.count() at the DB level instead of loading all rows into Python memory with .all()
             success_count_result = await db.execute(
-                select(PGLCertificate)
+                select(func.count(PGLCertificate.id))
                 .where(
                     PGLCertificate.actor_id == actor_id,
                     PGLCertificate.kind == "post",
                     PGLCertificate.status == "SUCCEEDED"
                 )
             )
-            active_attestations = len(success_count_result.scalars().all())
+            active_attestations = success_count_result.scalar_one()
 
             failure_count_result = await db.execute(
-                select(PGLCertificate)
+                select(func.count(PGLCertificate.id))
                 .where(
                     PGLCertificate.actor_id == actor_id,
                     PGLCertificate.kind == "post",
                     PGLCertificate.status.in_(["FAILED", "ROLLED_BACK"])
                 )
             )
-            active_rollbacks = len(failure_count_result.scalars().all())
+            active_rollbacks = failure_count_result.scalar_one()
 
             _lc = compute_lifecycle(
                 metadata=identity.metadata_json or {},

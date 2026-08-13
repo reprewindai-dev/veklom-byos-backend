@@ -109,14 +109,8 @@ if has_valid_endpoint and has_valid_headers:
 
 
 import asyncio
-import time
-import httpx
-import uuid
-from sqlalchemy import select, func, update
-from datetime import datetime, timezone, timedelta
-from backend.apps.api.services.vnp_engine import current_epoch, compute_deviation
+from sqlalchemy import select
 from backend.core.database.database import async_session
-from backend.db.models.vnp import Api, ApiRegion, ProbeEvent, ProbeResultState, RegionalTelemetry, SettlementEntry, LedgerEntryType, SettlementState
 import json
 from backend.core.database.redis_client import redis_client
 from backend.core.security.governance import RevocationManager
@@ -149,125 +143,6 @@ async def pgl_revocation_listener():
             print("[startup] pgl: real Redis not connected, skipping pub/sub revocation listener (fallback mode)")
     except Exception as e:
         print(f"[startup] pgl: revocation listener error: {e}")
-
-async def vnp_background_indexer():
-    """Production-grade background task to compute VNP Stakes Engine updates and perform real probes."""
-    # Run every 5 minutes
-    interval = 300
-
-    cycle_timeout = float(os.getenv("VNP_BACKGROUND_INDEXER_TIMEOUT_SECONDS", "30"))
-    async with httpx.AsyncClient() as client:
-        while True:
-            try:
-                await asyncio.wait_for(
-                    _run_vnp_background_indexer_cycle(client),
-                    timeout=cycle_timeout,
-                )
-            except asyncio.TimeoutError:
-                logger.warning("[vnp-engine] indexer cycle timed out after %.1fs", cycle_timeout)
-            except Exception as exc:
-                logger.warning("[vnp-engine] indexer cycle failed: %s", exc)
-            await asyncio.sleep(interval)
-
-async def _run_vnp_background_indexer_cycle(client: httpx.AsyncClient):
-    ep = current_epoch()
-    print(f"[vnp-engine] Running production indexer for epoch {ep}")
-
-    async with async_session() as db:
-        result = await db.execute(
-            select(Api, ApiRegion)
-            .join(ApiRegion, Api.id == ApiRegion.api_id)
-            .where(ApiRegion.active == True)
-        )
-        rows = result.all()
-
-        for api, region in rows:
-            target_url = f"{region.endpoint_url.rstrip('/')}{api.health_path}"
-            start_time = time.time()
-            probe_id = str(uuid.uuid4())
-            success = False
-            status_code = None
-            result_state = ProbeResultState.transport_error
-            total_ms = 0
-
-            try:
-                resp = await client.get(target_url, timeout=10.0)
-                total_ms = int((time.time() - start_time) * 1000)
-                status_code = resp.status_code
-                success = 200 <= status_code < 300
-                result_state = ProbeResultState.success if success else ProbeResultState.http_error
-            except httpx.TimeoutException:
-                result_state = ProbeResultState.timeout
-            except Exception:
-                result_state = ProbeResultState.transport_error
-
-            db.add(
-                ProbeEvent(
-                    event_id=f"prb_{probe_id[:12]}",
-                    worker_id="cappo-node-primary",
-                    worker_region="us-east-1",
-                    runtime="amphoteric-v1",
-                    api_id=api.id,
-                    api_region_code=region.region_code,
-                    endpoint_url=target_url,
-                    occurred_at=datetime.now(timezone.utc),
-                    total_ms=total_ms or int((time.time() - start_time) * 1000),
-                    status_code=status_code,
-                    result_state=result_state,
-                    success=success,
-                    signature_alg="ed25519",
-                    signature_key_id="cappo-node-1",
-                    signature_value="local-node-signed",
-                )
-            )
-
-            if success:
-                lookback = datetime.now(timezone.utc) - timedelta(hours=1)
-                stats_res = await db.execute(
-                    select(
-                        func.avg(ProbeEvent.total_ms).label("avg_lat"),
-                        func.percentile_cont(0.95).within_group(ProbeEvent.total_ms).label("p95_lat"),
-                        func.count(ProbeEvent.id).label("cnt"),
-                    )
-                    .where(ProbeEvent.api_id == api.id)
-                    .where(ProbeEvent.api_region_code == region.region_code)
-                    .where(ProbeEvent.occurred_at >= lookback)
-                )
-                stats = stats_res.fetchone()
-
-                if stats and stats.cnt >= 5:
-                    p95 = float(stats.p95_lat)
-                    dev = compute_deviation(200.0, p95, 30.0)
-                    db.add(
-                        RegionalTelemetry(
-                            api_id=api.id,
-                            region_code=region.region_code,
-                            window_start=lookback,
-                            window_end=datetime.now(timezone.utc),
-                            sample_count=stats.cnt,
-                            success_count=stats.cnt,
-                            p50_latency_ms=int(stats.avg_lat),
-                            p95_latency_ms=int(p95),
-                            p99_latency_ms=int(p95 * 1.1),
-                            error_rate_percent=0.0,
-                            uptime_percent=100.0,
-                            trust_score=95.0,
-                        )
-                    )
-                    if dev["penalty_usdc"] > 0:
-                        print(f"[vnp-engine] Slashing detected for {api.name}: {dev['penalty_usdc']} USDC")
-                        db.add(
-                            SettlementEntry(
-                                provider_id=api.provider_id,
-                                entry_type=LedgerEntryType.slash,
-                                amount_minor=int(dev["penalty_usdc"] * 1e6),
-                                currency="USD",
-                                state=SettlementState.pending,
-                                reference_code=f"slash-{ep}-{probe_id[:8]}",
-                            )
-                        )
-
-        await db.commit()
 
 from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
 
@@ -356,37 +231,6 @@ async def lifespan(app: FastAPI):
             print(f"[startup] skills: seeded {len(_SEED_SKILLS)} first-class skills")
         except Exception as e:
             print(f"[startup] skills: seed warning: {type(e).__name__}: {e}")
-
-        # Seed initial Demo API for VNP Probing if none exist
-        try:
-            from backend.db.models.vnp import Api, ApiRegion
-            from backend.core.database.database import async_session
-            async with async_session() as seed_db:
-                existing_api = (await seed_db.execute(select(Api).limit(1))).scalar_one_or_none()
-                if not existing_api:
-                    demo_api = Api(
-                        id="api_demo_veklom_1",
-                        provider_id="veklom",
-                        name="Veklom Sovereign API",
-                        endpoint_url="https://api.veklom.com",
-                        health_path="/health",
-                        pricing_model="metered",
-                        x402_ready=True,
-                        stability_rating="Stable",
-                        current_composite_score=99.9
-                    )
-                    seed_db.add(demo_api)
-                    demo_region = ApiRegion(
-                        api_id=demo_api.id,
-                        region_code="global",
-                        endpoint_url="https://api.veklom.com",
-                        active=True
-                    )
-                    seed_db.add(demo_region)
-                    await seed_db.commit()
-                    print("[startup] vnp: seeded demo API (api.veklom.com) for edge probing")
-        except Exception as e:
-            print(f"[startup] vnp: seed warning: {type(e).__name__}: {e}")
 
         # Seed default budget caps for minimum live operator set.
         # These are conservative defaults — adjust per operator via the API.

@@ -37,7 +37,10 @@ from backend.gpc.schemas import (
 from backend.gpc.compiler import GPCCompiler
 from backend.gpc.test_executor import TestExecutionMode, PipelineTestExecutor
 from backend.gpc.github_export import GitHubWorkflowExporter
-from backend.gpc.poltergeist.watcher import CapabilityWatcher, CapabilityRequirement
+from backend.gpc.poltergeist.poltergeist_watcher import (
+    CapabilityRequirement,
+    CapabilityWatcher,
+)
 
 # ============================================================================
 # ROUTER

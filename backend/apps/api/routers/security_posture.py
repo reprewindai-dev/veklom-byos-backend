@@ -4,7 +4,13 @@ from datetime import datetime, timezone
 import httpx
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/security", tags=["Security Posture"])
+from backend.apps.api.routers.runtime_surface import router as runtime_surface_router
+
+# This router is mounted by main.py at /api/v1. Keep individual route paths
+# explicit so Capability OS runtime surfaces can be registered without reviving
+# the legacy dashboard router set.
+router = APIRouter(tags=["Security Posture"])
+router.include_router(runtime_surface_router)
 
 NOT_VERIFIED = "NOT_VERIFIED"
 OBSERVED = "OBSERVED"
@@ -110,7 +116,7 @@ async def check_lockerphycer_health() -> dict:
         }
 
 
-@router.get("/posture")
+@router.get("/security/posture")
 async def get_security_posture():
     """Return observed evidence and explicit verification gaps only."""
     return {

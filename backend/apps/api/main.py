@@ -38,7 +38,7 @@ from backend.core.security.middlewares import (
 
 from backend.core.config.settings import settings
 from backend.core.database.database import Base, engine, get_db
-from backend.core.services.capi_registration import register_with_capi
+from backend.core.services.capi_registration import maintain_capi_registration
 from backend.core.plugins.manager import plugin_manager
 from backend.core.security.middleware import SecurityHeadersMiddleware
 from backend.core.middleware.x402 import X402PaymentMiddleware
@@ -150,7 +150,10 @@ from backend.apps.api.services.vnp_scoring_engine import VNPScoringEngine
 async def lifespan(app: FastAPI):
     # Enforce security configurations
     settings.validate_production()
-    capi_registration_task = asyncio.create_task(register_with_capi())
+    capi_registration_stop = asyncio.Event()
+    capi_registration_task = asyncio.create_task(
+        maintain_capi_registration(settings, capi_registration_stop)
+    )
 
     # Discover available plugins on startup
     await plugin_manager.discover_plugins()
@@ -313,8 +316,13 @@ async def lifespan(app: FastAPI):
     yield
 
     terminal_state_manager.is_running = False
+    capi_registration_stop.set()
     if not capi_registration_task.done():
         capi_registration_task.cancel()
+    try:
+        await capi_registration_task
+    except asyncio.CancelledError:
+        pass
 
     # Graceful shutdown of plugins and operator workforce
     await plugin_manager.shutdown_all()

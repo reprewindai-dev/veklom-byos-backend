@@ -19,7 +19,7 @@ def main() -> int:
         p.add_argument("--db-url")
         p.add_argument("--redis-url")
         p.add_argument("--base-url", default="http://localhost:80")
-        p.add_argument("--dashboard-url", default="http://localhost:3000")
+        p.add_argument("--dashboard-url", default="http://localhost:3002")
         p.add_argument("--format", default="table", choices=["table", "json"])
         p.add_argument("--fail-fast", action="store_true")
         p.add_argument("--verbose", action="store_true")

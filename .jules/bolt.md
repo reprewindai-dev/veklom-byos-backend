@@ -16,3 +16,6 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+## 2025-02-28 - [Consolidate and push conditional aggregations to the DB]
+**Learning:** Using `.scalars().all()` to fetch all rows into Python memory merely to count them with `len()` (or evaluate their status) is a severe memory bottleneck. In `backend/core/services/pgl_identity_gate.py`, two separate queries were pulling all `PGLCertificate` rows to independently count `active_attestations` and `active_rollbacks`.
+**Action:** Push counts to the database using SQLAlchemy's `func.sum()` and `case()` (e.g., `func.sum(case((Model.status == 'SUCCEEDED', 1), else_=0))`). Combine multiple conditional counts into a single batch query to avoid both N+1 problems and excessive memory usage.

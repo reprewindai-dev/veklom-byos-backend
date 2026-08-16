@@ -534,6 +534,8 @@ async def _get_or_create_eval_user(db: AsyncSession, fingerprint: str = "anonymo
     fingerprint_clean = re.sub(r"[^a-zA-Z0-9]", "", (fingerprint or "anonymous")) or "anonymous"
     eval_email = f"eval-{fingerprint_clean[:16]}@eval.veklom.local"
 
+    # Bypass RLS to check if user exists globally
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     result = await db.execute(select(User).where(User.email == eval_email))
     user = result.scalar_one_or_none()
     if user:
@@ -593,8 +595,11 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         if len(body.password) < 8:
             raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
 
-        existing = await db.execute(select(User).where(User.email == email))
-        if existing.scalar_one_or_none():
+        # Bypass RLS to check if user exists globally
+        await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
+        result = await db.execute(select(User).where(User.email == email))
+        
+        if result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email already registered")
 
         # Auto-generate workspace name if not provided
@@ -868,7 +873,10 @@ async def resend_verification(user=Depends(get_current_user), db: AsyncSession =
 @router.post("/forgot-password")
 async def forgot_password(body: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
+    # Bypass RLS to find the user globally
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     result = await db.execute(select(User).where(User.email == email))
+    await db.execute(text("SELECT set_config('app.bypass_rls', '', true)"))
     user = result.scalar_one_or_none()
     
     if not user:
@@ -979,6 +987,9 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
+    
+    # Bypass RLS to find the user globally
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
@@ -1112,6 +1123,11 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         user_agent=request.headers.get("user-agent", "")[:512]
     )
     await db.commit()
+
+    # Re-bootstrap context for the new transaction triggered by refresh
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
+    await db.refresh(user)
+    db.expunge(user)
 
     # Track successful login
     safe_posthog_capture(
@@ -1639,6 +1655,8 @@ async def github_callback(
     full_name = gh_user.get("name") or github_username
 
     # Check if GitHub ID already linked to a different account
+    # Bypass RLS to check existing GitHub linkages globally
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     existing_by_gh = await db.execute(select(User).where(User.github_id == github_id))
     already_linked = existing_by_gh.scalar_one_or_none()
 

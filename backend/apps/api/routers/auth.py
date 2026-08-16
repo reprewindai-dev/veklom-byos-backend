@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
 import httpx
 import pyotp
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
@@ -613,6 +613,12 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         )
         db.add(workspace)
         await db.flush()  # Get workspace.id before creating user
+
+        # Set transaction-local Postgres session for RLS bypass
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace.id)}
+        )
 
         is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
         # Auto-verify test users for automated/programmatic onboarding testing
@@ -1655,6 +1661,12 @@ async def github_callback(
         db.add(workspace)
         await db.flush()
 
+        # Set transaction-local Postgres session for RLS bypass
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace.id)}
+        )
+
         is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
         user = User(
             email=email,
@@ -1707,8 +1719,7 @@ async def github_callback(
 
     if request.method == "GET":
         final_url = _safe_github_redirect(next_url)
-        bridge_html = _github_bridge_html(app_access_token, app_refresh_token, user, final_url)
-        response = HTMLResponse(content=bridge_html)
+        response = RedirectResponse(url=final_url, status_code=302)
         domain = ".veklom.com" if not settings.APP_ENV == "development" else None
         cookie_kwargs = {"httponly": True, "samesite": "lax", "secure": True, "path": "/", "domain": domain}
         response.set_cookie(

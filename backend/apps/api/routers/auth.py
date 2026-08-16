@@ -650,7 +650,14 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
             expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         ))
         await db.commit()
+        
+        # Re-bootstrap context for the new transaction triggered by refresh/audit
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace.id)}
+        )
         await db.refresh(user)
+        db.expunge(user)
 
         await log_audit_event(
             db=db,
@@ -1684,7 +1691,14 @@ async def github_callback(
         await db.flush()
         db.add(WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role="owner", invited_by=user.id))
         await db.commit()
+
+        # Re-bootstrap context for the new transaction triggered by refresh
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace.id)}
+        )
         await db.refresh(user)
+        db.expunge(user)
     else:
         is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
         if is_founder:
@@ -1696,6 +1710,14 @@ async def github_callback(
         user.last_login = datetime.utcnow()
         user.last_activity = datetime.utcnow()
         await db.commit()
+        
+        # Re-bootstrap context for the new transaction triggered by refresh
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(user.workspace_id)}
+        )
+        await db.refresh(user)
+        db.expunge(user)
 
     app_access_token = create_access_token(data={"sub": user.id, "workspace_id": user.workspace_id})
     app_refresh_token = create_access_token(

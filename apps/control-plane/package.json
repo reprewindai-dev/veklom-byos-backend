@@ -1,11 +1,12 @@
 {
-  "name": "veklom-control-plane",
+  "name": "veklom-control-plane-reference",
   "version": "0.1.0",
   "private": true,
+  "deprecated": "Reference-only copy. Canonical Control Plane source is reprewindai-dev/veklom-FRONTEND; do not build or deploy this package.",
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start -p 3000",
+    "dev": "node -e \"console.error('apps/control-plane is reference-only; use reprewindai-dev/veklom-FRONTEND'); process.exit(1)\"",
+    "build": "node -e \"console.error('apps/control-plane is reference-only; canonical build lives in reprewindai-dev/veklom-FRONTEND'); process.exit(1)\"",
+    "start": "node -e \"console.error('apps/control-plane is reference-only; canonical runtime lives in reprewindai-dev/veklom-FRONTEND'); process.exit(1)\"",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

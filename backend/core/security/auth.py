@@ -172,26 +172,9 @@ async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
     db: AsyncSession = Depends(get_db)
 ):
-    if getattr(request.state, "x402_paid", False):
-        class MockAgentUser:
-            id = "agent_autonomous"
-            email = "agent@veklom.com"
-            workspace_id = "agent_workspace"
-            plan = "pro"
-            role = "agent"
-            is_active = True
-            status = "active"
-            full_name = "Autonomous Agent"
-            is_superuser = False
-            mfa_enabled = False
-            github_username = ""
-            github_id = ""
-            github_access_token = ""
-            pgl_id = "agent_pgl"
-            created_at = datetime.now(timezone.utc)
-            last_activity = datetime.now(timezone.utc)
-        return MockAgentUser()
-
+    # Payment admission is deliberately not authentication. Any x402 middleware
+    # state must be consumed by the paid capability boundary itself; it cannot
+    # manufacture a user or workspace at the canonical authentication layer.
     token = None
     if credentials is not None:
         token = credentials.credentials
@@ -374,19 +357,10 @@ async def get_current_user_optional(
 
     Use on endpoints that should work for unauthenticated users (Playground,
     public inference) while still providing the real user object when a valid
-    token is present.
+    token is present. Payment state is intentionally ignored here; a paid
+    request still needs a real authentication/authorization path before it can
+    acquire a persisted identity.
     """
-    if getattr(request.state, "x402_paid", False):
-        class MockAgentUser:
-            id = "agent_autonomous"
-            email = "agent@veklom.com"
-            workspace_id = "agent_workspace"
-            plan = "pro"
-            role = "agent"
-            is_active = True
-            status = "active"
-        return MockAgentUser()
-
     token = None
     if credentials is not None:
         token = credentials.credentials

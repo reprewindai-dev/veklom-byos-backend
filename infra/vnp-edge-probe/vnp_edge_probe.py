@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 import time
@@ -7,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from cryptography.hazmat.primitives import serialization
@@ -19,12 +21,13 @@ REGION = os.getenv("VNP_REGION", "unknown")
 SOFTWARE_VERSION = os.getenv("VNP_SOFTWARE_VERSION", "vnp-edge-probe:v1.1")
 KEY_DIR = Path(os.getenv("VNP_KEY_DIR", "/state"))
 KEY_FILE = KEY_DIR / "ed25519_private.pem"
+DEFAULT_PROBE_TARGET = "https://api.veklom.com/health"
 
 app = FastAPI(title="VNP Edge Probe", version=SOFTWARE_VERSION)
 
 
 class ProbeRequest(BaseModel):
-    target_url: str = Field(default="https://api.veklom.com/health", max_length=512)
+    target_url: str = Field(default=DEFAULT_PROBE_TARGET, max_length=512)
 
 
 def utc_now() -> str:
@@ -77,6 +80,80 @@ def require_hub_key(x_veklom_hub_key: str | None) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _normalize_probe_url(raw_url: str) -> str:
+    """Normalize and reject URL forms that are never safe probe targets."""
+    try:
+        parsed = urlparse(raw_url)
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid target_url") from exc
+
+    if parsed.scheme.lower() not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Invalid target_url scheme")
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Invalid target_url host")
+    if parsed.username is not None or parsed.password is not None:
+        raise HTTPException(status_code=400, detail="Credentials are not allowed in target_url")
+    if parsed.fragment:
+        raise HTTPException(status_code=400, detail="Fragments are not allowed in target_url")
+
+    hostname = parsed.hostname.rstrip(".").lower()
+    if hostname == "localhost" or hostname.endswith(".localhost") or hostname.endswith(".local"):
+        raise HTTPException(status_code=400, detail="Disallowed target_url host")
+
+    try:
+        ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        ip = None
+
+    if ip is not None and (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    ):
+        raise HTTPException(status_code=400, detail="Disallowed target_url IP")
+
+    scheme = parsed.scheme.lower()
+    default_port = 443 if scheme == "https" else 80
+    netloc = hostname if port in (None, default_port) else f"{hostname}:{port}"
+    path = parsed.path or "/"
+    return urlunparse((scheme, netloc, path, "", parsed.query, ""))
+
+
+def _configured_probe_targets() -> tuple[str, ...]:
+    """Return the server-controlled exact URL allowlist for outbound probes."""
+    raw_targets = os.getenv("VNP_PROBE_ALLOWED_URLS", DEFAULT_PROBE_TARGET)
+    targets: list[str] = []
+    for item in raw_targets.split(","):
+        candidate = item.strip()
+        if not candidate:
+            continue
+        normalized = _normalize_probe_url(candidate)
+        if normalized not in targets:
+            targets.append(normalized)
+
+    if not targets:
+        raise RuntimeError("VNP_PROBE_ALLOWED_URLS must contain at least one safe target URL")
+    return tuple(targets)
+
+
+def validate_probe_target_url(raw_url: str) -> str:
+    """Map a requested URL to an exact server-controlled outbound target.
+
+    The request may select only a URL already present in VNP_PROBE_ALLOWED_URLS.
+    Returning the canonical allowlist value, rather than the user-provided string,
+    keeps the outbound request destination under server control.
+    """
+    requested = _normalize_probe_url(raw_url)
+    for allowed_target in _configured_probe_targets():
+        if requested == allowed_target:
+            return allowed_target
+    raise HTTPException(status_code=400, detail="target_url is not an allowed probe target")
+
+
 @app.get("/health")
 async def health():
     return {
@@ -107,6 +184,7 @@ async def probe_ping(
     x_veklom_hub_key: str | None = Header(default=None),
 ):
     require_hub_key(x_veklom_hub_key)
+    target_url = validate_probe_target_url(str(body.target_url))
 
     started_at = utc_now()
     started_monotonic = time.monotonic()
@@ -117,7 +195,7 @@ async def probe_ping(
 
     try:
         async with httpx.AsyncClient(follow_redirects=False) as client:
-            response = await client.get(str(body.target_url), timeout=8.0)
+            response = await client.get(target_url, timeout=8.0)
         status_code = response.status_code
         success = response.status_code in (200, 401, 403)
         response_fingerprint = hashlib.sha256(response.content[:512]).hexdigest()
@@ -130,7 +208,7 @@ async def probe_ping(
         "observation_id": f"{REGION}:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}",
         "region": REGION,
         "status": "active" if success else "degraded",
-        "target_url": str(body.target_url),
+        "target_url": target_url,
         "started_at": started_at,
         "completed_at": completed_at,
         "software_version": SOFTWARE_VERSION,

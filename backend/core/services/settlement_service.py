@@ -104,6 +104,28 @@ class SettlementService:
         return True
 
     @staticmethod
+    async def void_execution(
+        db: AsyncSession,
+        ledger_id: uuid.UUID,
+        reason: str
+    ) -> bool:
+        """Phase 2/3 Alternate: Void execution due to CAPPO denial."""
+        stmt = select(SettlementLedger).where(SettlementLedger.id == ledger_id)
+        result = await db.execute(stmt)
+        entry = result.scalar_one_or_none()
+
+        if not entry or entry.status != SettlementStatus.PENDING:
+            return False
+
+        entry.status = SettlementStatus.VOID_NOT_EXECUTED
+        entry.failure_reason = reason
+        entry.updated_at = datetime.now(timezone.utc)
+
+        await db.commit()
+        logger.info(f"Voided channel {ledger_id} (Reason: {reason})")
+        return True
+
+    @staticmethod
     async def finalize_settlement(
         db: AsyncSession,
         ledger_id: uuid.UUID,

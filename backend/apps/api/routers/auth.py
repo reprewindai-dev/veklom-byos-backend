@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
 import httpx
 import pyotp
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
@@ -534,6 +534,8 @@ async def _get_or_create_eval_user(db: AsyncSession, fingerprint: str = "anonymo
     fingerprint_clean = re.sub(r"[^a-zA-Z0-9]", "", (fingerprint or "anonymous")) or "anonymous"
     eval_email = f"eval-{fingerprint_clean[:16]}@eval.veklom.local"
 
+    # Bypass RLS to check if user exists globally
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     result = await db.execute(select(User).where(User.email == eval_email))
     user = result.scalar_one_or_none()
     if user:
@@ -593,8 +595,11 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         if len(body.password) < 8:
             raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
 
-        existing = await db.execute(select(User).where(User.email == email))
-        if existing.scalar_one_or_none():
+        # Bypass RLS to check if user exists globally
+        await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
+        result = await db.execute(select(User).where(User.email == email))
+        
+        if result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email already registered")
 
         # Auto-generate workspace name if not provided
@@ -613,6 +618,12 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
         )
         db.add(workspace)
         await db.flush()  # Get workspace.id before creating user
+
+        # Set transaction-local Postgres session for RLS bypass
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace.id)}
+        )
 
         is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
         # Auto-verify test users for automated/programmatic onboarding testing
@@ -644,7 +655,14 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
             expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         ))
         await db.commit()
+        
+        # Re-bootstrap context for the new transaction triggered by refresh/audit
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace.id)}
+        )
         await db.refresh(user)
+        db.expunge(user)
 
         await log_audit_event(
             db=db,
@@ -855,7 +873,10 @@ async def resend_verification(user=Depends(get_current_user), db: AsyncSession =
 @router.post("/forgot-password")
 async def forgot_password(body: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
+    # Bypass RLS to find the user globally
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     result = await db.execute(select(User).where(User.email == email))
+    await db.execute(text("SELECT set_config('app.bypass_rls', '', true)"))
     user = result.scalar_one_or_none()
     
     if not user:
@@ -966,6 +987,9 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
+    
+    # Bypass RLS to find the user globally
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
@@ -1099,6 +1123,11 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         user_agent=request.headers.get("user-agent", "")[:512]
     )
     await db.commit()
+
+    # Re-bootstrap context for the new transaction triggered by refresh
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
+    await db.refresh(user)
+    db.expunge(user)
 
     # Track successful login
     safe_posthog_capture(
@@ -1626,6 +1655,8 @@ async def github_callback(
     full_name = gh_user.get("name") or github_username
 
     # Check if GitHub ID already linked to a different account
+    # Bypass RLS to check existing GitHub linkages globally
+    await db.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     existing_by_gh = await db.execute(select(User).where(User.github_id == github_id))
     already_linked = existing_by_gh.scalar_one_or_none()
 
@@ -1655,6 +1686,12 @@ async def github_callback(
         db.add(workspace)
         await db.flush()
 
+        # Set transaction-local Postgres session for RLS bypass
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace.id)}
+        )
+
         is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
         user = User(
             email=email,
@@ -1672,7 +1709,14 @@ async def github_callback(
         await db.flush()
         db.add(WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role="owner", invited_by=user.id))
         await db.commit()
+
+        # Re-bootstrap context for the new transaction triggered by refresh
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace.id)}
+        )
         await db.refresh(user)
+        db.expunge(user)
     else:
         is_founder = bool(settings.ADMIN_EMAIL) and email.lower() == settings.ADMIN_EMAIL.lower()
         if is_founder:
@@ -1684,6 +1728,14 @@ async def github_callback(
         user.last_login = datetime.utcnow()
         user.last_activity = datetime.utcnow()
         await db.commit()
+        
+        # Re-bootstrap context for the new transaction triggered by refresh
+        await db.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(user.workspace_id)}
+        )
+        await db.refresh(user)
+        db.expunge(user)
 
     app_access_token = create_access_token(data={"sub": user.id, "workspace_id": user.workspace_id})
     app_refresh_token = create_access_token(
@@ -1707,8 +1759,7 @@ async def github_callback(
 
     if request.method == "GET":
         final_url = _safe_github_redirect(next_url)
-        bridge_html = _github_bridge_html(app_access_token, app_refresh_token, user, final_url)
-        response = HTMLResponse(content=bridge_html)
+        response = RedirectResponse(url=final_url, status_code=302)
         domain = ".veklom.com" if not settings.APP_ENV == "development" else None
         cookie_kwargs = {"httponly": True, "samesite": "lax", "secure": True, "path": "/", "domain": domain}
         response.set_cookie(

@@ -85,6 +85,7 @@ class SettlementStatus(str, enum.Enum):
     PENDING = "pending"
     SETTLED = "settled"
     FAILED = "failed"
+    VOID_NOT_EXECUTED = "void_not_executed"
 
 
 class SettlementLedger(Base):

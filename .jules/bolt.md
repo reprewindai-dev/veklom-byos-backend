@@ -16,3 +16,7 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+
+## 2026-08-07 - Avoid full ORM model instantiations for database aggregations
+**Learning:** In `backend/core/services/pgl_identity_gate.py`'s promotion checks, querying all `PGLCertificate` ORM records into memory via `select(PGLCertificate).where(...).scalars().all()` and then applying Python's `len()` causes significant O(N) memory allocation and database network bandwidth spikes, essentially creating a severe N+1-style memory bottleneck when an agent has thousands of successful attestations.
+**Action:** Replace iterative or memory-loading count patterns with a single, highly efficient PostgreSQL aggregation. Utilize `func.sum(case(...))` to evaluate conditionally within the database engine and return only scalar integers to Python, entirely bypassing ORM model instantiation.

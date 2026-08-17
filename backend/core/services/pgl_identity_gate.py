@@ -539,6 +539,8 @@ class PGLIdentityGate:
         _trust_level: str = "ACTIVE"
         _lifecycle_notification: dict | None = None
         try:
+            from sqlalchemy import case, func
+
             from backend.core.services.pgl_identity_lifecycle import (
                 TrustLevel,
                 compute_lifecycle,
@@ -553,25 +555,21 @@ class PGLIdentityGate:
 
             # Fetch behavioral statistics from the DB for promotion checks
             from backend.db.models.pgl import PGLCertificate
-            success_count_result = await db.execute(
-                select(PGLCertificate)
-                .where(
-                    PGLCertificate.actor_id == actor_id,
-                    PGLCertificate.kind == "post",
-                    PGLCertificate.status == "SUCCEEDED"
-                )
-            )
-            active_attestations = len(success_count_result.scalars().all())
 
-            failure_count_result = await db.execute(
-                select(PGLCertificate)
+            stats_result = await db.execute(
+                select(
+                    func.sum(case((PGLCertificate.status == "SUCCEEDED", 1), else_=0)),
+                    func.sum(case((PGLCertificate.status.in_(["FAILED", "ROLLED_BACK"]), 1), else_=0))
+                )
                 .where(
                     PGLCertificate.actor_id == actor_id,
                     PGLCertificate.kind == "post",
-                    PGLCertificate.status.in_(["FAILED", "ROLLED_BACK"])
+                    PGLCertificate.status.in_(["SUCCEEDED", "FAILED", "ROLLED_BACK"])
                 )
             )
-            active_rollbacks = len(failure_count_result.scalars().all())
+            stats_row = stats_result.first()
+            active_attestations = int(stats_row[0] or 0) if stats_row else 0
+            active_rollbacks = int(stats_row[1] or 0) if stats_row else 0
 
             _lc = compute_lifecycle(
                 metadata=identity.metadata_json or {},

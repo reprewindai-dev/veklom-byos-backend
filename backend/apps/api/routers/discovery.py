@@ -912,24 +912,27 @@ with httpx.stream("GET", "{base}/mcp/sse") as r:
 @router.get("/api/v1/discovery/leaderboard")
 async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: int = 20):
     """Live Discovery Game Leaderboard derived from real GovernedRun data."""
+    # ⚡ Bolt: Optimize by fetching only required columns instead of the entire GovernedRun model
+    # This prevents loading large JSON blobs (e.g., result_payload, request_payload, hashes) into memory
     all_runs = (
         await db.execute(
-            select(GovernedRun)
+            select(GovernedRun.tenant_id, GovernedRun.pgl_identity, GovernedRun.state)
             .filter(GovernedRun.result_payload.isnot(None))
         )
-    ).scalars().all()
+    ).all()
 
     user_stats = {}
     for run in all_runs:
-        tenant_id = run.tenant_id
+        tenant_id = getattr(run, "tenant_id", None)
         if not tenant_id:
             continue
 
         if tenant_id not in user_stats:
             # Fallback to tenant_id if agent_id isn't in pgl_identity
             agent_name = "Unknown Agent"
-            if isinstance(run.pgl_identity, dict) and "agent_id" in run.pgl_identity:
-                agent_name = run.pgl_identity["agent_id"]
+            pgl_id = getattr(run, "pgl_identity", None)
+            if isinstance(pgl_id, dict) and "agent_id" in pgl_id:
+                agent_name = pgl_id["agent_id"]
 
             user_stats[tenant_id] = {
                 "address": tenant_id,
@@ -942,9 +945,10 @@ async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: i
         stats["completedMissions"] += 1
 
         # Adjust score based on governed run state
-        if run.state in ["success", "completed"]:
+        run_state = getattr(run, "state", None)
+        if run_state in ["success", "completed"]:
             stats["trustScore"] += 10
-        elif run.state in ["failed", "error", "law0_violation"]:
+        elif run_state in ["failed", "error", "law0_violation"]:
             stats["trustScore"] -= 15
 
     # Sort users by trustScore descending

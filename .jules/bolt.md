@@ -16,3 +16,7 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+
+## 2024-08-18 - SQLAlchemy N+1 and Memory Optimization in Discovery Leaderboard
+**Learning:** Returning entire ORM objects with `.scalars().all()` (like `GovernedRun`) fetches large JSON columns into Python memory, causing significant bandwidth and memory bottlenecks for aggregations like the leaderboard, even if those JSON payloads are not heavily utilized in the aggregation logic.
+**Action:** Always prefer fetching only the necessary columns directly (e.g., `select(GovernedRun.tenant_id, GovernedRun.state).all()`) to minimize data transfer overhead, and handle the resulting Row tuples safely using `getattr(row, "attr") or row[0]` for backwards compatibility.

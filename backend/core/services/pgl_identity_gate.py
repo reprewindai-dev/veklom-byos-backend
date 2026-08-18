@@ -39,7 +39,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -553,25 +553,22 @@ class PGLIdentityGate:
 
             # Fetch behavioral statistics from the DB for promotion checks
             from backend.db.models.pgl import PGLCertificate
-            success_count_result = await db.execute(
-                select(PGLCertificate)
+            # Optimize: Use a single query with filter aggregations to fetch both counts
+            stats_result = await db.execute(
+                select(
+                    func.count(PGLCertificate.certificate_id).filter(PGLCertificate.status == "SUCCEEDED"),
+                    func.count(PGLCertificate.certificate_id).filter(PGLCertificate.status.in_(["FAILED", "ROLLED_BACK"]))
+                )
                 .where(
                     PGLCertificate.actor_id == actor_id,
                     PGLCertificate.kind == "post",
-                    PGLCertificate.status == "SUCCEEDED"
                 )
             )
-            active_attestations = len(success_count_result.scalars().all())
-
-            failure_count_result = await db.execute(
-                select(PGLCertificate)
-                .where(
-                    PGLCertificate.actor_id == actor_id,
-                    PGLCertificate.kind == "post",
-                    PGLCertificate.status.in_(["FAILED", "ROLLED_BACK"])
-                )
-            )
-            active_rollbacks = len(failure_count_result.scalars().all())
+            stats_row = stats_result.one_or_none()
+            if stats_row:
+                active_attestations, active_rollbacks = stats_row
+            else:
+                active_attestations, active_rollbacks = 0, 0
 
             _lc = compute_lifecycle(
                 metadata=identity.metadata_json or {},
@@ -625,8 +622,12 @@ class PGLIdentityGate:
         except PGLIdentityError:
             raise   # already well-formed
         except Exception as _lc_exc:
-            # Lifecycle module failure is non-fatal for now — log and continue
-            logger.warning(f"[PGLGate] Lifecycle check skipped for '{actor_id}': {_lc_exc}")
+            # Lifecycle module failure MUST be fatal to prevent unauthorized execution.
+            logger.error(f"[PGLGate] Lifecycle check failed for '{actor_id}': {_lc_exc}")
+            raise PGLIdentityError(
+                actor_id=actor_id,
+                reason="Identity lifecycle evaluation unavailable"
+            ) from _lc_exc
 
         # ── 3. Build intent hash ──────────────────────────────────────────────────
         intent_h = _intent_hash(action, payload)

@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --upgrade pip setuptools wheel && \
-    pip wheel --wheel-dir /wheels -r requirements.txt
+RUN python -m pip install --no-cache-dir --retries 10 --timeout 60 setuptools wheel && \
+    python -m pip wheel --wheel-dir /wheels --no-cache-dir --retries 10 --timeout 60 -r requirements.txt
 
 
 FROM python:3.11-slim AS runtime
@@ -36,8 +36,7 @@ RUN groupadd --system --gid 10001 veklom && \
 
 COPY --from=builder /wheels /wheels
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt && \
+RUN python -m pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt && \
     rm -rf /wheels /root/.cache
 
 COPY backend/ ./backend/

@@ -912,8 +912,6 @@ with httpx.stream("GET", "{base}/mcp/sse") as r:
 @router.get("/api/v1/discovery/leaderboard")
 async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: int = 20):
     """Live Discovery Game Leaderboard derived from real GovernedRun data."""
-    # ⚡ Bolt: Optimize by fetching only required columns instead of the entire GovernedRun model
-    # This prevents loading large JSON blobs (e.g., result_payload, request_payload, hashes) into memory
     all_runs = (
         await db.execute(
             select(GovernedRun.tenant_id, GovernedRun.pgl_identity, GovernedRun.state)

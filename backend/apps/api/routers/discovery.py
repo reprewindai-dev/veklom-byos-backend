@@ -914,10 +914,14 @@ async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: i
     """Live Discovery Game Leaderboard derived from real GovernedRun data."""
     all_runs = (
         await db.execute(
-            select(GovernedRun)
+            select(
+                GovernedRun.tenant_id,
+                GovernedRun.state,
+                GovernedRun.pgl_identity
+            )
             .filter(GovernedRun.result_payload.isnot(None))
         )
-    ).scalars().all()
+    ).all()
 
     user_stats = {}
     for run in all_runs:

@@ -8,15 +8,17 @@ import os
 import re
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from pydantic import BaseModel
 import httpx
+import jwt as pyjwt
 import pyotp
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1341,6 +1343,63 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
         **user_data,
         "workspace": workspace_data,
         "capabilities": capabilities,
+    }
+
+
+def _cappo_assertion_private_key() -> Ed25519PrivateKey:
+    seed_hex = os.getenv("CAPPO_ASSERTION_SIGNING_KEY", "").strip()
+    try:
+        seed = bytes.fromhex(seed_hex)
+        if len(seed) != 32:
+            raise ValueError("CAPPO assertion seed must be 32 bytes")
+        return Ed25519PrivateKey.from_private_bytes(seed)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "CAPPO_ASSERTION_UNCONFIGURED"},
+        )
+
+
+@router.post("/cappo-token")
+async def cappo_token(user=Depends(get_current_user)):
+    """Mint a short-lived CAPPO audience assertion for the authenticated user."""
+    workspace_id = getattr(user, "workspace_id", None)
+    if not workspace_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "WORKSPACE_CONTEXT_MISSING"},
+        )
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    payload = {
+        "iss": os.getenv("CAPPO_ASSERTION_ISSUER", "https://api.veklom.com"),
+        "aud": os.getenv("CAPPO_ASSERTION_AUDIENCE", "https://cappo.veklom.com"),
+        "sub": str(user.id),
+        "workspace_id": workspace_id,
+        "role": getattr(user, "role", None) or "USER",
+        "iat": now,
+        "exp": now + 120,
+        "jti": secrets.token_urlsafe(24),
+    }
+
+    try:
+        token = pyjwt.encode(
+            payload,
+            _cappo_assertion_private_key(),
+            algorithm="EdDSA",
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "CAPPO_ASSERTION_UNCONFIGURED"},
+        )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": 120,
     }
 
 

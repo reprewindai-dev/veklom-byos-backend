@@ -598,7 +598,7 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     recent_runs = [
         {
             "id": getattr(row, "id", None) or row[0] if isinstance(row, tuple) else None,
-            "model": getattr(row, "model", None) or row[1] if isinstance(row, tuple) else "qwen2.5:3b",
+            "model": (getattr(row, "model", None) or row[1]) if isinstance(row, tuple) and (getattr(row, "model", None) or row[1]) else "qwen2.5:3b",
             "route": _route_for_provider(getattr(row, "provider", None) or row[2] if isinstance(row, tuple) else None),
             "latency": getattr(row, "latency_ms", None) or row[3] if isinstance(row, tuple) else 0,
             "tokens": getattr(row, "total_tokens", None) or row[4] if isinstance(row, tuple) else 0,

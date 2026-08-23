@@ -581,15 +581,13 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
     budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
 
-    # ⚡ Bolt Optimization: Fetch specific columns via .all() instead of full ORM models via .scalars().all() to reduce memory and CPU overhead.
     model_rows = (await db.execute(select(ModelConfig.id, ModelConfig.provider, ModelConfig.display_name).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).all()
     model_payload = [
-        {"id": row.id, "provider": row.provider, "display_name": row.display_name}
+        {"id": getattr(row, "id", None) or row[0] if isinstance(row, tuple) else None, "provider": getattr(row, "provider", None) or row[1] if isinstance(row, tuple) else None, "display_name": getattr(row, "display_name", None) or row[2] if isinstance(row, tuple) else None}
         for row in model_rows
     ] or _default_models()
     models_enabled = len(model_payload)
 
-    # ⚡ Bolt Optimization: Selective column fetch to avoid expensive ORM hydration for dashboard payloads.
     result = await db.execute(
         select(ExecLog.id, ExecLog.model, ExecLog.provider, ExecLog.latency_ms, ExecLog.total_tokens, ExecLog.cost_usd, ExecLog.policy_flags, ExecLog.created_at)
         .where(ExecLog.workspace_id == workspace_id)
@@ -599,14 +597,14 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     recent_rows = result.all()
     recent_runs = [
         {
-            "id": row.id,
-            "model": row.model or "qwen2.5:3b",
-            "route": _route_for_provider(row.provider),
-            "latency": row.latency_ms or 0,
-            "tokens": row.total_tokens or 0,
-            "cost": row.cost_usd or 0.0,
-            "policy": "redacted" if row.policy_flags else "passed",
-            "ts": _relative_time(row.created_at, now),
+            "id": getattr(row, "id", None) or row[0] if isinstance(row, tuple) else None,
+            "model": getattr(row, "model", None) or row[1] if isinstance(row, tuple) else "qwen2.5:3b",
+            "route": _route_for_provider(getattr(row, "provider", None) or row[2] if isinstance(row, tuple) else None),
+            "latency": getattr(row, "latency_ms", None) or row[3] if isinstance(row, tuple) else 0,
+            "tokens": getattr(row, "total_tokens", None) or row[4] if isinstance(row, tuple) else 0,
+            "cost": getattr(row, "cost_usd", None) or row[5] if isinstance(row, tuple) else 0.0,
+            "policy": "redacted" if (getattr(row, "policy_flags", None) or row[6] if isinstance(row, tuple) else None) else "passed",
+            "ts": _relative_time(getattr(row, "created_at", None) or row[7] if isinstance(row, tuple) else None, now),
         }
         for row in recent_rows
     ]
@@ -619,7 +617,6 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
 
-    # ⚡ Bolt Optimization: Project only required fields for the UI to save database bandwidth and memory.
     audit_rows = (await db.execute(
         select(AuditLog.id, AuditLog.action, AuditLog.resource_type, AuditLog.resource_id, AuditLog.user_id, AuditLog.hash_chain, AuditLog.prev_hash, AuditLog.created_at)
         .where(AuditLog.workspace_id == workspace_id)
@@ -628,18 +625,17 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     )).all()
     audit_logs = [
         {
-            "id": row.id,
-            "action": row.action,
-            "target": row.resource_type or row.resource_id or "workspace",
-            "actor": row.user_id or actor_email,
-            "hash": (row.hash_chain or row.prev_hash or "")[:12],
-            "ts": row.created_at.isoformat().replace("+00:00", "Z") if row.created_at else "",
+            "id": getattr(row, "id", None) or row[0] if isinstance(row, tuple) else None,
+            "action": getattr(row, "action", None) or row[1] if isinstance(row, tuple) else None,
+            "target": (getattr(row, "resource_type", None) or row[2] if isinstance(row, tuple) else None) or (getattr(row, "resource_id", None) or row[3] if isinstance(row, tuple) else None) or "workspace",
+            "actor": (getattr(row, "user_id", None) or row[4] if isinstance(row, tuple) else None) or actor_email,
+            "hash": ((getattr(row, "hash_chain", None) or row[5] if isinstance(row, tuple) else None) or (getattr(row, "prev_hash", None) or row[6] if isinstance(row, tuple) else None) or "")[:12],
+            "ts": (getattr(row, "created_at", None) or row[7] if isinstance(row, tuple) else None).isoformat().replace("+00:00", "Z") if (getattr(row, "created_at", None) or row[7] if isinstance(row, tuple) else None) else "",
         }
         for row in audit_rows
     ]
 
     try:
-        # ⚡ Bolt Optimization: Use specific columns instead of full SecurityEvent ORM models for faster serialization.
         alert_rows = (await db.execute(
             select(SecurityEvent.id, SecurityEvent.description, SecurityEvent.event_type, SecurityEvent.severity, SecurityEvent.threat_type, SecurityEvent.created_at)
             .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
@@ -651,11 +647,11 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         alert_rows = []
     alerts = [
         {
-            "id": row.id,
-            "title": row.description or row.event_type,
-            "severity": row.severity,
-            "source": row.threat_type or row.event_type,
-            "time": _relative_time(row.created_at, now),
+            "id": getattr(row, "id", None) or row[0] if isinstance(row, tuple) else None,
+            "title": (getattr(row, "description", None) or row[1] if isinstance(row, tuple) else None) or (getattr(row, "event_type", None) or row[2] if isinstance(row, tuple) else None),
+            "severity": getattr(row, "severity", None) or row[3] if isinstance(row, tuple) else None,
+            "source": (getattr(row, "threat_type", None) or row[4] if isinstance(row, tuple) else None) or (getattr(row, "event_type", None) or row[2] if isinstance(row, tuple) else None),
+            "time": _relative_time(getattr(row, "created_at", None) or row[5] if isinstance(row, tuple) else None, now),
         }
         for row in alert_rows
     ]

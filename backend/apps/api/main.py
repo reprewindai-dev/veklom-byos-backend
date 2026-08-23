@@ -609,6 +609,7 @@ from backend.apps.api.routers import (
     workspace,
     capi,
     pgl,
+    pgl_onboarding,
     ai,
     vnp,
     x402,
@@ -641,6 +642,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
+app.include_router(pgl_onboarding.router, prefix="/api/v1")
 
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(vnp.router, prefix="/api/v1")

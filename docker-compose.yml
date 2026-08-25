@@ -10,8 +10,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: veklom-api
-    expose:
-      - "8088"
+    ports:
+      - "8088:8088"
     env_file:
       - .env.production
     environment:

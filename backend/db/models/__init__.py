@@ -122,3 +122,6 @@ __all__ = [
     "GpcPipelineAudit",
 ]
 from backend.db.models.payment import Payment
+
+from .evidence import *
+from .authority import *

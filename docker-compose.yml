@@ -33,7 +33,7 @@ services:
 
   # PostgreSQL Database
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: veklom-postgres
     environment:
       - POSTGRES_USER=veklom

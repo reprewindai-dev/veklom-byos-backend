@@ -17,7 +17,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config.settings import settings
@@ -912,43 +912,41 @@ with httpx.stream("GET", "{base}/mcp/sse") as r:
 @router.get("/api/v1/discovery/leaderboard")
 async def get_discovery_leaderboard(db: AsyncSession = Depends(get_db), limit: int = 20):
     """Live Discovery Game Leaderboard derived from real GovernedRun data."""
-    all_runs = (
-        await db.execute(
-            select(GovernedRun)
-            .filter(GovernedRun.result_payload.isnot(None))
+    agent_id_expr = GovernedRun.pgl_identity.op("->>")("agent_id")
+
+    score_diff_expr = func.sum(
+        case(
+            (GovernedRun.state.in_(["success", "completed"]), 10),
+            (GovernedRun.state.in_(["failed", "error", "law0_violation"]), -15),
+            else_=0
         )
-    ).scalars().all()
+    )
 
-    user_stats = {}
-    for run in all_runs:
-        tenant_id = run.tenant_id
-        if not tenant_id:
-            continue
+    stmt = (
+        select(
+            GovernedRun.tenant_id,
+            func.max(agent_id_expr).label("agent_id"),
+            func.count().label("completed_missions"),
+            score_diff_expr.label("score_diff")
+        )
+        .where(GovernedRun.result_payload.isnot(None))
+        .where(GovernedRun.tenant_id.isnot(None))
+        .where(GovernedRun.tenant_id != "")
+        .group_by(GovernedRun.tenant_id)
+        .order_by(score_diff_expr.desc())
+        .limit(limit)
+    )
 
-        if tenant_id not in user_stats:
-            # Fallback to tenant_id if agent_id isn't in pgl_identity
-            agent_name = "Unknown Agent"
-            if isinstance(run.pgl_identity, dict) and "agent_id" in run.pgl_identity:
-                agent_name = run.pgl_identity["agent_id"]
+    rows = (await db.execute(stmt)).all()
 
-            user_stats[tenant_id] = {
-                "address": tenant_id,
-                "trustScore": 500,  # Base score for discovery operators
-                "completedMissions": 0,
-                "agent": agent_name
-            }
-
-        stats = user_stats[tenant_id]
-        stats["completedMissions"] += 1
-
-        # Adjust score based on governed run state
-        if run.state in ["success", "completed"]:
-            stats["trustScore"] += 10
-        elif run.state in ["failed", "error", "law0_violation"]:
-            stats["trustScore"] -= 15
-
-    # Sort users by trustScore descending
-    sorted_users = sorted(user_stats.values(), key=lambda u: u["trustScore"], reverse=True)[:limit]
+    sorted_users = []
+    for row in rows:
+        sorted_users.append({
+            "address": row.tenant_id,
+            "trustScore": 500 + (row.score_diff or 0),
+            "completedMissions": row.completed_missions,
+            "agent": row.agent_id or "Unknown Agent"
+        })
 
     leaderboard = []
     for i, user in enumerate(sorted_users):

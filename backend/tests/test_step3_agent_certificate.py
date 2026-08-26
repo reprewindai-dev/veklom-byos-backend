@@ -1,15 +1,15 @@
-﻿"""Integration test: Step 3/7 — Agent Certificate issuance.
+"""Integration test: Step 3/7 � Agent Certificate issuance.
 
 Verifies the machine-accountability graph invariants (Section 7, Constitutional Architecture):
 
-  cert.pgl_identity_id = AGENT identity (machine anchor — who executed)
-  cert.actor_id        = OPERATOR identity (human anchor — who authorized)
+  cert.pgl_identity_id = AGENT identity (machine anchor � who executed)
+  cert.actor_id        = OPERATOR identity (human anchor � who authorized)
 
 These must never be the same row. Tests:
   1. Step 3 fails with HTTP 400 if Step 1 (operator identity) is not complete.
   2. Step 3 creates a NEW PGLIdentity for the agent (not the operator).
   3. cert.pgl_identity_id == agent identity, cert.actor_id == operator user.
-  4. agent_identity.metadata_json['authorized_by_operator'] traces back to operator.
+  4. profile_identity.metadata_json['authorized_by_operator'] traces back to operator.
   5. All three rows (PGLIdentity + PGLCertificate + PGLLedgerEvent) commit atomically.
   6. On GnomLedger failure: rollback leaves zero orphan rows.
   7. Retry after failure is clean (no duplicate constraint error).
@@ -23,7 +23,7 @@ import pytest_asyncio
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.core.database.database import engine, async_session_factory
+from backend.core.database.database import engine, async_session
 from backend.db.models.pgl import PGLCertificate, PGLIdentity, PGLLedgerEvent
 from backend.db.models.user import User
 from backend.db.models.workspace import Workspace
@@ -78,7 +78,7 @@ async def test_step3_fails_without_step1():
     from backend.apps.api.routers.pgl_onboarding import _resolve_pgl_identity_id
 
     workspace_id = str(uuid.uuid4())
-    async with async_session_factory() as db:
+    async with async_session() as db:
         user_id = str(uuid.uuid4())
         ws = Workspace(id=workspace_id, name="no-step1", owner_id=user_id)
         user = User(id=user_id, email="no-step1@test.com",
@@ -93,7 +93,7 @@ async def test_step3_fails_without_step1():
 
 
 @pytest.mark.asyncio
-async def test_step3_creates_separate_agent_identity():
+async def test_step3_creates_separate_profile_identity():
     """Agent cert must bind to a NEW agent PGLIdentity, NOT the operator identity.
 
     Constitutional invariant: cert.pgl_identity_id != cert.actor_id
@@ -104,31 +104,31 @@ async def test_step3_creates_separate_agent_identity():
         _canonical_hash,
     )
 
-    async with async_session_factory() as db:
+    async with async_session() as db:
         user, workspace_id, operator_pgl_id = await _seed_operator(db)
         actor_id = str(user.id)
 
-        # ── replicate Step 3 logic ───────────────────────────────────────────
+        # -- replicate Step 3 logic -------------------------------------------
         resolved_op_id = await _resolve_pgl_identity_id(db, actor_id, workspace_id)
         assert resolved_op_id == operator_pgl_id
 
         # Create agent identity (distinct from operator)
         from backend.core.security.ed25519_keys import Ed25519KeyManager
-        agent_pgl_id = str(uuid.uuid4())
+        profile_pgl_id = str(uuid.uuid4())
         _, pub_b64 = Ed25519KeyManager.generate_key_pair()
 
-        agent_identity = PGLIdentity(
-            id=agent_pgl_id,
+        profile_identity = PGLIdentity(
+            id=profile_pgl_id,
             tenant_id=workspace_id,
             primary_public_key=f"ed25519_{pub_b64}",
             key_type="ed25519",
             metadata_json={
-                "kind": "agent",
+                "kind": "execution_profile",
                 "agent_name": "Nexus-1",
                 "authorized_by_operator": operator_pgl_id,
             },
         )
-        db.add(agent_identity)
+        db.add(profile_identity)
         await db.flush()
 
         ubc_id = f"cert_{uuid.uuid4().hex[:16]}"
@@ -140,7 +140,7 @@ async def test_step3_creates_separate_agent_identity():
             kind="birth",
             workspace_id=workspace_id,
             actor_id=actor_id,              # operator
-            pgl_identity_id=agent_pgl_id,   # agent — MUST differ
+            pgl_identity_id=profile_pgl_id,   # agent � MUST differ
             genome_hash=genome_hash,
             constitution_hash=constitution_hash,
             status="active",
@@ -151,21 +151,21 @@ async def test_step3_creates_separate_agent_identity():
             db,
             workspace_id=workspace_id,
             actor_id=actor_id,
-            event_type="agent_registered_with_gnomledger",
-            payload={"certificate_id": ubc_id, "agent_pgl_id": agent_pgl_id},
+            event_type="execution_profile_registered_with_gnomledger",
+            payload={"certificate_id": ubc_id, "profile_pgl_id": profile_pgl_id},
             certificate_id=ubc_id,
             pgl_identity_id=operator_pgl_id,
         )
 
         await db.commit()
 
-        # ── verify provenance chain ──────────────────────────────────────────
+        # -- verify provenance chain ------------------------------------------
         saved_cert = (await db.execute(
             select(PGLCertificate).where(PGLCertificate.certificate_id == ubc_id)
         )).scalar_one()
 
         assert saved_cert.pgl_identity_id is not None
-        assert saved_cert.pgl_identity_id == agent_pgl_id
+        assert saved_cert.pgl_identity_id == profile_pgl_id
         assert saved_cert.pgl_identity_id != operator_pgl_id, (
             "cert.pgl_identity_id must be the AGENT identity, not the operator"
         )
@@ -173,12 +173,12 @@ async def test_step3_creates_separate_agent_identity():
             "cert.actor_id must be the OPERATOR user (who authorized)"
         )
 
-        saved_agent_identity = (await db.execute(
-            select(PGLIdentity).where(PGLIdentity.id == agent_pgl_id)
+        saved_profile_identity = (await db.execute(
+            select(PGLIdentity).where(PGLIdentity.id == profile_pgl_id)
         )).scalar_one()
 
-        assert saved_agent_identity.metadata_json.get("kind") == "agent"
-        assert saved_agent_identity.metadata_json.get("authorized_by_operator") == operator_pgl_id
+        assert saved_profile_identity.metadata_json.get("kind") == "execution_profile"
+        assert saved_profile_identity.metadata_json.get("authorized_by_operator") == operator_pgl_id
 
         saved_event = (await db.execute(
             select(PGLLedgerEvent).where(PGLLedgerEvent.certificate_id == ubc_id)
@@ -193,30 +193,30 @@ async def test_step3_rollback_leaves_no_orphans():
     from backend.apps.api.routers.pgl_onboarding import _resolve_pgl_identity_id
     from backend.core.security.ed25519_keys import Ed25519KeyManager
 
-    async with async_session_factory() as db:
+    async with async_session() as db:
         user, workspace_id, operator_pgl_id = await _seed_operator(db)
 
-        agent_pgl_id = str(uuid.uuid4())
+        profile_pgl_id = str(uuid.uuid4())
         _, pub_b64 = Ed25519KeyManager.generate_key_pair()
 
         try:
             await _resolve_pgl_identity_id(db, str(user.id), workspace_id)
 
-            agent_identity = PGLIdentity(
-                id=agent_pgl_id,
+            profile_identity = PGLIdentity(
+                id=profile_pgl_id,
                 tenant_id=workspace_id,
                 primary_public_key=f"ed25519_{pub_b64}",
                 key_type="ed25519",
-                metadata_json={"kind": "agent"},
+                metadata_json={"kind": "execution_profile"},
             )
-            db.add(agent_identity)
+            db.add(profile_identity)
 
             cert = PGLCertificate(
                 certificate_id="will-fail",
                 kind="birth",
                 workspace_id=workspace_id,
                 actor_id=str(user.id),
-                pgl_identity_id=agent_pgl_id,
+                pgl_identity_id=profile_pgl_id,
                 genome_hash="x",
                 constitution_hash="x",
                 status="active",
@@ -234,7 +234,7 @@ async def test_step3_rollback_leaves_no_orphans():
         assert orphan_cert is None
 
         orphan_identity = (await db.execute(
-            select(PGLIdentity).where(PGLIdentity.id == agent_pgl_id)
+            select(PGLIdentity).where(PGLIdentity.id == profile_pgl_id)
         )).scalar_one_or_none()
         assert orphan_identity is None
 
@@ -250,19 +250,19 @@ async def test_step3_retry_is_clean():
     )
     from backend.core.security.ed25519_keys import Ed25519KeyManager
 
-    async with async_session_factory() as db:
+    async with async_session() as db:
         user, workspace_id, operator_pgl_id = await _seed_operator(db)
         actor_id = str(user.id)
         ubc_id = f"cert_{uuid.uuid4().hex[:16]}"
 
-        # ── First attempt fails ──────────────────────────────────────────────
+        # -- First attempt fails ----------------------------------------------
         try:
             resolved_op = await _resolve_pgl_identity_id(db, actor_id, workspace_id)
             bad_pgl_id = str(uuid.uuid4())
             _, pub = Ed25519KeyManager.generate_key_pair()
             db.add(PGLIdentity(id=bad_pgl_id, tenant_id=workspace_id,
                                primary_public_key=f"ed25519_{pub}", key_type="ed25519",
-                               metadata_json={"kind": "agent"}))
+                               metadata_json={"kind": "execution_profile"}))
             db.add(PGLCertificate(certificate_id=ubc_id, kind="birth",
                                   workspace_id=workspace_id, actor_id=actor_id,
                                   pgl_identity_id=bad_pgl_id, genome_hash="x",
@@ -272,13 +272,13 @@ async def test_step3_retry_is_clean():
         except RuntimeError:
             await db.rollback()
 
-        # ── Retry: must succeed cleanly ──────────────────────────────────────
+        # -- Retry: must succeed cleanly --------------------------------------
         resolved_op = await _resolve_pgl_identity_id(db, actor_id, workspace_id)
         good_pgl_id = str(uuid.uuid4())
         _, pub2 = Ed25519KeyManager.generate_key_pair()
         db.add(PGLIdentity(id=good_pgl_id, tenant_id=workspace_id,
                            primary_public_key=f"ed25519_{pub2}", key_type="ed25519",
-                           metadata_json={"kind": "agent", "authorized_by_operator": resolved_op}))
+                           metadata_json={"kind": "execution_profile", "authorized_by_operator": resolved_op}))
         gh = _canonical_hash({"intended_use": "retry"})
         ch = _canonical_hash({"tools": [], "permissions": [], "safety_rules": []})
         db.add(PGLCertificate(certificate_id=ubc_id, kind="birth",
@@ -286,7 +286,7 @@ async def test_step3_retry_is_clean():
                               pgl_identity_id=good_pgl_id, genome_hash=gh,
                               constitution_hash=ch, status="active"))
         await _write_ledger_event(db, workspace_id=workspace_id, actor_id=actor_id,
-                                  event_type="agent_registered_with_gnomledger",
+                                  event_type="execution_profile_registered_with_gnomledger",
                                   payload={"certificate_id": ubc_id},
                                   certificate_id=ubc_id,
                                   pgl_identity_id=resolved_op)

@@ -57,6 +57,44 @@ def _canonical_hash(obj: dict) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+async def _resolve_pgl_identity_id(
+    db: AsyncSession,
+    actor_id: str,
+    workspace_id: str,
+) -> str:
+    """Resolve a guaranteed-non-null PGL identity ID for actor / workspace.
+
+    Lookup order:
+      1. users.pgl_id    — operator identity created during Step 1 onboarding
+      2. pgl_identities.tenant_id == workspace_id  — fallback for workspace anchor
+
+    Raises:
+      HTTPException(400)  if no identity has been created yet (Step 1 incomplete)
+    """
+    # 1. Check the user's own PGL ID (set during operator-identity bootstrap)
+    user_result = await db.execute(
+        select(User.pgl_id).where(User.id == actor_id)
+    )
+    pgl_id = user_result.scalar_one_or_none()
+
+    if not pgl_id:
+        # 2. Workspace-level anchor
+        identity_result = await db.execute(
+            select(PGLIdentity.id).where(PGLIdentity.tenant_id == workspace_id).limit(1)
+        )
+        pgl_id = identity_result.scalar_one_or_none()
+
+    if not pgl_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No PGL identity found for this operator or workspace. "
+                "Complete Step 1 (Operator Identity) before issuing an agent certificate."
+            ),
+        )
+    return pgl_id
+
+
 async def _last_event_hash(db: AsyncSession, workspace_id: str) -> Optional[str]:
     """Return the event_hash of the most recent PGLLedgerEvent for this workspace."""
     result = await db.execute(
@@ -325,18 +363,30 @@ async def generate_agent_certificate(
     agent_id = f"agent_{uuid.uuid4().hex[:16]}"
 
     genome_payload = {
-        "agent_name": agent_name,
-        "agent_type": certificate_data.get("agent_type", "autonomous"),
-        "capabilities": certificate_data.get("capabilities", []),
-        "safety_rules": certificate_data.get("safety_rules", ["no_secrets"]),
+        # Required fields matching GnomLedger GenomePayload schema
+        "model_family": certificate_data.get("model_family", "veklom-agent"),
+        "model_version": certificate_data.get("model_version", "1.0.0"),
+        "architecture": certificate_data.get("architecture", "capability-os"),
+        "intended_use": certificate_data.get("declared_purpose") or certificate_data.get("intended_use") or "governed-capability-execution",
+        "risk_category": certificate_data.get("risk_category", "low"),
+        # Optional enrichment fields
         "tools": certificate_data.get("tools", ["governance", "policy-check"]),
         "permissions": certificate_data.get("permissions", ["read"]),
-        "workspace_id": workspace_id,
-        "version": "1.0.0",
+        "safety_rules": certificate_data.get("safety_rules", ["no_secrets"]),
+        "runtime_config": {
+            "agent_name": agent_name,
+            "agent_type": certificate_data.get("agent_type", "autonomous"),
+            "workspace_id": workspace_id,
+        },
     }
 
     try:
-        # Register agent with GnomLedger (real PGL system)
+        # ── Step A: Verify operator identity exists (Step 1 must be complete) ─
+        # We need the operator identity to authorize this issuance, but the cert
+        # itself will belong to the AGENT identity created below — not the operator.
+        operator_pgl_id = await _resolve_pgl_identity_id(db, actor_id, workspace_id)
+
+        # ── Step B: Register agent with GnomLedger (real PGL) ────────────────
         pgl_client = PGLClient()
         gnomledger_response = await pgl_client.register_agent(
             agent_id=agent_id,
@@ -347,11 +397,37 @@ async def generate_agent_certificate(
             genome_payload=genome_payload,
             parent_agent_ids=certificate_data.get("parent_agent_ids"),
         )
-        
+
         # Extract UBC ID from GnomLedger response
         ubc_id = gnomledger_response.get("certificate_id") or gnomledger_response.get("agent_id")
-        
-        # Write local PGLCertificate record with UBC ID for tracking
+
+        # ── Step C: Create the AGENT's own PGLIdentity (machine anchor) ───────
+        # Constitutional invariant (Section 7):
+        #   cert.pgl_identity_id  = the AGENT identity (who executed)
+        #   cert.actor_id         = the OPERATOR identity (who authorized)
+        # These are two distinct accountable principals. Never collapse them.
+        from backend.core.security.ed25519_keys import Ed25519KeyManager
+        agent_pgl_id = str(uuid.uuid4())
+        _, agent_pub_b64 = Ed25519KeyManager.generate_key_pair()
+        agent_identity = PGLIdentity(
+            id=agent_pgl_id,
+            tenant_id=workspace_id,
+            primary_public_key=f"ed25519_{agent_pub_b64}",
+            key_type="ed25519",
+            metadata_json={
+                "kind": "agent",
+                "agent_name": agent_name,
+                "agent_id": agent_id,
+                "workspace_id": workspace_id,
+                "authorized_by_operator": operator_pgl_id,  # provenance chain
+                "jurisdiction": certificate_data.get("jurisdiction", "US"),
+                "declared_purpose": certificate_data.get("declared_purpose", ""),
+            },
+        )
+        db.add(agent_identity)
+        await db.flush()  # get the row into the session without committing
+
+        # ── Step D: Persist birth certificate bound to AGENT identity ─────────
         genome_hash = _canonical_hash(genome_payload)
         constitution_data = {
             "tools": certificate_data.get("tools", ["governance", "policy-check"]),
@@ -361,16 +437,18 @@ async def generate_agent_certificate(
         constitution_hash = _canonical_hash(constitution_data)
 
         cert = PGLCertificate(
-            certificate_id=ubc_id,  # Use UBC ID from GnomLedger
+            certificate_id=ubc_id,          # UBC ID from GnomLedger
             kind="birth",
             workspace_id=workspace_id,
-            actor_id=actor_id,
+            actor_id=actor_id,              # OPERATOR: who authorized issuance
+            pgl_identity_id=agent_pgl_id,   # AGENT: whose identity this cert represents
             genome_hash=genome_hash,
             constitution_hash=constitution_hash,
             status="active",
         )
         db.add(cert)
 
+        # ── Step E: Append hash-chained ledger event (operator as actor) ──────
         event = await _write_ledger_event(
             db,
             workspace_id=workspace_id,
@@ -379,31 +457,45 @@ async def generate_agent_certificate(
             payload={
                 "certificate_id": ubc_id,
                 "agent_id": agent_id,
+                "agent_pgl_id": agent_pgl_id,
+                "operator_pgl_id": operator_pgl_id,
                 "genome_hash": genome_hash,
                 "constitution_hash": constitution_hash,
                 "agent_name": agent_name,
                 "gnomledger_response": gnomledger_response,
             },
             certificate_id=ubc_id,
+            pgl_identity_id=operator_pgl_id,  # ledger event actor = operator
         )
 
+        # ── Step F: Commit atomically — identity + cert + event ───────────────
         await db.commit()
 
         return {
-            "certificate_id": ubc_id,  # UBC ID from GnomLedger
+            "certificate_id": ubc_id,          # UBC ID from GnomLedger
             "agent_id": agent_id,
+            "agent_pgl_id": agent_pgl_id,       # agent's machine identity
+            "operator_pgl_id": operator_pgl_id, # operator who authorized
             "genome_hash": genome_hash,
             "constitution_hash": constitution_hash,
             "ledger_event_hash": event.event_hash,
             "status": "registered",
-            "message": "Agent registered with GnomLedger and UBC ID assigned",
+            "message": "Agent identity created and certificate issued atomically",
             "gnomledger_response": gnomledger_response,
         }
+    except HTTPException:
+        # Re-raise clean HTTP errors (Step 1 incomplete, billing cap, etc.)
+        await db.rollback()
+        raise
     except Exception as e:
+        # Roll back all writes — no orphan identity, cert, or event persisted
+        await db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to register agent with GnomLedger: {str(e)}"
+            detail=f"Agent certificate issuance failed (all writes rolled back): {str(e)}"
         )
+
+
 
 
 # ---------------------------------------------------------------------------

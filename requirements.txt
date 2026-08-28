@@ -1,6 +1,6 @@
 aiofiles==24.1.0
 aiohappyeyeballs==2.6.2
-aiohttp==3.14.1
+aiohttp==3.14.3
 aiosignal==1.4.0
 aiosqlite==0.21.0
 alembic==1.16.1
@@ -25,7 +25,7 @@ click==8.4.2
 click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
-cryptography==48.0.1
+cryptography==50.0.0
 cytoolz==1.1.0
 distro==1.9.0
 dnspython==2.8.0
@@ -80,7 +80,7 @@ propcache==0.5.2
 protobuf==7.35.1
 psutil==6.1.0
 py-ecc==8.0.0
-pyasn1==0.6.3
+pyasn1==0.6.4
 pycparser==3.0
 pycryptodome==3.23.0
 pydantic==2.11.4

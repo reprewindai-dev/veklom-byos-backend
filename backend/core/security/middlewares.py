@@ -16,6 +16,7 @@ ZERO_TRUST_PUBLIC_PATHS = (
     # Protocol manifest — exact match ensures public access even if prefix check has edge cases
     "/protocol.json",
     "/protocol/introspect",
+    "/api/auth/acceptance",
 )
 
 ZERO_TRUST_PUBLIC_PREFIXES = (

@@ -2373,6 +2373,15 @@ bcrypt = [
 ]
 
 [[package]]
+name = "pgvector"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/ec/6eb80aebc728200f95229219882994c1b0585b956ca47da5edb9d062627a/pgvector-0.5.0.tar.gz", hash = "sha256:07a9dcf735696879406983afc6eba9a787cef7c0cf6c367ca1a5779f036dee74", size = 35170, upload-time = "2026-07-06T18:27:27.767Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5c/e4/a5573f2c579ca9ad133293bfb624148ba0893674ca4a6eeec85ced9a6a09/pgvector-0.5.0-py3-none-any.whl", hash = "sha256:fedc9800894e6da2be51358d7b7c574bf34f247ca741a5a09513622135f5964f", size = 30958, upload-time = "2026-07-06T18:27:26.797Z" },
+]
+
+[[package]]
 name = "posthog"
 version = "7.38.3"
 source = { registry = "https://pypi.org/simple" }
@@ -3726,6 +3735,7 @@ dependencies = [
     { name = "aiofiles" },
     { name = "aiosqlite" },
     { name = "astor" },
+    { name = "asyncpg" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "instructor" },
@@ -3739,6 +3749,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pandas" },
     { name = "passlib", extra = ["bcrypt"] },
+    { name = "pgvector" },
     { name = "posthog" },
     { name = "psycopg2-binary" },
     { name = "pyasn1" },
@@ -3770,6 +3781,7 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "astor", specifier = ">=0.8.1" },
+    { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "asyncpg", marker = "extra == 'production'", specifier = ">=0.30.0" },
     { name = "fastapi", specifier = ">=0.139.0,<0.140.0" },
     { name = "gunicorn", marker = "extra == 'production'", specifier = ">=22.0.0" },
@@ -3785,6 +3797,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4" },
+    { name = "pgvector", specifier = ">=0.5.0" },
     { name = "posthog", specifier = ">=3.5.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0" },
     { name = "pyasn1", specifier = ">=0.6.3" },

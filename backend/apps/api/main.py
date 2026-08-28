@@ -689,6 +689,8 @@ def _cors_origins() -> list[str]:
     canonical_production_origins = {
         "https://veklom.com",
         "https://app.veklom.com",
+        "http://localhost:3002",
+        "http://localhost:3000",
     }
     if settings.APP_ENV == "production":
         return sorted(canonical_production_origins)
@@ -710,6 +712,72 @@ app.add_middleware(
     allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Payment", "X-Payment-Proof", "X-VNP-Stake"],
+    allow_headers=["*"],
     expose_headers=["X-VNP-Stake-Result", "X-VNP-Signature", "X-Veklom-Receipt-ID"],
 )
+# ADD ACCEPTANCE ROUTE TO MAIN APP DIRECTLY
+from pydantic import BaseModel
+from typing import Optional
+from backend.core.database.database import get_db
+
+class AcceptanceRequest(BaseModel):
+    user_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+    document_type: Optional[str] = None
+    document_version: Optional[str] = None
+    document_url: Optional[str] = None
+    document_hash: Optional[str] = None
+    accepted_at: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    acceptance_source: Optional[str] = None
+    github_user_id: Optional[str] = None
+    installation_id: Optional[str] = None
+
+@app.post("/api/auth/acceptance")
+async def record_user_acceptance_root(req: AcceptanceRequest, db: AsyncSession = Depends(get_db)):
+    await db.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_acceptances (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(255),
+            tenant_id VARCHAR(255),
+            document_type VARCHAR(255),
+            document_version VARCHAR(255),
+            document_url VARCHAR(255),
+            document_hash VARCHAR(255),
+            accepted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            ip_address VARCHAR(255),
+            user_agent TEXT,
+            acceptance_source VARCHAR(255),
+            github_user_id VARCHAR(255),
+            installation_id VARCHAR(255)
+        )
+    """))
+    
+    await db.execute(text("""
+        INSERT INTO user_acceptances (
+            user_id, tenant_id, document_type, document_version,
+            document_url, document_hash, accepted_at, ip_address,
+            user_agent, acceptance_source, github_user_id, installation_id
+        ) VALUES (
+            :user_id, :tenant_id, :document_type, :document_version,
+            :document_url, :document_hash, :accepted_at, :ip_address,
+            :user_agent, :acceptance_source, :github_user_id, :installation_id
+        )
+    """), {
+        "user_id": req.user_id,
+        "tenant_id": req.tenant_id,
+        "document_type": req.document_type,
+        "document_version": req.document_version,
+        "document_url": req.document_url,
+        "document_hash": req.document_hash,
+        "accepted_at": datetime.fromisoformat(req.accepted_at.replace("Z", "+00:00")) if req.accepted_at else datetime.now(timezone.utc),
+        "ip_address": req.ip_address,
+        "user_agent": req.user_agent,
+        "acceptance_source": req.acceptance_source,
+        "github_user_id": req.github_user_id,
+        "installation_id": req.installation_id
+    })
+    await db.commit()
+    return {"status": "ok", "message": "Acceptance recorded durably in backend"}
+

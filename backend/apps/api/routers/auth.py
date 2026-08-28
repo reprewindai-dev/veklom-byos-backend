@@ -8,15 +8,17 @@ import os
 import re
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from pydantic import BaseModel
 import httpx
+import jwt as pyjwt
 import pyotp
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1344,6 +1346,63 @@ async def me(user=Depends(get_current_user), db: AsyncSession = Depends(get_db))
     }
 
 
+def _cappo_assertion_private_key() -> Ed25519PrivateKey:
+    seed_hex = os.getenv("CAPPO_ASSERTION_SIGNING_KEY", "").strip()
+    try:
+        seed = bytes.fromhex(seed_hex)
+        if len(seed) != 32:
+            raise ValueError("CAPPO assertion seed must be 32 bytes")
+        return Ed25519PrivateKey.from_private_bytes(seed)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "CAPPO_ASSERTION_UNCONFIGURED"},
+        )
+
+
+@router.post("/cappo-token")
+async def cappo_token(user=Depends(get_current_user)):
+    """Mint a short-lived CAPPO audience assertion for the authenticated user."""
+    workspace_id = getattr(user, "workspace_id", None)
+    if not workspace_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "WORKSPACE_CONTEXT_MISSING"},
+        )
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    payload = {
+        "iss": os.getenv("CAPPO_ASSERTION_ISSUER", "https://api.veklom.com"),
+        "aud": os.getenv("CAPPO_ASSERTION_AUDIENCE", "https://cappo.veklom.com"),
+        "sub": str(user.id),
+        "workspace_id": workspace_id,
+        "role": getattr(user, "role", None) or "USER",
+        "iat": now,
+        "exp": now + 120,
+        "jti": secrets.token_urlsafe(24),
+    }
+
+    try:
+        token = pyjwt.encode(
+            payload,
+            _cappo_assertion_private_key(),
+            algorithm="EdDSA",
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "CAPPO_ASSERTION_UNCONFIGURED"},
+        )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": 120,
+    }
+
+
 @router.patch("/me")
 async def update_me(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     for field in ("full_name",):
@@ -1786,3 +1845,65 @@ async def github_callback(
         "is_new_user": is_new,
         "github_username": github_username,
     }
+class AcceptanceRequest(BaseModel):
+    user_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+    document_type: Optional[str] = None
+    document_version: Optional[str] = None
+    document_url: Optional[str] = None
+    document_hash: Optional[str] = None
+    accepted_at: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    acceptance_source: Optional[str] = None
+    github_user_id: Optional[str] = None
+    installation_id: Optional[str] = None
+
+@router.post("/acceptance")
+async def record_user_acceptance(req: AcceptanceRequest, db: AsyncSession = Depends(get_db)):
+    # Create table if it doesn't exist (fail-safe for demo)
+    await db.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_acceptances (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(255),
+            tenant_id VARCHAR(255),
+            document_type VARCHAR(255),
+            document_version VARCHAR(255),
+            document_url VARCHAR(255),
+            document_hash VARCHAR(255),
+            accepted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            ip_address VARCHAR(255),
+            user_agent TEXT,
+            acceptance_source VARCHAR(255),
+            github_user_id VARCHAR(255),
+            installation_id VARCHAR(255)
+        )
+    """))
+    
+    # Insert record
+    await db.execute(text("""
+        INSERT INTO user_acceptances (
+            user_id, tenant_id, document_type, document_version,
+            document_url, document_hash, accepted_at, ip_address,
+            user_agent, acceptance_source, github_user_id, installation_id
+        ) VALUES (
+            :user_id, :tenant_id, :document_type, :document_version,
+            :document_url, :document_hash, :accepted_at, :ip_address,
+            :user_agent, :acceptance_source, :github_user_id, :installation_id
+        )
+    """), {
+        "user_id": req.user_id,
+        "tenant_id": req.tenant_id,
+        "document_type": req.document_type,
+        "document_version": req.document_version,
+        "document_url": req.document_url,
+        "document_hash": req.document_hash,
+        "accepted_at": datetime.now(timezone.utc) if not req.accepted_at else req.accepted_at,
+        "ip_address": req.ip_address,
+        "user_agent": req.user_agent,
+        "acceptance_source": req.acceptance_source,
+        "github_user_id": req.github_user_id,
+        "installation_id": req.installation_id
+    })
+    await db.commit()
+    return {"status": "ok", "message": "Acceptance recorded durably"}

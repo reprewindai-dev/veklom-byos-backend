@@ -1,8 +1,8 @@
-﻿content = '''"""Integration test: Step 3/7 - Agent Certificate issuance.
+"""Integration test: Step 3/7 - Execution Profile issuance.
 
 Verifies the machine-accountability graph invariants (Section 7, Constitutional Architecture):
 
-  cert.pgl_identity_id = Execution Profile identity (machine anchor - who executed)
+  cert.pgl_identity_id = Execution Profile identity (machine anchor - governance profile, not the ephemeral actor)
   cert.actor_id        = OPERATOR identity (human anchor - who authorized)
 
 These must never be the same row. Tests:
@@ -278,6 +278,3 @@ async def test_step3_retry_is_clean():
             .where(PGLCertificate.certificate_id == ubc_id)
         )).scalar_one()
         assert count == 1
-'''
-with open('backend/tests/test_step3_agent_certificate.py', 'w', encoding='utf-8') as f:
-    f.write(content)

@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from sqlalchemy import text
 
 from backend.core.config.settings import settings
@@ -136,10 +136,12 @@ async def health_check_sys():
     return await health_check()
 
 @router.get("/health/dependencies")
-async def dependencies_health():
+async def dependencies_health(response: Response):
     db_ok, db_latency = await _check_database()
     redis_ok, redis_latency = await _check_redis()
     llm_ok, llm_latency, llm_models = await _check_llm()
+    if not (db_ok and redis_ok):
+        response.status_code = 503
     return {
         "status": "healthy" if db_ok and redis_ok else "degraded",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -204,3 +206,5 @@ async def platform_status():
 @router.post("/test-post")
 async def test_post():
     return {"status": "success", "message": "POST endpoint works"}
+
+

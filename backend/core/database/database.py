@@ -47,8 +47,8 @@ try:
         engine_options["poolclass"] = NullPool
     else:
         engine_options.update(
-            pool_size=10,
-            max_overflow=15,
+            pool_size=5,
+            max_overflow=10,
             pool_timeout=10,
             pool_pre_ping=True,
             pool_recycle=1800,

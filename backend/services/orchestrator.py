@@ -194,8 +194,6 @@ class RunOrchestrator:
             "run_id": run.run_id,
             "workspace_id": run.workspace_id,
             "pre_execution_certificate_id": pgl_identity.get("pre_execution_certificate_id"),
-            "profile_id": pgl_identity.get("pgl_identity_id"),
-            "operator_id": run.actor_id,
             "genome_hash": pgl_identity.get("genome_hash"),
             "constitution_hash": pgl_identity.get("constitution_hash"),
             "plan_hash": pgl_identity.get("plan_hash"),
@@ -223,8 +221,6 @@ class RunOrchestrator:
             run_id=execution_identity["run_id"],
             workspace_id=execution_identity["workspace_id"],
             pre_execution_certificate_id=execution_identity["pre_execution_certificate_id"],
-            profile_id=execution_identity["profile_id"],
-            operator_id=execution_identity["operator_id"],
             genome_hash=execution_identity["genome_hash"],
             constitution_hash=execution_identity["constitution_hash"],
             plan_hash=execution_identity["plan_hash"],
@@ -270,27 +266,8 @@ class RunOrchestrator:
         run.budget = budget
         return await self._update_state(run, VeklomRunStatus.BILLED)
 
-    async def _invalidate_eei(self, run: VeklomRun):
-        """Invalidate the Ephemeral Execution Identity per the EEI Doctrine."""
-        if not run.execution_identity:
-            return
-        eei_id = run.execution_identity.get("id")
-        if not eei_id:
-            return
-            
-        from backend.db.models.pgl import ExecutionIdentity
-        from sqlalchemy import update
-        from datetime import datetime, timezone
-        
-        stmt = update(ExecutionIdentity).where(ExecutionIdentity.id == eei_id).values(
-            invalidated_at=datetime.now(timezone.utc)
-        )
-        await self.db.execute(stmt)
-        await self.db.commit()
-
     async def seal_run(self, run: VeklomRun) -> VeklomRun:
         # Final sealing logic
-        await self._invalidate_eei(run)
         return await self._update_state(run, VeklomRunStatus.SEALED)
 
     async def fail_run(self, run: VeklomRun, error_details: dict) -> VeklomRun:
@@ -298,7 +275,6 @@ class RunOrchestrator:
         if not run.evidence:
             run.evidence = {}
         run.evidence["error"] = error_details
-        await self._invalidate_eei(run)
         return await self._update_state(run, VeklomRunStatus.FAILED)
 
     async def rollback_run(self, run: VeklomRun, reason: str = "Operator aborted") -> VeklomRun:
@@ -313,5 +289,4 @@ class RunOrchestrator:
             )
             run.pgl_identity.update(rb_result)
             
-        await self._invalidate_eei(run)
         return await self._update_state(run, VeklomRunStatus.ROLLED_BACK)

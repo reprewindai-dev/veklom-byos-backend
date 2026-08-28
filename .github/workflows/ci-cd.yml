@@ -24,7 +24,7 @@ jobs:
         run: |
           HEAD_COUNT=$(docker run --rm \
             -e PYTHONPATH=/app \
-            -e DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/ci_db" \
+            -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
             -e REDIS_URL="redis://localhost:6379" \
             -e SECRET_KEY="ci-test-secret-key-not-real" \
             -e ENVIRONMENT="test" \
@@ -39,7 +39,7 @@ jobs:
         run: |
           docker run --rm \
             -e PYTHONPATH=/app \
-            -e DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/ci_db" \
+            -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
             -e REDIS_URL="redis://localhost:6379" \
             -e SECRET_KEY="ci-test-secret-key-not-real" \
             -e ENVIRONMENT="test" \
@@ -50,7 +50,7 @@ jobs:
 
           docker run --rm \
             -e PYTHONPATH=/app \
-            -e DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/ci_db" \
+            -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
             -e REDIS_URL="redis://localhost:6379" \
             -e SECRET_KEY="ci-test-secret-key-not-real" \
             -e ENVIRONMENT="test" \

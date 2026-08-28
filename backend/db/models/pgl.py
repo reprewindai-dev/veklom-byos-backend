@@ -111,11 +111,6 @@ class ExecutionIdentity(Base):
     workspace_id = Column(String(64), nullable=False, index=True)
     pre_execution_certificate_id = Column(String(64), ForeignKey("pgl_certificates.certificate_id"), nullable=False, index=True)
     
-    # Ephemeral Agent Doctrine
-    profile_id = Column(String(64), nullable=True, index=True)
-    operator_id = Column(String(64), nullable=True, index=True)
-    invalidated_at = Column(DateTime(timezone=True), nullable=True)
-    
     # Payload elements from the CAPPO Gold Blueprint
     genome_hash = Column(String(128), nullable=True)
     constitution_hash = Column(String(128), nullable=True)

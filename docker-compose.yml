@@ -23,9 +23,6 @@ services:
       - redis
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    networks:
-      - default
-      - coolify
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health/dependencies', timeout=5)\" || exit 1"]
@@ -70,9 +67,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: veklom-celery-worker
-    networks:
-      - default
-      - coolify
     env_file:
       - .env.production
     environment:
@@ -126,9 +120,4 @@ volumes:
   postgres_data:
   redis_data:
   ollama_data:
-
-networks:
-  default:
-  coolify:
-    external: true
 

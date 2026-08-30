@@ -61,11 +61,7 @@ jobs:
             sleep 1
           done
 
-          docker exec veklom-ci-postgres \
-            psql -v ON_ERROR_STOP=1 -U veklom_ci -d veklom_ci \
-            -c 'CREATE EXTENSION IF NOT EXISTS vector;'
-
-      - name: Verify Single Alembic Head
+      - name: Verify single Alembic head and readable legacy history
         run: |
           set -euo pipefail
           HEAD_COUNT=$(docker run --rm \
@@ -84,9 +80,6 @@ jobs:
             exit 1
           fi
 
-      - name: Apply complete Alembic history to fresh PostgreSQL
-        run: |
-          set -euo pipefail
           docker run --rm \
             --network veklom-ci \
             -e PYTHONPATH=/app \
@@ -99,6 +92,9 @@ jobs:
             veklom-backend-ci:${{ github.sha }} \
             python -m alembic -c backend/db/migrations/alembic.ini history
 
+      - name: Bootstrap a brand-new canonical PostgreSQL schema
+        run: |
+          set -euo pipefail
           docker run --rm \
             --network veklom-ci \
             -e PYTHONPATH=/app \
@@ -109,9 +105,53 @@ jobs:
             -e SECRET_KEY="ci-test-secret-key-not-real" \
             -e APP_ENV="test" \
             veklom-backend-ci:${{ github.sha }} \
-            python -m alembic -c backend/db/migrations/alembic.ini upgrade head
+            python -m backend.db.bootstrap
 
-      - name: Run backend tests on migrated PostgreSQL
+      - name: Prove bootstrap is one-shot and Alembic owns the stamped schema
+        run: |
+          set -euo pipefail
+
+          if docker run --rm \
+            --network veklom-ci \
+            -e PYTHONPATH=/app \
+            -e DATABASE_URL="$CI_DATABASE_URL" \
+            -e REDIS_URL="$CI_REDIS_URL" \
+            -e CELERY_BROKER_URL="$CI_REDIS_URL" \
+            -e CELERY_RESULT_BACKEND="redis://veklom-ci-redis:6379/1" \
+            -e SECRET_KEY="ci-test-secret-key-not-real" \
+            -e APP_ENV="test" \
+            veklom-backend-ci:${{ github.sha }} \
+            python -m backend.db.bootstrap; then
+            echo "ERROR: fresh bootstrap unexpectedly accepted a non-empty database"
+            exit 1
+          fi
+
+          CURRENT=$(docker run --rm \
+            --network veklom-ci \
+            -e PYTHONPATH=/app \
+            -e DATABASE_URL="$CI_DATABASE_URL" \
+            -e REDIS_URL="$CI_REDIS_URL" \
+            -e SECRET_KEY="ci-test-secret-key-not-real" \
+            -e APP_ENV="test" \
+            veklom-backend-ci:${{ github.sha }} \
+            python -m alembic -c backend/db/migrations/alembic.ini current)
+          printf '%s\n' "$CURRENT"
+          printf '%s' "$CURRENT" | grep -q '(head)'
+
+      - name: Prove bootstrapped schema has zero model drift
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --network veklom-ci \
+            -e PYTHONPATH=/app \
+            -e DATABASE_URL="$CI_DATABASE_URL" \
+            -e REDIS_URL="$CI_REDIS_URL" \
+            -e SECRET_KEY="ci-test-secret-key-not-real" \
+            -e APP_ENV="test" \
+            veklom-backend-ci:${{ github.sha }} \
+            python -m alembic -c backend/db/migrations/alembic.ini check
+
+      - name: Run backend tests on canonical PostgreSQL
         run: |
           set -euo pipefail
           docker run --rm \
@@ -162,7 +202,7 @@ jobs:
 
       - name: Report
         if: success()
-        run: echo "Build, PostgreSQL migration, tests, imports, SBOM, and vulnerability gate passed for ${{ github.sha }}"
+        run: echo "Build, canonical bootstrap, Alembic ownership/drift, tests, imports, SBOM, and vulnerability gate passed for ${{ github.sha }}"
 
       - name: Clean up CI dependencies
         if: always()
@@ -228,7 +268,7 @@ jobs:
           echo "--- Building image ---"
           docker build -t "$IMAGE" -t "$COOLIFY_IMAGE" .
 
-          echo "--- Running Alembic migrations ---"
+          echo "--- Running Alembic migrations for existing production database ---"
           docker run --rm \
             --network coolify \
             --env-file "$ENVFILE" \

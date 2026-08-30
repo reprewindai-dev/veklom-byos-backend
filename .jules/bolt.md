@@ -16,3 +16,6 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+## 2023-08-30 - Ruff Unsafe Fixes Introduce Regressions
+**Learning:** Running `ruff check --unsafe-fixes` blindly to appease linters can break functional code by modifying assignments that it perceives as "unused" (F841) but might be intended for downstream effects or simply not completed yet, transforming them into standalone expressions (like changing `q_lower = q.lower()` to `q.lower()`).
+**Action:** Avoid using `--unsafe-fixes` unless specifically required and always manually inspect automated fixes that alter logic structures or remove variables.

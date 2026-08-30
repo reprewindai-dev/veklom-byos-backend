@@ -1,48 +1,13 @@
-name: One-shot Activation assertion env correction
+name: Retired Activation assertion env helper
 
 on:
-  push:
-    branches: [activation-e2e-authority-binding]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  correct:
-    if: ${{ !contains(github.event.head_commit.message, '[auto-assertion-env]') }}
+  retired:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: activation-e2e-authority-binding
-      - name: Restore unrelated monitoring endpoint and verify assertion contract
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('.env.example')
-          text = path.read_text(encoding='utf-8')
-          accidental = 'PYROSCOPE_URL=https://profiles-prod-006-prod-ca-east-0.grafana.net'
-          original = 'PYROSCOPE_URL=https://profiles-prod-006.grafana.net'
-          if accidental in text:
-              text = text.replace(accidental, original, 1)
-          required = [
-              'CAPPO_ASSERTION_SIGNING_KEY=',
-              'CAPPO_ASSERTION_ISSUER=https://api.veklom.com',
-              'CAPPO_ASSERTION_AUDIENCE=https://cappo.veklom.com',
-          ]
-          missing = [item for item in required if item not in text]
-          if missing:
-              raise SystemExit(f'missing CAPPO assertion env contract: {missing}')
-          path.write_text(text, encoding='utf-8')
-          PY
-      - name: Commit correction
-        run: |
-          if git diff --quiet; then
-            echo 'No correction required.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .env.example
-          git commit -m 'config: restore monitoring endpoint after assertion docs [auto-assertion-env]'
-          git push origin HEAD:activation-e2e-authority-binding
+      - run: echo "Retired. CAPPO assertion environment contract is committed and must be verified by canonical CI."

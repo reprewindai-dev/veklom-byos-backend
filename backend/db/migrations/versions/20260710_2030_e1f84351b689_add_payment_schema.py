@@ -7,9 +7,8 @@ Create Date: 2026-07-10 20:30:00.000000
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'e1f84351b689'
@@ -47,7 +46,7 @@ def upgrade() -> None:
     )
     op.create_index('ix_banker_payments_from_status', 'banker_payments', ['from_address', 'status'], unique=False)
     op.create_index(op.f('ix_banker_payments_tx_hash'), 'banker_payments', ['tx_hash'], unique=False)
-    
+
     if inspector.has_table('agent_wallet_ledger'):
         op.drop_table('agent_wallet_ledger')
 

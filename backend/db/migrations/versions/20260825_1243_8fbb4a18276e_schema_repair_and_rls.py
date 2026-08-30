@@ -1,16 +1,18 @@
 """schema_repair_and_rls
 
 Revision ID: 8fbb4a18276e
-Revises: 1234abcd5678
+Revises: 7b2f6ea50d81
 Create Date: 2026-08-25 12:43:51.688576
 
 """
 from typing import Sequence, Union
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
+
 revision: str = '8fbb4a18276e'
-down_revision: Union[str, None] = '1234abcd5678'
+down_revision: Union[str, None] = '7b2f6ea50d81'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -8,8 +8,6 @@ Create Date: 2026-07-11 19:04:39.029843
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
 revision: str = '5340720ec7f0'
@@ -33,14 +31,14 @@ def upgrade() -> None:
             columns = [c['name'] for c in inspector.get_columns(table)]
         except NoSuchTableError:
             continue
-            
+
         if 'workspace_id' not in columns:
             continue
-            
+
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;")
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;")
         op.execute(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table};")
-        
+
         # Policy: Only allow access if workspace_id matches current_setting('app.workspace_id', true)
         # We also allow access if app.bypass_rls is 'on' for background tasks / super users.
         policy_sql = f"""

@@ -5,9 +5,8 @@ Revises:
 Create Date: 2026-05-28
 
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '001_add_payment_tables'
@@ -36,7 +35,7 @@ def upgrade() -> None:
             sa.Column('confirmed_at', sa.DateTime(timezone=True), nullable=True),
             sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), onupdate=sa.text('now()')),
         )
-    
+
     # Create orders table
     if not inspector.has_table('orders'):
         op.create_table(
@@ -51,7 +50,7 @@ def upgrade() -> None:
             sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
             sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), onupdate=sa.text('now()')),
         )
-    
+
     # Create ledger table
     if not inspector.has_table('ledger'):
         op.create_table(
@@ -64,7 +63,7 @@ def upgrade() -> None:
             sa.Column('note', sa.Text, nullable=True),
             sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
         )
-    
+
     # Create webhook_receipts table
     if not inspector.has_table('webhook_receipts'):
         op.create_table(
@@ -73,7 +72,7 @@ def upgrade() -> None:
             sa.Column('body_sha256', sa.String(64), nullable=False),
             sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
         )
-    
+
     # Create recon_findings table
     if not inspector.has_table('recon_findings'):
         op.create_table(
@@ -83,7 +82,7 @@ def upgrade() -> None:
             sa.Column('chain_sum', sa.Float, nullable=False),
             sa.Column('detected_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
         )
-    
+
     # Create webhook_dead_letter table
     if not inspector.has_table('webhook_dead_letter'):
         op.create_table(

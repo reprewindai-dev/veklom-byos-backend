@@ -7,9 +7,8 @@ Create Date: 2026-08-08 18:20:00.000000
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'bbbb0000aaaa'
@@ -29,7 +28,7 @@ def upgrade() -> None:
     op.alter_column('vnp_apis', 'stability_rating',
                existing_type=sa.String(length=50),
                server_default=sa.text("'Unmeasured'::character varying"))
-               
+
     # 3. Data Migration: For existing records, don't blindly convert every 100.0 to null.
     # Null only records for which the database has no valid measurement evidence.
     op.execute(

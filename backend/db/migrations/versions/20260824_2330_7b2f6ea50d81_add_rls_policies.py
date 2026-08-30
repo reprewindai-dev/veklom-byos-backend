@@ -1,18 +1,17 @@
 """add_rls_policies
 
 Revision ID: 7b2f6ea50d81
-Revises: fef856c068bf
+Revises: 1234abcd5678
 Create Date: 2026-08-24 23:30:00.000000
 
 """
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '7b2f6ea50d81'
-down_revision: Union[str, None] = 'fef856c068bf'
+down_revision: Union[str, None] = '1234abcd5678'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

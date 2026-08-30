@@ -10,7 +10,10 @@ jobs:
   build-check:
     name: Docker Build + Import Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      CI_DATABASE_URL: postgresql+asyncpg://veklom_ci:veklom_ci_password@veklom-ci-postgres:5432/veklom_ci
+      CI_REDIS_URL: redis://veklom-ci-redis:6379/0
 
     steps:
       - name: Checkout
@@ -20,61 +23,127 @@ jobs:
         run: |
           docker build -t veklom-backend-ci:${{ github.sha }} .
 
+      - name: Start canonical CI dependencies
+        run: |
+          set -euo pipefail
+          docker network create veklom-ci
+          docker run -d \
+            --name veklom-ci-postgres \
+            --network veklom-ci \
+            -e POSTGRES_USER=veklom_ci \
+            -e POSTGRES_PASSWORD=veklom_ci_password \
+            -e POSTGRES_DB=veklom_ci \
+            pgvector/pgvector:pg15
+          docker run -d \
+            --name veklom-ci-redis \
+            --network veklom-ci \
+            redis:7-alpine
+
+          for i in $(seq 1 30); do
+            if docker exec veklom-ci-postgres pg_isready -U veklom_ci -d veklom_ci >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$i" = "30" ]; then
+              docker logs veklom-ci-postgres
+              exit 1
+            fi
+            sleep 2
+          done
+
+          for i in $(seq 1 30); do
+            if docker exec veklom-ci-redis redis-cli ping | grep -q '^PONG$'; then
+              break
+            fi
+            if [ "$i" = "30" ]; then
+              docker logs veklom-ci-redis
+              exit 1
+            fi
+            sleep 1
+          done
+
+          docker exec veklom-ci-postgres \
+            psql -v ON_ERROR_STOP=1 -U veklom_ci -d veklom_ci \
+            -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
       - name: Verify Single Alembic Head
         run: |
+          set -euo pipefail
           HEAD_COUNT=$(docker run --rm \
+            --network veklom-ci \
             -e PYTHONPATH=/app \
-            -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
-            -e REDIS_URL="redis://localhost:6379" \
+            -e DATABASE_URL="$CI_DATABASE_URL" \
+            -e REDIS_URL="$CI_REDIS_URL" \
+            -e CELERY_BROKER_URL="$CI_REDIS_URL" \
+            -e CELERY_RESULT_BACKEND="redis://veklom-ci-redis:6379/1" \
             -e SECRET_KEY="ci-test-secret-key-not-real" \
-            -e ENVIRONMENT="test" \
+            -e APP_ENV="test" \
             veklom-backend-ci:${{ github.sha }} \
             python -m alembic -c backend/db/migrations/alembic.ini heads | grep "(head)" | wc -l)
           if [ "$HEAD_COUNT" -ne 1 ]; then
-            echo "ERROR: Multiple Alembic heads detected ($HEAD_COUNT). Merge migrations before merging this PR."
+            echo "ERROR: Expected exactly one Alembic head; found $HEAD_COUNT."
             exit 1
           fi
 
-      - name: Run Pytest & Alembic Verification
+      - name: Apply complete Alembic history to fresh PostgreSQL
         run: |
+          set -euo pipefail
           docker run --rm \
+            --network veklom-ci \
             -e PYTHONPATH=/app \
-            -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
-            -e REDIS_URL="redis://localhost:6379" \
+            -e DATABASE_URL="$CI_DATABASE_URL" \
+            -e REDIS_URL="$CI_REDIS_URL" \
+            -e CELERY_BROKER_URL="$CI_REDIS_URL" \
+            -e CELERY_RESULT_BACKEND="redis://veklom-ci-redis:6379/1" \
             -e SECRET_KEY="ci-test-secret-key-not-real" \
-            -e ENVIRONMENT="test" \
+            -e APP_ENV="test" \
             veklom-backend-ci:${{ github.sha }} \
-            python -m alembic \
-              -c backend/db/migrations/alembic.ini \
-              history
+            python -m alembic -c backend/db/migrations/alembic.ini history
 
           docker run --rm \
+            --network veklom-ci \
             -e PYTHONPATH=/app \
-            -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
-            -e REDIS_URL="redis://localhost:6379" \
+            -e DATABASE_URL="$CI_DATABASE_URL" \
+            -e REDIS_URL="$CI_REDIS_URL" \
+            -e CELERY_BROKER_URL="$CI_REDIS_URL" \
+            -e CELERY_RESULT_BACKEND="redis://veklom-ci-redis:6379/1" \
             -e SECRET_KEY="ci-test-secret-key-not-real" \
-            -e ENVIRONMENT="test" \
+            -e APP_ENV="test" \
+            veklom-backend-ci:${{ github.sha }} \
+            python -m alembic -c backend/db/migrations/alembic.ini upgrade head
+
+      - name: Run backend tests on migrated PostgreSQL
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --network veklom-ci \
+            -e PYTHONPATH=/app \
+            -e DATABASE_URL="$CI_DATABASE_URL" \
+            -e REDIS_URL="$CI_REDIS_URL" \
+            -e CELERY_BROKER_URL="$CI_REDIS_URL" \
+            -e CELERY_RESULT_BACKEND="redis://veklom-ci-redis:6379/1" \
+            -e SECRET_KEY="ci-test-secret-key-not-real" \
+            -e ENCRYPTION_KEY="ci-test-encryption-key-not-real-32" \
+            -e APP_ENV="test" \
+            -e POSTHOG_ENABLED="false" \
             veklom-backend-ci:${{ github.sha }} \
             bash -c "pip install --no-cache-dir pytest pytest-asyncio httpx && python -m pytest backend/tests/ -v"
 
       - name: Validate all Python imports start clean
         run: |
           docker run --rm \
-            -e DATABASE_URL="postgresql+asyncpg://test:test@localhost/test" \
-            -e REDIS_URL="redis://localhost:6379" \
+            --network veklom-ci \
+            -e DATABASE_URL="$CI_DATABASE_URL" \
+            -e REDIS_URL="$CI_REDIS_URL" \
+            -e CELERY_BROKER_URL="$CI_REDIS_URL" \
+            -e CELERY_RESULT_BACKEND="redis://veklom-ci-redis:6379/1" \
             -e SECRET_KEY="ci-test-secret-key-not-real" \
-            -e ENVIRONMENT="test" \
+            -e APP_ENV="test" \
             veklom-backend-ci:${{ github.sha }} \
             python3 -c "
-          import sys, os
-          os.environ.setdefault('DATABASE_URL', 'postgresql+asyncpg://test:test@localhost/test')
-          os.environ.setdefault('REDIS_URL', 'redis://localhost:6379')
-          os.environ.setdefault('SECRET_KEY', 'ci-test-secret-key')
-          os.environ.setdefault('ENVIRONMENT', 'test')
-          # Just verify all deps are installed — don't actually connect to DB
           import fastapi, uvicorn, sqlalchemy, asyncpg, redis, pydantic
           import jsonschema, cryptography, jwt, celery
           import langchain, langchain_core, httpx, sentry_sdk
+          import backend.apps.api.main
           print('All critical imports OK')
           "
 
@@ -93,7 +162,13 @@ jobs:
 
       - name: Report
         if: success()
-        run: echo "Build and import check passed for ${{ github.sha }}"
+        run: echo "Build, PostgreSQL migration, tests, imports, SBOM, and vulnerability gate passed for ${{ github.sha }}"
+
+      - name: Clean up CI dependencies
+        if: always()
+        run: |
+          docker rm -f veklom-ci-postgres veklom-ci-redis >/dev/null 2>&1 || true
+          docker network rm veklom-ci >/dev/null 2>&1 || true
 
   deploy-prod:
     name: Deploy to Production (main branch only)

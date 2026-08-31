@@ -11,6 +11,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import httpx
 import jwt as pyjwt
@@ -18,7 +19,7 @@ import pyotp
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -128,6 +129,13 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class VLinkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    vlink_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1404,6 +1412,192 @@ async def cappo_token(user=Depends(get_current_user)):
         "access_token": token,
         "token_type": "bearer",
         "expires_in": 120,
+    }
+
+
+def _vlink_scopes(scopes: str | None) -> list[str]:
+    try:
+        parsed = json.loads(scopes or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return parsed if isinstance(parsed, list) and all(isinstance(item, str) for item in parsed) else []
+
+
+def _connection_ref(scopes: list[str]) -> str | None:
+    prefix = "vlink:conn:"
+    for scope in scopes:
+        if scope.startswith(prefix) and len(scope) > len(prefix):
+            return scope[len(prefix):]
+    return None
+
+
+@router.post("/vlink-credentials")
+async def provision_vlink_credentials(
+    body: VLinkRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    workspace_id = getattr(user, "workspace_id", None)
+    if not workspace_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "WORKSPACE_CONTEXT_MISSING"},
+        )
+
+    result = await db.execute(
+        select(APIKey).where(
+            APIKey.user_id == user.id,
+            APIKey.is_active.is_(True),
+        )
+    )
+    binding_scope = f"vlink:id:{body.vlink_id}"
+    connection_ref = None
+    for existing in result.scalars().all():
+        scopes = _vlink_scopes(existing.scopes)
+        if binding_scope in scopes:
+            connection_ref = _connection_ref(scopes)
+            if connection_ref:
+                break
+    connection_ref = connection_ref or f"conn_{uuid4().hex}"
+
+    raw_key = f"byos_{secrets.token_urlsafe(32)}"
+    scopes = [
+        "vlink:assertion",
+        binding_scope,
+        f"vlink:conn:{connection_ref}",
+    ]
+    key = APIKey(
+        user_id=user.id,
+        workspace_id=workspace_id,
+        name=f"vlink:{body.vlink_id}",
+        key_hash=get_password_hash(raw_key),
+        key_prefix=raw_key[:10],
+        scopes=json.dumps(scopes),
+    )
+    db.add(key)
+    await db.commit()
+    return {
+        "key_id": key.id,
+        "key": raw_key,
+        "vlink_id": body.vlink_id,
+        "connection_ref": connection_ref,
+        "workspace_id": workspace_id,
+        "scopes": scopes,
+    }
+
+
+@router.post("/vlink-assertion")
+async def exchange_vlink_assertion(
+    body: VLinkRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    raw_key = request.headers.get("X-API-Key", "")
+    if not raw_key.startswith("byos_"):
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "INVALID_MACHINE_CREDENTIAL"},
+        )
+
+    result = await db.execute(
+        select(APIKey).where(APIKey.key_prefix == raw_key[:10])
+    )
+    key = next(
+        (candidate for candidate in result.scalars().all() if verify_password(raw_key, candidate.key_hash)),
+        None,
+    )
+    if key is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "INVALID_MACHINE_CREDENTIAL"},
+        )
+    if not key.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "MACHINE_CREDENTIAL_REVOKED"},
+        )
+    if key.expires_at and key.expires_at <= datetime.utcnow():
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "MACHINE_CREDENTIAL_EXPIRED"},
+        )
+
+    owner_result = await db.execute(select(User).where(User.id == key.user_id))
+    owner = owner_result.scalar_one_or_none()
+    if (
+        owner is None
+        or not owner.is_active
+        or str(getattr(owner, "status", "")).upper() in {"INACTIVE", "SUSPENDED", "LOCKED"}
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "OWNER_INACTIVE"},
+        )
+
+    scopes = _vlink_scopes(key.scopes)
+    if "vlink:assertion" not in scopes:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "SCOPE_NOT_GRANTED"},
+        )
+
+    if f"vlink:id:{body.vlink_id}" not in scopes:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "VLINK_BINDING_MISMATCH"},
+        )
+
+    workspace_id = getattr(owner, "workspace_id", None)
+    if not workspace_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "WORKSPACE_CONTEXT_MISSING"},
+        )
+    if key.workspace_id and key.workspace_id != workspace_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "WORKSPACE_MISMATCH"},
+        )
+
+    connection_ref = _connection_ref(scopes)
+    if not connection_ref:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "CONNECTION_REFERENCE_MISSING"},
+        )
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    payload = {
+        "iss": os.getenv("CAPPO_ASSERTION_ISSUER", "https://api.veklom.com"),
+        "aud": os.getenv("CAPPO_ASSERTION_AUDIENCE", "https://cappo.veklom.com"),
+        "sub": f"vlink:{body.vlink_id}",
+        "workspace_id": workspace_id,
+        "connection_ref": connection_ref,
+        "role": "MACHINE",
+        "iat": now,
+        "exp": now + 120,
+        "jti": secrets.token_urlsafe(24),
+    }
+    try:
+        token = pyjwt.encode(
+            payload,
+            _cappo_assertion_private_key(),
+            algorithm="EdDSA",
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "CAPPO_ASSERTION_UNCONFIGURED"},
+        )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": 120,
+        "workspace_id": workspace_id,
+        "connection_ref": connection_ref,
     }
 
 

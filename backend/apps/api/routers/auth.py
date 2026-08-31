@@ -1444,26 +1444,27 @@ async def provision_vlink_credentials(
             detail={"error": "WORKSPACE_CONTEXT_MISSING"},
         )
 
-    result = await db.execute(
-        select(APIKey).where(
-            APIKey.user_id == user.id,
-            APIKey.is_active.is_(True),
-        )
-    )
-    binding_scope = f"vlink:id:{body.vlink_id}"
+    from backend.db.models.vlink_binding import VLinkBinding
+
+    binding_result = await db.execute(select(VLinkBinding).where(VLinkBinding.vlink_id == body.vlink_id))
+    binding = binding_result.scalar_one_or_none()
+
     connection_ref = None
-    for existing in result.scalars().all():
-        scopes = _vlink_scopes(existing.scopes)
-        if binding_scope in scopes:
-            connection_ref = _connection_ref(scopes)
-            if connection_ref:
-                break
+    if binding:
+        connection_ref = binding.connection_ref
+        
+        # Explicitly rotate/revoke the old key
+        old_key_result = await db.execute(select(APIKey).where(APIKey.id == binding.api_key_id))
+        old_key = old_key_result.scalar_one_or_none()
+        if old_key:
+            old_key.is_active = False
+
     connection_ref = connection_ref or f"conn_{uuid4().hex}"
 
     raw_key = f"byos_{secrets.token_urlsafe(32)}"
     scopes = [
         "vlink:assertion",
-        binding_scope,
+        f"vlink:id:{body.vlink_id}",
         f"vlink:conn:{connection_ref}",
     ]
     key = APIKey(
@@ -1475,6 +1476,21 @@ async def provision_vlink_credentials(
         scopes=json.dumps(scopes),
     )
     db.add(key)
+    await db.flush()
+
+    if binding:
+        binding.api_key_id = key.id
+        binding.is_active = True
+        binding.workspace_id = workspace_id
+    else:
+        binding = VLinkBinding(
+            vlink_id=body.vlink_id,
+            api_key_id=key.id,
+            workspace_id=workspace_id,
+            connection_ref=connection_ref,
+        )
+        db.add(binding)
+
     await db.commit()
     return {
         "key_id": key.id,
@@ -1492,36 +1508,32 @@ async def exchange_vlink_assertion(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    # 1. receive X-API-Key
     raw_key = request.headers.get("X-API-Key", "")
     if not raw_key.startswith("byos_"):
-        raise HTTPException(
-            status_code=401,
-            detail={"error": "INVALID_MACHINE_CREDENTIAL"},
-        )
+        raise HTTPException(status_code=401, detail={"error": "INVALID_MACHINE_CREDENTIAL"})
 
-    result = await db.execute(
-        select(APIKey).where(APIKey.key_prefix == raw_key[:10])
-    )
+    # 2. locate candidates by prefix
+    result = await db.execute(select(APIKey).where(APIKey.key_prefix == raw_key[:10]))
+    
+    # 3. bcrypt/hash verify full credential
+    # 4. resolve exact APIKey.id
     key = next(
         (candidate for candidate in result.scalars().all() if verify_password(raw_key, candidate.key_hash)),
         None,
     )
     if key is None:
-        raise HTTPException(
-            status_code=401,
-            detail={"error": "INVALID_MACHINE_CREDENTIAL"},
-        )
+        raise HTTPException(status_code=401, detail={"error": "INVALID_MACHINE_CREDENTIAL"})
+        
+    # 5. key active
     if not key.is_active:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "MACHINE_CREDENTIAL_REVOKED"},
-        )
+        raise HTTPException(status_code=403, detail={"error": "MACHINE_CREDENTIAL_REVOKED"})
+        
+    # 6. key unexpired
     if key.expires_at and key.expires_at <= datetime.utcnow():
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "MACHINE_CREDENTIAL_EXPIRED"},
-        )
+        raise HTTPException(status_code=403, detail={"error": "MACHINE_CREDENTIAL_EXPIRED"})
 
+    # 7. owning user active and not suspended/locked
     owner_result = await db.execute(select(User).where(User.id == key.user_id))
     owner = owner_result.scalar_one_or_none()
     if (
@@ -1529,43 +1541,44 @@ async def exchange_vlink_assertion(
         or not owner.is_active
         or str(getattr(owner, "status", "")).upper() in {"INACTIVE", "SUSPENDED", "LOCKED"}
     ):
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "OWNER_INACTIVE"},
-        )
+        raise HTTPException(status_code=403, detail={"error": "OWNER_INACTIVE"})
 
+    # 8. enforce exact vlink:assertion scope
     scopes = _vlink_scopes(key.scopes)
     if "vlink:assertion" not in scopes:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "SCOPE_NOT_GRANTED"},
-        )
+        raise HTTPException(status_code=403, detail={"error": "SCOPE_NOT_GRANTED"})
 
-    if f"vlink:id:{body.vlink_id}" not in scopes:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "VLINK_BINDING_MISMATCH"},
-        )
-
+    # 9. resolve canonical workspace from owning user/database
     workspace_id = getattr(owner, "workspace_id", None)
     if not workspace_id:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "WORKSPACE_CONTEXT_MISSING"},
-        )
-    if key.workspace_id and key.workspace_id != workspace_id:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "WORKSPACE_MISMATCH"},
-        )
+        raise HTTPException(status_code=403, detail={"error": "WORKSPACE_CONTEXT_MISSING"})
 
-    connection_ref = _connection_ref(scopes)
+    # 10. load requested vlink_id from TRUSTED SERVER-SIDE VLINK STATE/BINDING
+    from backend.db.models.vlink_binding import VLinkBinding
+    binding_result = await db.execute(select(VLinkBinding).where(VLinkBinding.vlink_id == body.vlink_id))
+    vlink_binding = binding_result.scalar_one_or_none()
+    
+    if not vlink_binding:
+        raise HTTPException(status_code=403, detail={"error": "VLINK_NOT_FOUND"})
+
+    # 11. require this exact APIKey.id is bound to this exact VLink
+    if vlink_binding.api_key_id != key.id or vlink_binding.vlink_id != body.vlink_id:
+        raise HTTPException(status_code=403, detail={"error": "VLINK_BINDING_MISMATCH"})
+
+    # 12. require VLink workspace matches canonical workspace
+    if vlink_binding.workspace_id != workspace_id:
+        raise HTTPException(status_code=403, detail={"error": "WORKSPACE_MISMATCH"})
+
+    # 13. require VLink active / not revoked
+    if not vlink_binding.is_active:
+        raise HTTPException(status_code=403, detail={"error": "VLINK_REVOKED"})
+
+    # 14. recover stable projected connection reference
+    connection_ref = vlink_binding.connection_ref
     if not connection_ref:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "CONNECTION_REFERENCE_MISSING"},
-        )
+        raise HTTPException(status_code=403, detail={"error": "CONNECTION_REFERENCE_MISSING"})
 
+    # 15. only then mint CAPPO assertion
     now = int(datetime.now(timezone.utc).timestamp())
     payload = {
         "iss": os.getenv("CAPPO_ASSERTION_ISSUER", "https://api.veklom.com"),
@@ -1579,7 +1592,8 @@ async def exchange_vlink_assertion(
         "jti": secrets.token_urlsafe(24),
     }
     try:
-        token = pyjwt.encode(
+        import jwt
+        token = jwt.encode(
             payload,
             _cappo_assertion_private_key(),
             algorithm="EdDSA",

@@ -409,6 +409,10 @@ def _github_redirect_uri(request: Request) -> str:
     configured = (resolved.get("redirect_uri") or "").strip()
     if configured and configured.startswith("http"):
         return configured
+    from core.config import settings
+    if settings.APP_ENV == "development" and settings.FRONTEND_URL:
+        base = settings.FRONTEND_URL.rstrip("/")
+        return f"{base}/api/v1/auth/github/callback"
     return f"{_external_origin(request)}/api/v1/auth/github/callback"
 
 

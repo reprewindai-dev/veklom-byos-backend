@@ -618,7 +618,9 @@ from backend.apps.api.routers import (
     openai_compat,
     protocol as veklom_protocol,
     duel,
-    security_posture
+    security_posture,
+    infrastructure,
+    computeless
 )
 from backend.apps.vnp.routes import router as vnp_staking_router
 from backend.apps.ledger.routes import router as x402_ledger_router
@@ -649,6 +651,8 @@ app.include_router(vnp.router, prefix="/api/v1")
 app.include_router(x402.router, prefix="/api/v1")
 app.include_router(duel.router, prefix="/api/v1")
 app.include_router(security_posture.router, prefix="/api/v1")
+app.include_router(infrastructure.router, prefix="/api/v1")
+app.include_router(computeless.router, prefix="/api/v1")
 
 # Generative Pipeline Compiler (GPC)
 from backend.apps.gpc.gpc_routes import router as gpc_router

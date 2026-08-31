@@ -33,10 +33,11 @@ async def get_host_metrics():
 
 @router.get("/runtime")
 async def get_runtime_metrics():
-    # Real representation of the Docker/Container runtime on the host
+    # Statically asserted representation of the Docker/Container runtime on the host
     return {
+        "evidence_class": "STATIC_ASSERTION",
         "engine": "docker",
-        "status": "healthy",
+        "status": "UNOBSERVED",
         "orchestrator": "docker-compose",
         "network_mode": "bridge",
         "isolation": "process",
@@ -55,23 +56,23 @@ async def get_network_topology():
         "discovery_mechanism": "STATIC_ASSERTION",
         "discovery_limitation": "Topology is a statically asserted local map, not dynamically discovered via docker.sock to preserve host isolation.",
         "nodes": [
-            {"id": "node-host", "role": "Sovereign Host Machine", "ip": "127.0.0.1", "status": "active"},
-            {"id": "node-api", "role": "BYOS Core / cAPI Engine", "ip": "host.docker.internal", "status": "active"},
-            {"id": "node-pgl", "role": "GnomLedger (PoG)", "ip": "host.docker.internal", "status": "active"},
-            {"id": "node-vault", "role": "LockerPhycer Enclave", "ip": "host.docker.internal", "status": "active"},
-            {"id": "node-ollama", "role": "Local Baremetal Ollama", "ip": "host.docker.internal", "status": "active"}
+            {"id": "node-host", "role": "Sovereign Host Machine", "ip": "127.0.0.1", "status": "DECLARED"},
+            {"id": "node-api", "role": "BYOS Core / cAPI Engine", "ip": "host.docker.internal", "status": "DECLARED"},
+            {"id": "node-pgl", "role": "GnomLedger (PoG)", "ip": "host.docker.internal", "status": "DECLARED"},
+            {"id": "node-vault", "role": "LockerPhycer Enclave", "ip": "host.docker.internal", "status": "DECLARED"},
+            {"id": "node-ollama", "role": "Local Baremetal Ollama", "ip": "host.docker.internal", "status": "DECLARED"}
         ],
-        "active_tunnels": 0,
-        "evidence_class": "MEASURED_TELEMETRY"
+        "active_tunnels": None,
+        "evidence_class": "STATIC_ASSERTION"
     }
 
 @router.get("/connectivity")
 async def get_connectivity_status():
     return {
-        "status": "online",
-        "latency_ms": 12.4,
-        "packet_loss_percent": 0.0,
-        "last_handshake": time.time(),
+        "status": "UNMEASURED",
+        "latency_ms": None,
+        "packet_loss_percent": None,
+        "last_handshake": None,
         "protocols": ["TCP", "UDP", "TLS 1.3"],
-        "evidence_class": "MEASURED_TELEMETRY"
+        "evidence_class": "STATIC_ASSERTION"
     }

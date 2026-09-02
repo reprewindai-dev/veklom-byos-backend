@@ -1,0 +1,306 @@
+[
+  {
+    "test_name": "BASELINE_VALID",
+    "request": {
+      "audience": "urn:veklom:harness:target",
+      "authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authorization_generation": 1,
+      "authorization_reference": "urn:veklom:pgl:auth:1",
+      "intent": "withdraw_funds",
+      "normalized_payload_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "withdraw",
+      "policy_identity_version": "urn:veklom:policy:finance:v1",
+      "principal_binding": "did:veklom:agent:123",
+      "replay_identity": "123e4567-e89b-42d3-a456-426614174000",
+      "target_resource": "urn:veklom:account:456",
+      "timestamp": "2026-09-01T12:00:00Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "workspace": "urn:veklom:workspace:789",
+      "signer_identity": "did:veklom:agent:123",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "attestation": {
+      "decision": "ALLOW",
+      "effective_policy_identity_version": "urn:veklom:policy:finance:v1",
+      "lifecycle_disposition": "RESERVED",
+      "normalized_principal": "did:veklom:agent:123",
+      "normalized_workspace": "urn:veklom:workspace:789",
+      "reason": "Authorized by PGL",
+      "request_commitment": "02162678c887807644a5974127f2fa7d86f8a7cee7cebed4255d929beb3fd928",
+      "reservation_identity": "555e4567-e89b-42d3-a456-426614174000",
+      "resolved_authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "resolved_authorization_generation": 1,
+      "signer_identity": "did:veklom:authority:1",
+      "timestamp": "2026-09-01T12:00:01Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "receipt": {
+      "actual_effect": {
+        "effect_status": "OBSERVED",
+        "state_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "mutated_fields": [
+          "/balance"
+        ]
+      },
+      "admission_commitment": "4732850e37c9d3948fb60ce6478cfdf41fc28caf927ec7670dde2cf9b0830689",
+      "decision": "ALLOW",
+      "outcome": "SUCCESS",
+      "timestamp": "2026-09-01T12:00:02Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000"
+    },
+    "expected_verdict": "VALID"
+  },
+  {
+    "test_name": "INVALID_UUID_V1",
+    "request": {
+      "audience": "urn:veklom:harness:target",
+      "authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authorization_generation": 1,
+      "authorization_reference": "urn:veklom:pgl:auth:1",
+      "intent": "withdraw_funds",
+      "normalized_payload_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "withdraw",
+      "policy_identity_version": "urn:veklom:policy:finance:v1",
+      "principal_binding": "did:veklom:agent:123",
+      "replay_identity": "123e4567-e89b-42d3-a456-426614174000",
+      "target_resource": "urn:veklom:account:456",
+      "timestamp": "2026-09-01T12:00:00Z",
+      "transition_id": "123e4567-e89b-12d3-a456-426614174000",
+      "workspace": "urn:veklom:workspace:789",
+      "signer_identity": "did:veklom:agent:123",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "attestation": null,
+    "receipt": null,
+    "expected_verdict": "INVALID"
+  },
+  {
+    "test_name": "INVALID_TIMESTAMP_FRACTIONAL",
+    "request": {
+      "audience": "urn:veklom:harness:target",
+      "authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authorization_generation": 1,
+      "authorization_reference": "urn:veklom:pgl:auth:1",
+      "intent": "withdraw_funds",
+      "normalized_payload_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "withdraw",
+      "policy_identity_version": "urn:veklom:policy:finance:v1",
+      "principal_binding": "did:veklom:agent:123",
+      "replay_identity": "123e4567-e89b-42d3-a456-426614174000",
+      "target_resource": "urn:veklom:account:456",
+      "timestamp": "2026-09-01T12:00:00.123Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "workspace": "urn:veklom:workspace:789",
+      "signer_identity": "did:veklom:agent:123",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "attestation": null,
+    "receipt": null,
+    "expected_verdict": "INVALID"
+  },
+  {
+    "test_name": "INVALID_OUTCOME_UNKNOWN_WITH_STATE",
+    "request": {
+      "audience": "urn:veklom:harness:target",
+      "authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authorization_generation": 1,
+      "authorization_reference": "urn:veklom:pgl:auth:1",
+      "intent": "withdraw_funds",
+      "normalized_payload_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "withdraw",
+      "policy_identity_version": "urn:veklom:policy:finance:v1",
+      "principal_binding": "did:veklom:agent:123",
+      "replay_identity": "123e4567-e89b-42d3-a456-426614174000",
+      "target_resource": "urn:veklom:account:456",
+      "timestamp": "2026-09-01T12:00:00Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "workspace": "urn:veklom:workspace:789",
+      "signer_identity": "did:veklom:agent:123",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "attestation": {
+      "decision": "ALLOW",
+      "effective_policy_identity_version": "urn:veklom:policy:finance:v1",
+      "lifecycle_disposition": "RESERVED",
+      "normalized_principal": "did:veklom:agent:123",
+      "normalized_workspace": "urn:veklom:workspace:789",
+      "reason": "Authorized by PGL",
+      "request_commitment": "02162678c887807644a5974127f2fa7d86f8a7cee7cebed4255d929beb3fd928",
+      "reservation_identity": "555e4567-e89b-42d3-a456-426614174000",
+      "resolved_authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "resolved_authorization_generation": 1,
+      "signer_identity": "did:veklom:authority:1",
+      "timestamp": "2026-09-01T12:00:01Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "receipt": {
+      "actual_effect": {
+        "effect_status": "UNKNOWN",
+        "state_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "mutated_fields": [
+          "/balance"
+        ]
+      },
+      "admission_commitment": "4732850e37c9d3948fb60ce6478cfdf41fc28caf927ec7670dde2cf9b0830689",
+      "decision": "ALLOW",
+      "outcome": "SUCCESS",
+      "timestamp": "2026-09-01T12:00:02Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000"
+    },
+    "expected_verdict": "INVALID"
+  },
+  {
+    "test_name": "BASELINE_DENY",
+    "request": {
+      "audience": "urn:veklom:harness:target",
+      "authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authorization_generation": 1,
+      "authorization_reference": "urn:veklom:pgl:auth:1",
+      "intent": "withdraw_funds",
+      "normalized_payload_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "withdraw",
+      "policy_identity_version": "urn:veklom:policy:finance:v1",
+      "principal_binding": "did:veklom:agent:123",
+      "replay_identity": "123e4567-e89b-42d3-a456-426614174000",
+      "target_resource": "urn:veklom:account:456",
+      "timestamp": "2026-09-01T12:00:00Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "workspace": "urn:veklom:workspace:789",
+      "signer_identity": "did:veklom:agent:123",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "attestation": {
+      "decision": "DENY",
+      "effective_policy_identity_version": "urn:veklom:policy:finance:v1",
+      "lifecycle_disposition": "RESERVED",
+      "normalized_principal": "did:veklom:agent:123",
+      "normalized_workspace": "urn:veklom:workspace:789",
+      "reason": "Authorized by PGL",
+      "request_commitment": "02162678c887807644a5974127f2fa7d86f8a7cee7cebed4255d929beb3fd928",
+      "reservation_identity": "555e4567-e89b-42d3-a456-426614174000",
+      "resolved_authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "resolved_authorization_generation": 1,
+      "signer_identity": "did:veklom:authority:1",
+      "timestamp": "2026-09-01T12:00:01Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "receipt": {
+      "actual_effect": {
+        "effect_status": "NONE",
+        "state_digest": "",
+        "mutated_fields": []
+      },
+      "admission_commitment": "4982faa7186d921f865152747058330b74ee10eed2985c12b613f21e8e9874ae",
+      "decision": "DENY",
+      "outcome": "NOT_ATTEMPTED",
+      "timestamp": "2026-09-01T12:00:02Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000"
+    },
+    "expected_verdict": "VALID"
+  },
+  {
+    "test_name": "CROSS_ARTIFACT_COMMITMENT_MISMATCH",
+    "request": {
+      "audience": "urn:veklom:harness:target",
+      "authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authorization_generation": 1,
+      "authorization_reference": "urn:veklom:pgl:auth:1",
+      "intent": "withdraw_funds",
+      "normalized_payload_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "withdraw",
+      "policy_identity_version": "urn:veklom:policy:finance:v1",
+      "principal_binding": "did:veklom:agent:123",
+      "replay_identity": "123e4567-e89b-42d3-a456-426614174000",
+      "target_resource": "urn:veklom:account:456",
+      "timestamp": "2026-09-01T12:00:00Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "workspace": "urn:veklom:workspace:789",
+      "signer_identity": "did:veklom:agent:123",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "attestation": {
+      "decision": "ALLOW",
+      "effective_policy_identity_version": "urn:veklom:policy:finance:v1",
+      "lifecycle_disposition": "RESERVED",
+      "normalized_principal": "did:veklom:agent:123",
+      "normalized_workspace": "urn:veklom:workspace:789",
+      "reason": "Authorized by PGL",
+      "request_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "reservation_identity": "555e4567-e89b-42d3-a456-426614174000",
+      "resolved_authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "resolved_authorization_generation": 1,
+      "signer_identity": "did:veklom:authority:1",
+      "timestamp": "2026-09-01T12:00:01Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "receipt": {
+      "actual_effect": {
+        "effect_status": "OBSERVED",
+        "state_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "mutated_fields": [
+          "/balance"
+        ]
+      },
+      "admission_commitment": "4732850e37c9d3948fb60ce6478cfdf41fc28caf927ec7670dde2cf9b0830689",
+      "decision": "ALLOW",
+      "outcome": "SUCCESS",
+      "timestamp": "2026-09-01T12:00:02Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000"
+    },
+    "expected_verdict": "INVALID"
+  },
+  {
+    "test_name": "INDETERMINATE_MISSING_ATTESTATION",
+    "request": {
+      "audience": "urn:veklom:harness:target",
+      "authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authorization_generation": 1,
+      "authorization_reference": "urn:veklom:pgl:auth:1",
+      "intent": "withdraw_funds",
+      "normalized_payload_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "withdraw",
+      "policy_identity_version": "urn:veklom:policy:finance:v1",
+      "principal_binding": "did:veklom:agent:123",
+      "replay_identity": "123e4567-e89b-42d3-a456-426614174000",
+      "target_resource": "urn:veklom:account:456",
+      "timestamp": "2026-09-01T12:00:00Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "workspace": "urn:veklom:workspace:789",
+      "signer_identity": "did:veklom:agent:123",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "attestation": null,
+    "receipt": null,
+    "expected_verdict": "INDETERMINATE"
+  },
+  {
+    "test_name": "NFC_COLLISION",
+    "request": {
+      "audience": "urn:veklom:harness:target",
+      "authorization_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authorization_generation": 1,
+      "authorization_reference": "urn:veklom:pgl:auth:1",
+      "intent": "withdraw_funds",
+      "normalized_payload_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "withdraw",
+      "policy_identity_version": "urn:veklom:policy:finance:v1",
+      "principal_binding": "did:veklom:agent:123",
+      "replay_identity": "123e4567-e89b-42d3-a456-426614174000",
+      "target_resource": "urn:veklom:account:456",
+      "timestamp": "2026-09-01T12:00:00Z",
+      "transition_id": "987e6543-e21b-42d3-a456-426614174000",
+      "workspace": "urn:veklom:workspace:789",
+      "signer_identity": "did:veklom:agent:123",
+      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "é": "test",
+      "é": "test2"
+    },
+    "attestation": null,
+    "receipt": null,
+    "expected_verdict": "INVALID"
+  }
+]

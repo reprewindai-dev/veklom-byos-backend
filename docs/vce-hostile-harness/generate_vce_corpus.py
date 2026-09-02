@@ -1,44 +1,71 @@
 import json
 import hashlib
 import unicodedata
-import uuid
-import re
-from typing import Dict, Any
+from cryptography.hazmat.primitives.asymmetric import ed25519
+from typing import Dict, Any, List
 
-def vce_nfc_encode(obj):
+def check_no_floats(obj):
+    if isinstance(obj, float):
+        raise ValueError("Floats are strictly forbidden in VCE")
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            check_no_floats(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            check_no_floats(v)
+
+def vce_nfc_normalize_and_check_keys(obj):
     if isinstance(obj, str):
         return unicodedata.normalize('NFC', obj)
     elif isinstance(obj, dict):
-        return {k: vce_nfc_encode(v) for k, v in obj.items() if v is not None}
+        normalized_dict = {}
+        for k, v in obj.items():
+            if v is None:
+                continue
+            norm_k = unicodedata.normalize('NFC', k)
+            if norm_k in normalized_dict:
+                raise ValueError(f"NFC Key Collision detected for key: {norm_k}")
+            normalized_dict[norm_k] = vce_nfc_normalize_and_check_keys(v)
+        return normalized_dict
     elif isinstance(obj, list):
-        return [vce_nfc_encode(i) for i in obj]
+        return [vce_nfc_normalize_and_check_keys(i) for i in obj]
     return obj
 
 def vce_encode(payload: Dict[str, Any]) -> bytes:
     """Strict VEKLOM Canonical Semantic Encoding."""
     body = {k: v for k, v in payload.items() if k != "signature"}
-    nfc_cleaned = vce_nfc_encode(body)
-    return json.dumps(nfc_cleaned, separators=(',', ':'), sort_keys=True, ensure_ascii=False).encode('utf-8')
+    check_no_floats(body)
+    nfc_cleaned = vce_nfc_normalize_and_check_keys(body)
+    
+    # We use json.dumps with separators to remove whitespace, sort_keys to ensure byte ordering
+    # Note: Python's sort_keys sorts lexicographically by unicode code points, which matches UTF-8 byte sort for NFC.
+    encoded = json.dumps(nfc_cleaned, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    return encoded.encode('utf-8')
 
-def hash_governed_request(payload: Dict[str, Any]) -> str:
+def hash_governed_request(payload: Dict[str, Any]) -> bytes:
     domain_separator = b"VEKLOM/VCE/1 GovernedRequest\0"
-    return hashlib.sha256(domain_separator + vce_encode(payload)).hexdigest()
+    return hashlib.sha256(domain_separator + vce_encode(payload)).digest()
 
-def hash_admission_attestation(payload: Dict[str, Any]) -> str:
+def hash_admission_attestation(payload: Dict[str, Any]) -> bytes:
     domain_separator = b"VEKLOM/VCE/1 AdmissionAttestation\0"
-    return hashlib.sha256(domain_separator + vce_encode(payload)).hexdigest()
+    return hashlib.sha256(domain_separator + vce_encode(payload)).digest()
 
-def hash_transition_receipt(payload: Dict[str, Any]) -> str:
+def hash_transition_receipt(payload: Dict[str, Any]) -> bytes:
     domain_separator = b"VEKLOM/VCE/1 TransitionReceipt\0"
-    return hashlib.sha256(domain_separator + vce_encode(payload)).hexdigest()
+    return hashlib.sha256(domain_separator + vce_encode(payload)).digest()
 
 def generate_fixtures():
+    # Generate Ed25519 Keys
+    private_key = ed25519.Ed25519PrivateKey.generate()
+    # In a real scenario we'd export public key too
+    
+    def sign_bytes(commitment: bytes) -> str:
+        # VCE dictates we sign the 32-byte raw SHA-256 digest
+        sig = private_key.sign(commitment)
+        return sig.hex()
+
     fixtures = []
     
-    def sign_bytes(data: bytes) -> str:
-        # Dummy 64-byte Ed25519 signature represented as 128-char hex string
-        return "b" * 128
-
     base_req = {
         "audience": "urn:veklom:harness:target",
         "authorization_digest": "a" * 64,
@@ -57,9 +84,8 @@ def generate_fixtures():
         "signer_identity": "did:veklom:agent:123"
     }
     
-    req_commit = hash_governed_request(base_req)
-    req_sig = sign_bytes(b"VEKLOM/VCE/1 GovernedRequest\0" + vce_encode(base_req))
-    base_req["signature"] = req_sig
+    req_commit_bytes = hash_governed_request(base_req)
+    base_req["signature"] = sign_bytes(req_commit_bytes)
     
     base_attest = {
         "decision": "ALLOW",
@@ -68,7 +94,7 @@ def generate_fixtures():
         "normalized_principal": "did:veklom:agent:123",
         "normalized_workspace": "urn:veklom:workspace:789",
         "reason": "Authorized by PGL",
-        "request_commitment": req_commit,
+        "request_commitment": req_commit_bytes.hex(),
         "reservation_identity": "555e4567-e89b-42d3-a456-426614174000",
         "resolved_authorization_digest": "a" * 64,
         "resolved_authorization_generation": 1,
@@ -77,17 +103,16 @@ def generate_fixtures():
         "transition_id": base_req["transition_id"]
     }
     
-    attest_commit = hash_admission_attestation(base_attest)
-    attest_sig = sign_bytes(b"VEKLOM/VCE/1 AdmissionAttestation\0" + vce_encode(base_attest))
-    base_attest["signature"] = attest_sig
+    attest_commit_bytes = hash_admission_attestation(base_attest)
+    base_attest["signature"] = sign_bytes(attest_commit_bytes)
     
     base_receipt = {
         "actual_effect": {
             "effect_status": "OBSERVED",
-            "state_digest": "c" * 64,
-            "mutated_fields": sorted(["/balance"])
+            "mutated_fields": sorted(["/balance"]),
+            "state_digest": "c" * 64
         },
-        "admission_commitment": attest_commit,
+        "admission_commitment": attest_commit_bytes.hex(),
         "decision": "ALLOW",
         "outcome": "SUCCESS",
         "timestamp": "2026-09-01T12:00:02Z",
@@ -145,7 +170,7 @@ def generate_fixtures():
     deny_attest_body = dict(deny_attest)
     if "signature" in deny_attest_body:
         del deny_attest_body["signature"]
-    deny_attest["signature"] = sign_bytes(b"VEKLOM/VCE/1 AdmissionAttestation\0" + vce_encode(deny_attest_body))
+    deny_attest["signature"] = sign_bytes(hash_admission_attestation(deny_attest_body))
     
     receipt_deny = dict(base_receipt)
     receipt_deny["decision"] = "DENY"
@@ -155,7 +180,7 @@ def generate_fixtures():
         "state_digest": "",
         "mutated_fields": []
     }
-    receipt_deny["admission_commitment"] = hash_admission_attestation(deny_attest)
+    receipt_deny["admission_commitment"] = hash_admission_attestation(deny_attest).hex()
 
     fixtures.append({
         "test_name": "BASELINE_DENY",
@@ -170,7 +195,7 @@ def generate_fixtures():
     attest_mismatch["request_commitment"] = "f" * 64
     attest_mismatch_body = dict(attest_mismatch)
     del attest_mismatch_body["signature"]
-    attest_mismatch["signature"] = sign_bytes(b"VEKLOM/VCE/1 AdmissionAttestation\0" + vce_encode(attest_mismatch_body))
+    attest_mismatch["signature"] = sign_bytes(hash_admission_attestation(attest_mismatch_body))
 
     fixtures.append({
         "test_name": "CROSS_ARTIFACT_COMMITMENT_MISMATCH",
@@ -190,15 +215,28 @@ def generate_fixtures():
     })
     
     # 7. NFC Collision
-    req_nfc = dict(base_req)
-    req_nfc["e\u0301"] = "test"
-    req_nfc["\u00e9"] = "test2"
+    # We will simulate this by passing raw dict with collision. 
+    # Python dicts allow distinct keys if they have different byte reps,
+    # so "e\u0301" and "\u00e9" are distinct keys in Python, but VCE NFC normalization will collide them.
+    # Our vce_encode function correctly throws an error.
+    # For the corpus, we want the generated JSON to actually contain the pre-NFC collision.
+    # To do this, we manually build a JSON string since vce_encode will block it.
+    
+    nfc_req_body = dict(base_req)
+    del nfc_req_body["signature"]
+    nfc_req_body["e\u0301"] = "test"
+    nfc_req_body["\u00e9"] = "test2"
+    
+    # Manually encode it to bypass our own encoder's collision guard
+    raw_nfc_json = json.dumps(nfc_req_body, separators=(',', ':'), sort_keys=True, ensure_ascii=False).encode('utf-8')
+    raw_nfc_commit = hashlib.sha256(b"VEKLOM/VCE/1 GovernedRequest\0" + raw_nfc_json).digest()
+    
+    nfc_req = dict(nfc_req_body)
+    nfc_req["signature"] = sign_bytes(raw_nfc_commit)
+
     fixtures.append({
         "test_name": "NFC_COLLISION",
-        # Python natively rejects this internally depending on structure,
-        # but the JSON payload needs to be built manually or allowed 
-        # to just encode it. We'll pass it as two distinct keys.
-        "request": req_nfc,
+        "request": nfc_req,
         "attestation": None,
         "receipt": None,
         "expected_verdict": "INVALID"

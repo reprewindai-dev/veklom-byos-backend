@@ -17,7 +17,7 @@
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
       "workspace": "urn:veklom:workspace:789",
       "signer_identity": "did:veklom:agent:123",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "c6735f55032273cd14a8017ac168d1364ceaefcd0cc5ffa9790162e14c7f694748f09755245f82562cc6d3676520b17f9aecddfe9b366ba1010d4975e935f709"
     },
     "attestation": {
       "decision": "ALLOW",
@@ -33,15 +33,15 @@
       "signer_identity": "did:veklom:authority:1",
       "timestamp": "2026-09-01T12:00:01Z",
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "f9cd38b8f678aef5991e89b693f1f77455fad9b306435a421d837347444096761f1b2d735017eb03e52c53c3892b8261f20e7127a96b1b85e3c6fc0aaf744f06"
     },
     "receipt": {
       "actual_effect": {
         "effect_status": "OBSERVED",
-        "state_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         "mutated_fields": [
           "/balance"
-        ]
+        ],
+        "state_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
       },
       "admission_commitment": "4732850e37c9d3948fb60ce6478cfdf41fc28caf927ec7670dde2cf9b0830689",
       "decision": "ALLOW",
@@ -69,7 +69,7 @@
       "transition_id": "123e4567-e89b-12d3-a456-426614174000",
       "workspace": "urn:veklom:workspace:789",
       "signer_identity": "did:veklom:agent:123",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "c6735f55032273cd14a8017ac168d1364ceaefcd0cc5ffa9790162e14c7f694748f09755245f82562cc6d3676520b17f9aecddfe9b366ba1010d4975e935f709"
     },
     "attestation": null,
     "receipt": null,
@@ -93,7 +93,7 @@
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
       "workspace": "urn:veklom:workspace:789",
       "signer_identity": "did:veklom:agent:123",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "c6735f55032273cd14a8017ac168d1364ceaefcd0cc5ffa9790162e14c7f694748f09755245f82562cc6d3676520b17f9aecddfe9b366ba1010d4975e935f709"
     },
     "attestation": null,
     "receipt": null,
@@ -117,7 +117,7 @@
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
       "workspace": "urn:veklom:workspace:789",
       "signer_identity": "did:veklom:agent:123",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "c6735f55032273cd14a8017ac168d1364ceaefcd0cc5ffa9790162e14c7f694748f09755245f82562cc6d3676520b17f9aecddfe9b366ba1010d4975e935f709"
     },
     "attestation": {
       "decision": "ALLOW",
@@ -133,7 +133,7 @@
       "signer_identity": "did:veklom:authority:1",
       "timestamp": "2026-09-01T12:00:01Z",
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "f9cd38b8f678aef5991e89b693f1f77455fad9b306435a421d837347444096761f1b2d735017eb03e52c53c3892b8261f20e7127a96b1b85e3c6fc0aaf744f06"
     },
     "receipt": {
       "actual_effect": {
@@ -169,7 +169,7 @@
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
       "workspace": "urn:veklom:workspace:789",
       "signer_identity": "did:veklom:agent:123",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "c6735f55032273cd14a8017ac168d1364ceaefcd0cc5ffa9790162e14c7f694748f09755245f82562cc6d3676520b17f9aecddfe9b366ba1010d4975e935f709"
     },
     "attestation": {
       "decision": "DENY",
@@ -185,7 +185,7 @@
       "signer_identity": "did:veklom:authority:1",
       "timestamp": "2026-09-01T12:00:01Z",
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "bddd8f3b6c71ad9a6a6a8d6363de49476a0b603ce89aedcfd7b9be476801dd1372878dca824a4198fb78442cd8a4d9a01662e6e7b69fe4622920cecb9c900b01"
     },
     "receipt": {
       "actual_effect": {
@@ -219,7 +219,7 @@
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
       "workspace": "urn:veklom:workspace:789",
       "signer_identity": "did:veklom:agent:123",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "c6735f55032273cd14a8017ac168d1364ceaefcd0cc5ffa9790162e14c7f694748f09755245f82562cc6d3676520b17f9aecddfe9b366ba1010d4975e935f709"
     },
     "attestation": {
       "decision": "ALLOW",
@@ -235,15 +235,15 @@
       "signer_identity": "did:veklom:authority:1",
       "timestamp": "2026-09-01T12:00:01Z",
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "bf95f56c06f4d17ba9dbc499976058b5c745e8b2da0219cabdfc7260030e0b6f8a46f2aaff5882e276e8e55da47e99bf02daeb1154745fe110c2281b8b444f03"
     },
     "receipt": {
       "actual_effect": {
         "effect_status": "OBSERVED",
-        "state_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         "mutated_fields": [
           "/balance"
-        ]
+        ],
+        "state_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
       },
       "admission_commitment": "4732850e37c9d3948fb60ce6478cfdf41fc28caf927ec7670dde2cf9b0830689",
       "decision": "ALLOW",
@@ -271,7 +271,7 @@
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
       "workspace": "urn:veklom:workspace:789",
       "signer_identity": "did:veklom:agent:123",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "signature": "c6735f55032273cd14a8017ac168d1364ceaefcd0cc5ffa9790162e14c7f694748f09755245f82562cc6d3676520b17f9aecddfe9b366ba1010d4975e935f709"
     },
     "attestation": null,
     "receipt": null,
@@ -295,9 +295,9 @@
       "transition_id": "987e6543-e21b-42d3-a456-426614174000",
       "workspace": "urn:veklom:workspace:789",
       "signer_identity": "did:veklom:agent:123",
-      "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "é": "test",
-      "é": "test2"
+      "é": "test2",
+      "signature": "cada0e7e8a6f5aadf670e03d1c4bb2881ca5f43f5ddeea4808bb6014f0edbcba259a720a8122494d932a410c034825a624d9ddeaed5e38962fe9fac4e5f7e80a"
     },
     "attestation": null,
     "receipt": null,

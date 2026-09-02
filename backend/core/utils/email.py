@@ -63,7 +63,28 @@ async def send_email_via_resend(to_email: str, subject: str, html_content: str, 
     The sender must use the verified domain: mail.veklom.com.
     """
     api_key = (settings.RESEND_API_KEY or "").strip()
-    if not api_key or "YOUR_" in api_key or "NEED_FROM" in api_key:
+    
+    # NEW LOGGING TECHNIQUE: Dump all emails to local_emails.log
+    import os
+    from datetime import datetime
+    try:
+        with open("local_emails.log", "a") as f:
+            f.write(f"\n--- EMAIL AT {datetime.utcnow().isoformat()} ---\n")
+            f.write(f"To: {to_email}\n")
+            f.write(f"Subject: {subject}\n")
+            
+            # Try to extract the activation link specifically for easier copy-pasting
+            import re
+            link_match = re.search(r'(https?://[^"]+/activate\?token=[^"]+)', html_content)
+            if link_match:
+                f.write(f"ACTIVATION LINK: {link_match.group(1)}\n")
+            
+            f.write(f"Body:\n{html_content}\n")
+            f.write("-" * 50 + "\n")
+    except Exception as e:
+        logger.error(f"[email] Failed to write to local_emails.log: {e}")
+
+    if not api_key or "YOUR_" in api_key or "NEED_FROM" in api_key or "REPLACE_" in api_key:
         logger.warning("[email] RESEND_API_KEY is not configured. Simulating email send.")
         logger.info(f"[email] To: {to_email} | Subject: {subject}\nHTML: {html_content[:200]}...")
         

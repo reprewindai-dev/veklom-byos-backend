@@ -16,3 +16,9 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+## 2026-08-07 - [Fix chronological ordering of routing history time buckets]
+**Learning:** When generating time-series buckets (like 24-hour charts) on the Python side, a simple `range(24)` dictionary comprehension causes the oldest and newest items to be interleaved chronologically if we just append them.
+**Action:** Always structure time buckets ordered relative to `now.hour` (e.g., `for i in range(23, -1, -1)`) so that when list(buckets.values()) is serialized for JSON, the chronological sequence is properly maintained in the UI.
+## 2026-08-07 - [Optimize routing history memory bottleneck]
+**Learning:** Fetching all recent rows (`select(ExecLog.provider, ExecLog.created_at).all()`) into Python to calculate hourly routing statistics causes an O(N) memory allocation and increases bandwidth utilization, particularly for high-traffic time windows.
+**Action:** Push aggregations down to the database using `select(func.extract('hour', ExecLog.created_at), ExecLog.provider, func.count()).group_by(...)` to reduce the dataset transferred to a maximum of O(1) records (24 hours * number of providers).

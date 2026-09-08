@@ -1,0 +1,8 @@
+FROM alpine:3.19 AS builder
+RUN apk add --no-cache curl ca-certificates
+RUN curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /cloudflared && chmod +x /cloudflared
+
+FROM scratch
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /cloudflared /cloudflared
+ENTRYPOINT [" /cloudflared\]

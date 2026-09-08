@@ -448,6 +448,8 @@ def _trusted_hosts() -> list[str]:
         "127.0.0.1",
         "0.0.0.0",
         "testserver",
+        "host.docker.internal",
+        "veklom-api",
     }
 
     allow_wildcard = "*" in host_list
@@ -640,8 +642,7 @@ app.include_router(health_dependencies.router)
 app.include_router(protocol.router)
 
 # Auth - restore /api/v1 prefix
-# Legacy Auth Paths Removed - Now handled by LockerPhycer
-# app.include_router(auth.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(capi.router, prefix="/api/v1")
 app.include_router(pgl.router, prefix="/api/v1")
@@ -694,6 +695,10 @@ def _cors_origins() -> list[str]:
     canonical_production_origins = {
         "https://veklom.com",
         "https://app.veklom.com",
+        "https://control.veklom.com",
+        "https://gpc.veklom.com",
+        "https://terminal.veklom.com",
+        "https://abide.veklom.com",
         "http://localhost:3002",
         "http://localhost:3000",
     }
@@ -720,27 +725,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-VNP-Stake-Result", "X-VNP-Signature", "X-Veklom-Receipt-ID"],
 )
-
-# === BYOS DECOMMISSIONING: FREEZE ALL WRITES ===
-@app.middleware("http")
-async def freeze_writes_middleware(request: Request, call_next):
-    # Allow safe read-only methods
-    if request.method in ["GET", "HEAD", "OPTIONS"]:
-        return await call_next(request)
-        
-    # Exception: Allow Acceptance recording during migration (if needed) or block it all.
-    # The prompt said "Freeze BYOS writes (return 410 Gone)" with no exceptions.
-    from fastapi.responses import JSONResponse
-    return _add_cors_headers(request, JSONResponse(
-        status_code=410,
-        content={
-            "error": "BYOS_DEPRECATED",
-            "message": "This backend (BYOS) has been decommissioned. All write operations are permanently frozen.",
-            "action": "Please route consequences to CAPPO and auth/state to LockerPhycer."
-        }
-    ))
-# ===============================================
-
 # ADD ACCEPTANCE ROUTE TO MAIN APP DIRECTLY
 from pydantic import BaseModel
 from typing import Optional

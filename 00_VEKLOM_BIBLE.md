@@ -17,7 +17,7 @@ The stable object is the capability contract: inputs, outputs, preconditions, ef
 ## Truth hierarchy
 
 1. Live endpoint/public behavior.
-2. Coolify runtime state.
+2. Local WSL Docker runtime state.
 3. GitHub default branch source.
 4. Persisted + verified PGL/Gnomledger evidence.
 5. Documentation.
@@ -46,12 +46,12 @@ Project Genome Ledger, ABIDE, RepoGate, Apex, and similar products can have inde
 
 ## Operations doctrine
 
-- GitHub default branch is source truth; Coolify is deployment/runtime truth.
+- GitHub default branch is source truth; Local WSL Docker is deployment/runtime truth.
 - Secrets belong in deployment secret management, never committed files.
-- Use Coolify UI/API for Coolify resource management; reserve SSH for direct host/container verification or operations that cannot be safely done through Coolify.
+- Use Local WSL Docker UI/API for Local WSL Docker resource management; reserve SSH for direct host/container verification or operations that cannot be safely done through Local WSL Docker.
 - `localhost` means the current container/process. Use stable service DNS/config for inter-container calls.
-- Internal application ports such as `3000` and `8000` are allowed behind Traefik. The old blanket prohibition on those ports is retired; avoid conflicting host-published ports instead.
-- Do not hard-code ephemeral Coolify container identifiers into product code.
+- Internal application ports such as `3000` and `8000` are allowed behind Local Proxy. The old blanket prohibition on those ports is retired; avoid conflicting host-published ports instead.
+- Do not hard-code ephemeral Local WSL Docker container identifiers into product code.
 
 ## Evidence language
 

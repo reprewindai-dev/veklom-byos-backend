@@ -7,7 +7,7 @@
 
 ## Repository-local rule
 
-This repository owns BYOS backend implementation details. Repo-local source, tests, migrations, API contracts, and build instructions remain authoritative for this codebase **only when they do not conflict with the Bible or current Coolify/runtime state**.
+This repository owns BYOS backend implementation details. Repo-local source, tests, migrations, API contracts, and build instructions remain authoritative for this codebase **only when they do not conflict with the Bible or current 
 
 ## Production rule
 
@@ -15,9 +15,9 @@ A change is not complete because it merged or passed locally. Use the Bible comp
 
 `repo change → pushed commit → deployed runtime → live verification → evidence/report`
 
-Use Coolify UI/API/MCP for Coolify resource management. Reserve SSH for direct host/container verification or operations that cannot be performed safely through Coolify.
+Use 
 
-Do not commit or print secrets. Do not fabricate production data or evidence. Do not allocate host ports from memory; verify current host bindings first. In particular, host port `8000` is owned by Coolify on the verified Server 0 runtime even though an application container may legitimately listen on internal Docker port `8000` behind Traefik.
+Do not commit or print secrets. Do not fabricate production data or evidence. Do not allocate host ports from memory; verify current host bindings first. In particular, host port `8000` is owned by 
 
 ## Historical document
 

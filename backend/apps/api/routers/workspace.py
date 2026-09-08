@@ -609,10 +609,37 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         for row in recent_rows
     ]
 
-    recent_24h = (await db.execute(select(ExecLog.provider, ExecLog.created_at).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h))).all()
-    routing_history = _routing_history(recent_24h, now)
-    hetzner_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "hetzner")
-    aws_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "aws-burst")
+    # ⚡ Bolt: Optimize O(N) memory allocation to O(1) by aggregating in DB
+    recent_24h_grouped = (await db.execute(
+        select(
+            func.extract('hour', ExecLog.created_at).label('hour'),
+            ExecLog.provider,
+            func.count().label('count')
+        )
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
+        .group_by(func.extract('hour', ExecLog.created_at), ExecLog.provider)
+    )).all()
+
+    buckets = {
+        (now.hour - i) % 24: {"hour": f"{(now.hour - i) % 24:02d}", "hetzner": 0, "aws": 0}
+        for i in range(23, -1, -1)
+    }
+    hetzner_count = 0
+    aws_count = 0
+    for row in recent_24h_grouped:
+        hour_val, provider, count = row[0], row[1], row[2]
+        if hour_val is None:
+            continue
+        hour = int(hour_val)
+        if hour in buckets:
+            route = _route_for_provider(provider)
+            if route == "aws-burst":
+                buckets[hour]["aws"] += count
+                aws_count += count
+            else:
+                buckets[hour]["hetzner"] += count
+                hetzner_count += count
+    routing_history = list(buckets.values())
     routed_total = hetzner_count + aws_count
     hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
@@ -1774,31 +1801,6 @@ def _relative_time(value: datetime | None, now: datetime) -> str:
     if hours < 24:
         return f"{hours}h ago"
     return f"{hours // 24}d ago"
-
-
-def _routing_history(rows: list, now: datetime) -> list[dict]:
-    buckets = {
-        hour: {"hour": f"{hour:02d}", "hetzner": 0, "aws": 0}
-        for hour in range(24)
-    }
-    for row in rows:
-        # Support both SQLAlchemy model instances and Row/tuple objects
-        provider = getattr(row, 'provider', None) if hasattr(row, 'provider') else row[0]
-        created_at = getattr(row, 'created_at', None) if hasattr(row, 'created_at') else row[1]
-
-        if not created_at:
-            continue
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        hour_age = int((now - created_at).total_seconds() // 3600)
-        if hour_age < 0 or hour_age > 23:
-            continue
-        bucket = buckets[created_at.hour]
-        if _route_for_provider(provider) == "aws-burst":
-            bucket["aws"] += 1
-        else:
-            bucket["hetzner"] += 1
-    return list(buckets.values())
 
 
 def _spend_breakdown(total: float) -> list[dict]:

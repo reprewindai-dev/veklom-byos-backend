@@ -16,3 +16,6 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+## 2025-02-28 - [Push unbounded model list operations to database aggregations]
+**Learning:** Loading all DB records of a given type via `.scalars().all()` (such as `GovernedRun` in the discovery leaderboard) and then computing sums, counts, and conditional logic within a Python loop introduces massive N+1-like memory overhead and DB bandwidth contention.
+**Action:** Always prefer SQL-native aggregation using `func.count()`, `func.sum()`, `case()`, and `group_by()` over iterating full ORM model lists. This brings both memory usage and network transfer size from O(N rows) down to O(T groups).

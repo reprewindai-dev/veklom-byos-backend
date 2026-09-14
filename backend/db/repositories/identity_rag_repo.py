@@ -1,19 +1,19 @@
 from datetime import datetime, timezone
-from sqlalchemy import func, select
+
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.db.models.authority import AuthorityRun
+from backend.db.models.ledger import SettlementLedger
+from backend.db.models.lineage import BirthCertificate
+from backend.db.models.pgl import PGLCertificate, PGLIdentity
+from backend.db.repositories.settlement_repo import mark_settlement_released, write_identity_rag_fee
 from backend.schemas.identity_rag import (
-    GoldenRecordResponse,
     GoldenRecordFinancials,
     GoldenRecordGovernance,
     GoldenRecordIdentity,
+    GoldenRecordResponse,
 )
-from backend.db.models.pgl import PGLIdentity, PGLCertificate
-from backend.db.models.lineage import BirthCertificate
-from backend.db.models.ai import ExecLog
-from backend.db.models.authority import AuthorityRun
-from backend.db.models.ledger import SettlementLedger
-from backend.db.repositories.settlement_repo import write_identity_rag_fee, mark_settlement_released
 
 # Canonical Veklom treasury payee UUID – should come from settings in production.
 VEKLOM_TREASURY_ID = "00000000-0000-0000-0000-76656b6c6f6d"
@@ -48,52 +48,41 @@ async def resolve_identity_golden_record(
     )
 
     #   Financial truth: SettlementLedger is canonical for volume and reliability.
-    total_x402_volume_minor = await db.scalar(
-        select(func.coalesce(func.sum(SettlementLedger.locked_amount_minor), 0))
-        .where(SettlementLedger.payee_id == pgl.id)
-    )
-    released_volume_minor = await db.scalar(
-        select(func.coalesce(func.sum(SettlementLedger.released_amount_minor), 0))
-        .where(SettlementLedger.payee_id == pgl.id)
-    )
-    rejected_settlement_count = await db.scalar(
-        select(func.count()).select_from(SettlementLedger).where(
-            SettlementLedger.payee_id == pgl.id,
-            SettlementLedger.settlement_state.in_(["rejected", "failed"]),
-        )
-    )
-    total_settlement_count = await db.scalar(
-        select(func.count()).select_from(SettlementLedger).where(SettlementLedger.payee_id == pgl.id)
-    )
+    # ⚡ Bolt Optimization: Batch settlement ledger aggregation into a single query
+    fin_row = (await db.execute(
+        select(
+            func.coalesce(func.sum(SettlementLedger.locked_amount_minor), 0),
+            func.coalesce(func.sum(SettlementLedger.released_amount_minor), 0),
+            func.coalesce(func.sum(case((SettlementLedger.settlement_state.in_(["rejected", "failed"]), 1), else_=0)), 0),
+            func.count()
+        ).select_from(SettlementLedger).where(SettlementLedger.payee_id == pgl.id)
+    )).first()
+
+    total_x402_volume_minor, released_volume_minor, rejected_settlement_count, total_settlement_count = fin_row or (0, 0, 0, 0)
 
     #   Governance truth: AuthorityRun + PGLLedgerEvent are canonical.
     try:
         from backend.db.models.pgl import PGLLedgerEvent
-        quarantine_count = await db.scalar(
-            select(func.count()).select_from(PGLLedgerEvent).where(
-                PGLLedgerEvent.pgl_identity_id == pgl.id,
-                PGLLedgerEvent.event_type == "quarantine",
-            )
-        )
-        kleros_dispute_count = await db.scalar(
-            select(func.count()).select_from(PGLLedgerEvent).where(
-                PGLLedgerEvent.pgl_identity_id == pgl.id,
-                PGLLedgerEvent.event_type == "kleros_dispute",
-            )
-        )
+        # ⚡ Bolt Optimization: Batch event count queries
+        events_row = (await db.execute(
+            select(
+                func.coalesce(func.sum(case((PGLLedgerEvent.event_type == "quarantine", 1), else_=0)), 0),
+                func.coalesce(func.sum(case((PGLLedgerEvent.event_type == "kleros_dispute", 1), else_=0)), 0),
+            ).select_from(PGLLedgerEvent).where(PGLLedgerEvent.pgl_identity_id == pgl.id)
+        )).first()
+        quarantine_count, kleros_dispute_count = events_row or (0, 0)
     except Exception:
         quarantine_count = 0
         kleros_dispute_count = 0
 
-    total_authority_runs = await db.scalar(
-        select(func.count()).select_from(AuthorityRun).where(AuthorityRun.agent_id == pgl.id)
-    )
-    denied_runs = await db.scalar(
-        select(func.count()).select_from(AuthorityRun).where(
-            AuthorityRun.agent_id == pgl.id,
-            AuthorityRun.final_resolution == "denied",
-        )
-    )
+    # ⚡ Bolt Optimization: Batch authority run count queries
+    auth_row = (await db.execute(
+        select(
+            func.count(),
+            func.coalesce(func.sum(case((AuthorityRun.final_resolution == "denied", 1), else_=0)), 0)
+        ).select_from(AuthorityRun).where(AuthorityRun.agent_id == pgl.id)
+    )).first()
+    total_authority_runs, denied_runs = auth_row or (0, 0)
 
     #   Derived trust: computed from canonical sources, never stored as mutable truth.
     bounce_rate = 0.0

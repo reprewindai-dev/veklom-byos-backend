@@ -16,3 +16,7 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+
+## 2026-08-07 - Refactor scalar queries into grouped single aggregations inside loops
+**Learning:** In endpoints rendering metrics for multiple objects (like `get_seked_agents` in `backend/apps/api/routers/archive/seked.py`), iterating over a list of identities and executing 6 separate database calls per identity via `.scalar()` triggers up to a severe O(N) database bottleneck.
+**Action:** Extract all object IDs into a single Python list. Write `GROUP BY` SQL statements utilizing `.in_()` over the IDs and `func.sum(case(...))` logic for multiple aggregations. Execute these single bulk queries before the loop, store them in a Python dictionary mapping the object ID to its respective dictionary of counts, and then fetch from this cache inside the loop for O(1) reads.

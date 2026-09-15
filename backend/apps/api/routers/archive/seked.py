@@ -1,12 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import List, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from backend.core.database.database import get_db
-import time
-import random
 import hashlib
+import time
 import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.core.database.database import get_db
 
 router = APIRouter(prefix="/seked", tags=["SEKED Monitoring"])
 
@@ -83,68 +83,91 @@ async def get_seked_agents(db: AsyncSession = Depends(get_db)):
     Queries the AgentIdentity and AuditLog to calculate execution confidence metrics.
     """
     try:
-        from backend.db.models.pgl import PGLIdentity
-        from backend.db.models.evidence import EvidencePack, BrowserAction
-        from backend.db.models.security import AuditLog
-        from sqlalchemy import select, func
         from datetime import datetime, timedelta, timezone
-        
+
+        from sqlalchemy import case, func, select
+
+        from backend.db.models.evidence import BrowserAction, EvidencePack
+        from backend.db.models.pgl import PGLIdentity
+        from backend.db.models.security import AuditLog
+
         # Get active identities
         result = await db.execute(select(PGLIdentity).limit(50))
         identities = result.scalars().all()
-        
+
         # Time window for metrics
         recent_window = datetime.now(timezone.utc) - timedelta(hours=1)
-        
+
+        ident_ids = [ident.id for ident in identities]
+
+        # Pre-fetch BrowserAction metrics
+        browser_action_metrics = {}
+        if ident_ids:
+            ba_stmt = select(
+                BrowserAction.agent_id,
+                func.sum(case((BrowserAction.started_at >= recent_window, 1), else_=0)).label("recent_count"),
+                func.sum(case((BrowserAction.success == False, case((BrowserAction.started_at >= recent_window, 1), else_=0)), else_=0)).label("recent_error_count"),
+                func.count(BrowserAction.id).label("total_actions"),
+                func.sum(case((BrowserAction.success == True, 1), else_=0)).label("total_success")
+            ).where(BrowserAction.agent_id.in_(ident_ids)).group_by(BrowserAction.agent_id)
+
+            ba_result = await db.execute(ba_stmt)
+            for row in ba_result.all():
+                browser_action_metrics[row.agent_id] = {
+                    "action_count": row.recent_count or 0,
+                    "error_count": row.recent_error_count or 0,
+                    "total_actions": row.total_actions or 1,
+                    "total_success": row.total_success or 0
+                }
+
+        # Pre-fetch AuditLog metrics
+        audit_metrics = {}
+        if ident_ids:
+            audit_stmt = select(
+                AuditLog.user_id,
+                func.sum(case((AuditLog.action.like("%fail%"), case((AuditLog.created_at >= recent_window, 1), else_=0)), else_=0)).label("audit_errors")
+            ).where(AuditLog.user_id.in_(ident_ids)).group_by(AuditLog.user_id)
+
+            audit_result = await db.execute(audit_stmt)
+            for row in audit_result.all():
+                audit_metrics[row.user_id] = row.audit_errors or 0
+
+        # Pre-fetch EvidencePack metrics
+        evidence_metrics = {}
+        if ident_ids:
+            ev_stmt = select(
+                EvidencePack.agent_id,
+                func.count(EvidencePack.id).label("evidence_count")
+            ).where(EvidencePack.agent_id.in_(ident_ids)).group_by(EvidencePack.agent_id)
+
+            ev_result = await db.execute(ev_stmt)
+            for row in ev_result.all():
+                evidence_metrics[row.agent_id] = row.evidence_count or 0
+
         seked_agents = []
         for ident in identities:
-            # Calculate real metrics using Evidence Packs and Actions
-            # E (Energy): Volume of recent actions
-            action_count = await db.scalar(
-                select(func.count(BrowserAction.id))
-                .where(BrowserAction.agent_id == ident.id)
-                .where(BrowserAction.started_at >= recent_window)
-            ) or 0
-            
-            # R (Resistance): Recent errors or failed actions
-            error_count = await db.scalar(
-                select(func.count(BrowserAction.id))
-                .where(BrowserAction.agent_id == ident.id)
-                .where(BrowserAction.success == False)
-                .where(BrowserAction.started_at >= recent_window)
-            ) or 0
-            
-            # Audit anomalies
-            audit_errors = await db.scalar(
-                select(func.count(AuditLog.id))
-                .where(AuditLog.user_id == ident.id)
-                .where(AuditLog.action.like("%fail%"))
-                .where(AuditLog.created_at >= recent_window)
-            ) or 0
-            
-            # C (Capacity): Historical evidence packs (experience)
-            evidence_count = await db.scalar(
-                select(func.count(EvidencePack.id))
-                .where(EvidencePack.agent_id == ident.id)
-            ) or 0
-            
-            # S (Stability): Ratio of successful to failed operations globally
-            total_actions = await db.scalar(select(func.count(BrowserAction.id)).where(BrowserAction.agent_id == ident.id)) or 1
-            total_success = await db.scalar(select(func.count(BrowserAction.id)).where(BrowserAction.agent_id == ident.id, BrowserAction.success == True)) or 0
-            
+            ba_data = browser_action_metrics.get(ident.id, {"action_count": 0, "error_count": 0, "total_actions": 1, "total_success": 0})
+            action_count = ba_data["action_count"]
+            error_count = ba_data["error_count"]
+            total_actions = ba_data["total_actions"]
+            total_success = ba_data["total_success"]
+
+            audit_errors = audit_metrics.get(ident.id, 0)
+            evidence_count = evidence_metrics.get(ident.id, 0)
+
             E = min(max(int(action_count / 10), 1), 10)
             R = min(max(int((error_count + audit_errors) / 2), 1), 10)
             C = min(max(int(evidence_count / 5), 1), 10)
             D = max(E - R, 1) # Drive correlates with successful energy
             S = min(max(int((total_success / max(total_actions, 1)) * 10), 1), 10)
-            
+
             sigma = round((E + D) / (R + 1), 2)
             ci = round(C / max(10 - R, 1), 2)
             si = round(S / 10.0, 2)
-            
+
             # Decide directive
             directive_info = await get_directive(sigma)
-            
+
             seked_agents.append({
                 "agent_id": ident.id,
                 "name": ident.id[:8], # Fallback since PGLIdentity has no name currently
@@ -160,7 +183,7 @@ async def get_seked_agents(db: AsyncSession = Depends(get_db)):
                     "throughput": action_count
                 }
             })
-            
+
         return seked_agents
     except Exception as e:
         raise HTTPException(

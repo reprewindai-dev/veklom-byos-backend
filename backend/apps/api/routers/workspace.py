@@ -589,12 +589,21 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     models_enabled = len(model_payload)
 
     result = await db.execute(
-        select(ExecLog)
+        select(
+            ExecLog.id,
+            ExecLog.model,
+            ExecLog.provider,
+            ExecLog.latency_ms,
+            ExecLog.total_tokens,
+            ExecLog.cost_usd,
+            ExecLog.policy_flags,
+            ExecLog.created_at
+        )
         .where(ExecLog.workspace_id == workspace_id)
         .order_by(ExecLog.created_at.desc())
         .limit(5)
     )
-    recent_rows = result.scalars().all()
+    recent_rows = result.all()
     recent_runs = [
         {
             "id": row.id,
@@ -618,11 +627,20 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
 
     audit_rows = (await db.execute(
-        select(AuditLog)
+        select(
+            AuditLog.id,
+            AuditLog.action,
+            AuditLog.resource_type,
+            AuditLog.resource_id,
+            AuditLog.user_id,
+            AuditLog.hash_chain,
+            AuditLog.prev_hash,
+            AuditLog.created_at
+        )
         .where(AuditLog.workspace_id == workspace_id)
         .order_by(AuditLog.created_at.desc())
         .limit(5)
-    )).scalars().all()
+    )).all()
     audit_logs = [
         {
             "id": row.id,
@@ -637,11 +655,18 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
 
     try:
         alert_rows = (await db.execute(
-            select(SecurityEvent)
+            select(
+                SecurityEvent.id,
+                SecurityEvent.description,
+                SecurityEvent.event_type,
+                SecurityEvent.severity,
+                SecurityEvent.threat_type,
+                SecurityEvent.created_at
+            )
             .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
             .order_by(SecurityEvent.created_at.desc())
             .limit(5)
-        )).scalars().all()
+        )).all()
     except SQLAlchemyError:
         await db.rollback()
         alert_rows = []

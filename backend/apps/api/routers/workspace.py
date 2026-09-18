@@ -82,12 +82,12 @@ async def workspace_search(q: str = "", user=Depends(get_current_user), db: Asyn
     try:
         # Search models
         model_result = await db.execute(
-            select(ModelConfig).where(
+            select(ModelConfig.id, ModelConfig.display_name, ModelConfig.provider).where(
                 ModelConfig.workspace_id == workspace_id,
                 ModelConfig.display_name.ilike(f"%{q}%")
             ).limit(5)
         )
-        for m in model_result.scalars():
+        for m in model_result.all():
             results.append({
                 "type": "model",
                 "id": m.id,
@@ -98,12 +98,12 @@ async def workspace_search(q: str = "", user=Depends(get_current_user), db: Asyn
 
         # Search deployments
         deploy_result = await db.execute(
-            select(Deployment).where(
+            select(Deployment.id, Deployment.name, Deployment.status).where(
                 Deployment.workspace_id == workspace_id,
                 Deployment.name.ilike(f"%{q}%")
             ).limit(5)
         )
-        for d in deploy_result.scalars():
+        for d in deploy_result.all():
             results.append({
                 "type": "deployment",
                 "id": d.id,
@@ -114,12 +114,12 @@ async def workspace_search(q: str = "", user=Depends(get_current_user), db: Asyn
 
         # Search pipelines
         pipeline_result = await db.execute(
-            select(Pipeline).where(
+            select(Pipeline.id, Pipeline.name, Pipeline.status).where(
                 Pipeline.workspace_id == workspace_id,
                 Pipeline.name.ilike(f"%{q}%")
             ).limit(5)
         )
-        for p in pipeline_result.scalars():
+        for p in pipeline_result.all():
             results.append({
                 "type": "pipeline",
                 "id": p.id,
@@ -130,12 +130,12 @@ async def workspace_search(q: str = "", user=Depends(get_current_user), db: Asyn
 
         # Search audit logs
         audit_result = await db.execute(
-            select(AuditLog).where(
+            select(AuditLog.id, AuditLog.action, AuditLog.resource_type).where(
                 AuditLog.workspace_id == workspace_id,
                 AuditLog.action.ilike(f"%{q}%")
             ).limit(5)
         )
-        for a in audit_result.scalars():
+        for a in audit_result.all():
             results.append({
                 "type": "audit",
                 "id": a.id,

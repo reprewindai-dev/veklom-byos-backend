@@ -1,13 +1,14 @@
-from typing import Any, Dict, List, Optional
-import uuid
 import hashlib
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from pgvector.sqlalchemy import Vector
 
-from backend.db.models.rag import AgentMemoryStore, DocumentChunk
 from backend.core.services.seked_service import seked_service
+from backend.db.models.rag import AgentMemoryStore, DocumentChunk
+
 
 class RAGService:
     @staticmethod
@@ -50,7 +51,7 @@ class RAGService:
             )
             db.add(doc_chunk)
             chunk_ids.append(chunk_id)
-        
+
         await db.commit()
         return chunk_ids
 
@@ -73,25 +74,31 @@ class RAGService:
             raise PermissionError(f"Agent {agent_id} has revoked privileges. Search denied.")
 
         # Gate 3: Scope Gate (Tenant, Workspace, Classification)
-        stmt = select(DocumentChunk).where(DocumentChunk.tenant_id == tenant_id)
+        stmt = select(
+            DocumentChunk.id,
+            DocumentChunk.content,
+            DocumentChunk.source_document_id,
+            DocumentChunk.document_classification,
+            DocumentChunk.embedding.cosine_distance(query_embedding).label("score")
+        ).where(DocumentChunk.tenant_id == tenant_id)
         if workspace_id:
             stmt = stmt.where(DocumentChunk.workspace_id == workspace_id)
         if required_classification:
             stmt = stmt.where(DocumentChunk.document_classification == required_classification)
-            
+
         # Semantic similarity within the authorized slice
         stmt = stmt.order_by(DocumentChunk.embedding.cosine_distance(query_embedding)).limit(top_k)
-        
+
         result = await db.execute(stmt)
-        chunks = result.scalars().all()
-        
+        chunks = result.all()
+
         return [
             {
                 "id": c.id,
                 "content": c.content,
                 "source_document_id": c.source_document_id,
                 "classification": c.document_classification,
-                "score": 0.0 # Placeholder for actual distance calculation if needed
+                "score": c.score
             } for c in chunks
         ]
 
@@ -151,18 +158,24 @@ class RAGService:
         if not is_active:
             raise PermissionError(f"Agent {agent_id} has revoked privileges. Memory read denied.")
 
-        stmt = select(AgentMemoryStore).where(
+        stmt = select(
+            AgentMemoryStore.id,
+            AgentMemoryStore.content,
+            AgentMemoryStore.memory_type,
+            AgentMemoryStore.importance_score,
+            AgentMemoryStore.event_timestamp
+        ).where(
             AgentMemoryStore.agent_id == agent_id,
             AgentMemoryStore.tenant_id == tenant_id
         )
         if memory_type:
             stmt = stmt.where(AgentMemoryStore.memory_type == memory_type)
-            
+
         stmt = stmt.order_by(AgentMemoryStore.embedding.cosine_distance(query_embedding)).limit(top_k)
-        
+
         result = await db.execute(stmt)
-        memories = result.scalars().all()
-        
+        memories = result.all()
+
         return [
             {
                 "id": m.id,

@@ -163,22 +163,16 @@ async def monitoring_health(user=Depends(get_current_user), db: AsyncSession = D
     db_status = "connected"
 
     try:
-        # Check recent execution logs for health
-        recent_execs = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_5m
-            )
-        ) or 0
+        # Batch ExecLog queries
+        exec_stats = (await db.execute(
+            select(
+                func.sum(case((ExecLog.created_at >= last_5m, 1), else_=0)).label("recent_execs"),
+                func.sum(case((and_(ExecLog.created_at >= last_5m, ExecLog.status == "error"), 1), else_=0)).label("recent_errors")
+            ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_5m)
+        )).fetchone()
 
-        # Check for recent errors
-        recent_errors = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_5m,
-                ExecLog.status == "error"
-            )
-        ) or 0
+        recent_execs = int(exec_stats.recent_execs or 0)
+        recent_errors = int(exec_stats.recent_errors or 0)
 
         # Check security events
         recent_alerts = await db.scalar(
@@ -226,34 +220,21 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
     provider_breakdown = {}
 
     try:
+        # ⚡ Bolt: Batching aggregate queries to avoid N+1 roundtrips.
         # Execution metrics
-        total_execs = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
+        metrics = (await db.execute(
+            select(
+                func.sum(case((ExecLog.created_at >= last_24h, 1), else_=0)).label("total_execs"),
+                func.coalesce(func.sum(case((ExecLog.created_at >= last_24h, ExecLog.total_tokens), else_=0)), 0).label("total_tokens"),
+                func.coalesce(func.sum(case((ExecLog.created_at >= last_24h, ExecLog.cost_usd), else_=0.0)), 0.0).label("total_cost"),
+                func.coalesce(func.avg(case((ExecLog.created_at >= last_24h, ExecLog.latency_ms))), 0).label("avg_latency")
+            ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
+        )).fetchone()
 
-        total_tokens = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
-
-        total_cost = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0.0
-
-        avg_latency = await db.scalar(
-            select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
+        total_execs = int(metrics.total_execs or 0)
+        total_tokens = int(metrics.total_tokens or 0)
+        total_cost = float(metrics.total_cost or 0.0)
+        avg_latency = float(metrics.avg_latency or 0.0)
 
         # Provider breakdown
         provider_rows = await db.execute(

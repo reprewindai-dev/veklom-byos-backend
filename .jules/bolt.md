@@ -16,3 +16,6 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+## 2024-08-26 - [Discovery Leaderboard N+1 Optimization]
+**Learning:** The live discovery leaderboard was loading all `GovernedRun` objects with a non-null result payload directly into memory using `.scalars().all()` and looping over them to count scores. This creates severe N+1 memory issues in Python because every historic run was loaded.
+**Action:** Always push grouping (`group_by`) and aggregating (`count`, `sum(case(...))`) for metrics logic directly into the database query instead of relying on Python iterations over ORM models. Use `->>` natively to extract JSON keys within SQL groupings.

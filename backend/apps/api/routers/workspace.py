@@ -318,7 +318,10 @@ async def autonomous_decisions(limit: int = 10, user=Depends(get_current_user), 
 
     # Use ExecLog with policy decisions as proxy for autonomous decisions
     result = await db.execute(
-        select(ExecLog)
+        select(
+            ExecLog.id, ExecLog.provider, ExecLog.policy_id, ExecLog.model,
+            ExecLog.total_tokens, ExecLog.cost_usd, ExecLog.created_at
+        )
         .where(
             ExecLog.workspace_id == workspace_id,
             ExecLog.created_at >= last_24h,
@@ -327,7 +330,7 @@ async def autonomous_decisions(limit: int = 10, user=Depends(get_current_user), 
         .order_by(ExecLog.created_at.desc())
         .limit(limit)
     )
-    logs = result.scalars().all()
+    logs = result.all()
 
     return {
         "decisions": [
@@ -589,12 +592,15 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     models_enabled = len(model_payload)
 
     result = await db.execute(
-        select(ExecLog)
+        select(
+            ExecLog.id, ExecLog.model, ExecLog.provider, ExecLog.latency_ms,
+            ExecLog.total_tokens, ExecLog.cost_usd, ExecLog.policy_flags, ExecLog.created_at
+        )
         .where(ExecLog.workspace_id == workspace_id)
         .order_by(ExecLog.created_at.desc())
         .limit(5)
     )
-    recent_rows = result.scalars().all()
+    recent_rows = result.all()
     recent_runs = [
         {
             "id": row.id,

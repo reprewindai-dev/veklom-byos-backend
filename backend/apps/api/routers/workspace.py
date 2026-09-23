@@ -609,10 +609,22 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         for row in recent_rows
     ]
 
-    recent_24h = (await db.execute(select(ExecLog.provider, ExecLog.created_at).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h))).all()
-    routing_history = _routing_history(recent_24h, now)
-    hetzner_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "hetzner")
-    aws_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "aws-burst")
+    recent_24h_stats = (await db.execute(
+        select(
+            func.extract('hour', ExecLog.created_at).label('hour'),
+            ExecLog.provider,
+            func.count().label('count')
+        ).where(
+            ExecLog.workspace_id == workspace_id,
+            ExecLog.created_at >= last_24h
+        ).group_by(
+            func.extract('hour', ExecLog.created_at),
+            ExecLog.provider
+        )
+    )).all()
+    routing_history = _routing_history(recent_24h_stats, now)
+    hetzner_count = sum(row.count for row in recent_24h_stats if _route_for_provider(row.provider) == "hetzner")
+    aws_count = sum(row.count for row in recent_24h_stats if _route_for_provider(row.provider) == "aws-burst")
     routed_total = hetzner_count + aws_count
     hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
@@ -1783,22 +1795,40 @@ def _routing_history(rows: list, now: datetime) -> list[dict]:
     }
     for row in rows:
         # Support both SQLAlchemy model instances and Row/tuple objects
-        provider = getattr(row, 'provider', None) if hasattr(row, 'provider') else row[0]
-        created_at = getattr(row, 'created_at', None) if hasattr(row, 'created_at') else row[1]
+        # We also need to support the exact format returned by _overview_payload's recent_24h_stats query
+        if len(row) == 3: # the format we added with extract('hour'), provider, count
+            hour_val = int(row.hour) if hasattr(row, 'hour') else int(row[0])
+            provider = getattr(row, 'provider', None) if hasattr(row, 'provider') else row[1]
+            count = getattr(row, 'count', 1) if hasattr(row, 'count') else row[2]
 
-        if not created_at:
-            continue
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        hour_age = int((now - created_at).total_seconds() // 3600)
-        if hour_age < 0 or hour_age > 23:
-            continue
-        bucket = buckets[created_at.hour]
-        if _route_for_provider(provider) == "aws-burst":
-            bucket["aws"] += 1
+            current_hour = now.hour
+            hour_age = (current_hour - hour_val) % 24
+            if hour_age < 0 or hour_age > 23:
+                continue
+            bucket = buckets[hour_val]
         else:
-            bucket["hetzner"] += 1
-    return list(buckets.values())
+            provider = getattr(row, 'provider', None) if hasattr(row, 'provider') else row[0]
+            created_at = getattr(row, 'created_at', None) if hasattr(row, 'created_at') else row[1]
+            count = 1
+
+            if not created_at:
+                continue
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            hour_age = int((now - created_at).total_seconds() // 3600)
+            if hour_age < 0 or hour_age > 23:
+                continue
+            bucket = buckets[created_at.hour]
+
+        if _route_for_provider(provider) == "aws-burst":
+            bucket["aws"] += count
+        else:
+            bucket["hetzner"] += count
+
+    # Return chronologically ordered buckets based on current time (oldest first or newest first)
+    # The frontend expects 24 elements ordered chronologically for charts
+    ordered_buckets = [buckets[(now.hour - i) % 24] for i in range(23, -1, -1)]
+    return ordered_buckets
 
 
 def _spend_breakdown(total: float) -> list[dict]:

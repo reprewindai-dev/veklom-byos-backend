@@ -16,3 +16,7 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+
+## 2026-08-07 - Refactoring routing history to preserve payload format
+**Learning:** In attempting to optimize database aggregations by changing tuple formats, there's a risk of breaking APIs and helper function responses (like `_routing_history`). When a frontend UI chart expects elements in a specific order (e.g. chronologically newest first), shifting sorting to dynamic timestamps without guaranteeing element positioning breaks rendering.
+**Action:** Always verify how a payload is constructed and consumed by a helper function before modifying the SQL query that feeds into it. Add robust unpacking fallbacks (`if len(row) == 3: ... else: ...`) if a function needs to accept multiple database response profiles during a refactor.

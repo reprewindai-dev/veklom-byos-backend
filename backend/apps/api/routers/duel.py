@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import base64
-import secrets
 import hashlib
 import json
 import os
 import re
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -16,7 +16,13 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database.database import get_db
-from backend.db.models.duel import AgentDuelAuthNonce, AgentDuelLobby, AgentDuelLobbyPlayer, AgentDuelSession, AgentDuelWager
+from backend.db.models.duel import (
+    AgentDuelAuthNonce,
+    AgentDuelLobby,
+    AgentDuelLobbyPlayer,
+    AgentDuelSession,
+    AgentDuelWager,
+)
 
 router = APIRouter(prefix="/duel", tags=["Agent Duel"])
 
@@ -615,14 +621,14 @@ async def _settlement_summary(db: AsyncSession) -> dict[str, Any]:
     )
     latest_settled_rows = list(latest_result.scalars().all())
     latest_settlement = _latest_settlement_from_wagers(latest_settled_rows)
-    
+
     if not latest_settlement or latest_settlement.get("gas_used") is None:
         latest_settlement = {
             "wager_id": "genesis-0000",
             "session_id": "genesis-session",
             "wallet_address": VEKLOM_TREASURY_ADDRESS,
             "tx_hash": "0xgenesis5f970e35422ca4fb48f065007f9f3b0e6",
-            "basescan_url": f"https://basescan.org/tx/0xgenesis",
+            "basescan_url": "https://basescan.org/tx/0xgenesis",
             "block_height": block_proof.get("number") if block_proof else 18453,
             "gas": 21000,
             "gas_used": 21000,
@@ -634,14 +640,17 @@ async def _settlement_summary(db: AsyncSession) -> dict[str, Any]:
             "settled_at": datetime.now(timezone.utc).isoformat()
         }
 
-    settled_count = await db.scalar(
-        select(func.count()).select_from(AgentDuelWager).where(AgentDuelWager.settlement_tx_hash.isnot(None))
-    )
-    total_value = await db.scalar(
-        select(func.coalesce(func.sum(AgentDuelWager.wager_amount_usdc), 0.0)).where(
-            AgentDuelWager.settlement_tx_hash.isnot(None)
+    row = (await db.execute(
+        select(
+            func.count(),
+            func.coalesce(func.sum(AgentDuelWager.wager_amount_usdc), 0.0)
         )
-    )
+        .select_from(AgentDuelWager)
+        .where(AgentDuelWager.settlement_tx_hash.isnot(None))
+    )).first()
+
+    settled_count, total_value = row if row else (0, 0.0)
+
     summary = {
         "success": True,
         "source": "base_rpc_and_agent_duel_wagers",
@@ -1345,10 +1354,10 @@ async def get_lobby_round_sync(id: str, db: AsyncSession = Depends(get_db)):
     lobby = result.scalars().first()
     if not lobby:
         raise HTTPException(status_code=404, detail="Lobby not found")
-        
+
     players_result = await db.execute(select(AgentDuelLobbyPlayer).where(AgentDuelLobbyPlayer.lobby_id == id))
     players = players_result.scalars().all()
-    
+
     return {
         "success": True,
         "lobby_id": id,
@@ -1367,10 +1376,10 @@ async def get_wager_settlement_proof(wager_id: str, db: AsyncSession = Depends(g
     wager = result.scalars().first()
     if not wager:
         raise HTTPException(status_code=404, detail="Wager not found")
-    
+
     metadata = wager.metadata_json or {}
     proof = metadata.get("settlement_proof")
-    
+
     if not proof and wager.settlement_tx_hash:
         proof = {
             "basescan_url": f"https://basescan.org/tx/{wager.settlement_tx_hash}",
@@ -1383,10 +1392,10 @@ async def get_wager_settlement_proof(wager_id: str, db: AsyncSession = Depends(g
             "function_selector": "0x00000000",
             "verified_at": wager.settled_at.isoformat() if wager.settled_at else datetime.now(timezone.utc).isoformat()
         }
-        
+
     if not proof:
         raise HTTPException(status_code=404, detail="Settlement proof not available yet")
-        
+
     return {
         "success": True,
         "wager_id": wager.id,
@@ -1401,7 +1410,7 @@ async def get_settlement_by_tx_hash(tx_hash: str, db: AsyncSession = Depends(get
     wager = result.scalars().first()
     if not wager:
         raise HTTPException(status_code=404, detail="Settlement not found for this tx hash")
-        
+
     return {
         "success": True,
         "wager": _wager_to_history(wager)

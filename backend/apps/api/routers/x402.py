@@ -169,9 +169,15 @@ async def get_x402_spend_history(
 ):
     """Get recent x402 micropayments."""
     # Fetch recent payments, ordering by id descending (proxy for creation date to avoid missing created_at column error)
-    stmt = select(Payment).order_by(Payment.id.desc()).limit(limit)
+    stmt = select(
+        Payment.id,
+        Payment.from_address,
+        Payment.payment_object_type,
+        Payment.amount,
+        Payment.status
+    ).order_by(Payment.id.desc()).limit(limit)
     result = await db.execute(stmt)
-    payments = result.scalars().all()
+    payments = result.all()
     
     runs = []
     for p in payments:
@@ -376,7 +382,15 @@ async def x402_search(
         body = {}
 
     from backend.db.models.ledger import SettlementLedger, SettlementStatus
-    query = select(SettlementLedger).limit(50)
+    query = select(
+        SettlementLedger.id,
+        SettlementLedger.tenant_id,
+        SettlementLedger.provider,
+        SettlementLedger.fee_type,
+        SettlementLedger.amount,
+        SettlementLedger.status,
+        SettlementLedger.created_at
+    ).limit(50)
 
     if body.get("tenant_id"):
         query = query.where(SettlementLedger.tenant_id == body["tenant_id"])
@@ -389,7 +403,7 @@ async def x402_search(
             pass
 
     result = await db.execute(query.order_by(SettlementLedger.created_at.desc()))
-    records = result.scalars().all()
+    records = result.all()
 
     return {
         "status": "ok",

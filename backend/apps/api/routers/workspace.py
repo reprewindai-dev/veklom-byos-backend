@@ -1436,8 +1436,9 @@ async def toggle_model(model_id: str, body: dict, user=Depends(get_current_user)
 
 @router.get("/api-keys")
 async def ws_api_keys(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(APIKey).where(APIKey.user_id == user.id))
-    return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active} for k in result.scalars().all()]
+    # ⚡ Bolt: Fetch specific columns as tuples instead of instantiating full ORM models to reduce O(N) memory allocation and overhead
+    result = await db.execute(select(APIKey.id, APIKey.name, APIKey.key_prefix, APIKey.is_active).where(APIKey.user_id == user.id))
+    return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active} for k in result.all()]
 
 
 @router.post("/api-keys")

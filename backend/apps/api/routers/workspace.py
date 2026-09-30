@@ -581,20 +581,23 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
     budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
 
-    model_rows = (await db.execute(select(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).scalars().all()
+    # ⚡ Bolt Optimization: Fetch specific columns for ModelConfig instead of full ORM models to avoid instantiation overhead.
+    model_rows = (await db.execute(select(ModelConfig.id, ModelConfig.provider, ModelConfig.display_name).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).all()
     model_payload = [
         {"id": row.id, "provider": row.provider, "display_name": row.display_name}
         for row in model_rows
     ] or _default_models()
     models_enabled = len(model_payload)
 
+    # ⚡ Bolt Optimization: Fetch specific columns directly rather than instantiating full ExecLog ORM models
+    # to significantly reduce CPU overhead and memory footprint in the API layer.
     result = await db.execute(
-        select(ExecLog)
+        select(ExecLog.id, ExecLog.model, ExecLog.provider, ExecLog.latency_ms, ExecLog.total_tokens, ExecLog.cost_usd, ExecLog.policy_flags, ExecLog.created_at)
         .where(ExecLog.workspace_id == workspace_id)
         .order_by(ExecLog.created_at.desc())
         .limit(5)
     )
-    recent_rows = result.scalars().all()
+    recent_rows = result.all()
     recent_runs = [
         {
             "id": row.id,

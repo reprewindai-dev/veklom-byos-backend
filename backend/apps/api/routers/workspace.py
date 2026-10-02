@@ -371,18 +371,19 @@ async def billing_breakdown(user=Depends(get_current_user), db: AsyncSession = D
     )
 
     # Active users
+    # ⚡ Bolt: Fetch specific columns (Rows) instead of full ORM objects to avoid model initialization overhead
     result = await db.execute(
-        select(WorkspaceMember, User)
+        select(User.id, User.email, WorkspaceMember.role, WorkspaceMember.joined_at)
         .join(User, WorkspaceMember.user_id == User.id)
         .where(WorkspaceMember.workspace_id == workspace_id)
     )
     members = []
-    for wm, u in result.all():
+    for u_id, u_email, wm_role, wm_joined_at in result.all():
         members.append({
-            "id": u.id,
-            "email": u.email,
-            "role": wm.role,
-            "joined_at": wm.joined_at.isoformat() if wm.joined_at else None
+            "id": u_id,
+            "email": u_email,
+            "role": wm_role,
+            "joined_at": wm_joined_at.isoformat() if wm_joined_at else None
         })
     if not any(m["id"] == user.id for m in members):
         members.append({
@@ -1475,18 +1476,19 @@ async def list_members(user=Depends(get_current_user), db: AsyncSession = Depend
     if not user.workspace_id:
         return [{"id": user.id, "email": user.email, "role": "owner", "joined_at": datetime.now(timezone.utc).isoformat()}]
 
+    # ⚡ Bolt: Fetch specific columns (Rows) instead of full ORM objects to avoid model initialization overhead
     result = await db.execute(
-        select(WorkspaceMember, User)
+        select(User.id, User.email, WorkspaceMember.role, WorkspaceMember.joined_at)
         .join(User, WorkspaceMember.user_id == User.id)
         .where(WorkspaceMember.workspace_id == user.workspace_id)
     )
     members = []
-    for wm, u in result.all():
+    for u_id, u_email, wm_role, wm_joined_at in result.all():
         members.append({
-            "id": u.id,
-            "email": u.email,
-            "role": wm.role,
-            "joined_at": wm.joined_at.isoformat() if wm.joined_at else None
+            "id": u_id,
+            "email": u_email,
+            "role": wm_role,
+            "joined_at": wm_joined_at.isoformat() if wm_joined_at else None
         })
 
     # If the owner isn't in the members list yet (e.g., legacy data), append them

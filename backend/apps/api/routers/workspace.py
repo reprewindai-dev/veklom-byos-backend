@@ -20,21 +20,19 @@ from backend.db.models.workspace import ModelConfig, Workspace, WorkspaceIntegra
 
 router = APIRouter(prefix="/workspace", tags=["Workspace"])
 
+
 @router.get("/status/data")
 async def workspace_status_data(user=Depends(get_current_user)):
     # Workspace status / data endpoint (requires authentication)
     # Track workspace opened
-    posthog_service.workspace_opened(
-        distinct_id=hash_id(user.email),
-        workspace_id=user.workspace_id or "default"
-    )
+    posthog_service.workspace_opened(distinct_id=hash_id(user.email), workspace_id=user.workspace_id or "default")
 
     return {
         "status": "active",
         "workspace_id": user.workspace_id,
         "role": user.role,
         "is_active": user.is_active,
-        "health": "nominal"
+        "health": "nominal",
     }
 
 
@@ -46,26 +44,21 @@ class EntitlementCheckRequest(BaseModel):
 
 
 @router.get("/entitlements/check")
-async def check_workspace_entitlement(
-    action: str,
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
+async def check_workspace_entitlement(action: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Check if the user/workspace is entitled to execute a given action."""
     from backend.core.security.entitlements import get_entitlement_decision
+
     return await get_entitlement_decision(user, action, db)
 
 
 @router.post("/entitlements/check")
 async def check_workspace_entitlement_post(
-    body: EntitlementCheckRequest,
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    body: EntitlementCheckRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     """Check if the user/workspace is entitled to execute a given action via POST."""
     from backend.core.security.entitlements import get_entitlement_decision
-    return await get_entitlement_decision(user, body.action, db)
 
+    return await get_entitlement_decision(user, body.action, db)
 
 
 # --- Search ---
@@ -82,67 +75,47 @@ async def workspace_search(q: str = "", user=Depends(get_current_user), db: Asyn
     try:
         # Search models
         model_result = await db.execute(
-            select(ModelConfig).where(
-                ModelConfig.workspace_id == workspace_id,
-                ModelConfig.display_name.ilike(f"%{q}%")
-            ).limit(5)
+            select(ModelConfig)
+            .where(ModelConfig.workspace_id == workspace_id, ModelConfig.display_name.ilike(f"%{q}%"))
+            .limit(5)
         )
         for m in model_result.scalars():
-            results.append({
-                "type": "model",
-                "id": m.id,
-                "title": m.display_name,
-                "subtitle": m.provider,
-                "url": "#/models"
-            })
+            results.append(
+                {"type": "model", "id": m.id, "title": m.display_name, "subtitle": m.provider, "url": "#/models"}
+            )
 
         # Search deployments
         deploy_result = await db.execute(
-            select(Deployment).where(
-                Deployment.workspace_id == workspace_id,
-                Deployment.name.ilike(f"%{q}%")
-            ).limit(5)
+            select(Deployment).where(Deployment.workspace_id == workspace_id, Deployment.name.ilike(f"%{q}%")).limit(5)
         )
         for d in deploy_result.scalars():
-            results.append({
-                "type": "deployment",
-                "id": d.id,
-                "title": d.name,
-                "subtitle": d.status,
-                "url": "#/deployments"
-            })
+            results.append(
+                {"type": "deployment", "id": d.id, "title": d.name, "subtitle": d.status, "url": "#/deployments"}
+            )
 
         # Search pipelines
         pipeline_result = await db.execute(
-            select(Pipeline).where(
-                Pipeline.workspace_id == workspace_id,
-                Pipeline.name.ilike(f"%{q}%")
-            ).limit(5)
+            select(Pipeline).where(Pipeline.workspace_id == workspace_id, Pipeline.name.ilike(f"%{q}%")).limit(5)
         )
         for p in pipeline_result.scalars():
-            results.append({
-                "type": "pipeline",
-                "id": p.id,
-                "title": p.name,
-                "subtitle": p.status,
-                "url": "#/pipelines"
-            })
+            results.append(
+                {"type": "pipeline", "id": p.id, "title": p.name, "subtitle": p.status, "url": "#/pipelines"}
+            )
 
         # Search audit logs
         audit_result = await db.execute(
-            select(AuditLog).where(
-                AuditLog.workspace_id == workspace_id,
-                AuditLog.action.ilike(f"%{q}%")
-            ).limit(5)
+            select(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.action.ilike(f"%{q}%")).limit(5)
         )
         for a in audit_result.scalars():
-            results.append({
-                "type": "audit",
-                "id": a.id,
-                "title": a.action,
-                "subtitle": a.resource_type or "workspace",
-                "url": "#/compliance"
-            })
+            results.append(
+                {
+                    "type": "audit",
+                    "id": a.id,
+                    "title": a.action,
+                    "subtitle": a.resource_type or "workspace",
+                    "url": "#/compliance",
+                }
+            )
     except SQLAlchemyError:
         await db.rollback()
 
@@ -164,30 +137,38 @@ async def monitoring_health(user=Depends(get_current_user), db: AsyncSession = D
 
     try:
         # Check recent execution logs for health
-        recent_execs = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_5m
+        recent_execs = (
+            await db.scalar(
+                select(func.count())
+                .select_from(ExecLog)
+                .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_5m)
             )
-        ) or 0
+            or 0
+        )
 
         # Check for recent errors
-        recent_errors = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_5m,
-                ExecLog.status == "error"
+        recent_errors = (
+            await db.scalar(
+                select(func.count())
+                .select_from(ExecLog)
+                .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_5m, ExecLog.status == "error")
             )
-        ) or 0
+            or 0
+        )
 
         # Check security events
-        recent_alerts = await db.scalar(
-            select(func.count()).select_from(SecurityEvent).where(
-                SecurityEvent.workspace_id == workspace_id,
-                SecurityEvent.created_at >= last_5m,
-                SecurityEvent.status != "resolved"
+        recent_alerts = (
+            await db.scalar(
+                select(func.count())
+                .select_from(SecurityEvent)
+                .where(
+                    SecurityEvent.workspace_id == workspace_id,
+                    SecurityEvent.created_at >= last_5m,
+                    SecurityEvent.status != "resolved",
+                )
             )
-        ) or 0
+            or 0
+        )
     except SQLAlchemyError:
         await db.rollback()
         db_status = "disconnected"
@@ -207,8 +188,8 @@ async def monitoring_health(user=Depends(get_current_user), db: AsyncSession = D
             "errors_last_5m": recent_errors,
             "unresolved_alerts": recent_alerts,
             "database": db_status,
-            "region": "hetzner-fsn1"
-        }
+            "region": "hetzner-fsn1",
+        },
     }
 
 
@@ -227,33 +208,41 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
 
     try:
         # Execution metrics
-        total_execs = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
+        total_execs = (
+            await db.scalar(
+                select(func.count())
+                .select_from(ExecLog)
+                .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
             )
-        ) or 0
+            or 0
+        )
 
-        total_tokens = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
+        total_tokens = (
+            await db.scalar(
+                select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
+                    ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h
+                )
             )
-        ) or 0
+            or 0
+        )
 
-        total_cost = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
+        total_cost = (
+            await db.scalar(
+                select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
+                    ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h
+                )
             )
-        ) or 0.0
+            or 0.0
+        )
 
-        avg_latency = await db.scalar(
-            select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
+        avg_latency = (
+            await db.scalar(
+                select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
+                    ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h
+                )
             )
-        ) or 0
+            or 0
+        )
 
         # Provider breakdown
         provider_rows = await db.execute(
@@ -262,10 +251,7 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
             .group_by(ExecLog.provider)
         )
         for provider, count, tokens in provider_rows:
-            provider_breakdown[provider or "unknown"] = {
-                "count": count,
-                "tokens": int(tokens or 0)
-            }
+            provider_breakdown[provider or "unknown"] = {"count": count, "tokens": int(tokens or 0)}
     except SQLAlchemyError:
         await db.rollback()
 
@@ -275,7 +261,7 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
         "cost_usd": float(total_cost),
         "avg_latency_ms": int(avg_latency),
         "provider_breakdown": provider_breakdown,
-        "timestamp": now.isoformat()
+        "timestamp": now.isoformat(),
     }
 
 
@@ -284,25 +270,27 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
 async def audit_logs(limit: int = 20, offset: int = 0, user=Depends(get_current_user)):
     """Paginated audit logs for the workspace, proxied to PGL ledger."""
     import httpx
+
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"http://localhost:8001/v1/audit/ledger/traces?limit={limit}&offset={offset}",
-                timeout=10.0
+                f"http://localhost:8001/v1/audit/ledger/traces?limit={limit}&offset={offset}", timeout=10.0
             )
             resp.raise_for_status()
             data = resp.json()
             mapped_logs = []
             for trace in data.get("traces", []):
-                mapped_logs.append({
-                    "id": trace["run_id"],
-                    "actor_user_id": trace["agent_id"] or "system",
-                    "action": "EXECUTE",
-                    "resource": trace["prompt"][:50] + "..." if trace["prompt"] else "Unknown",
-                    "status": "success" if trace["status"] == "COMPLETED" else "error",
-                    "ip_address": trace["execution_id"] or "no-ei",
-                    "created_at": trace["created_at"]
-                })
+                mapped_logs.append(
+                    {
+                        "id": trace["run_id"],
+                        "actor_user_id": trace["agent_id"] or "system",
+                        "action": "EXECUTE",
+                        "resource": trace["prompt"][:50] + "..." if trace["prompt"] else "Unknown",
+                        "status": "success" if trace["status"] == "COMPLETED" else "error",
+                        "ip_address": trace["execution_id"] or "no-ei",
+                        "created_at": trace["created_at"],
+                    }
+                )
             return {"logs": mapped_logs, "total": len(mapped_logs), "limit": limit, "offset": offset}
     except Exception:
         return {"logs": [], "total": 0, "limit": limit, "offset": offset}
@@ -319,11 +307,7 @@ async def autonomous_decisions(limit: int = 10, user=Depends(get_current_user), 
     # Use ExecLog with policy decisions as proxy for autonomous decisions
     result = await db.execute(
         select(ExecLog)
-        .where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= last_24h,
-            ExecLog.policy_id.isnot(None)
-        )
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h, ExecLog.policy_id.isnot(None))
         .order_by(ExecLog.created_at.desc())
         .limit(limit)
     )
@@ -339,7 +323,7 @@ async def autonomous_decisions(limit: int = 10, user=Depends(get_current_user), 
                 "tokens": log.total_tokens,
                 "cost_usd": log.cost_usd,
                 "latency_ms": log.latency_ms,
-                "created_at": log.created_at.isoformat() if log.created_at else None
+                "created_at": log.created_at.isoformat() if log.created_at else None,
             }
             for log in logs
         ]
@@ -355,19 +339,18 @@ async def billing_breakdown(user=Depends(get_current_user), db: AsyncSession = D
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     # Spend from ExecLog
-    spend = await db.scalar(
-        select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
-            ExecLog.workspace_id == workspace_id,
-            ExecLog.created_at >= month_start
+    spend = (
+        await db.scalar(
+            select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
+                ExecLog.workspace_id == workspace_id, ExecLog.created_at >= month_start
+            )
         )
-    ) or 0.0
+        or 0.0
+    )
 
     # Budget rule
     budget = await db.scalar(
-        select(BudgetRule.limit_usd).where(
-            BudgetRule.workspace_id == workspace_id,
-            BudgetRule.is_active == True
-        )
+        select(BudgetRule.limit_usd).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)
     )
 
     # Active users
@@ -378,19 +361,23 @@ async def billing_breakdown(user=Depends(get_current_user), db: AsyncSession = D
     )
     members = []
     for wm, u in result.all():
-        members.append({
-            "id": u.id,
-            "email": u.email,
-            "role": wm.role,
-            "joined_at": wm.joined_at.isoformat() if wm.joined_at else None
-        })
+        members.append(
+            {
+                "id": u.id,
+                "email": u.email,
+                "role": wm.role,
+                "joined_at": wm.joined_at.isoformat() if wm.joined_at else None,
+            }
+        )
     if not any(m["id"] == user.id for m in members):
-        members.append({
-            "id": user.id,
-            "email": getattr(user, "email", "owner@example.com"),
-            "role": "owner",
-            "joined_at": now.isoformat()
-        })
+        members.append(
+            {
+                "id": user.id,
+                "email": getattr(user, "email", "owner@example.com"),
+                "role": "owner",
+                "joined_at": now.isoformat(),
+            }
+        )
 
     # Usage subtotals
     usage_result = await db.execute(
@@ -400,10 +387,7 @@ async def billing_breakdown(user=Depends(get_current_user), db: AsyncSession = D
     )
     subtotals = []
     for provider, cost in usage_result.all():
-        subtotals.append({
-            "category": provider or "inference",
-            "amount_usd": round(float(cost or 0.0), 4)
-        })
+        subtotals.append({"category": provider or "inference", "amount_usd": round(float(cost or 0.0), 4)})
 
     return {
         "period_start": month_start.isoformat(),
@@ -413,7 +397,7 @@ async def billing_breakdown(user=Depends(get_current_user), db: AsyncSession = D
         "remaining_usd": round((budget or 150.0) - spend, 4) if budget else None,
         "utilization_pct": round((spend / (budget or 150.0)) * 100, 2) if budget else None,
         "members": members,
-        "subtotals": subtotals
+        "subtotals": subtotals,
     }
 
 
@@ -426,11 +410,14 @@ async def wallet_stats_usage(user=Depends(get_current_user), db: AsyncSession = 
     workspace_id = user.workspace_id or "default"
 
     # Balance
-    balance = await db.scalar(
-        select(func.coalesce(func.sum(WalletTransaction.amount), 0.0)).where(
-            WalletTransaction.workspace_id == workspace_id
+    balance = (
+        await db.scalar(
+            select(func.coalesce(func.sum(WalletTransaction.amount), 0.0)).where(
+                WalletTransaction.workspace_id == workspace_id
+            )
         )
-    ) or 0.0
+        or 0.0
+    )
 
     # Recent transactions
     result = await db.execute(
@@ -449,10 +436,10 @@ async def wallet_stats_usage(user=Depends(get_current_user), db: AsyncSession = 
                 "amount": t.amount,
                 "type": t.transaction_type,
                 "description": t.description,
-                "created_at": t.created_at.isoformat() if t.created_at else None
+                "created_at": t.created_at.isoformat() if t.created_at else None,
             }
             for t in transactions
-        ]
+        ],
     }
 
 
@@ -479,7 +466,7 @@ async def security_alerts(limit: int = 10, user=Depends(get_current_user), db: A
                 "description": e.description,
                 "source_ip": e.source_ip,
                 "status": e.status,
-                "created_at": e.created_at.isoformat() if e.created_at else None
+                "created_at": e.created_at.isoformat() if e.created_at else None,
             }
             for e in events
         ]
@@ -515,10 +502,10 @@ async def audit_export(session_id: str = None, user=Depends(get_current_user), d
                 "user_agent": log.user_agent,
                 "hash_chain": log.hash_chain,
                 "prev_hash": log.prev_hash,
-                "created_at": log.created_at.isoformat() if log.created_at else None
+                "created_at": log.created_at.isoformat() if log.created_at else None,
             }
             for log in logs
-        ]
+        ],
     }
 
 
@@ -563,36 +550,61 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     # Ensure we include records since last_minute even if it crosses into yesterday
     since_time = min(today_start, last_minute)
 
-    overview_stats = (await db.execute(
-        select(
-            func.sum(case((ExecLog.created_at >= today_start, 1), else_=0)).label("total_requests"),
-            func.sum(case((ExecLog.created_at >= last_minute, 1), else_=0)).label("requests_per_min"),
-            func.coalesce(func.sum(case((ExecLog.created_at >= today_start, ExecLog.total_tokens), else_=0)), 0).label("total_tokens"),
-            func.coalesce(func.sum(case((ExecLog.created_at >= today_start, ExecLog.cost_usd), else_=0.0)), 0.0).label("spend_today"),
-            func.coalesce(func.avg(case((ExecLog.created_at >= today_start, ExecLog.latency_ms))), 0).label("avg_latency")
-        ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= since_time)
-    )).fetchone()
+    overview_stats = (
+        await db.execute(
+            select(
+                func.sum(case((ExecLog.created_at >= today_start, 1), else_=0)).label("total_requests"),
+                func.sum(case((ExecLog.created_at >= last_minute, 1), else_=0)).label("requests_per_min"),
+                func.coalesce(
+                    func.sum(case((ExecLog.created_at >= today_start, ExecLog.total_tokens), else_=0)), 0
+                ).label("total_tokens"),
+                func.coalesce(
+                    func.sum(case((ExecLog.created_at >= today_start, ExecLog.cost_usd), else_=0.0)), 0.0
+                ).label("spend_today"),
+                func.coalesce(func.avg(case((ExecLog.created_at >= today_start, ExecLog.latency_ms))), 0).label(
+                    "avg_latency"
+                ),
+            ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= since_time)
+        )
+    ).fetchone()
 
     total_requests = overview_stats.total_requests or 0
     requests_per_min = int(overview_stats.requests_per_min or 0)
     total_tokens = overview_stats.total_tokens or 0
     spend_today = overview_stats.spend_today or 0.0
     avg_latency = overview_stats.avg_latency or 0
-    audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
-    budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
+    audit_entries = (
+        await db.scalar(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)
+        )
+        or 0
+    )
+    budget_limit = (
+        await db.scalar(
+            select(func.max(BudgetRule.limit_usd)).where(
+                BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True
+            )
+        )
+        or 150.0
+    )
 
-    model_rows = (await db.execute(select(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).scalars().all()
+    # ⚡ Bolt: Fetch specific columns as tuples instead of full ORM models to avoid state tracking and memory overhead
+    model_rows = (
+        await db.execute(
+            select(ModelConfig.id, ModelConfig.provider, ModelConfig.display_name).where(
+                ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True
+            )
+        )
+    ).all()
     model_payload = [
-        {"id": row.id, "provider": row.provider, "display_name": row.display_name}
-        for row in model_rows
+        {"id": row.id, "provider": row.provider, "display_name": row.display_name} for row in model_rows
     ] or _default_models()
     models_enabled = len(model_payload)
 
     result = await db.execute(
-        select(ExecLog)
-        .where(ExecLog.workspace_id == workspace_id)
-        .order_by(ExecLog.created_at.desc())
-        .limit(5)
+        select(ExecLog).where(ExecLog.workspace_id == workspace_id).order_by(ExecLog.created_at.desc()).limit(5)
     )
     recent_rows = result.scalars().all()
     recent_runs = [
@@ -609,7 +621,13 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         for row in recent_rows
     ]
 
-    recent_24h = (await db.execute(select(ExecLog.provider, ExecLog.created_at).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h))).all()
+    recent_24h = (
+        await db.execute(
+            select(ExecLog.provider, ExecLog.created_at).where(
+                ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h
+            )
+        )
+    ).all()
     routing_history = _routing_history(recent_24h, now)
     hetzner_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "hetzner")
     aws_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "aws-burst")
@@ -617,12 +635,18 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
 
-    audit_rows = (await db.execute(
-        select(AuditLog)
-        .where(AuditLog.workspace_id == workspace_id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(5)
-    )).scalars().all()
+    audit_rows = (
+        (
+            await db.execute(
+                select(AuditLog)
+                .where(AuditLog.workspace_id == workspace_id)
+                .order_by(AuditLog.created_at.desc())
+                .limit(5)
+            )
+        )
+        .scalars()
+        .all()
+    )
     audit_logs = [
         {
             "id": row.id,
@@ -636,12 +660,18 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     ]
 
     try:
-        alert_rows = (await db.execute(
-            select(SecurityEvent)
-            .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
-            .order_by(SecurityEvent.created_at.desc())
-            .limit(5)
-        )).scalars().all()
+        alert_rows = (
+            (
+                await db.execute(
+                    select(SecurityEvent)
+                    .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
+                    .order_by(SecurityEvent.created_at.desc())
+                    .limit(5)
+                )
+            )
+            .scalars()
+            .all()
+        )
     except SQLAlchemyError:
         await db.rollback()
         alert_rows = []
@@ -679,12 +709,14 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     ]
 
     try:
-        active_pipelines = await db.scalar(
-            select(func.count()).select_from(Pipeline).where(Pipeline.workspace_id == workspace_id)
-        ) or 0
-        active_deployments = await db.scalar(
-            select(func.count()).select_from(Deployment).where(Deployment.workspace_id == workspace_id)
-        ) or 0
+        active_pipelines = (
+            await db.scalar(select(func.count()).select_from(Pipeline).where(Pipeline.workspace_id == workspace_id))
+            or 0
+        )
+        active_deployments = (
+            await db.scalar(select(func.count()).select_from(Deployment).where(Deployment.workspace_id == workspace_id))
+            or 0
+        )
     except SQLAlchemyError:
         await db.rollback()
         active_pipelines = 0
@@ -741,13 +773,29 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
             "burst_region": "aws-us-east-1",
             "history": routing_history,
             "regions": [
-                {"label": "Hetzner FSN1", "value": f"{hetzner_percent}% routed", "sub": "Primary private runtime", "route": "hetzner"},
-                {"label": "Hetzner FRA1", "value": f"{active_deployments} active", "sub": "EU-sovereign deployment pool", "route": "hetzner"},
-                {"label": "AWS burst (us-east-1)", "value": f"{aws_percent}% engaged", "sub": "On-demand gated by policy", "route": "aws-burst"},
+                {
+                    "label": "Hetzner FSN1",
+                    "value": f"{hetzner_percent}% routed",
+                    "sub": "Primary private runtime",
+                    "route": "hetzner",
+                },
+                {
+                    "label": "Hetzner FRA1",
+                    "value": f"{active_deployments} active",
+                    "sub": "EU-sovereign deployment pool",
+                    "route": "hetzner",
+                },
+                {
+                    "label": "AWS burst (us-east-1)",
+                    "value": f"{aws_percent}% engaged",
+                    "sub": "On-demand gated by policy",
+                    "route": "aws-burst",
+                },
             ],
         },
         "updated_at": now.isoformat(),
     }
+
 
 @router.get("/observability")
 async def workspace_observability(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -759,20 +807,31 @@ async def workspace_observability(user=Depends(get_current_user), db: AsyncSessi
     # ⚡ Bolt: Batching aggregate queries to avoid N+1 roundtrips.
     # Concurrent asyncio.gather queries on the same SQLAlchemy asyncpg session cause a RuntimeError,
     # so we use conditional aggregations in a single query.
-    obs_stats = (await db.execute(
-        select(
-            func.count().label("total_requests"),
-            func.coalesce(func.sum(case((ExecLog.status == "failed", 1), else_=0)), 0).label("error_count"),
-            func.coalesce(func.avg(ExecLog.latency_ms), 0).label("avg_latency"),
-            func.coalesce(func.sum(case((
-                and_(
-                    cast(ExecLog.policy_flags, String) != '[]',
-                    cast(ExecLog.policy_flags, String) != 'null',
-                    ExecLog.policy_flags.is_not(None)
-                ), 1
-            ), else_=0)), 0).label("policy_flagged_count")
-        ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)
-    )).fetchone()
+    obs_stats = (
+        await db.execute(
+            select(
+                func.count().label("total_requests"),
+                func.coalesce(func.sum(case((ExecLog.status == "failed", 1), else_=0)), 0).label("error_count"),
+                func.coalesce(func.avg(ExecLog.latency_ms), 0).label("avg_latency"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                and_(
+                                    cast(ExecLog.policy_flags, String) != "[]",
+                                    cast(ExecLog.policy_flags, String) != "null",
+                                    ExecLog.policy_flags.is_not(None),
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("policy_flagged_count"),
+            ).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)
+        )
+    ).fetchone()
 
     total_requests = obs_stats.total_requests or 0
     error_count = int(obs_stats.error_count or 0)
@@ -784,7 +843,9 @@ async def workspace_observability(user=Depends(get_current_user), db: AsyncSessi
 
     # Get active routes from recent executions
     recent_routes = await db.execute(
-        select(ExecLog.provider).distinct().where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)
+        select(ExecLog.provider)
+        .distinct()
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= today_start)
     )
     active_routes = [row[0] for row in recent_routes.fetchall()] if recent_routes else ["playground"]
 
@@ -809,9 +870,9 @@ async def workspace_observability(user=Depends(get_current_user), db: AsyncSessi
 # ---------------------------------------------------------------------------
 # Settings — full workspace administration
 # ---------------------------------------------------------------------------
-_ws_settings: dict = {}   # workspace_id → settings dict
+_ws_settings: dict = {}  # workspace_id → settings dict
 _ws_integrations: dict = {}  # workspace_id → {integration_name: config}
-_ws_routing: dict = {}    # workspace_id → routing config
+_ws_routing: dict = {}  # workspace_id → routing config
 
 _DEFAULT_INTEGRATIONS = {
     "slack": {"enabled": True, "webhook_url": "", "channel": "#alerts", "configured": False},
@@ -876,9 +937,20 @@ async def get_settings(user=Depends(get_current_user), db: AsyncSession = Depend
 async def update_settings(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or "default"
     settings = _get_settings(ws)
-    allowed = {"workspace_name", "slug", "default_region", "residency", "mfa_enforcement",
-               "session_timeout_hours", "tls_version", "notifications_email", "notifications_slack",
-               "appearance_theme", "log_retention_days", "industry"}
+    allowed = {
+        "workspace_name",
+        "slug",
+        "default_region",
+        "residency",
+        "mfa_enforcement",
+        "session_timeout_hours",
+        "tls_version",
+        "notifications_email",
+        "notifications_slack",
+        "appearance_theme",
+        "log_retention_days",
+        "industry",
+    }
     for k, v in body.items():
         if k in allowed:
             settings[k] = v
@@ -887,9 +959,12 @@ async def update_settings(body: dict, user=Depends(get_current_user), db: AsyncS
         result = await db.execute(select(Workspace).where(Workspace.id == user.workspace_id))
         workspace = result.scalar_one_or_none()
         if workspace:
-            if "workspace_name" in body: workspace.name = body["workspace_name"]
-            if "slug" in body: workspace.slug = body["slug"]
-            if "industry" in body: workspace.industry = body["industry"]
+            if "workspace_name" in body:
+                workspace.name = body["workspace_name"]
+            if "slug" in body:
+                workspace.slug = body["slug"]
+            if "industry" in body:
+                workspace.industry = body["industry"]
             await db.commit()
     return {"message": "Settings updated", "settings": settings}
 
@@ -906,7 +981,6 @@ async def update_config(body: dict, user=Depends(get_current_user), db: AsyncSes
     return await update_settings(body, user, db)
 
 
-
 @router.get("/integrations")
 async def get_integrations(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or "default"
@@ -920,8 +994,14 @@ async def get_integrations(user=Depends(get_current_user), db: AsyncSession = De
             integrations[provider].update(db_i.config_json or {})
             integrations[provider]["enabled"] = db_i.status == "active"
 
-            key_fields = {"slack": "webhook_url", "pagerduty": "integration_key", "github": "token",
-                          "vercel": "token", "datadog": "api_key", "jira": "api_token"}
+            key_fields = {
+                "slack": "webhook_url",
+                "pagerduty": "integration_key",
+                "github": "token",
+                "vercel": "token",
+                "datadog": "api_key",
+                "jira": "api_token",
+            }
             field = key_fields.get(provider)
             if field and db_i.config_json.get(field):
                 integrations[provider]["configured"] = True
@@ -929,13 +1009,14 @@ async def get_integrations(user=Depends(get_current_user), db: AsyncSession = De
 
 
 @router.patch("/integrations/{integration_name}")
-async def update_integration(integration_name: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def update_integration(
+    integration_name: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     ws = user.workspace_id or "default"
 
     result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == ws,
-            WorkspaceIntegration.provider == integration_name
+            WorkspaceIntegration.workspace_id == ws, WorkspaceIntegration.provider == integration_name
         )
     )
     db_i = result.scalar_one_or_none()
@@ -944,10 +1025,7 @@ async def update_integration(integration_name: str, body: dict, user=Depends(get
 
     if not db_i:
         db_i = WorkspaceIntegration(
-            workspace_id=ws,
-            provider=integration_name,
-            status="inactive",
-            config_json=default_cfg
+            workspace_id=ws, provider=integration_name, status="inactive", config_json=default_cfg
         )
         db.add(db_i)
 
@@ -958,8 +1036,14 @@ async def update_integration(integration_name: str, body: dict, user=Depends(get
     if "enabled" in body:
         db_i.status = "active" if body["enabled"] else "inactive"
 
-    key_fields = {"slack": "webhook_url", "pagerduty": "integration_key", "github": "token",
-                  "vercel": "token", "datadog": "api_key", "jira": "api_token"}
+    key_fields = {
+        "slack": "webhook_url",
+        "pagerduty": "integration_key",
+        "github": "token",
+        "vercel": "token",
+        "datadog": "api_key",
+        "jira": "api_token",
+    }
     field = key_fields.get(integration_name)
     if field and cfg.get(field):
         cfg["configured"] = True
@@ -970,12 +1054,7 @@ async def update_integration(integration_name: str, body: dict, user=Depends(get
     await db.commit()
     await db.refresh(db_i)
 
-    return {
-        "integration": integration_name,
-        "workspace_id": ws,
-        "enabled": db_i.status == "active",
-        **cfg
-    }
+    return {"integration": integration_name, "workspace_id": ws, "enabled": db_i.status == "active", **cfg}
 
 
 @router.post("/integrations/{provider}/test")
@@ -984,8 +1063,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
 
     result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == ws,
-            WorkspaceIntegration.provider == provider
+            WorkspaceIntegration.workspace_id == ws, WorkspaceIntegration.provider == provider
         )
     )
     db_i = result.scalar_one_or_none()
@@ -1004,6 +1082,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
         webhook_url = cfg.get("webhook_url")
         if webhook_url:
             import httpx
+
             try:
                 payload = {
                     "text": "🚨 *Veklom Sovereign AI Hub - Integration Test*\nSlack integration successfully verified."
@@ -1028,6 +1107,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
             message = "PagerDuty integration key not configured"
         else:
             import httpx
+
             try:
                 payload = {
                     "routing_key": integration_key,
@@ -1040,8 +1120,8 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
                         "source": "veklom-governance-engine",
                         "component": "integrations-manager",
                         "group": "test-suite",
-                        "class": "connection-test"
-                    }
+                        "class": "connection-test",
+                    },
                 }
                 response = httpx.post("https://events.pagerduty.com/v2/enqueue", json=payload, timeout=5.0)
                 if response.status_code not in (200, 202):
@@ -1062,6 +1142,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
             message = "GitHub personal access token not configured"
         else:
             import httpx
+
             try:
                 headers = {"Authorization": f"token {token}", "User-Agent": "Veklom-Sovereign-Hub"}
                 response = httpx.get("https://api.github.com/user", headers=headers, timeout=5.0)
@@ -1084,6 +1165,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
             message = "Vercel API token not configured"
         else:
             import httpx
+
             try:
                 headers = {"Authorization": f"Bearer {token}"}
                 response = httpx.get("https://api.vercel.com/v2/user", headers=headers, timeout=5.0)
@@ -1113,12 +1195,7 @@ async def test_integration(provider: str, user=Depends(get_current_user), db: As
 
     await db.commit()
 
-    return {
-        "provider": provider,
-        "success": success,
-        "message": message,
-        "last_tested_at": now.isoformat()
-    }
+    return {"provider": provider, "success": success, "message": message, "last_tested_at": now.isoformat()}
 
 
 @router.get("/routing")
@@ -1166,7 +1243,9 @@ async def list_models(provider: str = None, user=Depends(get_current_user), db: 
 
 
 @router.post("/models/{model_id}/deploy")
-async def deploy_model(model_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def deploy_model(
+    model_id: str, body: dict = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     """Create a deployment from a selected model."""
     import uuid as _uuid
 
@@ -1175,8 +1254,7 @@ async def deploy_model(model_id: str, body: dict = None, user=Depends(get_curren
     body = body or {}
     result = await db.execute(
         select(ModelConfig).where(
-            ModelConfig.id == model_id,
-            ModelConfig.workspace_id == (user.workspace_id or "default")
+            ModelConfig.id == model_id, ModelConfig.workspace_id == (user.workspace_id or "default")
         )
     )
     model = result.scalar_one_or_none()
@@ -1194,9 +1272,9 @@ async def deploy_model(model_id: str, body: dict = None, user=Depends(get_curren
             "model_id": model.id,
             "model_name": model.model_name,
             "provider": model.provider,
-            **body.get("config", {})
+            **body.get("config", {}),
         },
-        health_status="initializing"
+        health_status="initializing",
     )
     db.add(deployment)
     await db.commit()
@@ -1207,20 +1285,14 @@ async def deploy_model(model_id: str, body: dict = None, user=Depends(get_curren
         "name": deployment.name,
         "status": deployment.status,
         "endpoint_url": deployment.endpoint_url,
-        "model": {
-            "id": model.id,
-            "display_name": model.display_name,
-            "provider": model.provider
-        }
+        "model": {"id": model.id, "display_name": model.display_name, "provider": model.provider},
     }
 
 
 @router.get("/models/{model_id}/versions")
 async def model_versions(model_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Rich version history for a model including rollback window and audit lineage."""
-    result = await db.execute(
-        select(ModelConfig).where(ModelConfig.id == model_id)
-    )
+    result = await db.execute(select(ModelConfig).where(ModelConfig.id == model_id))
     model = result.scalar_one_or_none()
     display_name = model.display_name or model.model_name if model else None
 
@@ -1290,13 +1362,17 @@ async def model_versions(model_id: str, user=Depends(get_current_user), db: Asyn
 
 
 @router.post("/models/{model_id}/rollback")
-async def rollback_model_version(model_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def rollback_model_version(
+    model_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     """Roll back a model to a specific version within the 30-day window."""
     target_version = body.get("version")
     if not target_version:
         raise HTTPException(status_code=400, detail="version is required")
     result = await db.execute(
-        select(ModelConfig).where(ModelConfig.id == model_id, ModelConfig.workspace_id == (user.workspace_id or "default"))
+        select(ModelConfig).where(
+            ModelConfig.id == model_id, ModelConfig.workspace_id == (user.workspace_id or "default")
+        )
     )
     model = result.scalar_one_or_none()
     if not model:
@@ -1304,14 +1380,17 @@ async def rollback_model_version(model_id: str, body: dict, user=Depends(get_cur
     cfg = model.config_json or {}
     if isinstance(cfg, str):
         import json
-        try: cfg = json.loads(cfg)
-        except: cfg = {}
+
+        try:
+            cfg = json.loads(cfg)
+        except:
+            cfg = {}
     versions = cfg.get("versions", [])
     match = next((v for v in versions if v.get("version") == target_version), None)
     if versions and not match:
         raise HTTPException(status_code=404, detail=f"Version {target_version} not found or outside 30-day window")
     for v in versions:
-        v["is_current"] = (v.get("version") == target_version)
+        v["is_current"] = v.get("version") == target_version
     cfg["versions"] = versions
     model.config_json = cfg
     await db.commit()
@@ -1331,14 +1410,17 @@ _ab_splits: dict = {}
 async def get_ab_splits(user=Depends(get_current_user)):
     """Get current A/B traffic split configuration for this workspace."""
     ws = user.workspace_id or "default"
-    splits = _ab_splits.get(ws, {
-        "splits": [
-            {"tag": "llama3-70b@v3", "traffic_pct": 75, "label": "chat:prod"},
-            {"tag": "llama3-70b@v2", "traffic_pct": 25, "label": "chat:shadow"},
-        ],
-        "active": True,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })
+    splits = _ab_splits.get(
+        ws,
+        {
+            "splits": [
+                {"tag": "llama3-70b@v3", "traffic_pct": 75, "label": "chat:prod"},
+                {"tag": "llama3-70b@v2", "traffic_pct": 25, "label": "chat:shadow"},
+            ],
+            "active": True,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
     return splits
 
 
@@ -1373,7 +1455,7 @@ async def upload_model(body: dict, user=Depends(get_current_user), db: AsyncSess
         is_enabled=body.get("is_enabled", True),
         config_json=body.get("config", "{}"),
         cost_per_1k_input=str(body.get("cost_per_1k_input", "0.0")),
-        cost_per_1k_output=str(body.get("cost_per_1k_output", "0.0"))
+        cost_per_1k_output=str(body.get("cost_per_1k_output", "0.0")),
     )
     db.add(model)
     await db.commit()
@@ -1384,7 +1466,7 @@ async def upload_model(body: dict, user=Depends(get_current_user), db: AsyncSess
         "provider": model.provider,
         "model_name": model.model_name,
         "display_name": model.display_name,
-        "is_enabled": model.is_enabled
+        "is_enabled": model.is_enabled,
     }
 
 
@@ -1401,12 +1483,20 @@ async def list_providers(user=Depends(get_current_user)):
 
     # Add owner-only providers for admin/founder
     if user.role in ["owner", "admin", "super_admin"]:
-        base_providers.extend([
-            {"id": "groq", "name": "Groq", "icon": "zap", "description": "Fast inference", "default": False},
-            {"id": "gemini", "name": "Gemini", "icon": "sparkle", "description": "Google AI", "default": False},
-            {"id": "huggingface", "name": "Hugging Face", "icon": "cloud", "description": "Model hub", "default": False},
-            {"id": "openai", "name": "OpenAI", "icon": "brain", "description": "GPT models", "default": False}
-        ])
+        base_providers.extend(
+            [
+                {"id": "groq", "name": "Groq", "icon": "zap", "description": "Fast inference", "default": False},
+                {"id": "gemini", "name": "Gemini", "icon": "sparkle", "description": "Google AI", "default": False},
+                {
+                    "id": "huggingface",
+                    "name": "Hugging Face",
+                    "icon": "cloud",
+                    "description": "Model hub",
+                    "default": False,
+                },
+                {"id": "openai", "name": "OpenAI", "icon": "brain", "description": "GPT models", "default": False},
+            ]
+        )
 
     return {"providers": base_providers}
 
@@ -1422,7 +1512,11 @@ async def add_provider(body: dict, user=Depends(get_current_user)):
 async def toggle_model(model_id: str, body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     # bundle sends {enabled: bool}, DB uses is_enabled — accept both
     enabled_value = body.get("enabled", body.get("is_enabled"))
-    result = await db.execute(select(ModelConfig).where(ModelConfig.id == model_id, ModelConfig.workspace_id == (user.workspace_id or "default")))
+    result = await db.execute(
+        select(ModelConfig).where(
+            ModelConfig.id == model_id, ModelConfig.workspace_id == (user.workspace_id or "default")
+        )
+    )
     model = result.scalar_one_or_none()
     if model:
         if enabled_value is not None:
@@ -1430,14 +1524,28 @@ async def toggle_model(model_id: str, body: dict, user=Depends(get_current_user)
         if "display_name" in body:
             model.display_name = body["display_name"]
         await db.commit()
-        return {"id": model.id, "enabled": model.is_enabled, "is_enabled": model.is_enabled, "display_name": model.display_name, "updated": True}
-    return {"id": model_id, "enabled": bool(enabled_value) if enabled_value is not None else True, "is_enabled": bool(enabled_value) if enabled_value is not None else True, "updated": True}
+        return {
+            "id": model.id,
+            "enabled": model.is_enabled,
+            "is_enabled": model.is_enabled,
+            "display_name": model.display_name,
+            "updated": True,
+        }
+    return {
+        "id": model_id,
+        "enabled": bool(enabled_value) if enabled_value is not None else True,
+        "is_enabled": bool(enabled_value) if enabled_value is not None else True,
+        "updated": True,
+    }
 
 
 @router.get("/api-keys")
 async def ws_api_keys(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(APIKey).where(APIKey.user_id == user.id))
-    return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active} for k in result.scalars().all()]
+    # ⚡ Bolt: Fetch specific columns as tuples instead of full ORM models to avoid state tracking and memory overhead
+    result = await db.execute(
+        select(APIKey.id, APIKey.name, APIKey.key_prefix, APIKey.is_active).where(APIKey.user_id == user.id)
+    )
+    return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active} for k in result.all()]
 
 
 @router.post("/api-keys")
@@ -1473,7 +1581,9 @@ async def delete_ws_key(key_id: str, user=Depends(get_current_user), db: AsyncSe
 @router.get("/members")
 async def list_members(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if not user.workspace_id:
-        return [{"id": user.id, "email": user.email, "role": "owner", "joined_at": datetime.now(timezone.utc).isoformat()}]
+        return [
+            {"id": user.id, "email": user.email, "role": "owner", "joined_at": datetime.now(timezone.utc).isoformat()}
+        ]
 
     result = await db.execute(
         select(WorkspaceMember, User)
@@ -1482,21 +1592,20 @@ async def list_members(user=Depends(get_current_user), db: AsyncSession = Depend
     )
     members = []
     for wm, u in result.all():
-        members.append({
-            "id": u.id,
-            "email": u.email,
-            "role": wm.role,
-            "joined_at": wm.joined_at.isoformat() if wm.joined_at else None
-        })
+        members.append(
+            {
+                "id": u.id,
+                "email": u.email,
+                "role": wm.role,
+                "joined_at": wm.joined_at.isoformat() if wm.joined_at else None,
+            }
+        )
 
     # If the owner isn't in the members list yet (e.g., legacy data), append them
     if not any(m["id"] == user.id for m in members):
-        members.append({
-            "id": user.id,
-            "email": user.email,
-            "role": "owner",
-            "joined_at": datetime.now(timezone.utc).isoformat()
-        })
+        members.append(
+            {"id": user.id, "email": user.email, "role": "owner", "joined_at": datetime.now(timezone.utc).isoformat()}
+        )
 
     return members
 
@@ -1526,7 +1635,7 @@ async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSes
             email=email,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             full_name="Invited User",
-            workspace_id=user.workspace_id
+            workspace_id=user.workspace_id,
         )
         db.add(target_user)
         await db.commit()
@@ -1535,20 +1644,14 @@ async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSes
     # Check if already a member
     member_result = await db.execute(
         select(WorkspaceMember).where(
-            WorkspaceMember.workspace_id == user.workspace_id,
-            WorkspaceMember.user_id == target_user.id
+            WorkspaceMember.workspace_id == user.workspace_id, WorkspaceMember.user_id == target_user.id
         )
     )
     if member_result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="User is already a member of this workspace")
 
     # Add to workspace
-    wm = WorkspaceMember(
-        workspace_id=user.workspace_id,
-        user_id=target_user.id,
-        role=role,
-        invited_by=user.id
-    )
+    wm = WorkspaceMember(workspace_id=user.workspace_id, user_id=target_user.id, role=role, invited_by=user.id)
     db.add(wm)
     target_user.workspace_id = user.workspace_id
     await db.commit()
@@ -1559,6 +1662,7 @@ async def invite_member(body: dict, user=Depends(get_current_user), db: AsyncSes
 @router.post("/budget")
 async def set_workspace_budget(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.db.models.billing import BudgetRule
+
     ws = user.workspace_id or "default"
     limit = float(body.get("limit_usd", body.get("total_budget_usd", 150.0)))
     rule = BudgetRule(workspace_id=ws, limit_usd=limit, period="monthly", rule_type="soft", is_active=True)
@@ -1588,8 +1692,6 @@ async def cost_budget(user=Depends(get_current_user)):
     }
 
 
-
-
 @router.patch("/observability")
 async def update_observability(body: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id
@@ -1613,21 +1715,47 @@ async def get_workspace_settings(user=Depends(get_current_user), db: AsyncSessio
 
     # Query database for authentic integrations status
     try:
-        int_result = await db.execute(select(WorkspaceIntegration).where(WorkspaceIntegration.workspace_id == (user.workspace_id or "default")))
+        int_result = await db.execute(
+            select(WorkspaceIntegration).where(WorkspaceIntegration.workspace_id == (user.workspace_id or "default"))
+        )
         db_integrations = int_result.scalars().all()
-        integrations_status = {"slack": True, "pagerduty": True, "github": True, "vercel": True, "datadog": False, "jira": False}
+        integrations_status = {
+            "slack": True,
+            "pagerduty": True,
+            "github": True,
+            "vercel": True,
+            "datadog": False,
+            "jira": False,
+        }
         for db_i in db_integrations:
             integrations_status[db_i.provider] = db_i.status == "active"
     except Exception:
-        integrations_status = {"slack": True, "pagerduty": True, "github": True, "vercel": True, "datadog": False, "jira": False}
+        integrations_status = {
+            "slack": True,
+            "pagerduty": True,
+            "github": True,
+            "vercel": True,
+            "datadog": False,
+            "jira": False,
+        }
 
     return {
         "workspace_name": workspace.name if workspace else "acme-prod",
         "slug": workspace.slug if workspace else "acme.veklom.app",
         "default_region": cfg.get("default_region", "fsn1-hetz"),
         "eu_sovereign": cfg.get("eu_sovereign", True),
-        "routing": {"primary_plane": "Hetzner (FSN1, FRA1)", "burst_plane": "AWS (us-east-1, eu-west-1)", "burst_ceiling": "20% traffic · $3,000 spend", "egress_allowlist": "12 hosts · enforced"},
-        "security": {"mfa_enforcement": "org-wide · TOTP + WebAuthn", "tls": "1.3 · mTLS (internal)", "session_timeout_hr": 12, "vault_seal": "FIPS 140-2 L3 HSM"},
+        "routing": {
+            "primary_plane": "Hetzner (FSN1, FRA1)",
+            "burst_plane": "AWS (us-east-1, eu-west-1)",
+            "burst_ceiling": "20% traffic · $3,000 spend",
+            "egress_allowlist": "12 hosts · enforced",
+        },
+        "security": {
+            "mfa_enforcement": "org-wide · TOTP + WebAuthn",
+            "tls": "1.3 · mTLS (internal)",
+            "session_timeout_hr": 12,
+            "vault_seal": "FIPS 140-2 L3 HSM",
+        },
         "integrations": integrations_status,
     }
 
@@ -1649,7 +1777,9 @@ async def update_workspace_settings(body: dict, user=Depends(get_current_user), 
 
 @router.post("/deployments/pause-all")
 async def pause_all_deployments(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Deployment).where(Deployment.workspace_id == (user.workspace_id or ""), Deployment.status == "live"))
+    result = await db.execute(
+        select(Deployment).where(Deployment.workspace_id == (user.workspace_id or ""), Deployment.status == "live")
+    )
     deps = result.scalars().all()
     for d in deps:
         d.status = "paused"
@@ -1660,11 +1790,15 @@ async def pause_all_deployments(user=Depends(get_current_user), db: AsyncSession
 @router.post("/secrets/rotate")
 async def rotate_workspace_secrets(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.db.models.user import APIKey
-    result = await db.execute(select(APIKey).where(APIKey.workspace_id == (user.workspace_id or ""), APIKey.is_active == True))
+
+    result = await db.execute(
+        select(APIKey).where(APIKey.workspace_id == (user.workspace_id or ""), APIKey.is_active == True)
+    )
     keys = result.scalars().all()
     import secrets as _secrets
 
     from backend.core.security.auth import get_password_hash
+
     rotated = 0
     for k in keys:
         raw = f"vk_{_secrets.token_urlsafe(32)}"
@@ -1710,20 +1844,18 @@ async def export_audit_log(user=Depends(get_current_user), db: AsyncSession = De
     logs = result.scalars().all()
     lines = ["id,action,resource_type,resource_id,created_at"]
     for l in logs:
-        lines.append(f"{l.id},{l.action},{l.resource_type or ''},{l.resource_id or ''},{l.created_at.isoformat() if l.created_at else ''}")
+        lines.append(
+            f"{l.id},{l.action},{l.resource_type or ''},{l.resource_id or ''},{l.created_at.isoformat() if l.created_at else ''}"
+        )
     csv = "\n".join(lines)
-    return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=audit-export.csv"})
+    return Response(
+        content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=audit-export.csv"}
+    )
 
 
 @router.get("/cost-budget.csv")
 async def cost_budget_csv(user=Depends(get_current_user)):
-    csv = (
-        "metric,value\n"
-        "budget_usd,150.00\n"
-        "spent_usd,12.50\n"
-        "forecast_usd,45.00\n"
-        "remaining_usd,137.50\n"
-    )
+    csv = "metric,value\nbudget_usd,150.00\nspent_usd,12.50\nforecast_usd,45.00\nremaining_usd,137.50\n"
     return Response(content=csv, media_type="text/csv")
 
 
@@ -1741,14 +1873,174 @@ def _ws_dict(ws: Workspace) -> dict:
 
 def _default_models():
     return [
-        {"id": "veklom-llama3-70b", "name": "Llama 3.1 70B Instruct", "display_name": "Llama 3.1 70B Instruct", "family": "Llama 3", "provider": "Meta", "modality": "chat", "context": 128000, "quant": "FP16", "inputCost": 59e-5, "outputCost": 79e-5, "p50": 142, "p95": 380, "features": ["function-calling", "json-mode", "streaming", "vision-rag"], "status": "active", "replicas": 4, "route": "hetzner", "license": "Llama 3 Community", "is_enabled": True, "enabled": True},
-        {"id": "veklom-mixtral-8x22", "name": "Mixtral 8x22B", "display_name": "Mixtral 8x22B", "family": "Mixtral", "provider": "Mistral", "modality": "chat", "context": 65536, "quant": "INT8", "inputCost": 38e-5, "outputCost": 6e-4, "p50": 121, "p95": 290, "features": ["function-calling", "json-mode", "streaming"], "status": "active", "replicas": 6, "route": "hetzner", "license": "Apache 2.0", "is_enabled": True, "enabled": True},
-        {"id": "veklom-qwen2-72b", "name": "Qwen 2.5 72B", "display_name": "Qwen 2.5 72B", "family": "Qwen", "provider": "Open Source", "modality": "chat", "context": 131072, "quant": "INT4", "inputCost": 18e-5, "outputCost": 27e-5, "p50": 96, "p95": 240, "features": ["function-calling", "json-mode", "streaming", "code"], "status": "active", "replicas": 8, "route": "hetzner", "license": "Apache 2.0", "is_enabled": True, "enabled": True},
-        {"id": "veklom-claude-haiku", "name": "Claude 3.5 Haiku (proxy)", "display_name": "Claude 3.5 Haiku (proxy)", "family": "Claude", "provider": "Anthropic-compatible", "modality": "chat", "context": 200000, "quant": "FP16", "inputCost": 8e-4, "outputCost": 0.004, "p50": 220, "p95": 540, "features": ["function-calling", "vision", "json-mode", "streaming"], "status": "active", "replicas": 2, "route": "aws-burst", "license": "Commercial", "is_enabled": True, "enabled": True},
-        {"id": "veklom-deepseek-v3", "name": "DeepSeek v3 Coder", "display_name": "DeepSeek v3 Coder", "family": "DeepSeek", "provider": "Open Source", "modality": "completion", "context": 65536, "quant": "INT8", "inputCost": 27e-5, "outputCost": 41e-5, "p50": 88, "p95": 210, "features": ["streaming", "code", "fim"], "status": "active", "replicas": 3, "route": "hetzner", "license": "MIT", "is_enabled": True, "enabled": True},
-        {"id": "veklom-bge-large", "name": "BGE-M3 Embeddings", "display_name": "BGE-M3 Embeddings", "family": "BGE", "provider": "Open Source", "modality": "embedding", "context": 8192, "quant": "FP16", "inputCost": 2e-5, "outputCost": 0, "p50": 14, "p95": 38, "features": ["multilingual", "long-context"], "status": "active", "replicas": 12, "route": "hetzner", "license": "MIT", "is_enabled": True, "enabled": True},
-        {"id": "veklom-cohere-rerank", "name": "Veklom Reranker", "display_name": "Veklom Reranker", "family": "Cross-encoder", "provider": "Veklom Native", "modality": "rerank", "context": 4096, "quant": "FP16", "inputCost": 1e-5, "outputCost": 0, "p50": 22, "p95": 60, "features": ["fast", "binary"], "status": "active", "replicas": 6, "route": "hetzner", "license": "Commercial", "is_enabled": True, "enabled": True},
-        {"id": "veklom-whisper-v3", "name": "Whisper Large v3", "display_name": "Whisper Large v3", "family": "Whisper", "provider": "Whisper", "modality": "audio-stt", "context": 0, "quant": "FP16", "inputCost": 6e-5, "outputCost": 0, "p50": 380, "p95": 920, "features": ["multilingual", "diarization"], "status": "active", "replicas": 2, "route": "hetzner", "license": "MIT", "is_enabled": True, "enabled": True},
+        {
+            "id": "veklom-llama3-70b",
+            "name": "Llama 3.1 70B Instruct",
+            "display_name": "Llama 3.1 70B Instruct",
+            "family": "Llama 3",
+            "provider": "Meta",
+            "modality": "chat",
+            "context": 128000,
+            "quant": "FP16",
+            "inputCost": 59e-5,
+            "outputCost": 79e-5,
+            "p50": 142,
+            "p95": 380,
+            "features": ["function-calling", "json-mode", "streaming", "vision-rag"],
+            "status": "active",
+            "replicas": 4,
+            "route": "hetzner",
+            "license": "Llama 3 Community",
+            "is_enabled": True,
+            "enabled": True,
+        },
+        {
+            "id": "veklom-mixtral-8x22",
+            "name": "Mixtral 8x22B",
+            "display_name": "Mixtral 8x22B",
+            "family": "Mixtral",
+            "provider": "Mistral",
+            "modality": "chat",
+            "context": 65536,
+            "quant": "INT8",
+            "inputCost": 38e-5,
+            "outputCost": 6e-4,
+            "p50": 121,
+            "p95": 290,
+            "features": ["function-calling", "json-mode", "streaming"],
+            "status": "active",
+            "replicas": 6,
+            "route": "hetzner",
+            "license": "Apache 2.0",
+            "is_enabled": True,
+            "enabled": True,
+        },
+        {
+            "id": "veklom-qwen2-72b",
+            "name": "Qwen 2.5 72B",
+            "display_name": "Qwen 2.5 72B",
+            "family": "Qwen",
+            "provider": "Open Source",
+            "modality": "chat",
+            "context": 131072,
+            "quant": "INT4",
+            "inputCost": 18e-5,
+            "outputCost": 27e-5,
+            "p50": 96,
+            "p95": 240,
+            "features": ["function-calling", "json-mode", "streaming", "code"],
+            "status": "active",
+            "replicas": 8,
+            "route": "hetzner",
+            "license": "Apache 2.0",
+            "is_enabled": True,
+            "enabled": True,
+        },
+        {
+            "id": "veklom-claude-haiku",
+            "name": "Claude 3.5 Haiku (proxy)",
+            "display_name": "Claude 3.5 Haiku (proxy)",
+            "family": "Claude",
+            "provider": "Anthropic-compatible",
+            "modality": "chat",
+            "context": 200000,
+            "quant": "FP16",
+            "inputCost": 8e-4,
+            "outputCost": 0.004,
+            "p50": 220,
+            "p95": 540,
+            "features": ["function-calling", "vision", "json-mode", "streaming"],
+            "status": "active",
+            "replicas": 2,
+            "route": "aws-burst",
+            "license": "Commercial",
+            "is_enabled": True,
+            "enabled": True,
+        },
+        {
+            "id": "veklom-deepseek-v3",
+            "name": "DeepSeek v3 Coder",
+            "display_name": "DeepSeek v3 Coder",
+            "family": "DeepSeek",
+            "provider": "Open Source",
+            "modality": "completion",
+            "context": 65536,
+            "quant": "INT8",
+            "inputCost": 27e-5,
+            "outputCost": 41e-5,
+            "p50": 88,
+            "p95": 210,
+            "features": ["streaming", "code", "fim"],
+            "status": "active",
+            "replicas": 3,
+            "route": "hetzner",
+            "license": "MIT",
+            "is_enabled": True,
+            "enabled": True,
+        },
+        {
+            "id": "veklom-bge-large",
+            "name": "BGE-M3 Embeddings",
+            "display_name": "BGE-M3 Embeddings",
+            "family": "BGE",
+            "provider": "Open Source",
+            "modality": "embedding",
+            "context": 8192,
+            "quant": "FP16",
+            "inputCost": 2e-5,
+            "outputCost": 0,
+            "p50": 14,
+            "p95": 38,
+            "features": ["multilingual", "long-context"],
+            "status": "active",
+            "replicas": 12,
+            "route": "hetzner",
+            "license": "MIT",
+            "is_enabled": True,
+            "enabled": True,
+        },
+        {
+            "id": "veklom-cohere-rerank",
+            "name": "Veklom Reranker",
+            "display_name": "Veklom Reranker",
+            "family": "Cross-encoder",
+            "provider": "Veklom Native",
+            "modality": "rerank",
+            "context": 4096,
+            "quant": "FP16",
+            "inputCost": 1e-5,
+            "outputCost": 0,
+            "p50": 22,
+            "p95": 60,
+            "features": ["fast", "binary"],
+            "status": "active",
+            "replicas": 6,
+            "route": "hetzner",
+            "license": "Commercial",
+            "is_enabled": True,
+            "enabled": True,
+        },
+        {
+            "id": "veklom-whisper-v3",
+            "name": "Whisper Large v3",
+            "display_name": "Whisper Large v3",
+            "family": "Whisper",
+            "provider": "Whisper",
+            "modality": "audio-stt",
+            "context": 0,
+            "quant": "FP16",
+            "inputCost": 6e-5,
+            "outputCost": 0,
+            "p50": 380,
+            "p95": 920,
+            "features": ["multilingual", "diarization"],
+            "status": "active",
+            "replicas": 2,
+            "route": "hetzner",
+            "license": "MIT",
+            "is_enabled": True,
+            "enabled": True,
+        },
     ]
 
 
@@ -1777,14 +2069,11 @@ def _relative_time(value: datetime | None, now: datetime) -> str:
 
 
 def _routing_history(rows: list, now: datetime) -> list[dict]:
-    buckets = {
-        hour: {"hour": f"{hour:02d}", "hetzner": 0, "aws": 0}
-        for hour in range(24)
-    }
+    buckets = {hour: {"hour": f"{hour:02d}", "hetzner": 0, "aws": 0} for hour in range(24)}
     for row in rows:
         # Support both SQLAlchemy model instances and Row/tuple objects
-        provider = getattr(row, 'provider', None) if hasattr(row, 'provider') else row[0]
-        created_at = getattr(row, 'created_at', None) if hasattr(row, 'created_at') else row[1]
+        provider = getattr(row, "provider", None) if hasattr(row, "provider") else row[0]
+        created_at = getattr(row, "created_at", None) if hasattr(row, "created_at") else row[1]
 
         if not created_at:
             continue
@@ -1909,16 +2198,14 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
     if not encrypted_token:
         raise HTTPException(
             status_code=400,
-            detail="No GitHub access token configured for this user. Please connect your GitHub account in integrations settings."
+            detail="No GitHub access token configured for this user. Please connect your GitHub account in integrations settings.",
         )
 
     from backend.core.security.encryption import decrypt_token
+
     token = decrypt_token(encrypted_token)
     if not token:
-        raise HTTPException(
-            status_code=400,
-            detail="Failed to decrypt GitHub access token."
-        )
+        raise HTTPException(status_code=400, detail="Failed to decrypt GitHub access token.")
 
     agent_files = []
     pipeline_files = []
@@ -1928,7 +2215,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
             headers = {
                 "Authorization": f"token {token}",
                 "Accept": "application/vnd.github.v3+json",
-                "User-Agent": "Veklom-BYOS"
+                "User-Agent": "Veklom-BYOS",
             }
             # Fetch repo tree
             tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
@@ -1944,14 +2231,22 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
                     if item.get("type") == "blob":
                         path = item.get("path", "")
                         normalized_path = path.replace("\\", "/")
-                        if normalized_path.startswith("agents/") and (normalized_path.endswith(".json") or normalized_path.endswith(".yaml") or normalized_path.endswith(".yml")):
+                        if normalized_path.startswith("agents/") and (
+                            normalized_path.endswith(".json")
+                            or normalized_path.endswith(".yaml")
+                            or normalized_path.endswith(".yml")
+                        ):
                             agent_files.append(normalized_path)
-                        elif normalized_path.startswith("pipelines/") and (normalized_path.endswith(".json") or normalized_path.endswith(".yaml") or normalized_path.endswith(".yml")):
+                        elif normalized_path.startswith("pipelines/") and (
+                            normalized_path.endswith(".json")
+                            or normalized_path.endswith(".yaml")
+                            or normalized_path.endswith(".yml")
+                        ):
                             pipeline_files.append(normalized_path)
             else:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"GitHub API returned error status {resp.status_code} during tree fetch: {resp.text}"
+                    detail=f"GitHub API returned error status {resp.status_code} during tree fetch: {resp.text}",
                 )
     except HTTPException:
         raise
@@ -1970,7 +2265,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
             headers = {
                 "Authorization": f"token {token}",
                 "Accept": "application/vnd.github.v3+json",
-                "User-Agent": "Veklom-BYOS"
+                "User-Agent": "Veklom-BYOS",
             }
 
             # Fetch and parse agents
@@ -1999,7 +2294,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
                             workspace_id=workspace_id,
                             name=data.get("name", f"Synced Agent: {path.split('/')[-1]}"),
                             description=data.get("description", "Automatically synced from GitHub repository."),
-                            status="active"
+                            status="active",
                         )
                         db.add(new_agent)
                         synced_agents_count += 1
@@ -2032,7 +2327,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
                             workspace_id=workspace_id,
                             name=data.get("name", f"Synced Pipeline: {path.split('/')[-1]}"),
                             description=data.get("description", "Automatically synced from GitHub repository."),
-                            status="active"
+                            status="active",
                         )
                         db.add(new_pipe)
                         synced_pipelines_count += 1
@@ -2043,7 +2338,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
 
     # Fallback default initialization if repo has no agent/pipeline folders
     if synced_agents_count == 0 and synced_pipelines_count == 0:
-        repo_name = repo.split('/')[-1] if repo else "repository"
+        repo_name = repo.split("/")[-1] if repo else "repository"
         default_name = repo_name.replace("-", " ").replace("_", " ").title()
 
         agent_id = f"ag_{uuid.uuid4().hex[:12]}"
@@ -2052,7 +2347,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
             workspace_id=workspace_id,
             name=f"{default_name} Core Agent",
             description=f"Autonomic sovereign agent initialized from connected repository: {repo}.",
-            status="active"
+            status="active",
         )
         db.add(new_agent)
         synced_agents_count = 1
@@ -2063,7 +2358,7 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
             workspace_id=workspace_id,
             name=f"{default_name} Core Pipeline",
             description=f"Operational pipeline initialized from connected repository: {repo}.",
-            status="active"
+            status="active",
         )
         db.add(new_pipe)
         synced_pipelines_count = 1
@@ -2078,5 +2373,5 @@ async def sync_github_workspace(user=Depends(get_current_user), db: AsyncSession
         "status": "success",
         "message": f"Successfully synced {synced_agents_count} agents and {synced_pipelines_count} pipelines from {repo}.",
         "synced_agents": synced_agents_count,
-        "synced_pipelines": synced_pipelines_count
+        "synced_pipelines": synced_pipelines_count,
     }

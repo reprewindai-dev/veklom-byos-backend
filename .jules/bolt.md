@@ -16,3 +16,6 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+## 2024-05-24 - [SQLAlchemy Concurrent Aggregations]
+**Learning:** When using SQLAlchemy's `AsyncSession` with `asyncpg`, multiple independent scalar queries execution in an endpoint creates an N+1 sequence blocking on DB I/O roundtrips. You cannot solve this with concurrent `asyncio.gather()` operations on the same session because `asyncpg` raises a `RuntimeError` for concurrent connection use.
+**Action:** Always batch related aggregates into a single SQL `select` query with multiple `func` aggregations (e.g., `func.count()`, `func.sum()`) to execute them simultaneously in one database roundtrip.

@@ -581,7 +581,8 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
     budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
 
-    model_rows = (await db.execute(select(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).scalars().all()
+    # Bolt: Performance optimization - Fetch specific columns as Row tuples to avoid O(N) full ORM model instantiation overhead for aggregations
+    model_rows = (await db.execute(select(ModelConfig.id, ModelConfig.provider, ModelConfig.display_name).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).all()  # noqa: E712
     model_payload = [
         {"id": row.id, "provider": row.provider, "display_name": row.display_name}
         for row in model_rows
@@ -910,8 +911,9 @@ async def update_config(body: dict, user=Depends(get_current_user), db: AsyncSes
 @router.get("/integrations")
 async def get_integrations(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or "default"
-    result = await db.execute(select(WorkspaceIntegration).where(WorkspaceIntegration.workspace_id == ws))
-    db_integrations = result.scalars().all()
+    # Bolt: Performance optimization - Fetch specific columns to avoid full ORM object overhead
+    result = await db.execute(select(WorkspaceIntegration.provider, WorkspaceIntegration.config_json, WorkspaceIntegration.status).where(WorkspaceIntegration.workspace_id == ws))
+    db_integrations = result.all()
 
     integrations = {k: dict(v) for k, v in _DEFAULT_INTEGRATIONS.items()}
     for db_i in db_integrations:
@@ -1142,12 +1144,22 @@ async def update_routing(body: dict, user=Depends(get_current_user)):
 async def list_models(provider: str = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """List models with optional provider filtering."""
     workspace_id = user.workspace_id or "default"
-    query = select(ModelConfig).where(ModelConfig.workspace_id == workspace_id)
+    # Bolt: Performance optimization - Fetch specific columns directly rather than instantiating fully tracked ModelConfig objects
+    query = select(
+        ModelConfig.id,
+        ModelConfig.provider,
+        ModelConfig.model_name,
+        ModelConfig.display_name,
+        ModelConfig.is_enabled,
+        ModelConfig.cost_per_1k_input,
+        ModelConfig.cost_per_1k_output,
+        ModelConfig.config_json
+    ).where(ModelConfig.workspace_id == workspace_id)
     if provider:
         query = query.where(ModelConfig.provider == provider)
 
     result = await db.execute(query)
-    models = result.scalars().all()
+    models = result.all()
     if not models:
         return _default_models()
     return [
@@ -1436,8 +1448,9 @@ async def toggle_model(model_id: str, body: dict, user=Depends(get_current_user)
 
 @router.get("/api-keys")
 async def ws_api_keys(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(APIKey).where(APIKey.user_id == user.id))
-    return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active} for k in result.scalars().all()]
+    # Bolt: Performance optimization - Avoid instantiating full APIKey ORM objects for lightweight list rendering
+    result = await db.execute(select(APIKey.id, APIKey.name, APIKey.key_prefix, APIKey.is_active).where(APIKey.user_id == user.id))
+    return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active} for k in result.all()]
 
 
 @router.post("/api-keys")
@@ -1613,8 +1626,9 @@ async def get_workspace_settings(user=Depends(get_current_user), db: AsyncSessio
 
     # Query database for authentic integrations status
     try:
-        int_result = await db.execute(select(WorkspaceIntegration).where(WorkspaceIntegration.workspace_id == (user.workspace_id or "default")))
-        db_integrations = int_result.scalars().all()
+        # Bolt: Performance optimization - Fetch specific columns only to avoid ORM instantiation overhead
+        int_result = await db.execute(select(WorkspaceIntegration.provider, WorkspaceIntegration.status).where(WorkspaceIntegration.workspace_id == (user.workspace_id or "default")))
+        db_integrations = int_result.all()
         integrations_status = {"slack": True, "pagerduty": True, "github": True, "vercel": True, "datadog": False, "jira": False}
         for db_i in db_integrations:
             integrations_status[db_i.provider] = db_i.status == "active"

@@ -18,7 +18,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
-    "express": "^4.22.2",
+    "express": "^4.22.3",
     "fast-xml-parser": "^5.7.3",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

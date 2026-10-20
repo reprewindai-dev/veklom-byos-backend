@@ -7,15 +7,22 @@ and issues refunds to affected customers automatically.
 """
 
 import asyncio
-import uuid
 import logging
-from datetime import datetime, timezone, timedelta
+import uuid
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import and_, select
+
 from backend.core.database.database import async_session
 from backend.db.models.vnp import (
-    RegionalTelemetry, Api, Provider, Incident, IncidentState, 
-    SettlementEntry, LedgerEntryType, SettlementState, UsageEvent
+    Api,
+    Incident,
+    IncidentState,
+    LedgerEntryType,
+    RegionalTelemetry,
+    SettlementEntry,
+    SettlementState,
+    UsageEvent,
 )
 
 logger = logging.getLogger("VNPTreasuryWorker")
@@ -64,6 +71,25 @@ async def run_treasury_cycle():
         )
         existing_inc_scopes = set((await db.execute(incs_stmt)).scalars().all())
 
+        # Bulk Fetch UsageEvents for all breached APIs
+        usage_stmt = select(UsageEvent.id, UsageEvent.api_id, UsageEvent.customer_id).where(
+            and_(
+                UsageEvent.api_id.in_(api_ids),
+                UsageEvent.occurred_at >= one_hour_ago,
+                UsageEvent.success == False,  # noqa: E712
+                UsageEvent.billable_units > 0
+            )
+        )
+        failed_usages_rows = (await db.execute(usage_stmt)).all()
+
+        # Group failed usages by api_id
+        failed_usages_by_api = {}
+        for row in failed_usages_rows:
+            api_id = row.api_id
+            if api_id not in failed_usages_by_api:
+                failed_usages_by_api[api_id] = []
+            failed_usages_by_api[api_id].append(row)
+
         for api_id, telemetry in breached_apis.items():
             # Use pre-fetched API
             api = apis_by_id.get(api_id)
@@ -103,32 +129,24 @@ async def run_treasury_cycle():
             db.add(slash_entry)
 
             # 4. Refund Affected Customers
-            usage_stmt = select(UsageEvent).where(
-                and_(
-                    UsageEvent.api_id == api_id,
-                    UsageEvent.occurred_at >= one_hour_ago,
-                    UsageEvent.success == False
-                )
-            )
-            failed_usages = (await db.execute(usage_stmt)).scalars().all()
+            failed_usages = failed_usages_by_api.get(api_id, [])
 
             refund_count = 0
             for usage in failed_usages:
-                if usage.billable_units > 0:
-                    # Issue 100% refund for the failed usage
-                    refund_entry = SettlementEntry(
-                        customer_id=usage.customer_id,
-                        provider_id=api.provider_id,
-                        usage_event_id=usage.id,
-                        entry_type=LedgerEntryType.refund,
-                        amount_minor=100, # Assume $1.00 refund per failed token batch for simplicity
-                        currency="USD",
-                        state=SettlementState.posted,
-                        reference_code=f"refund-{usage.id}",
-                        entry_metadata={"incident_id": str(incident_id)}
-                    )
-                    db.add(refund_entry)
-                    refund_count += 1
+                # Issue 100% refund for the failed usage
+                refund_entry = SettlementEntry(
+                    customer_id=usage.customer_id,
+                    provider_id=api.provider_id,
+                    usage_event_id=usage.id,
+                    entry_type=LedgerEntryType.refund,
+                    amount_minor=100, # Assume $1.00 refund per failed token batch for simplicity
+                    currency="USD",
+                    state=SettlementState.posted,
+                    reference_code=f"refund-{usage.id}",
+                    entry_metadata={"incident_id": str(incident_id)}
+                )
+                db.add(refund_entry)
+                refund_count += 1
 
             logger.info(f"Provider Slashed: {SLASH_AMOUNT_MINOR} minor units. Customers Refunded: {refund_count} events.")
 

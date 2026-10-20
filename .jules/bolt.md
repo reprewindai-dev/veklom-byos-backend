@@ -16,3 +16,7 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+
+## 2026-08-07 - [Resolve O(N) UsageEvent queries in vnp_treasury_worker.py]
+**Learning:** During the SLA SLA Evaluation Cycle (`vnp_treasury_worker.py`), the treasury worker fired an individual `SELECT` for affected usage events *inside* a loop over breached APIs, resulting in an O(N) database query scaling bottleneck when incidents affect multiple APIs. It was also loading full heavyweight `UsageEvent` ORM models using `.scalars().all()`.
+**Action:** Extract looped SQL queries and use `.in_()` for bulk fetching, while requesting lightweight tuple/row aggregates using `.all()` directly. Push simple conditional filtering (e.g. `billable_units > 0`) down into the SQL `WHERE` clause instead of performing iterative scalar mapping in Python.

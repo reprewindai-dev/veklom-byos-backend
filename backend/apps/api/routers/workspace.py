@@ -1705,9 +1705,15 @@ async def delete_workspace(body: dict, user=Depends(get_current_user), db: Async
 async def export_audit_log(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or ""
     result = await db.execute(
-        select(AuditLog).where(AuditLog.workspace_id == ws).order_by(AuditLog.created_at.desc()).limit(1000)
+        select(
+            AuditLog.id,
+            AuditLog.action,
+            AuditLog.resource_type,
+            AuditLog.resource_id,
+            AuditLog.created_at
+        ).where(AuditLog.workspace_id == ws).order_by(AuditLog.created_at.desc()).limit(1000)
     )
-    logs = result.scalars().all()
+    logs = result.all()
     lines = ["id,action,resource_type,resource_id,created_at"]
     for l in logs:
         lines.append(f"{l.id},{l.action},{l.resource_type or ''},{l.resource_id or ''},{l.created_at.isoformat() if l.created_at else ''}")

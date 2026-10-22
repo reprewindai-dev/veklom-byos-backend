@@ -579,22 +579,28 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     spend_today = overview_stats.spend_today or 0.0
     avg_latency = overview_stats.avg_latency or 0
     audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
-    budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
+    budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0  # noqa: E712
 
-    model_rows = (await db.execute(select(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).scalars().all()
+    # ⚡ Bolt: Fetch lightweight tuples instead of instantiating full ORM models to avoid O(N) memory allocation and parsing overhead.
+    model_rows = (await db.execute(select(ModelConfig.id, ModelConfig.provider, ModelConfig.display_name).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).all()  # noqa: E712
     model_payload = [
         {"id": row.id, "provider": row.provider, "display_name": row.display_name}
         for row in model_rows
     ] or _default_models()
     models_enabled = len(model_payload)
 
+    # ⚡ Bolt: Optimization - Selecting specific columns instead of full ExecLog models.
+    # Yields lightweight Rows rather than heavy stateful ORM objects.
     result = await db.execute(
-        select(ExecLog)
+        select(
+            ExecLog.id, ExecLog.model, ExecLog.provider, ExecLog.latency_ms,
+            ExecLog.total_tokens, ExecLog.cost_usd, ExecLog.policy_flags, ExecLog.created_at
+        )
         .where(ExecLog.workspace_id == workspace_id)
         .order_by(ExecLog.created_at.desc())
         .limit(5)
     )
-    recent_rows = result.scalars().all()
+    recent_rows = result.all()
     recent_runs = [
         {
             "id": row.id,
@@ -617,12 +623,16 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
 
+    # ⚡ Bolt: Fetch lightweight tuples for audit history instead of full AuditLog ORM models.
     audit_rows = (await db.execute(
-        select(AuditLog)
+        select(
+            AuditLog.id, AuditLog.action, AuditLog.resource_type, AuditLog.resource_id,
+            AuditLog.user_id, AuditLog.hash_chain, AuditLog.prev_hash, AuditLog.created_at
+        )
         .where(AuditLog.workspace_id == workspace_id)
         .order_by(AuditLog.created_at.desc())
         .limit(5)
-    )).scalars().all()
+    )).all()
     audit_logs = [
         {
             "id": row.id,
@@ -636,12 +646,16 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     ]
 
     try:
+        # ⚡ Bolt: Fetch lightweight tuples for security alerts instead of full SecurityEvent ORM models.
         alert_rows = (await db.execute(
-            select(SecurityEvent)
+            select(
+                SecurityEvent.id, SecurityEvent.description, SecurityEvent.event_type,
+                SecurityEvent.severity, SecurityEvent.threat_type, SecurityEvent.created_at
+            )
             .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
             .order_by(SecurityEvent.created_at.desc())
             .limit(5)
-        )).scalars().all()
+        )).all()
     except SQLAlchemyError:
         await db.rollback()
         alert_rows = []
@@ -1660,7 +1674,7 @@ async def pause_all_deployments(user=Depends(get_current_user), db: AsyncSession
 @router.post("/secrets/rotate")
 async def rotate_workspace_secrets(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from backend.db.models.user import APIKey
-    result = await db.execute(select(APIKey).where(APIKey.workspace_id == (user.workspace_id or ""), APIKey.is_active == True))
+    result = await db.execute(select(APIKey).where(APIKey.workspace_id == (user.workspace_id or ""), APIKey.is_active == True))  # noqa: E712
     keys = result.scalars().all()
     import secrets as _secrets
 
@@ -1704,13 +1718,17 @@ async def delete_workspace(body: dict, user=Depends(get_current_user), db: Async
 @router.get("/audit-export")
 async def export_audit_log(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or ""
+    # ⚡ Bolt: Optimization - Fetch specific columns instead of full ORM models for large CSV exports.
+    # Impact: Reduces memory usage and CPU parsing overhead when dumping up to 1000 rows.
     result = await db.execute(
-        select(AuditLog).where(AuditLog.workspace_id == ws).order_by(AuditLog.created_at.desc()).limit(1000)
+        select(
+            AuditLog.id, AuditLog.action, AuditLog.resource_type, AuditLog.resource_id, AuditLog.created_at
+        ).where(AuditLog.workspace_id == ws).order_by(AuditLog.created_at.desc()).limit(1000)
     )
-    logs = result.scalars().all()
+    logs = result.all()
     lines = ["id,action,resource_type,resource_id,created_at"]
-    for l in logs:
-        lines.append(f"{l.id},{l.action},{l.resource_type or ''},{l.resource_id or ''},{l.created_at.isoformat() if l.created_at else ''}")
+    for log_row in logs:
+        lines.append(f"{log_row.id},{log_row.action},{log_row.resource_type or ''},{log_row.resource_id or ''},{log_row.created_at.isoformat() if log_row.created_at else ''}")
     csv = "\n".join(lines)
     return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=audit-export.csv"})
 

@@ -76,7 +76,6 @@ async def workspace_search(q: str = "", user=Depends(get_current_user), db: Asyn
     if not q or len(q) < 2:
         return {"results": []}
 
-    q_lower = q.lower()
     results = []
 
     try:
@@ -318,7 +317,7 @@ async def autonomous_decisions(limit: int = 10, user=Depends(get_current_user), 
 
     # Use ExecLog with policy decisions as proxy for autonomous decisions
     result = await db.execute(
-        select(ExecLog)
+        select(ExecLog.id, ExecLog.provider, ExecLog.policy_id, ExecLog.model, ExecLog.total_tokens, ExecLog.cost_usd, ExecLog.latency_ms, ExecLog.created_at)
         .where(
             ExecLog.workspace_id == workspace_id,
             ExecLog.created_at >= last_24h,
@@ -327,7 +326,7 @@ async def autonomous_decisions(limit: int = 10, user=Depends(get_current_user), 
         .order_by(ExecLog.created_at.desc())
         .limit(limit)
     )
-    logs = result.scalars().all()
+    logs = result.all()
 
     return {
         "decisions": [
@@ -492,12 +491,12 @@ async def audit_export(session_id: str = None, user=Depends(get_current_user), d
     """Export audit logs for a playground session or full workspace."""
     workspace_id = user.workspace_id or "default"
 
-    query = select(AuditLog).where(AuditLog.workspace_id == workspace_id)
+    query = select(AuditLog.id, AuditLog.action, AuditLog.resource_type, AuditLog.resource_id, AuditLog.user_id, AuditLog.ip_address, AuditLog.user_agent, AuditLog.hash_chain, AuditLog.prev_hash, AuditLog.created_at).where(AuditLog.workspace_id == workspace_id)
     if session_id:
         query = query.where(AuditLog.resource_id == session_id)
 
     result = await db.execute(query.order_by(AuditLog.created_at.desc()).limit(500))
-    logs = result.scalars().all()
+    logs = result.all()
 
     return {
         "export_type": "session" if session_id else "workspace",
@@ -581,7 +580,7 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
     budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
 
-    model_rows = (await db.execute(select(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).scalars().all()
+    model_rows = (await db.execute(select(ModelConfig.id, ModelConfig.provider, ModelConfig.display_name).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).all()
     model_payload = [
         {"id": row.id, "provider": row.provider, "display_name": row.display_name}
         for row in model_rows
@@ -589,12 +588,12 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     models_enabled = len(model_payload)
 
     result = await db.execute(
-        select(ExecLog)
+        select(ExecLog.id, ExecLog.model, ExecLog.provider, ExecLog.latency_ms, ExecLog.total_tokens, ExecLog.cost_usd, ExecLog.policy_flags, ExecLog.created_at)
         .where(ExecLog.workspace_id == workspace_id)
         .order_by(ExecLog.created_at.desc())
         .limit(5)
     )
-    recent_rows = result.scalars().all()
+    recent_rows = result.all()
     recent_runs = [
         {
             "id": row.id,
@@ -618,11 +617,11 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
 
     audit_rows = (await db.execute(
-        select(AuditLog)
+        select(AuditLog.id, AuditLog.action, AuditLog.resource_type, AuditLog.resource_id, AuditLog.user_id, AuditLog.hash_chain, AuditLog.prev_hash, AuditLog.created_at)
         .where(AuditLog.workspace_id == workspace_id)
         .order_by(AuditLog.created_at.desc())
         .limit(5)
-    )).scalars().all()
+    )).all()
     audit_logs = [
         {
             "id": row.id,
@@ -637,11 +636,11 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
 
     try:
         alert_rows = (await db.execute(
-            select(SecurityEvent)
+            select(SecurityEvent.id, SecurityEvent.description, SecurityEvent.event_type, SecurityEvent.severity, SecurityEvent.threat_type, SecurityEvent.created_at)
             .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
             .order_by(SecurityEvent.created_at.desc())
             .limit(5)
-        )).scalars().all()
+        )).all()
     except SQLAlchemyError:
         await db.rollback()
         alert_rows = []
@@ -1436,8 +1435,8 @@ async def toggle_model(model_id: str, body: dict, user=Depends(get_current_user)
 
 @router.get("/api-keys")
 async def ws_api_keys(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(APIKey).where(APIKey.user_id == user.id))
-    return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active} for k in result.scalars().all()]
+    result = await db.execute(select(APIKey.id, APIKey.name, APIKey.key_prefix, APIKey.is_active).where(APIKey.user_id == user.id))
+    return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active} for k in result.all()]
 
 
 @router.post("/api-keys")
@@ -1705,9 +1704,9 @@ async def delete_workspace(body: dict, user=Depends(get_current_user), db: Async
 async def export_audit_log(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ws = user.workspace_id or ""
     result = await db.execute(
-        select(AuditLog).where(AuditLog.workspace_id == ws).order_by(AuditLog.created_at.desc()).limit(1000)
+        select(AuditLog.id, AuditLog.action, AuditLog.resource_type, AuditLog.resource_id, AuditLog.created_at).where(AuditLog.workspace_id == ws).order_by(AuditLog.created_at.desc()).limit(1000)
     )
-    logs = result.scalars().all()
+    logs = result.all()
     lines = ["id,action,resource_type,resource_id,created_at"]
     for l in logs:
         lines.append(f"{l.id},{l.action},{l.resource_type or ''},{l.resource_id or ''},{l.created_at.isoformat() if l.created_at else ''}")

@@ -16,3 +16,7 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+
+## 2024-11-20 - [Performance] Optimize SQLAlchemy queries
+**Learning:** In SQLAlchemy, using `.scalars().all()` on a query that selects entire ORM models (e.g., `select(APIKey)`) creates full object instances in memory. When the application only needs a few fields (e.g., `id`, `name`, `key_prefix`, `is_active`) to map into a dictionary/JSON response, this creates unnecessary overhead.
+**Action:** When fetching specific columns to immediately serialize to dictionaries, use `select(Model.col1, Model.col2)` combined with `.all()` to fetch lightweight `Row` objects. This avoids full ORM instantiation and speeds up serialization.

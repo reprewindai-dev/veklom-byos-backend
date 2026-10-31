@@ -581,7 +581,7 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     audit_entries = await db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.workspace_id == workspace_id, AuditLog.created_at >= today_start)) or 0
     budget_limit = await db.scalar(select(func.max(BudgetRule.limit_usd)).where(BudgetRule.workspace_id == workspace_id, BudgetRule.is_active == True)) or 150.0
 
-    model_rows = (await db.execute(select(ModelConfig).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).scalars().all()
+    model_rows = (await db.execute(select(ModelConfig.id, ModelConfig.provider, ModelConfig.display_name).where(ModelConfig.workspace_id == workspace_id, ModelConfig.is_enabled == True))).all()
     model_payload = [
         {"id": row.id, "provider": row.provider, "display_name": row.display_name}
         for row in model_rows
@@ -589,12 +589,12 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
     models_enabled = len(model_payload)
 
     result = await db.execute(
-        select(ExecLog)
+        select(ExecLog.id, ExecLog.model, ExecLog.provider, ExecLog.latency_ms, ExecLog.total_tokens, ExecLog.cost_usd, ExecLog.policy_flags, ExecLog.created_at)
         .where(ExecLog.workspace_id == workspace_id)
         .order_by(ExecLog.created_at.desc())
         .limit(5)
     )
-    recent_rows = result.scalars().all()
+    recent_rows = result.all()
     recent_runs = [
         {
             "id": row.id,
@@ -609,20 +609,31 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
         for row in recent_rows
     ]
 
-    recent_24h = (await db.execute(select(ExecLog.provider, ExecLog.created_at).where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h))).all()
-    routing_history = _routing_history(recent_24h, now)
-    hetzner_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "hetzner")
-    aws_count = sum(1 for row in recent_24h if _route_for_provider(row.provider) == "aws-burst")
+    recent_24h_counts = (await db.execute(
+        select(ExecLog.provider, func.extract('hour', ExecLog.created_at).label('hour'), func.count().label('count'))
+        .where(ExecLog.workspace_id == workspace_id, ExecLog.created_at >= last_24h)
+        .group_by(ExecLog.provider, func.extract('hour', ExecLog.created_at))
+    )).all()
+    routing_history = _routing_history(recent_24h_counts, now)
+
+    hetzner_count = 0
+    aws_count = 0
+    for row in recent_24h_counts:
+        provider, count = getattr(row, 'provider', row[0]), getattr(row, 'count', row[2])
+        if _route_for_provider(provider) == "aws-burst":
+            aws_count += count
+        else:
+            hetzner_count += count
     routed_total = hetzner_count + aws_count
     hetzner_percent = round((hetzner_count / routed_total) * 100) if routed_total else 0
     aws_percent = round((aws_count / routed_total) * 100) if routed_total else 0
 
     audit_rows = (await db.execute(
-        select(AuditLog)
+        select(AuditLog.id, AuditLog.action, AuditLog.resource_type, AuditLog.resource_id, AuditLog.user_id, AuditLog.hash_chain, AuditLog.prev_hash, AuditLog.created_at)
         .where(AuditLog.workspace_id == workspace_id)
         .order_by(AuditLog.created_at.desc())
         .limit(5)
-    )).scalars().all()
+    )).all()
     audit_logs = [
         {
             "id": row.id,
@@ -637,11 +648,11 @@ async def _overview_payload(db: AsyncSession, workspace_id: str, actor_email: st
 
     try:
         alert_rows = (await db.execute(
-            select(SecurityEvent)
+            select(SecurityEvent.id, SecurityEvent.description, SecurityEvent.event_type, SecurityEvent.severity, SecurityEvent.threat_type, SecurityEvent.created_at)
             .where(SecurityEvent.workspace_id == workspace_id, SecurityEvent.status != "resolved")
             .order_by(SecurityEvent.created_at.desc())
             .limit(5)
-        )).scalars().all()
+        )).all()
     except SQLAlchemyError:
         await db.rollback()
         alert_rows = []
@@ -1777,27 +1788,25 @@ def _relative_time(value: datetime | None, now: datetime) -> str:
 
 
 def _routing_history(rows: list, now: datetime) -> list[dict]:
+    # Order buckets chronologically from 24h ago to now
+    ordered_hours = [(now.hour - i) % 24 for i in range(23, -1, -1)]
     buckets = {
         hour: {"hour": f"{hour:02d}", "hetzner": 0, "aws": 0}
-        for hour in range(24)
+        for hour in ordered_hours
     }
     for row in rows:
-        # Support both SQLAlchemy model instances and Row/tuple objects
-        provider = getattr(row, 'provider', None) if hasattr(row, 'provider') else row[0]
-        created_at = getattr(row, 'created_at', None) if hasattr(row, 'created_at') else row[1]
+        provider = getattr(row, 'provider', row[0])
+        hour_val = int(getattr(row, 'hour', row[1]))
+        count = int(getattr(row, 'count', row[2]))
 
-        if not created_at:
+        if hour_val not in buckets:
             continue
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        hour_age = int((now - created_at).total_seconds() // 3600)
-        if hour_age < 0 or hour_age > 23:
-            continue
-        bucket = buckets[created_at.hour]
+
+        bucket = buckets[hour_val]
         if _route_for_provider(provider) == "aws-burst":
-            bucket["aws"] += 1
+            bucket["aws"] += count
         else:
-            bucket["hetzner"] += 1
+            bucket["hetzner"] += count
     return list(buckets.values())
 
 

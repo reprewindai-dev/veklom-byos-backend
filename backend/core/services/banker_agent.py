@@ -27,11 +27,11 @@ Flow:
 import logging
 import os
 from datetime import datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
@@ -215,9 +215,10 @@ class BankerAgentService:
 
         Raises BankerAgentDuplicatePaymentError if this job was already paid.
         """
-        from backend.db.models.payment import Payment
-        from backend.core.services.banker_pgl_guard import BankerAgentPGLGuard
         from datetime import timedelta
+
+        from backend.core.services.banker_pgl_guard import BankerAgentPGLGuard
+        from backend.db.models.payment import Payment
 
         treasury = BankerAgentService.get_treasury_address()
         checked_to_address = _normalize_address(to_address)
@@ -258,15 +259,10 @@ class BankerAgentService:
                 Payment.settled_at >= one_day_ago
             )
         )
-        # Import func dynamically in case it's not present globally
-        from sqlalchemy import func
-        settled_sum = Decimal(str((await db.execute(
-            select(func.sum(Payment.amount)).where(
-                Payment.from_address == treasury,
-                Payment.status == "confirmed",
-                Payment.settled_at >= one_day_ago
-            )
-        )).scalar() or "0.0"))
+
+        # ⚡ Bolt Optimization: Reuse the result of the query above instead of running it again
+        # to eliminate a redundant database roundtrip and execution time.
+        settled_sum = Decimal(str(tot_res.scalar() or "0.0"))
 
         if float(settled_sum) + amount > daily_limit:
             raise BankerAgentError(
@@ -332,14 +328,15 @@ class BankerAgentService:
         the prepared recipient for at least the prepared amount, and only then
         marks the payment as confirmed.
         """
-        from backend.db.models.payment import Payment
-        from backend.core.services.banker_pgl_guard import BankerAgentPGLGuard, BankerPGLContext
         from backend.core.services.banker_pgl_guard import (
-            BANKER_AGENT_WORKSPACE,
             BANKER_AGENT_ACTOR_ID,
-            BANKER_GENOME_HASH,
+            BANKER_AGENT_WORKSPACE,
             BANKER_CONSTITUTION_HASH,
+            BANKER_GENOME_HASH,
+            BankerAgentPGLGuard,
+            BankerPGLContext,
         )
+        from backend.db.models.payment import Payment
 
         result = await db.execute(
             select(Payment).where(
@@ -430,8 +427,9 @@ class BankerAgentService:
         status_filter: Optional[str] = None,
     ) -> dict:
         """Returns paginated payment history."""
+        from sqlalchemy import desc, func, select
+
         from backend.db.models.payment import Payment
-        from sqlalchemy import select, func, desc
 
         q = select(Payment).order_by(desc(Payment.id))
         if status_filter:

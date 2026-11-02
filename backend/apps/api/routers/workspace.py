@@ -163,22 +163,19 @@ async def monitoring_health(user=Depends(get_current_user), db: AsyncSession = D
     db_status = "connected"
 
     try:
-        # Check recent execution logs for health
-        recent_execs = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
+        # Check recent execution logs for health and errors in a single query
+        stats = await db.execute(
+            select(
+                func.count().label("execs"),
+                func.sum(case((ExecLog.status == "error", 1), else_=0)).label("errors")
+            ).where(
                 ExecLog.workspace_id == workspace_id,
                 ExecLog.created_at >= last_5m
             )
-        ) or 0
-
-        # Check for recent errors
-        recent_errors = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_5m,
-                ExecLog.status == "error"
-            )
-        ) or 0
+        )
+        row = stats.fetchone()
+        recent_execs = row.execs or 0
+        recent_errors = int(row.errors or 0)
 
         # Check security events
         recent_alerts = await db.scalar(
@@ -227,33 +224,22 @@ async def monitoring_metrics(user=Depends(get_current_user), db: AsyncSession = 
 
     try:
         # Execution metrics
-        total_execs = await db.scalar(
-            select(func.count()).select_from(ExecLog).where(
+        stats = await db.execute(
+            select(
+                func.count().label("execs"),
+                func.coalesce(func.sum(ExecLog.total_tokens), 0).label("tokens"),
+                func.coalesce(func.sum(ExecLog.cost_usd), 0.0).label("cost"),
+                func.coalesce(func.avg(ExecLog.latency_ms), 0).label("latency")
+            ).where(
                 ExecLog.workspace_id == workspace_id,
                 ExecLog.created_at >= last_24h
             )
-        ) or 0
-
-        total_tokens = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.total_tokens), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
-
-        total_cost = await db.scalar(
-            select(func.coalesce(func.sum(ExecLog.cost_usd), 0.0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0.0
-
-        avg_latency = await db.scalar(
-            select(func.coalesce(func.avg(ExecLog.latency_ms), 0)).where(
-                ExecLog.workspace_id == workspace_id,
-                ExecLog.created_at >= last_24h
-            )
-        ) or 0
+        )
+        row = stats.fetchone()
+        total_execs = row.execs or 0
+        total_tokens = int(row.tokens or 0)
+        total_cost = float(row.cost or 0.0)
+        avg_latency = int(row.latency or 0)
 
         # Provider breakdown
         provider_rows = await db.execute(

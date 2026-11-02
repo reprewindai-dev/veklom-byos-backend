@@ -16,3 +16,7 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+
+## 2026-08-08 - Batching aggregate queries in SQLAlchemy to prevent N+1 issues
+**Learning:** Sequential `.scalar()` aggregate queries (e.g. `func.count()`, `func.sum()`) running on the exact same table and same filters result in unnecessary roundtrips to the DB. In endpoints like `monitoring_health` and `monitoring_metrics`, firing 2-4 database queries to aggregate different metrics when they can be grouped causes execution delay.
+**Action:** When computing multiple aggregates over the same scope (e.g., total tokens, total cost, total execution), batch them into a single `db.execute(select(...))` query and fetch one combined row. Use `func.coalesce()` for null-safety and `case()` inside `sum()` for conditional counting.

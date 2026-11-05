@@ -16,3 +16,7 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+
+## 2025-02-28 - [Avoid full ORM model instantiations for aggregations and list fetches in SQLAlchemy]
+**Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog`, `AuditLog`, `SecurityEvent`, and `ModelConfig` iteratively using `result.scalars().all()` instead of performing the sum operations via the SQL database or selecting only the subset of columns required. This causes an $O(N)$ memory allocation and increases bandwidth utilization especially for larger lists.
+**Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.id, ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.

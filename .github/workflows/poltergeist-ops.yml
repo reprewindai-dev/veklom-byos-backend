@@ -39,7 +39,7 @@ jobs:
   # -----------------------------------------------------------------------
   pr-guardian:
     name: "👻 Poltergeist PR Guardian"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'pull_request'
     timeout-minutes: 5
 
@@ -167,7 +167,7 @@ jobs:
   # -----------------------------------------------------------------------
   deployment-verifier:
     name: "👻 Poltergeist Deployment Verifier"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
     timeout-minutes: 10
 
@@ -259,7 +259,7 @@ jobs:
   # -----------------------------------------------------------------------
   nightly-audit:
     name: "👻 Poltergeist Nightly Audit"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
     env:

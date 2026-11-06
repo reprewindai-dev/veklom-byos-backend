@@ -9,7 +9,7 @@ on:
 jobs:
   build-check:
     name: Docker Build + Import Validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
@@ -98,7 +98,7 @@ jobs:
   deploy-prod:
     name: Deploy to Production (main branch only)
     needs: build-check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     timeout-minutes: 30
 

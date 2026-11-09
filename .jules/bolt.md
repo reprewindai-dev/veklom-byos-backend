@@ -16,3 +16,6 @@
 ## 2026-08-07 - Avoid full ORM model instantiations for aggregations in SQLAlchemy
 **Learning:** In `backend/apps/api/routers/workspace.py`'s `_overview_payload`, we fetched raw ORM records from `ExecLog` in an iterative Python list generation instead of performing the sum operations via the SQL database using group by. This causes an O(N) memory allocation and increases bandwidth utilization especially for larger intervals.
 **Action:** Always fetch only the exact columns needed (e.g., `select(ExecLog.provider)`) using tuples/Rows or push counts back to the database (`select(func.count()).group_by(...)`) instead of parsing them locally from `select(Model).scalars().all()`.
+## 2025-02-28 - [Chronological sorting of routing history]
+**Learning:** When aggregating time-series data grouped by database hour, ensure the Python-side buckets are chronologically ordered (e.g., `[(now.hour - i) % 24 for i in range(23, -1, -1)]`) rather than naively initialized 0 to 23 to prevent UI chronological display issues.
+**Action:** Update bucket initialization logic in `_routing_history` to correctly order hours based on the current time.
